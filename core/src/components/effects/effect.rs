@@ -1,10 +1,15 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
+    sync::Arc,
+};
 
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
-    chain_hook_field,
     components::{
         actions::action::ActionContext,
         damage::{
@@ -12,7 +17,7 @@ use crate::{
         },
         effects::hooks::{
             ActionHook, ApplyEffectHook, ArmorClassHook, AttackRollHook, AttackRollResultHook,
-            D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
+            AttackedHook, D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
             PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, UnapplyEffectHook,
         },
         id::{ActionId, EffectId, IdProvider},
@@ -101,6 +106,7 @@ pub struct Effect {
     pub kind: EffectKind,
     pub description: String,
     pub replaces: Option<EffectId>,
+    pub children: Vec<EffectId>,
 
     // on_turn_start: EffectHook,
     // TODO: Do we need to differentiate between when an effect explicitly expires and when
@@ -112,6 +118,7 @@ pub struct Effect {
     pub on_saving_throw: HashMap<SavingThrowKind, D20CheckHooks>,
     pub pre_attack_roll: AttackRollHook,
     pub post_attack_roll: AttackRollResultHook,
+    pub on_attacked: AttackedHook,
     pub on_armor_class: ArmorClassHook,
     pub pre_damage_roll: DamageRollHook,
     pub post_damage_roll: DamageRollResultHook,
@@ -128,6 +135,8 @@ impl Effect {
             id,
             kind,
             description,
+            replaces: None,
+            children: Vec::new(),
             on_apply: Arc::new(|_: &mut World, _: Entity, _: Option<&ActionContext>| {})
                 as ApplyEffectHook,
             on_unapply: Arc::new(|_: &mut World, _: Entity| {}) as UnapplyEffectHook,
@@ -137,6 +146,9 @@ impl Effect {
                 as AttackRollHook,
             post_attack_roll: Arc::new(|_: &World, _: Entity, _: &mut AttackRollResult| {})
                 as AttackRollResultHook,
+            on_attacked: Arc::new(
+                |_: &World, _victim: Entity, _attacker: Entity, _: &mut AttackRoll| {},
+            ) as AttackedHook,
             on_armor_class: Arc::new(|_: &World, _: Entity, _: &mut ArmorClass| {})
                 as ArmorClassHook,
             pre_damage_roll: Arc::new(|_: &World, _: Entity, _: &mut DamageRoll| {})
@@ -163,132 +175,11 @@ impl Effect {
                  _killer: Option<Entity>,
                  _applier: Option<Entity>| {},
             ) as DeathHook,
-            replaces: None,
         }
     }
 
     pub fn id(&self) -> &EffectId {
         &self.id
-    }
-
-    /// TODO: This is definitely not the most elegant way to combine hooks. It could
-    /// be argued that the hooks should perhaps be stored in a vector instead, or some
-    /// other similar structure, which allows storing multiple hooks of the same type.
-    /// However, it's also worth considering if *any* event would actually need to have
-    /// multiple hooks for the same type? Would it ever make sense to define something
-    /// like an effect which adds +2 and +1 to a skill? That's a question for another
-    /// day - right now this works :^)
-    pub fn combine_hooks(&mut self, other: &Effect) {
-        chain_hook_field!(
-            self,
-            other,
-            on_apply,
-            |world: &mut World, entity: Entity, action_context: Option<&ActionContext>|,
-            (world, entity, action_context)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            on_unapply,
-            |world: &mut World, entity: Entity|,
-            (world, entity)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            pre_attack_roll,
-            |world: &World, entity: Entity, attack_roll: &mut AttackRoll|,
-            (world, entity, attack_roll)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            post_attack_roll,
-            |world: &World, entity: Entity, attack_roll_result: &mut AttackRollResult|,
-            (world, entity, attack_roll_result)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            on_armor_class,
-            |world: &World, entity: Entity, armor_class: &mut ArmorClass|,
-            (world, entity, armor_class)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            pre_damage_roll,
-            |world: &World, entity: Entity, damage_roll: &mut DamageRoll|,
-            (world, entity, damage_roll)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            post_damage_roll,
-            |world: &World, entity: Entity, damage_roll_result: &mut DamageRollResult|,
-            (world, entity, damage_roll_result)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            on_action,
-            |world: &mut World, action_data: &ActionData|,
-            (world, action_data)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            on_resource_cost,
-            |world: &World,
-             entity: Entity,
-             action_id: &ActionId,
-             action_context: &ActionContext,
-             resource_costs: &mut ResourceAmountMap|,
-            (world, entity, action_id, action_context, resource_costs)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            pre_damage_mitigation,
-            |world: &World,
-             entity: Entity,
-             effect_instance: &EffectInstance,
-             damage_roll_result: &mut DamageRollResult|,
-            (world, entity, effect_instance, damage_roll_result)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            post_damage_mitigation,
-            |world: &World, entity: Entity, mitigation_result: &mut DamageMitigationResult|,
-            (world, entity, mitigation_result)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            on_death,
-            |world: &mut World,
-             victim: Entity,
-             killer: Option<Entity>,
-             applier: Option<Entity>|,
-            (world, victim, killer, applier)
-        );
-        for (skill, hooks) in &other.on_skill_check {
-            self.on_skill_check
-                .entry(*skill)
-                .and_modify(|existing_hooks| {
-                    existing_hooks.combine_hooks(hooks);
-                })
-                .or_insert_with(|| hooks.clone());
-        }
-        for (saving_throw, hooks) in &other.on_saving_throw {
-            self.on_saving_throw
-                .entry(*saving_throw)
-                .and_modify(|existing_hooks| {
-                    existing_hooks.combine_hooks(hooks);
-                })
-                .or_insert_with(|| hooks.clone());
-        }
     }
 }
 
@@ -300,26 +191,37 @@ impl IdProvider for Effect {
     }
 }
 
+pub type EffectInstanceId = Uuid;
+
 #[derive(Debug, Clone)]
 pub struct EffectInstance {
     pub effect_id: EffectId,
     pub source: ModifierSource,
     pub applier: Option<Entity>,
     pub lifetime: EffectLifetime,
+    pub parent: Option<EffectInstanceId>,
+    pub children: HashSet<EffectInstanceId>,
 }
 
 impl EffectInstance {
-    pub fn new(effect_id: EffectId, source: ModifierSource, lifetime: EffectLifetime) -> Self {
+    pub fn new(
+        effect_id: EffectId,
+        source: ModifierSource,
+        lifetime: EffectLifetime,
+        applier: Option<Entity>,
+    ) -> Self {
         Self {
             effect_id,
             source,
             lifetime,
-            applier: None,
+            applier,
+            parent: None,
+            children: HashSet::new(),
         }
     }
 
     pub fn permanent(effect_id: EffectId, source: ModifierSource) -> Self {
-        Self::new(effect_id, source, EffectLifetime::Permanent)
+        Self::new(effect_id, source, EffectLifetime::Permanent, None)
     }
 
     pub fn effect(&self) -> &Effect {
@@ -371,18 +273,50 @@ pub struct EffectInstanceTemplate {
 }
 
 impl EffectInstanceTemplate {
+    /// Return multiple instantiated effects in case the effect spawns child effects.
     pub fn instantiate(
         &self,
         applier: Entity,
         target: Entity,
         source: ModifierSource,
-    ) -> EffectInstance {
-        EffectInstance {
-            effect_id: self.effect_id.clone(),
-            source,
-            lifetime: self.lifetime.instantiate(applier, target),
-            applier: Some(applier),
+    ) -> (EffectInstanceId, EffectsMap) {
+        let parent_lifetime = self.lifetime.instantiate(applier, target);
+        let mut parent_instance = EffectInstance::new(
+            self.effect_id.clone(),
+            source.clone(),
+            parent_lifetime,
+            Some(applier),
+        );
+        let parent_id = Uuid::new_v4();
+
+        let mut instances = EffectsMap::new();
+
+        // Instantiate child effects
+        let effect_definition = self.effect();
+        for child_effect_id in &effect_definition.children {
+            let child_template = EffectInstanceTemplate {
+                effect_id: child_effect_id.clone(),
+                lifetime: self.lifetime, // Child effects inherit the same lifetime template
+            };
+
+            let (child_root_id, child_instances) =
+                child_template.instantiate(applier, target, source.clone());
+
+            // Register only the *root* child as a direct child of the parent
+            parent_instance.children.insert(child_root_id);
+
+            // Merge the subtree into `instances`, preserving IDs and parent links.
+            // Only override the root child’s parent to point at `parent_id`.
+            for (instance_id, mut instance) in child_instances {
+                if instance_id == child_root_id {
+                    instance.parent = Some(parent_id);
+                }
+                instances.insert(instance_id, instance);
+            }
         }
+
+        instances.insert(parent_id, parent_instance);
+        (parent_id, instances)
     }
 
     pub fn effect(&self) -> &Effect {
@@ -390,3 +324,5 @@ impl EffectInstanceTemplate {
             .expect(format!("Effect definition not found for ID `{}`", self.effect_id).as_str())
     }
 }
+
+pub type EffectsMap = HashMap<EffectInstanceId, EffectInstance>;

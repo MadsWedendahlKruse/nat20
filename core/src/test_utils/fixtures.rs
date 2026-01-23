@@ -461,6 +461,12 @@ pub mod creatures {
                         "nat20_core",
                         "subclass.warlock.fiend_patron",
                     ))),
+                    LevelUpDecision::spells(
+                        "choice.spells",
+                        &ClassId::new("nat20_core", "class.warlock"),
+                        &None,
+                        vec![SpellId::new("nat20_core", "spell.hold_person")],
+                    ),
                     LevelUpDecision::ReplaceSpells { spells: Vec::new() },
                     // Level 4
                     LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(

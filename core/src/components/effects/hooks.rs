@@ -21,6 +21,8 @@ pub type ApplyEffectHook = Arc<dyn Fn(&mut World, Entity, Option<&ActionContext>
 pub type UnapplyEffectHook = Arc<dyn Fn(&mut World, Entity) + Send + Sync>;
 pub type AttackRollHook = Arc<dyn Fn(&World, Entity, &mut AttackRoll) + Send + Sync>;
 pub type AttackRollResultHook = Arc<dyn Fn(&World, Entity, &mut AttackRollResult) + Send + Sync>;
+/// Hook for when an entity is attacked. Parameters are: world, victim, attacker, attack roll result.
+pub type AttackedHook = Arc<dyn Fn(&World, Entity, Entity, &mut AttackRoll) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&World, Entity, &mut ArmorClass) + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&World, Entity, &mut D20Check) + Send + Sync>;
 pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + Send + Sync>;
@@ -35,24 +37,6 @@ pub type PostDamageMitigationHook =
     Arc<dyn Fn(&World, Entity, &mut DamageMitigationResult) + Send + Sync>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)
 pub type DeathHook = Arc<dyn Fn(&mut World, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
-
-#[macro_export]
-macro_rules! chain_hook_field {
-    (
-        $self:expr,
-        $other:expr,
-        $field:ident,
-        |$($param_name:ident : $param_ty:ty),* $(,)?|,
-        ($($arg:expr),* $(,)?)
-    ) => {{
-        let previous_hook = $self.$field.clone();
-        let new_hook = $other.$field.clone();
-        $self.$field = Arc::new(move |$($param_name : $param_ty),*| {
-            previous_hook($($arg),*);
-            new_hook($($arg),*);
-        });
-    }};
-}
 
 #[derive(Clone)]
 pub struct D20CheckHooks {
@@ -95,22 +79,5 @@ impl D20CheckHooks {
             check_hook: Arc::new(|_, _, _| {}),
             result_hook: Arc::new(hook),
         }
-    }
-
-    pub fn combine_hooks(&mut self, other: &D20CheckHooks) {
-        chain_hook_field!(
-            self,
-            other,
-            check_hook,
-            |world: &World, entity: Entity, check: &mut D20Check|,
-            (world, entity, check)
-        );
-        chain_hook_field!(
-            self,
-            other,
-            result_hook,
-            |world: &World, entity: Entity, result: &mut D20CheckResult|,
-            (world, entity, result)
-        );
     }
 }

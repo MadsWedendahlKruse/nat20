@@ -8,7 +8,8 @@ use crate::{
     components::{
         ability::Ability,
         actions::action::{Action, ActionKind, TargetingFunction},
-        id::{EffectId, IdProvider, ScriptId, SpellId},
+        effects::effect::EffectInstanceId,
+        id::{IdProvider, ScriptId, SpellId},
         resource::ResourceAmountMap,
     },
     engine::event::ActionExecutionInstanceId,
@@ -137,7 +138,10 @@ pub const CONCENTRATION_SAVING_THROW_DC_DEFAULT: i32 = 10;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConcentrationInstance {
-    Effect { entity: Entity, effect: EffectId },
+    Effect {
+        entity: Entity,
+        effect: EffectInstanceId,
+    },
     // TODO: Environmental effects (e.g. web)
 }
 

@@ -8,15 +8,12 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::action::{ActionContext, AttackRollFunction, SavingThrowFunction},
         d20::{D20Check, D20CheckDC},
-        damage::{AttackRoll, DamageSource},
+        damage::{AttackRange, AttackRoll, AttackSource},
         id::SpellId,
         modifier::{Modifiable, ModifierSet, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         saving_throw::{SavingThrowDC, SavingThrowKind},
-        spells::{
-            spell::SPELL_CASTING_ABILITIES,
-            spellbook::{SpellSource, Spellbook},
-        },
+        spells::{spell::SPELL_CASTING_ABILITIES, spellbook::SpellSource},
     },
     registry::registry::{ClassesRegistry, SpellsRegistry},
     systems,
@@ -53,7 +50,7 @@ impl FromStr for AttackRollProvider {
                         } else {
                             panic!("Action context must be Spell for spell_attack_roll");
                         };
-                    spell_attack_roll(world, entity, target, source, id)
+                    spell_attack_roll(world, entity, target, source, id, action_context)
                 }
             }) as Arc<AttackRollFunction>,
             _ => {
@@ -131,12 +128,10 @@ fn spell_attack_roll(
     target: Entity,
     source: &SpellSource,
     spell_id: &SpellId,
+    context: &ActionContext,
 ) -> AttackRoll {
     let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, caster);
     let spellcasting_ability = get_spellcasting_ability_from_source(world, caster, source);
-    let proficiency_bonus = systems::helpers::level(world, caster)
-        .unwrap()
-        .proficiency_bonus();
 
     let mut roll = D20Check::new(Proficiency::new(
         ProficiencyLevel::Proficient,
@@ -149,12 +144,16 @@ fn spell_attack_roll(
         ModifierSource::Ability(spellcasting_ability),
         spellcasting_modifier,
     );
-    roll.add_modifier(
-        ModifierSource::Proficiency(ProficiencyLevel::Proficient),
-        proficiency_bonus as i32,
-    );
 
-    AttackRoll::new(roll, DamageSource::Spell(spell_id.clone()))
+    let spell = SpellsRegistry::get(spell_id).expect("Spell must exist in registry");
+    let spell_range = (spell.action().targeting)(world, caster, context).range;
+    let attack_range = if spell_range.is_melee() {
+        AttackRange::Melee
+    } else {
+        AttackRange::Ranged
+    };
+
+    AttackRoll::new(roll, AttackSource::Spell, attack_range)
 }
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -32,7 +32,10 @@ mod tests {
         println!("{:?}", armor_class);
 
         // Check that the heavy armor gives stealth disadvantage
-        let effects = systems::effects::effects(&game_state.world, character);
+        let effects = systems::effects::effects(&game_state.world, character)
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
         assert!(!effects.is_empty());
         assert!(effects.iter().any(|e| {
             e.effect_id == EffectId::new("nat20_core", "effect.item.armor_stealth_disadvantage")

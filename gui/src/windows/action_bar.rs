@@ -12,6 +12,7 @@ use nat20_core::{
         id::{ActionId, Name, ResourceId},
         modifier::Modifiable,
         resource::{RechargeRule, ResourceAmount, ResourceAmountMap, ResourceMap},
+        saving_throw::SavingThrowSet,
         speed::Speed,
     },
     engine::{
@@ -34,7 +35,7 @@ use crate::{
         common::utils::RenderableMutWithContext,
         ui::{
             components::{LOW_HEALTH_BG_COLOR, LOW_HEALTH_COLOR, SPEED_COLOR, SPEED_COLOR_BG},
-            text::{TextKind, TextSegments},
+            text::{TextKind, TextSegment, TextSegments},
             utils::{
                 ImguiRenderable, ImguiRenderableWithContext, ProgressBarColor,
                 render_button_disabled_conditionally, render_button_with_padding,
@@ -231,7 +232,7 @@ fn render_actions(
 
                 let mut action_usable = false;
                 for (context, cost) in contexts_and_costs.iter_mut() {
-                    for effect in systems::effects::effects(&game_state.world, entity).iter() {
+                    for effect in systems::effects::effects(&game_state.world, entity).values() {
                         (effect.effect().on_resource_cost)(
                             &game_state.world,
                             entity,
@@ -267,8 +268,8 @@ fn render_actions(
                             *new_state = Some(ActionBarState::Variant {
                                 variants: variants
                                     .iter()
+                                    // Assume all variants have the same contexts and costs
                                     .map(|variant_action_id| {
-                                        // Assume all variants have the same contexts and costs
                                         (variant_action_id.clone(), contexts_and_costs.clone())
                                     })
                                     .collect(),
@@ -510,7 +511,7 @@ fn render_target_selection(
                         let mut attack_roll =
                             attack_roll(&game_state.world, action.actor, *target, &action.context);
                         for effect in
-                            systems::effects::effects(&game_state.world, action.actor).iter()
+                            systems::effects::effects(&game_state.world, action.actor).values()
                         {
                             (effect.effect().pre_attack_roll)(
                                 &game_state.world,
@@ -518,11 +519,21 @@ fn render_target_selection(
                                 &mut attack_roll,
                             );
                         }
+                        for effect in systems::effects::effects(&game_state.world, *target).values()
+                        {
+                            (effect.effect().on_attacked)(
+                                &game_state.world,
+                                *target,
+                                action.actor,
+                                &mut attack_roll,
+                            );
+                        }
+
                         let target_ac = systems::loadout::armor_class(&game_state.world, *target);
                         ui.tooltip(|| {
                             ui.separator();
 
-                            let hitchance = attack_roll.hit_chance(
+                            let hit_chance = attack_roll.hit_chance(
                                 &game_state.world,
                                 action.actor,
                                 target_ac.total() as u32,
@@ -537,12 +548,52 @@ fn render_target_selection(
 
                             TextSegments::new(vec![
                                 ("Hit chance:", TextKind::Normal),
-                                (&format!("{:.0}%", hitchance), text_kind),
+                                (&format!("{:.0}%", hit_chance.floor()), text_kind),
                             ])
                             .render(ui);
                         });
                     }
                 }
+
+                ActionCondition::SavingThrow { saving_throw, .. } => {
+                    if let Some(potential_target) = &potential_target_instance
+                        && let TargetInstance::Entity(target) = potential_target
+                    {
+                        let dc = saving_throw(&game_state.world, action.actor, &action.context);
+                        let saving_throws = systems::helpers::get_component::<SavingThrowSet>(
+                            &game_state.world,
+                            *target,
+                        );
+                        let d20_check = saving_throws.get(&dc.key);
+
+                        // Chance for the target to succeed the save
+                        let save_chance = d20_check.success_probability(
+                            dc.dc.total() as u32,
+                            systems::helpers::level(&game_state.world, *target)
+                                .unwrap()
+                                .proficiency_bonus(),
+                        );
+                        let success_chance = (1.0 - save_chance) * 100.0;
+
+                        ui.tooltip(|| {
+                            ui.separator();
+
+                            let text_kind = match d20_check.advantage_tracker().roll_mode() {
+                                RollMode::Normal => TextKind::Normal,
+                                // It's a good thing if the *target* has disadvantage
+                                RollMode::Disadvantage => TextKind::Green,
+                                RollMode::Advantage => TextKind::Red,
+                            };
+
+                            TextSegment::new(
+                                &format!("Success chance: {:.0}%", success_chance),
+                                text_kind,
+                            )
+                            .render(ui);
+                        });
+                    }
+                }
+
                 _ => {}
             },
             _ => {}

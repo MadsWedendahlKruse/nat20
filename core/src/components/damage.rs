@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::ActionContext,
-        d20::{D20Check, D20CheckResult},
+        d20::{D20Check, D20CheckOutcome, D20CheckResult},
         dice::{DiceSet, DiceSetRoll, DiceSetRollResult},
         id::{ActionId, SpellId},
         items::equipment::{
@@ -18,7 +18,6 @@ use crate::{
             weapon::{Weapon, WeaponKind},
         },
         modifier::{ModifierSet, ModifierSource},
-        spells::spell,
     },
     systems::{self},
 };
@@ -589,17 +588,33 @@ impl Default for DamageMitigationResult {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttackSource {
+    Weapon,
+    Spell,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttackRange {
+    Melee,
+    Ranged,
+}
+
 #[derive(Debug, Clone)]
 pub struct AttackRoll {
     pub d20_check: D20Check,
-    pub source: DamageSource,
+    pub source: AttackSource,
+    pub range: AttackRange,
     crit_threshold: u8, // Default critical threshold is 20
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackRollResult {
     pub roll_result: D20CheckResult,
-    pub source: DamageSource,
+    pub source: AttackSource,
+    pub range: AttackRange,
 }
 
 impl fmt::Display for AttackRollResult {
@@ -610,10 +625,11 @@ impl fmt::Display for AttackRollResult {
 }
 
 impl AttackRoll {
-    pub fn new(d20_check: D20Check, source: DamageSource) -> Self {
+    pub fn new(d20_check: D20Check, source: AttackSource, range: AttackRange) -> Self {
         Self {
             d20_check,
             source,
+            range,
             crit_threshold: 20,
         }
     }
@@ -630,12 +646,13 @@ impl AttackRoll {
     pub fn roll_raw(&self, proficiency_bonus: u8) -> AttackRollResult {
         let mut roll_result = self.d20_check.roll(proficiency_bonus);
         if roll_result.selected_roll >= self.crit_threshold {
-            roll_result.is_crit = true;
+            roll_result.outcome = Some(D20CheckOutcome::CriticalSuccess);
         }
 
         AttackRollResult {
             roll_result,
-            source: self.source.clone(),
+            range: self.range,
+            source: self.source,
         }
     }
 
@@ -653,16 +670,11 @@ impl AttackRoll {
 mod tests {
     use rstest::{fixture, rstest};
 
-    use crate::{
-        components::{
-            ability::Ability,
-            actions::action::{ActionContext, ActionKind, ActionProvider},
-            dice::DieSize,
-            id::{EffectId, ItemId, SpellId},
-            items::item::Item,
-            modifier::{Modifiable, ModifierSet, ModifierSource},
-        },
-        test_utils::fixtures,
+    use crate::components::{
+        ability::Ability,
+        dice::DieSize,
+        id::{EffectId, ItemId},
+        modifier::{Modifiable, ModifierSet, ModifierSource},
     };
 
     use super::*;
@@ -699,7 +711,10 @@ mod tests {
         resistances.effects.insert(
             DamageType::Slashing,
             vec![DamageMitigationEffect {
-                source: ModifierSource::Item(ItemId::new("nat20_core", "item.shield_of_resistance")),
+                source: ModifierSource::Item(ItemId::new(
+                    "nat20_core",
+                    "item.shield_of_resistance",
+                )),
                 operation: MitigationOperation::Resistance,
             }],
         );
@@ -719,7 +734,10 @@ mod tests {
         resistances.effects.insert(
             DamageType::Fire,
             vec![DamageMitigationEffect {
-                source: ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_fire_immunity")),
+                source: ModifierSource::Item(ItemId::new(
+                    "nat20_core",
+                    "item.ring_of_fire_immunity",
+                )),
                 operation: MitigationOperation::Immunity,
             }],
         );
@@ -814,14 +832,20 @@ mod tests {
         resistances.effects.insert(
             DamageType::Slashing,
             vec![DamageMitigationEffect {
-                source: ModifierSource::Item(ItemId::new("nat20_core", "item.shield_of_resistance")),
+                source: ModifierSource::Item(ItemId::new(
+                    "nat20_core",
+                    "item.shield_of_resistance",
+                )),
                 operation: MitigationOperation::Resistance,
             }],
         );
         resistances.effects.insert(
             DamageType::Fire,
             vec![DamageMitigationEffect {
-                source: ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_fire_immunity")),
+                source: ModifierSource::Item(ItemId::new(
+                    "nat20_core",
+                    "item.ring_of_fire_immunity",
+                )),
                 operation: MitigationOperation::Immunity,
             }],
         );
@@ -849,7 +873,10 @@ mod tests {
                     operation: MitigationOperation::Resistance,
                 },
                 DamageMitigationEffect {
-                    source: ModifierSource::Effect(EffectId::new("nat20_core", "Curse of Slashing")),
+                    source: ModifierSource::Effect(EffectId::new(
+                        "nat20_core",
+                        "Curse of Slashing",
+                    )),
                     operation: MitigationOperation::Vulnerability,
                 },
                 DamageMitigationEffect {

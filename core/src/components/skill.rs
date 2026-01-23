@@ -99,7 +99,7 @@ pub type SkillCheckDC = D20CheckDC<Skill>;
 
 pub fn get_skill_hooks(skill: &Skill, world: &World, entity: Entity) -> Vec<D20CheckHooks> {
     systems::effects::effects(world, entity)
-        .iter()
+        .values()
         .filter_map(|e| e.effect().on_skill_check.get(&skill))
         .cloned()
         .collect()

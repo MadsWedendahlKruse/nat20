@@ -441,7 +441,7 @@ impl Action {
         // hopefully since most of the effect just have a no-op as their
         // on_action component it'll be cheap to clone
         let hooks: Vec<_> = systems::effects::effects(&game_state.world, action_data.actor)
-            .iter()
+            .values()
             .filter_map(|effect| Some(effect.effect().on_action.clone()))
             .collect();
 

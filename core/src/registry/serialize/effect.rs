@@ -6,16 +6,16 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::ActionContext,
-        d20::{D20CheckKey, D20CheckMap},
+        d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
-            DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRollResult,
+            AttackRange, AttackSource, DamageMitigationEffect, DamageMitigationResult,
+            DamageResistances, DamageRollResult,
         },
         effects::{
-            condition::{self, Condition},
             effect::{Effect, EffectInstance, EffectKind},
             hooks::{
-                ActionHook, ArmorClassHook, AttackRollHook, DamageRollResultHook, DeathHook,
-                PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
+                ActionHook, ArmorClassHook, AttackRollHook, AttackedHook, DamageRollResultHook,
+                DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -35,11 +35,11 @@ use crate::{
             dice::HealEquation,
             modifier::{
                 AbilityModifierProvider, ArmorClassModifierProvider, AttackRollModifier,
-                AttackRollModifierProvider, D20CheckModifierProvider, DamageResistanceProvider,
+                D20CheckModifierProvider, D20Modifier, DamageResistanceProvider,
                 SavingThrowModifierProvider, SkillModifierProvider, SpeedModifier,
                 SpeedModifierProvider,
             },
-            quantity::TimeExpressionDefinition,
+            quantity::{LengthExpressionDefinition, TimeExpressionDefinition},
         },
     },
     scripts::{
@@ -82,7 +82,7 @@ pub struct EffectDefinition {
     pub replaces: Option<EffectId>,
 
     #[serde(default)]
-    pub conditions: Vec<Condition>,
+    pub children: Vec<EffectId>,
 
     /// Simple effect modifiers like:
     /// - Ability score changes
@@ -98,6 +98,8 @@ pub struct EffectDefinition {
     pub pre_attack_roll: Vec<AttackRollHookDefinition>,
     // #[serde(default)]
     // pub post_attack_roll: Vec<AttackRollResultHookDef>,
+    #[serde(default)]
+    pub on_attacked: Vec<AttackedHookDefinition>,
     #[serde(default)]
     pub on_armor_class: Vec<ArmorClassHookDefinition>,
 
@@ -122,6 +124,8 @@ impl From<EffectDefinition> for Effect {
         let effect_id = definition.id.clone();
 
         let mut effect = Effect::new(effect_id.clone(), definition.kind, definition.description);
+        effect.replaces = definition.replaces;
+        effect.children = definition.children;
 
         // 1. Simple persistent modifiers
         // Build on_apply from all modifiers
@@ -153,6 +157,11 @@ impl From<EffectDefinition> for Effect {
         {
             let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
             effect.pre_attack_roll = AttackRollHookDefinition::combine_hooks(hooks);
+        }
+        // Build on_attacked hooks
+        {
+            let hooks = collect_effect_hooks(&definition.on_attacked, &effect_id);
+            effect.on_attacked = AttackedHookDefinition::combine_hooks(hooks);
         }
 
         // Build post_damage_roll hooks
@@ -195,10 +204,6 @@ impl From<EffectDefinition> for Effect {
         {
             let hooks = collect_effect_hooks(&definition.on_death, &effect_id);
             effect.on_death = DeathHookDefinition::combine_hooks(hooks);
-        }
-
-        for condition in definition.conditions {
-            effect.combine_hooks(&condition.effect());
         }
 
         effect
@@ -290,7 +295,10 @@ pub enum EffectModifier {
     },
     Resource {
         resource: ResourceId,
-        amount: ResourceAmount,
+        #[serde(default)]
+        amount: Option<ResourceAmount>,
+        #[serde(default)]
+        disable: bool,
     },
     Speed {
         speed: SpeedModifierProvider,
@@ -298,9 +306,12 @@ pub enum EffectModifier {
     TemporaryHitPoints {
         temporary_hit_points: HealEquation,
     },
+    Concentration {
+        break_concentration: bool,
+    },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectPhase {
     Apply,
     Unapply,
@@ -362,15 +373,29 @@ impl EffectModifier {
                 }
             }
 
-            EffectModifier::Resource { resource, amount } => {
+            EffectModifier::Resource {
+                resource,
+                amount,
+                disable,
+            } => {
                 let mut resources =
                     systems::helpers::get_component_mut::<ResourceMap>(world, entity);
                 match phase {
                     EffectPhase::Apply => {
-                        resources.add_uses(resource, amount);
+                        if let Some(amount) = amount {
+                            resources.add_uses(resource, amount);
+                        }
+                        if *disable {
+                            resources.disable_resource(resource, source.clone());
+                        }
                     }
                     EffectPhase::Unapply => {
-                        resources.remove_uses(resource, amount);
+                        if let Some(amount) = amount {
+                            resources.remove_uses(resource, amount);
+                        }
+                        if *disable {
+                            resources.enable_resource(resource);
+                        }
                     }
                 }
             }
@@ -420,6 +445,14 @@ impl EffectModifier {
                     }
                 }
             }
+
+            EffectModifier::Concentration {
+                break_concentration,
+            } => {
+                if *break_concentration && phase == EffectPhase::Apply {
+                    systems::spells::break_concentration(world, entity);
+                }
+            }
         }
     }
 
@@ -432,22 +465,28 @@ impl EffectModifier {
         K: D20CheckKey + DeserializeOwned,
     {
         match phase {
-            EffectPhase::Apply => {
-                if let Some(delta) = modifier.delta {
+            EffectPhase::Apply => match modifier.modifier {
+                D20Modifier::Flat(delta) => {
                     for kind in &modifier.kind {
                         modifiable.add_modifier(kind, source.clone(), delta);
                     }
                 }
-                if let Some(advantage_type) = modifier.advantage {
+                D20Modifier::Advantage(advantage_type) => {
                     for kind in &modifier.kind {
                         modifiable.add_advantage(kind, advantage_type, source.clone());
                     }
                 }
-            }
+                D20Modifier::ForceOutcome(force_outcome) => {
+                    for kind in &modifier.kind {
+                        modifiable.set_forced_outcome(kind, source.clone(), force_outcome);
+                    }
+                }
+            },
             EffectPhase::Unapply => {
                 for kind in &modifier.kind {
                     modifiable.remove_modifier(kind, &source);
                     modifiable.remove_advantage(kind, &source);
+                    modifiable.clear_forced_outcome(kind);
                 }
             }
         }
@@ -478,7 +517,11 @@ where
 #[serde(untagged)]
 pub enum AttackRollHookDefinition {
     Modifier {
-        modifier: AttackRollModifierProvider,
+        #[serde(default)]
+        source: Option<AttackSource>,
+        #[serde(default)]
+        range: Option<AttackRange>,
+        modifier: AttackRollModifier,
     },
     Script {
         script: ScriptId,
@@ -488,34 +531,44 @@ pub enum AttackRollHookDefinition {
 impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
     fn build_hook(&self, effect: &EffectId) -> AttackRollHook {
         match self {
-            AttackRollHookDefinition::Modifier { modifier } => {
+            AttackRollHookDefinition::Modifier {
+                source,
+                range,
+                modifier,
+            } => {
                 let modifier_source = ModifierSource::Effect(effect.clone());
                 Arc::new({
+                    let source = source.clone();
+                    let range = range.clone();
                     let modifier = modifier.clone();
                     move |_world, _entity, attack_roll| {
-                        if let Some(damage_source) = &modifier.source
-                            && *damage_source != attack_roll.source
+                        if let Some(source) = source
+                            && attack_roll.source != source
+                        {
+                            // Only apply if the attack source matches
+                            return;
+                        }
+                        if let Some(range) = range
+                            && attack_roll.range != range
                         {
                             // Only apply if the damage source matches
                             return;
                         }
 
-                        if let Some(attack_modifier) = &modifier.modifier {
-                            match attack_modifier {
-                                AttackRollModifier::FlatBonus(bonus) => {
-                                    attack_roll
-                                        .d20_check
-                                        .add_modifier(modifier_source.clone(), *bonus);
-                                }
-                                AttackRollModifier::Advantage(advantage) => {
-                                    attack_roll
-                                        .d20_check
-                                        .advantage_tracker_mut()
-                                        .add(*advantage, modifier_source.clone());
-                                }
-                                AttackRollModifier::CritThreshold(threshold) => {
-                                    attack_roll.reduce_crit_threshold(*threshold);
-                                }
+                        match modifier {
+                            AttackRollModifier::FlatBonus(bonus) => {
+                                attack_roll
+                                    .d20_check
+                                    .add_modifier(modifier_source.clone(), bonus);
+                            }
+                            AttackRollModifier::Advantage(advantage) => {
+                                attack_roll
+                                    .d20_check
+                                    .advantage_tracker_mut()
+                                    .add(advantage, modifier_source.clone());
+                            }
+                            AttackRollModifier::CritThreshold(threshold) => {
+                                attack_roll.reduce_crit_threshold(threshold);
                             }
                         }
                     }
@@ -532,6 +585,74 @@ impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
         Arc::new(move |world, entity, attack_roll| {
             for hook in &hooks {
                 hook(world, entity, attack_roll);
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AttackedHookDefinition {
+    Modifier {
+        modifier: AttackRollModifier,
+    },
+    AutoCrit {
+        auto_crit_distance: LengthExpressionDefinition,
+    },
+}
+
+impl HookEffect<AttackedHook> for AttackedHookDefinition {
+    fn build_hook(&self, effect: &EffectId) -> AttackedHook {
+        match self {
+            AttackedHookDefinition::Modifier { modifier } => {
+                let modifier_source = ModifierSource::Effect(effect.clone());
+                Arc::new({
+                    let modifier = modifier.clone();
+                    move |_world, _victim, _attacker, attack_roll| match modifier {
+                        AttackRollModifier::FlatBonus(bonus) => {
+                            attack_roll
+                                .d20_check
+                                .add_modifier(modifier_source.clone(), bonus);
+                        }
+                        AttackRollModifier::Advantage(advantage) => {
+                            attack_roll
+                                .d20_check
+                                .advantage_tracker_mut()
+                                .add(advantage, modifier_source.clone());
+                        }
+                        AttackRollModifier::CritThreshold(threshold) => {
+                            attack_roll.reduce_crit_threshold(threshold);
+                        }
+                    }
+                })
+            }
+
+            AttackedHookDefinition::AutoCrit { auto_crit_distance } => {
+                let effect_id = effect.clone();
+                let distance_expression = auto_crit_distance.clone();
+                Arc::new(
+                    move |world: &World,
+                          victim: Entity,
+                          attacker: Entity,
+                          attack_roll: &mut crate::components::damage::AttackRoll| {
+                        let distance = distance_expression
+                            .evaluate_without_variables().unwrap();
+
+                        let distance_between = systems::geometry::distance_between_entities(world, victim, attacker).unwrap();
+
+                        if distance_between <= distance {
+                            attack_roll.d20_check.set_forced_outcome(ModifierSource::Effect(effect_id.clone()), D20CheckOutcome::CriticalSuccess);
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<AttackedHook>) -> AttackedHook {
+        Arc::new(move |world, victim, attacker, attack_roll| {
+            for hook in &hooks {
+                hook(world, victim, attacker, attack_roll);
             }
         })
     }

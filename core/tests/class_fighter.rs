@@ -60,9 +60,9 @@ mod tests {
         {
             // Check that the Action Surge effect is applied
             let effects = systems::effects::effects(&game_state.world, fighter);
-            let action_surge_effect = effects
-                .iter()
-                .find(|e| e.effect_id == EffectId::new("nat20_core", "effect.fighter.action_surge"));
+            let action_surge_effect = effects.iter().find(|(_, e)| {
+                e.effect_id == EffectId::new("nat20_core", "effect.fighter.action_surge")
+            });
             assert!(
                 action_surge_effect.is_some(),
                 "Action Surge effect should be applied"
@@ -94,13 +94,13 @@ mod tests {
 
         // Check that the Action Surge effect is removed after the turn starts
         let effects = systems::effects::effects(&game_state.world, fighter);
-        let action_surge_effect = effects
-            .iter()
-            .find(|e| e.effect_id == EffectId::new("nat20_core", "effect.fighter.action_surge"));
+        let action_surge_effect = effects.iter().find(|(_, e)| {
+            e.effect_id == EffectId::new("nat20_core", "effect.fighter.action_surge")
+        });
         assert!(
             action_surge_effect.is_none(),
             "Action Surge effect should be removed. Remaining duration: {:?}",
-            action_surge_effect.unwrap().lifetime
+            action_surge_effect.unwrap().1.lifetime
         );
 
         let resources = systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter);
@@ -195,7 +195,7 @@ mod tests {
             let effects = systems::effects::effects(&game_state.world, fighter);
             let extra_attack_effect = effects
                 .iter()
-                .find(|e| e.effect_id == EffectId::new("nat20_core", "effect.extra_attack"));
+                .find(|(_, e)| e.effect_id == EffectId::new("nat20_core", "effect.extra_attack"));
             assert!(
                 extra_attack_effect.is_some(),
                 "Fighter should have Extra Attack effect"

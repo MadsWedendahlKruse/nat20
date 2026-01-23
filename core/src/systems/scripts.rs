@@ -544,7 +544,7 @@ pub fn apply_reaction_plan(
             let callback: EventCallback = Arc::new(move |game_state, event| {
                 if let EventKind::D20CheckResolved(_, result_kind, _) = &event.kind {
                     let success = match result_kind {
-                        D20ResultKind::SavingThrow { result, .. } => result.success,
+                        D20ResultKind::SavingThrow { .. } => result_kind.is_success(&dc_kind),
                         _ => panic!("RequireSavingThrow expects a saving throw result"),
                     };
 

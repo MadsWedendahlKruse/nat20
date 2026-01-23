@@ -15,7 +15,7 @@ use uom::{
 };
 
 use crate::{
-    components::health::life_state::LifeState,
+    components::{health::life_state::LifeState, items::equipment::weapon::MELEE_RANGE_REACH},
     engine::geometry::WorldGeometry,
     entities::{character::CharacterTag, monster::MonsterTag},
     systems,
@@ -236,6 +236,11 @@ impl TargetingRange {
 
     fn mm_to_length(mm: u32) -> Length {
         Length::new::<meter>(mm as f32 / 1000.0)
+    }
+
+    pub fn is_melee(&self) -> bool {
+        // TODO: Not the most elegant way to check for melee range
+        self.max <= MELEE_RANGE_REACH.max
     }
 }
 

@@ -94,7 +94,7 @@ pub fn get_saving_throw_hooks(
     entity: Entity,
 ) -> Vec<D20CheckHooks> {
     systems::effects::effects(world, entity)
-        .iter()
+        .values()
         .filter_map(|e| e.effect().on_saving_throw.get(&kind))
         .cloned()
         .collect()

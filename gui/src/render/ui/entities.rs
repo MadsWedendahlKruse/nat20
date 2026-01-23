@@ -3,7 +3,7 @@ use nat20_core::{
     components::{
         ability::AbilityScoreMap,
         damage::DamageResistances,
-        effects::effect::{Effect, EffectInstance, EffectLifetime},
+        effects::effect::{EffectLifetime, EffectsMap},
         health::{hit_points::HitPoints, life_state::LifeState},
         id::{FeatId, Name, SpeciesId, SubspeciesId},
         level::{ChallengeRating, CharacterLevels},
@@ -12,7 +12,7 @@ use nat20_core::{
         species::{CreatureSize, CreatureType},
         speed::Speed,
         spells::spellbook::Spellbook,
-        time::{EntityClock, TimeMode},
+        time::EntityClock,
     },
     systems,
 };
@@ -20,6 +20,7 @@ use strum::{Display, EnumIter};
 
 use crate::{
     render::ui::{
+        components::render_effect,
         inventory::{render_loadout, render_loadout_inventory},
         utils::{ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext},
     },
@@ -170,24 +171,28 @@ fn render_overview(ui: &imgui::Ui, world: &World, entity: Entity, mode: &Creatur
 
 fn render_effects(ui: &imgui::Ui, world: &World, entity: Entity) {
     let time_mode = systems::helpers::get_component::<EntityClock>(world, entity).mode();
-    if let Ok(effects) = world.get::<&Vec<EffectInstance>>(entity) {
+    if let Ok(effects) = world.get::<&EffectsMap>(entity) {
         effects.render_with_context(ui, &time_mode);
     }
 }
 
 fn render_effects_compact(ui: &imgui::Ui, world: &World, entity: Entity) {
     let time_mode = systems::helpers::get_component::<EntityClock>(world, entity).mode();
-    let effects = systems::helpers::get_component::<Vec<EffectInstance>>(world, entity);
+    let effects = systems::helpers::get_component::<EffectsMap>(world, entity);
     let conditions = effects
-        .iter()
+        .values()
         .filter(|e| !matches!(e.lifetime, EffectLifetime::Permanent))
         .collect::<Vec<_>>();
     ui.separator_with_text("Conditions");
     if !conditions.is_empty() {
         if let Some(table) = table_with_columns!(ui, "Conditions", "Condition", "Duration") {
             for effect in conditions {
+                // TODO: Duplicated logic with EffectsMap#render_with_context
+                if effect.parent.is_some() {
+                    continue;
+                }
                 ui.table_next_column();
-                ui.text(effect.effect_id.to_string());
+                render_effect(ui, effect, &effects);
                 ui.table_next_column();
                 effect.lifetime.render_with_context(ui, &time_mode);
             }

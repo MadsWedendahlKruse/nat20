@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::d20::D20CheckResult;
+use crate::components::d20::{D20CheckOutcome, D20CheckResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -68,16 +68,21 @@ impl DeathSavingThrows {
     }
 
     pub fn update(&mut self, check_result: &D20CheckResult) {
-        if check_result.is_crit {
-            // Critical success
-            self.record_success(2);
-        } else if check_result.is_crit_fail {
-            // Critical failure
-            self.record_failure(2);
-        } else if check_result.success {
-            self.record_success(1);
-        } else {
-            self.record_failure(1);
+        match check_result.outcome {
+            Some(D20CheckOutcome::CriticalSuccess) => {
+                self.record_success(2);
+                return;
+            }
+            Some(D20CheckOutcome::CriticalFailure) => {
+                self.record_failure(2);
+                return;
+            }
+            Some(D20CheckOutcome::Success) => {
+                self.record_success(1);
+            }
+            _ => {
+                self.record_failure(1);
+            }
         }
     }
 

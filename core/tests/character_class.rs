@@ -125,7 +125,8 @@ mod tests {
 
         {
             let effects = systems::effects::effects(&mut world, character);
-            let effect_ids: HashSet<&EffectId> = effects.iter().map(|e| &e.effect_id).collect();
+            let effect_ids: HashSet<&EffectId> =
+                effects.values().into_iter().map(|e| &e.effect_id).collect();
             for effect_id in [
                 EffectId::new("nat20_core", "effect.fighting_style.great_weapon_fighting"),
                 EffectId::new("nat20_core", "effect.fighter.champion.improved_critical"),

@@ -57,10 +57,10 @@ pub fn advance_time(world: &mut World, entity: Entity, time_step: TimeStep) {
     }
 
     let mut expired_effects = Vec::new();
-    for effect in systems::effects::effects_mut(world, entity).iter_mut() {
+    for (id, effect) in systems::effects::effects_mut(world, entity).iter_mut() {
         effect.advance_time(time_step);
         if effect.is_expired() {
-            expired_effects.push(effect.effect_id.clone());
+            expired_effects.push(id.clone());
         }
     }
 

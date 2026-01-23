@@ -239,6 +239,9 @@ pub fn add_concentration_instance(
 }
 
 pub fn break_concentration(world: &mut World, target: Entity) {
+    // TODO: Do we need some kind of event for this? Then we can log that some
+    // entities lost an effect due to concentration breakage, etc.
+
     debug!("Breaking concentration for entity {:?}", target);
 
     let instances_to_break: Vec<ConcentrationInstance> = {

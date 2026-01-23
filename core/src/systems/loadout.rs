@@ -35,15 +35,22 @@ where
 {
     let equipment = equipment.into();
     let item_id = equipment.item().id.clone();
+
     let unequipped_items = loadout_mut(world, entity).equip_in_slot(slot, equipment)?;
-    for item in &unequipped_items {
-        systems::effects::remove_effects(world, entity, item.effects());
+    for unequipped_item in &unequipped_items {
+        systems::effects::remove_effects_by_source(
+            world,
+            entity,
+            &ModifierSource::Item(unequipped_item.item().id.clone()),
+        );
     }
+
     let effects = loadout(world, entity)
         .item_in_slot(slot)
         .unwrap()
         .effects()
         .clone();
+
     systems::effects::add_permanent_effects(
         world,
         entity,
@@ -67,10 +74,16 @@ where
     let item_id = equipment.item().id.clone();
     // TODO: Slightly less performant than calling `equip_in_slot` directly
     let effects = equipment.effects().clone();
+
     let unequipped_items = loadout_mut(world, entity).equip(equipment)?;
-    for item in &unequipped_items {
-        systems::effects::remove_effects(world, entity, item.effects());
+    for unequipped_item in &unequipped_items {
+        systems::effects::remove_effects_by_source(
+            world,
+            entity,
+            &ModifierSource::Item(unequipped_item.item().id.clone()),
+        );
     }
+
     systems::effects::add_permanent_effects(
         world,
         entity,
@@ -78,6 +91,7 @@ where
         &ModifierSource::Item(item_id),
         None,
     );
+
     Ok(unequipped_items)
 }
 
@@ -88,7 +102,11 @@ pub fn unequip(
 ) -> Option<EquipmentInstance> {
     let unequipped_item = loadout_mut(world, entity).unequip(slot);
     if let Some(item) = &unequipped_item {
-        systems::effects::remove_effects(world, entity, item.effects());
+        systems::effects::remove_effects_by_source(
+            world,
+            entity,
+            &ModifierSource::Item(item.item().id.clone()),
+        );
     }
     unequipped_item
 }

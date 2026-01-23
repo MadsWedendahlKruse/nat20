@@ -98,9 +98,9 @@
         "prepared_spells_per_level": {
             "1": 2,
             "2": 3,
-            "3": 3,
-            "4": 3,
-            "5": 3,
+            "3": 4,
+            "4": 4,
+            "5": 4,
             "6": 2,
             "7": 2,
             "8": 2,
@@ -145,6 +145,7 @@
             "nat20_core::spell.expeditious_retreat",
             "nat20_core::spell.hellish_rebuke",
             "nat20_core::spell.hex",
+            "nat20_core::spell.hold_person",
             "nat20_core::spell.poison_spray"
         ]
     },

@@ -17,6 +17,7 @@ use crate::{
                 AreaShape, TargetInstance, TargetingContext, TargetingError, TargetingKind,
             },
         },
+        d20::D20CheckOutcome,
         damage::DamageRollResult,
         health::life_state::LifeState,
         id::{ActionId, ResourceId, ScriptId},
@@ -139,17 +140,13 @@ pub fn action_usable(
         return Err(ActionUsabilityError::OnCooldown(cooldown));
     }
 
-    let resources = systems::helpers::get_component::<ResourceMap>(world, entity);
-    for (resource_id, amount) in resource_cost {
-        if let Some(resource) = resources.get(resource_id) {
-            if !resource.can_afford(amount) {
-                return Err(ActionUsabilityError::NotEnoughResources(
-                    resource_cost.clone(),
-                ));
-            }
-        } else {
-            return Err(ActionUsabilityError::ResourceNotFound(resource_id.clone()));
-        }
+    if !systems::helpers::get_component::<ResourceMap>(world, entity)
+        .can_afford_all(resource_cost)
+        .0
+    {
+        return Err(ActionUsabilityError::NotEnoughResources(
+            resource_cost.clone(),
+        ));
     }
 
     Ok(())
@@ -182,7 +179,7 @@ pub fn available_actions(world: &World, entity: Entity) -> ActionMap {
 
     actions.retain(|action_id, action_data| {
         action_data.retain_mut(|(action_context, resource_cost)| {
-            for effect in systems::effects::effects(world, entity).iter() {
+            for effect in systems::effects::effects(world, entity).values() {
                 (effect.effect().on_resource_cost)(
                     world,
                     entity,
@@ -603,7 +600,6 @@ fn perform_attack_roll(
                 };
 
                 let hit = result.is_success(dc);
-                let is_crit = result.d20_result().is_crit;
 
                 // Decide effect application
                 let effect_result: Option<EffectOutcome> = if hit {
@@ -627,7 +623,10 @@ fn perform_attack_roll(
                     "Attack Miss".to_string(),
                     &action_data.context,
                     hit,
-                    is_crit,
+                    matches!(
+                        result.d20_result().outcome,
+                        Some(D20CheckOutcome::CriticalSuccess)
+                    ),
                 );
 
                 // If no damage or not hit, return immediately.
@@ -896,7 +895,7 @@ fn get_effect_outcome(
     apply_rule: EffectApplyRule,
 ) -> Option<EffectOutcome> {
     payload.effect().map(|effect| {
-        systems::effects::add_effect_template(
+        let effect_instance_id = systems::effects::add_effect_template(
             world,
             action_data.actor,
             target,
@@ -914,7 +913,7 @@ fn get_effect_outcome(
                     action_data.actor,
                     ConcentrationInstance::Effect {
                         entity: target,
-                        effect: effect.effect_id.clone(),
+                        effect: effect_instance_id,
                     },
                     &action_data.instance_id,
                 );

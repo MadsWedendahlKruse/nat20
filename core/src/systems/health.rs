@@ -6,10 +6,10 @@ use tracing::debug;
 use crate::{
     components::{
         ability::{Ability, AbilityScoreMap},
-        d20::D20CheckDC,
+        d20::{D20CheckDC, D20CheckOutcome},
         damage::{AttackRollResult, DamageMitigationResult, DamageResistances, DamageRollResult},
         effects::{
-            effect::{EffectInstance, EffectLifetime},
+            effect::{EffectInstance, EffectInstanceId, EffectLifetime},
             hooks::DeathHook,
         },
         health::{hit_points::HitPoints, life_state::LifeState},
@@ -68,7 +68,7 @@ pub fn damage(
         };
 
     let mut damage_roll_result = damage_roll_result.clone();
-    for effect in systems::effects::effects(&game_state.world, target).iter() {
+    for effect in systems::effects::effects(&game_state.world, target).values() {
         (effect.effect().pre_damage_mitigation)(
             &game_state.world,
             target,
@@ -79,7 +79,7 @@ pub fn damage(
 
     let mut mitigation_result = resistances.apply(&damage_roll_result);
 
-    for effect in systems::effects::effects(&game_state.world, target).iter() {
+    for effect in systems::effects::effects(&game_state.world, target).values() {
         (effect.effect().post_damage_mitigation)(&game_state.world, target, &mut mitigation_result);
     }
 
@@ -100,7 +100,10 @@ pub fn damage(
 
                     LifeState::Unconscious(death_saving_throws) => {
                         if let Some(attack_roll) = attack_roll {
-                            if attack_roll.roll_result.is_crit {
+                            if matches!(
+                                attack_roll.roll_result.outcome,
+                                Some(D20CheckOutcome::CriticalSuccess)
+                            ) {
                                 death_saving_throws.record_failure(2);
                             } else {
                                 death_saving_throws.record_failure(1);
@@ -158,15 +161,15 @@ pub fn damage(
         // Trigger death hooks and remove effects that are not permanent
         let hooks = systems::effects::effects(&game_state.world, target)
             .iter()
-            .map(|e| (e.clone(), e.effect().on_death.clone()))
-            .collect::<Vec<(EffectInstance, DeathHook)>>();
+            .map(|(id, effect)| (id.clone(), effect.clone(), effect.effect().on_death.clone()))
+            .collect::<Vec<(EffectInstanceId, EffectInstance, DeathHook)>>();
 
         let killer = damage_roll_result
             .action
             .as_ref()
             .and_then(|(actor, _)| Some(actor));
 
-        for (effect, hook) in hooks {
+        for (id, effect, hook) in hooks {
             hook(
                 &mut game_state.world,
                 target,
@@ -188,7 +191,7 @@ pub fn damage(
                         .remove_instances_by_entity(target);
                 }
 
-                systems::effects::remove_effect(&mut game_state.world, target, &effect.effect_id);
+                systems::effects::remove_effect(&mut game_state.world, target, &id);
             }
         }
     }
@@ -206,7 +209,8 @@ pub fn damage(
         );
         match source {
             ModifierSource::Effect(effect_id) => {
-                systems::effects::remove_effect(&mut game_state.world, target, effect_id);
+                // TODO: Source should be EffectInstanceId?
+                systems::effects::remove_effects_by_id(&mut game_state.world, target, effect_id);
             }
             _ => { /* Other sources don't need to be removed? */ }
         }

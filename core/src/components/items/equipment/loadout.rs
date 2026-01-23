@@ -253,7 +253,7 @@ impl Loadout {
         if let Some(armor) = &self.armor() {
             let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
             let mut armor_class = armor.armor_class(&ability_scores);
-            for effect in systems::effects::effects(world, entity).iter() {
+            for effect in systems::effects::effects(world, entity).values() {
                 (effect.effect().on_armor_class)(world, entity, &mut armor_class);
             }
             armor_class
@@ -265,20 +265,6 @@ impl Loadout {
                 modifiers: ModifierSet::new(),
             }
         }
-    }
-
-    pub fn does_attack_hit(
-        &self,
-        world: &World,
-        entity: Entity,
-        attack_roll_result: &AttackRollResult,
-    ) -> bool {
-        let armor_class = self.armor_class(world, entity);
-        if attack_roll_result.roll_result.is_crit_fail {
-            return false;
-        }
-        attack_roll_result.roll_result.is_crit
-            || attack_roll_result.roll_result.total() >= armor_class.total() as u32
     }
 
     pub fn weapon_in_hand(&self, slot: &EquipmentSlot) -> Option<&Weapon> {
@@ -495,10 +481,11 @@ mod tests {
     fn equip_unequip_weapon() {
         let mut loadout = Loadout::new();
 
-        let weapon: EquipmentInstance = ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
-            .unwrap()
-            .clone()
-            .into();
+        let weapon: EquipmentInstance =
+            ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
+                .unwrap()
+                .clone()
+                .into();
         let slot = weapon.valid_slots()[0];
         let unequipped = loadout.equip_in_slot(&slot, weapon);
         assert!(unequipped.is_ok());

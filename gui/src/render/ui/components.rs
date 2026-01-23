@@ -1,6 +1,7 @@
-use std::{collections::HashMap, ops::Deref, vec};
+use std::{ops::Deref, vec};
 
 use hecs::{Entity, World};
+use imgui::{TreeNodeFlags};
 use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap},
@@ -11,13 +12,13 @@ use nat20_core::{
             },
             targeting::{AreaShape, TargetInstance, TargetingKind, TargetingRange},
         },
-        d20::{D20CheckDC, D20CheckResult, RollMode},
+        d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode},
         damage::{
             AttackRollResult, DamageComponentMitigation, DamageComponentResult,
             DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
             DamageRollResult, MitigationOperation,
         },
-        effects::effect::{EffectInstance, EffectLifetime},
+        effects::effect::{EffectInstance, EffectLifetime, EffectsMap},
         health::{hit_points::HitPoints, life_state::LifeState},
         id::{ActionId, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId},
         items::{
@@ -39,7 +40,7 @@ use nat20_core::{
         speed::Speed,
         spells::spellbook::Spellbook, time::{TimeDuration, TimeMode},
     },
-    registry::{self, registry::SpellsRegistry},
+    registry::registry::{FeatsRegistry, SpellsRegistry},
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
@@ -55,7 +56,7 @@ use crate::{
         text::{TextKind, TextSegment, TextSegments, indent_text, item_rarity_color},
         utils::{
             ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext,
-            ProgressBarColor, SELECTED_BUTTON_COLOR, render_empty_button, render_progress_bar,
+            ProgressBarColor, render_progress_bar,
             roman_numeral,
         },
     },
@@ -387,7 +388,26 @@ impl ImguiRenderable for ResourceMap {
             for (resource_id, resource) in flat_resources.iter() {
                 // Resource ID column
                 ui.table_next_column();
-                ui.text(resource_id.to_string());
+                if let Some(source) = self.is_resource_disabled(*resource_id) {
+                    TextSegment::new(
+                        resource_id.to_string(),
+                        TextKind::Red,
+                    )
+                    .render(ui);
+
+                    if ui.is_item_hovered() {
+                        ui.tooltip(|| {
+                            TextSegments::new(vec![
+                                ("Disabled by:".to_string(), TextKind::Normal),
+                                (source.to_string(), TextKind::Details)
+                            ]).render(ui);
+                        });
+                    }
+
+                } else {
+                    ui.text(resource_id.to_string());
+                }
+
                 // Resource count column
                 ui.table_next_column();
                 match resource {
@@ -598,18 +618,41 @@ impl ImguiRenderableMutWithContext<&ResourceMap> for Spellbook {
     }
 }
 
-impl ImguiRenderableWithContext<&TimeMode> for Vec<EffectInstance> {
+pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &EffectsMap) {
+    
+    let _root_id = ui.push_id(effect.effect_id.to_string());
+    
+    if effect.children.is_empty() {
+        ui.text(effect.effect_id.to_string());
+        return;
+    }
+
+    ui.tree_node_config(effect.effect_id.to_string()).flags(TreeNodeFlags::empty()).build(|| {
+        for effect_id in &effect.children {
+            if let Some(child_effect) = all_effects.get(effect_id) {
+                render_effect(ui, child_effect, all_effects);
+            }
+        }
+    });
+}
+
+impl ImguiRenderableWithContext<&TimeMode> for EffectsMap {
     fn render_with_context(&self, ui: &imgui::Ui, time_mode: &TimeMode) {
         let (permanent_effects, temporary_effects): (Vec<&EffectInstance>, Vec<&EffectInstance>) =
-            self.iter()
+            self.values()
                 .partition(|e| matches!(e.lifetime, EffectLifetime::Permanent));
 
         ui.separator_with_text("Conditions");
         if let Some(table) = table_with_columns!(ui, "Conditions", "Effect", "Source", "Duration") {
             for effect in &temporary_effects {
+                if effect.parent.is_some() {
+                    // Skip child effects; they will be rendered under their parent
+                    continue;
+                }
+
                 // Effect ID column
                 ui.table_next_column();
-                ui.text(effect.effect_id.to_string());
+                render_effect(ui, effect, self);
                 // Source column
                 ui.table_next_column();
                 ui.text(effect.source.to_string());
@@ -625,7 +668,7 @@ impl ImguiRenderableWithContext<&TimeMode> for Vec<EffectInstance> {
             for effect in &permanent_effects {
                 // Effect ID column
                 ui.table_next_column();
-                ui.text(effect.effect_id.to_string());
+                render_effect(ui, effect, self);
                 // Source column
                 ui.table_next_column();
                 ui.text(effect.source.to_string());
@@ -643,7 +686,8 @@ impl ImguiRenderable for Vec<FeatId> {
                 ui.text(feat.to_string());
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
-                        ui.text("Placeholder for feat details");
+                        let feat = FeatsRegistry::get(feat).unwrap();
+                        ui.text(feat.description());
                     });
                 }
             }
@@ -869,11 +913,14 @@ impl ImguiRenderable for D20CheckResult {
                 TextKind::Details,
             ));
         }
-        if self.is_crit {
-            segments.push(("(Critical Success!)".to_string(), TextKind::Normal));
-        }
-        if self.is_crit_fail {
-            segments.push(("(Critical Failure!)".to_string(), TextKind::Normal));
+        match self.outcome {
+            Some(D20CheckOutcome::CriticalSuccess) => {
+                segments.push(("(Critical Success!)".to_string(), TextKind::Normal));
+            },
+            Some(D20CheckOutcome::CriticalFailure) => {
+                segments.push(("(Critical Failure!)".to_string(), TextKind::Normal));
+            }
+            _ => { /* No outcome to render */ }
         }
         TextSegments::new(segments).render(ui);
         if !self.modifier_breakdown.is_empty() {
@@ -1124,7 +1171,7 @@ impl ImguiRenderableWithContext<(&str, u8, &Option<AttackRollResult>)>
             ),
         ];
         if let Some(attack_roll) = attack_roll {
-            if attack_roll.roll_result.is_crit {
+            if matches!(attack_roll.roll_result.outcome, Some(D20CheckOutcome::CriticalSuccess)) {
                 segments.push(("(Critical Hit!)".to_string(), TextKind::Details));
             }
         }
@@ -1157,7 +1204,7 @@ impl ImguiRenderableWithContext<(&str, u8, &str, Option<AttackRollResult>)>
                     (no_damage_text.to_string(), TextKind::Normal),
                 ];
                 if let Some(attack_roll) = attack_roll {
-                    if attack_roll.roll_result.is_crit_fail {
+                    if matches!(attack_roll.roll_result.outcome, Some(D20CheckOutcome::CriticalFailure)) {
                         segments.push(("(Critical Miss!)".to_string(), TextKind::Details));
                     }
                 }
