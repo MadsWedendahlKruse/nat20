@@ -200,7 +200,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     match index {
                         0 => {
                             systems::time::advance_time(
-                                &mut game_state.world,
+                                game_state,
                                 self.creature,
                                 TimeStep::TurnBoundary {
                                     entity: self.creature,

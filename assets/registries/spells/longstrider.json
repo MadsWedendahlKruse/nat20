@@ -13,7 +13,7 @@
                 "effect": {
                     "effect_id": "nat20_core::effect.spell.longstrider",
                     "lifetime": {
-                        "at_turn_boundary": {
+                        "turn_boundary": {
                             "entity": "applier",
                             "boundary": "start",
                             "duration": {
@@ -28,12 +28,15 @@
     "targeting": {
         "kind": {
             "multiple": {
-                "max_targets": "1 + (spell_level - 1)"
+                "max_targets": "1 + (spell_level - 1)",
+                "allow_duplicates": false
             }
         },
         "range": "5 feet",
         "require_line_of_sight": true,
-        "allowed_targets": "not_dead"
+        "allowed_targets": [
+            "not_dead"
+        ]
     },
     "resource_cost": {
         "nat20_core::resource.action": 1

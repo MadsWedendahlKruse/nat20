@@ -1,18 +1,22 @@
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, sync::Arc};
+use tracing::debug;
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::ActionContext,
+        actions::action::{ActionContext, EffectApplyCondition},
         d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
             AttackRange, AttackSource, DamageMitigationEffect, DamageMitigationResult,
             DamageResistances, DamageRollResult,
         },
         effects::{
-            effect::{Effect, EffectInstance, EffectKind},
+            effect::{
+                Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
+                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
+            },
             hooks::{
                 ActionHook, ArmorClassHook, AttackRollHook, AttackedHook, DamageRollResultHook,
                 DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
@@ -26,9 +30,12 @@ use crate::{
         saving_throw::SavingThrowSet,
         skill::SkillSet,
         speed::Speed,
-        time::TimeDuration,
+        time::{TimeDuration, TurnBoundary},
     },
-    engine::event::ActionData,
+    engine::{
+        action_prompt::ActionData,
+        event::{CallbackResult, EventCallback, EventKind, ListenerSource},
+    },
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
@@ -49,7 +56,7 @@ use crate::{
             ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
         },
     },
-    systems,
+    systems::{self, d20::D20CheckDCKind},
 };
 
 // TODO: Should this be it's own time module?
@@ -1024,4 +1031,157 @@ fn take_entity_view_once(
     taken
         .entry(entity)
         .or_insert_with(|| ScriptEntityView::take_from_world(world, entity));
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct EffectInstanceDefinition {
+    pub effect_id: EffectId,
+    pub lifetime: EffectLifetimeTemplate,
+    #[serde(default)]
+    pub end_condition: Option<EffectEndConditionDefinition>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectEventFilterDefinition {
+    TurnBoundary {
+        entity: EffectEntiyReference,
+        boundary: TurnBoundary,
+    },
+    Script {
+        script: ScriptId,
+    },
+}
+
+impl From<EffectEventFilterDefinition> for EffectEventFilter {
+    fn from(def: EffectEventFilterDefinition) -> Self {
+        match def {
+            EffectEventFilterDefinition::TurnBoundary { entity, boundary } => {
+                EffectEventFilter::TurnBoundary { entity, boundary }
+            }
+
+            EffectEventFilterDefinition::Script { script } => {
+                todo!("Implement script-based EffectEventFilter")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EffectEndConditionDefinition {
+    Script {
+        script: ScriptId,
+    },
+    Event {
+        event: EffectEventFilterDefinition,
+        callback: EventCallbackDefinition,
+    },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventCallbackDefinition {
+    RepeatApplyCondition,
+}
+
+impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
+    fn from(def: EffectInstanceDefinition) -> Self {
+        let EffectInstanceDefinition {
+            effect_id,
+            lifetime,
+            end_condition,
+        } = def;
+
+        let end_condition = match end_condition {
+            Some(EffectEndConditionDefinition::Script { script }) => {
+                todo!("Implement script-based EffectEndCondition")
+            }
+
+            // TODO: Indentation is going out of control here
+            Some(EffectEndConditionDefinition::Event { event, callback }) => {
+                Some(EffectEndConditionTemplate {
+                    event_filter: event.into(),
+                    callback: match callback {
+                        EventCallbackDefinition::RepeatApplyCondition => {
+                            EventCallback::new(move |game_state, event, listener| {
+                                if let Some(listener) =
+                                    game_state.event_dispatcher.get_listener(&listener)
+                                    && let ListenerSource::EffectInstance { id, entity } =
+                                        listener.source.clone()
+                                {
+                                    debug!(
+                                        "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
+                                        id, entity, event
+                                    );
+
+                                    let instance =
+                                        systems::effects::effects(&game_state.world, entity)
+                                            .get(&id)
+                                            .unwrap()
+                                            .clone();
+                                    let instance_id = id.clone();
+
+                                    match &instance.apply_condition {
+                                        EffectApplyCondition::Unconditional => { /* No check to repeat */
+                                        }
+
+                                        EffectApplyCondition::OnHit {
+                                            attack_roll,
+                                            armor_class,
+                                        } => todo!(),
+
+                                        EffectApplyCondition::OnFailedSave {
+                                            saving_throw_dc,
+                                            saving_throw_result,
+                                        } => {
+                                            let event = systems::d20::check(
+                                                game_state,
+                                                entity,
+                                                &D20CheckDCKind::SavingThrow(
+                                                    saving_throw_dc.clone(),
+                                                ),
+                                            );
+                                            game_state.process_event_with_callback(
+                                                event,
+                                                EventCallback::new({
+                                                    move |game_state, event, _| {
+                                                        if let EventKind::D20CheckResolved(
+                                                            _,
+                                                            result,
+                                                            dc,
+                                                        ) = &event.kind
+                                                        {
+                                                            if result.is_success(dc) {
+                                                                systems::effects::remove_effect(
+                                                                    &mut game_state.world,
+                                                                    entity,
+                                                                    &instance_id,
+                                                                );
+                                                            }
+                                                        }
+
+                                                        CallbackResult::None
+                                                    }
+                                                }),
+                                            );
+                                        }
+                                    }
+                                }
+
+                                CallbackResult::None
+                            })
+                        }
+                    },
+                })
+            }
+            None => None,
+        };
+
+        EffectInstanceTemplate {
+            effect_id,
+            lifetime,
+            end_condition,
+        }
+    }
 }

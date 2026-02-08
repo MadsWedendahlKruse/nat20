@@ -4,7 +4,6 @@ use crate::{
     components::{
         actions::action::{ActionContext, AttackRollFunction, DamageFunction},
         damage::{AttackRoll, AttackRollResult, DamageRoll, DamageRollResult},
-        items::equipment::slots::EquipmentSlot,
     },
     systems,
 };
@@ -75,32 +74,4 @@ pub fn attack_roll_fn(
 ) -> AttackRollResult {
     let roll = attack_roll_fn(world, entity, target, context);
     attack_roll(roll, world, entity, target)
-}
-
-pub fn damage_roll_weapon(
-    world: &World,
-    entity: Entity,
-    slot: &EquipmentSlot,
-    crit: bool,
-) -> DamageRollResult {
-    damage_roll(
-        systems::loadout::weapon_damage_roll(world, entity, slot),
-        world,
-        entity,
-        crit,
-    )
-}
-
-pub fn attack_roll_weapon(
-    world: &World,
-    entity: Entity,
-    target: Entity,
-    slot: &EquipmentSlot,
-) -> AttackRollResult {
-    attack_roll(
-        systems::loadout::weapon_attack_roll(world, entity, target, slot),
-        world,
-        entity,
-        target,
-    )
 }

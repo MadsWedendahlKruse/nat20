@@ -240,8 +240,8 @@ pub fn damage(
             target,
             &D20CheckDCKind::SavingThrow(saving_throw_dc),
         );
-        let callback: EventCallback = Arc::new({
-            move |game_state, event| {
+        let callback = EventCallback::new({
+            move |game_state, event, _| {
                 match &event.kind {
                     EventKind::D20CheckResolved(_, check_result, dc) => {
                         if !check_result.is_success(dc) {

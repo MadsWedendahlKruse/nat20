@@ -17,7 +17,7 @@ use crate::{
             spellbook::{ClassSpellcastingState, Spellbook},
         },
     },
-    engine::event::ActionExecutionInstanceId,
+    engine::action_prompt::ActionExecutionInstanceId,
     registry::registry::ClassesRegistry,
     systems,
 };

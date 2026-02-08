@@ -4,10 +4,14 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::action::ActionContext,
+        actions::action::{ActionContext, EffectApplyCondition},
         effects::effect::{EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectsMap},
         id::EffectId,
         modifier::ModifierSource,
+    },
+    engine::{
+        event::{EventListener, ListenerSource},
+        game_state::GameState,
     },
     systems,
 };
@@ -22,19 +26,46 @@ pub fn effects_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, Effect
 }
 
 pub fn add_effect_template(
-    world: &mut World,
+    game_state: &mut GameState,
     applier: Entity,
     target: Entity,
     source: ModifierSource,
     template: &EffectInstanceTemplate,
     context: Option<&ActionContext>,
+    apply_condition: EffectApplyCondition,
 ) -> EffectInstanceId {
-    let (parent_id, mut effect_instances) = template.instantiate(applier, target, source);
+    let (parent_id, mut effect_instances) =
+        template.instantiate(applier, target, source, apply_condition);
+
     debug!(
         "Instantiated effect instances from template\n{:#?} ->\n{:#?}",
         template, effect_instances
     );
-    add_effect_instance(world, target, parent_id, &mut effect_instances, context);
+
+    if let Some(parent_instance) = effect_instances.get(&parent_id)
+        && let Some(end_condition) = &parent_instance.end_condition
+    {
+        game_state
+            .event_dispatcher
+            // TODO: A bit verbose EventListener construction
+            .register_listener(EventListener::new(
+                end_condition.event_filter.clone(),
+                end_condition.callback.clone(),
+                ListenerSource::EffectInstance {
+                    id: parent_id.clone(),
+                    entity: target,
+                },
+            ));
+    }
+
+    add_effect_instance(
+        &mut game_state.world,
+        target,
+        parent_id,
+        &mut effect_instances,
+        context,
+    );
+
     parent_id
 }
 
@@ -98,7 +129,7 @@ fn apply_and_replace(
     let effect = effect_instance.effect();
     (effect.on_apply)(world, entity, context);
     if let Some(replaces) = &effect.replaces {
-        // TODO: Not sure how best to find the instance that shouold be replaced.
+        // TODO: Not sure how best to find the instance that should be replaced.
         // It's probably always just one?
         remove_effects_by_id(world, entity, replaces);
     }
@@ -125,27 +156,26 @@ pub fn remove_effects(world: &mut World, entity: Entity, effects: &[EffectInstan
 }
 
 pub fn remove_effects_by_source(world: &mut World, entity: Entity, source: &ModifierSource) {
-    let effect_ids: Vec<EffectInstanceId> = effects(world, entity)
-        .iter()
-        .filter_map(|(id, effect_instance)| {
-            if &effect_instance.source == source {
-                Some(id.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    for effect_id in effect_ids {
-        remove_effect(world, entity, &effect_id);
-    }
+    remove_effects_by_filter(world, entity, |effect_instance| {
+        effect_instance.source == *source
+    });
 }
 
 pub fn remove_effects_by_id(world: &mut World, entity: Entity, effect_id: &EffectId) {
+    remove_effects_by_filter(world, entity, |effect_instance| {
+        effect_instance.effect_id == *effect_id
+    });
+}
+
+fn remove_effects_by_filter(
+    world: &mut World,
+    entity: Entity,
+    filter: impl Fn(&EffectInstance) -> bool,
+) {
     let instance_ids: Vec<EffectInstanceId> = effects(world, entity)
         .iter()
         .filter_map(|(id, effect_instance)| {
-            if &effect_instance.effect_id == effect_id {
+            if filter(effect_instance) {
                 Some(id.clone())
             } else {
                 None

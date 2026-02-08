@@ -7,6 +7,7 @@ mod tests {
     use nat20_core::{
         components::{
             ability::{Ability, AbilityScore, AbilityScoreMap},
+            actions::action::{ActionContext, AttackRollProvider},
             damage::DamageType,
             dice::DieSize,
             id::ItemId,
@@ -209,11 +210,13 @@ mod tests {
 
         systems::loadout::equip(&mut world, entity, longsword).unwrap();
 
-        let roll = systems::loadout::weapon_attack_roll(
+        let roll = systems::loadout::loadout(&world, entity).attack_roll(
             &world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            &ActionContext::Weapon {
+                slot: EquipmentSlot::MeleeMainHand,
+            },
         );
 
         println!("{:?}", roll);

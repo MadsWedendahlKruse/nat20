@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -11,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::action::ActionContext,
+        actions::action::{ActionContext, EffectApplyCondition},
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
         },
@@ -28,8 +29,16 @@ use crate::{
         skill::Skill,
         time::{TimeDuration, TimeStep, TurnBoundary},
     },
-    engine::event::ActionData,
-    registry::{registry::EffectsRegistry, serialize::effect::EffectDefinition},
+    engine::{
+        action_prompt::ActionData,
+        event::{EventCallback, EventFilter},
+    },
+    registry::{
+        registry::EffectsRegistry,
+        serialize::effect::{
+            EffectDefinition, EffectEventFilterDefinition, EffectInstanceDefinition,
+        },
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -38,7 +47,7 @@ pub enum EffectLifetime {
 
     /// Expire at Start/End of `entity`'s turn, after `remaining` boundaries.
     /// - remaining = 1 => expire at the next matching boundary
-    AtTurnBoundary {
+    TurnBoundary {
         entity: Entity,
         boundary: TurnBoundary,
         duration: TimeDuration,
@@ -48,7 +57,7 @@ pub enum EffectLifetime {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EffectLifetimeEntiy {
+pub enum EffectEntiyReference {
     Applier,
     Target,
 }
@@ -60,8 +69,8 @@ pub enum EffectLifetimeEntiy {
 #[serde(rename_all = "snake_case")]
 pub enum EffectLifetimeTemplate {
     Permanent,
-    AtTurnBoundary {
-        entity: EffectLifetimeEntiy,
+    TurnBoundary {
+        entity: EffectEntiyReference,
         boundary: TurnBoundary,
         duration: TimeDuration,
     },
@@ -72,16 +81,16 @@ impl EffectLifetimeTemplate {
         match self {
             EffectLifetimeTemplate::Permanent => EffectLifetime::Permanent,
 
-            EffectLifetimeTemplate::AtTurnBoundary {
+            EffectLifetimeTemplate::TurnBoundary {
                 entity,
                 boundary,
                 duration,
             } => {
                 let entity = match entity {
-                    EffectLifetimeEntiy::Applier => applier,
-                    EffectLifetimeEntiy::Target => target,
+                    EffectEntiyReference::Applier => applier,
+                    EffectEntiyReference::Target => target,
                 };
-                EffectLifetime::AtTurnBoundary {
+                EffectLifetime::TurnBoundary {
                     entity,
                     boundary: *boundary,
                     duration: *duration,
@@ -137,6 +146,7 @@ impl Effect {
             description,
             replaces: None,
             children: Vec::new(),
+
             on_apply: Arc::new(|_: &mut World, _: Entity, _: Option<&ActionContext>| {})
                 as ApplyEffectHook,
             on_unapply: Arc::new(|_: &mut World, _: Entity| {}) as UnapplyEffectHook,
@@ -191,16 +201,97 @@ impl IdProvider for Effect {
     }
 }
 
+#[derive(Clone)]
+pub struct EffectEndCondition {
+    pub event_filter: EventFilter,
+    pub callback: EventCallback,
+}
+
+impl fmt::Debug for EffectEndCondition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EffectEndCondition")
+            .field("event_filter", &"...")
+            .field("callback", &"...")
+            .finish()
+    }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(from = "EffectEventFilterDefinition")]
+pub enum EffectEventFilter {
+    TurnBoundary {
+        entity: EffectEntiyReference,
+        boundary: TurnBoundary,
+    },
+    Custom(EventFilter),
+}
+
+impl EffectEventFilter {
+    pub fn instantiate(&self, applier: Entity, target: Entity) -> EventFilter {
+        match self {
+            EffectEventFilter::TurnBoundary { entity, boundary } => {
+                let entity = match entity {
+                    EffectEntiyReference::Applier => applier,
+                    EffectEntiyReference::Target => target,
+                };
+                EventFilter::new({
+                    let entity = entity;
+                    let boundary = *boundary;
+                    move |event| {
+                        if let crate::engine::event::EventKind::TurnBoundary {
+                            entity: e,
+                            boundary: b,
+                        } = &event.kind
+                        {
+                            *e == entity && *b == boundary
+                        } else {
+                            false
+                        }
+                    }
+                })
+            }
+            EffectEventFilter::Custom(filter) => filter.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct EffectEndConditionTemplate {
+    pub event_filter: EffectEventFilter,
+    pub callback: EventCallback,
+}
+
+impl EffectEndConditionTemplate {
+    pub fn instantiate(&self, applier: Entity, target: Entity) -> EffectEndCondition {
+        EffectEndCondition {
+            event_filter: self.event_filter.instantiate(applier, target),
+            callback: self.callback.clone(),
+        }
+    }
+}
+
+impl fmt::Debug for EffectEndConditionTemplate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EffectEndConditionTemplate")
+            .field("event_filter", &"...")
+            .field("callback", &"...")
+            .finish()
+    }
+}
+
 pub type EffectInstanceId = Uuid;
 
 #[derive(Debug, Clone)]
 pub struct EffectInstance {
+    pub instance_id: EffectInstanceId,
     pub effect_id: EffectId,
     pub source: ModifierSource,
     pub applier: Option<Entity>,
+    pub apply_condition: EffectApplyCondition,
     pub lifetime: EffectLifetime,
     pub parent: Option<EffectInstanceId>,
     pub children: HashSet<EffectInstanceId>,
+    pub end_condition: Option<EffectEndCondition>,
 }
 
 impl EffectInstance {
@@ -209,19 +300,31 @@ impl EffectInstance {
         source: ModifierSource,
         lifetime: EffectLifetime,
         applier: Option<Entity>,
+        apply_condition: EffectApplyCondition,
+        end_condition: Option<EffectEndCondition>,
     ) -> Self {
         Self {
+            instance_id: Uuid::new_v4(),
             effect_id,
             source,
             lifetime,
             applier,
+            apply_condition,
             parent: None,
             children: HashSet::new(),
+            end_condition,
         }
     }
 
     pub fn permanent(effect_id: EffectId, source: ModifierSource) -> Self {
-        Self::new(effect_id, source, EffectLifetime::Permanent, None)
+        Self::new(
+            effect_id,
+            source,
+            EffectLifetime::Permanent,
+            None,
+            EffectApplyCondition::Unconditional,
+            None,
+        )
     }
 
     pub fn effect(&self) -> &Effect {
@@ -233,7 +336,7 @@ impl EffectInstance {
         match self.lifetime {
             EffectLifetime::Permanent => { /* Do nothing */ }
 
-            EffectLifetime::AtTurnBoundary {
+            EffectLifetime::TurnBoundary {
                 entity: life_time_entity,
                 boundary: lifetime_boundary,
                 ref mut remaining,
@@ -261,15 +364,18 @@ impl EffectInstance {
         match self.lifetime {
             EffectLifetime::Permanent => false,
 
-            EffectLifetime::AtTurnBoundary { ref remaining, .. } => remaining.as_turns() == 0,
+            EffectLifetime::TurnBoundary { ref remaining, .. } => remaining.as_turns() == 0,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(from = "EffectInstanceDefinition")]
 pub struct EffectInstanceTemplate {
     pub effect_id: EffectId,
     pub lifetime: EffectLifetimeTemplate,
+    #[serde(default)]
+    pub end_condition: Option<EffectEndConditionTemplate>,
 }
 
 impl EffectInstanceTemplate {
@@ -279,6 +385,7 @@ impl EffectInstanceTemplate {
         applier: Entity,
         target: Entity,
         source: ModifierSource,
+        apply_condition: EffectApplyCondition,
     ) -> (EffectInstanceId, EffectsMap) {
         let parent_lifetime = self.lifetime.instantiate(applier, target);
         let mut parent_instance = EffectInstance::new(
@@ -286,8 +393,12 @@ impl EffectInstanceTemplate {
             source.clone(),
             parent_lifetime,
             Some(applier),
+            apply_condition.clone(),
+            self.end_condition
+                .as_ref()
+                .map(|cond| cond.instantiate(applier, target)),
         );
-        let parent_id = Uuid::new_v4();
+        let parent_id = parent_instance.instance_id;
 
         let mut instances = EffectsMap::new();
 
@@ -297,10 +408,15 @@ impl EffectInstanceTemplate {
             let child_template = EffectInstanceTemplate {
                 effect_id: child_effect_id.clone(),
                 lifetime: self.lifetime, // Child effects inherit the same lifetime template
+                end_condition: self.end_condition.clone(),
             };
 
-            let (child_root_id, child_instances) =
-                child_template.instantiate(applier, target, source.clone());
+            let (child_root_id, child_instances) = child_template.instantiate(
+                applier,
+                target,
+                source.clone(),
+                apply_condition.clone(),
+            );
 
             // Register only the *root* child as a direct child of the parent
             parent_instance.children.insert(child_root_id);

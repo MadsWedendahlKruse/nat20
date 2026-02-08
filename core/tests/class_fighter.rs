@@ -11,10 +11,11 @@ mod tests {
             resource::{ResourceAmount, ResourceMap},
             time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
         },
-        engine::event::{ActionData, ActionDecision, ActionDecisionKind},
+        engine::action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
         systems,
         test_utils::fixtures,
     };
+    use parry3d::na::Point3;
 
     #[test]
     fn fighter_action_surge() {
@@ -84,7 +85,7 @@ mod tests {
         systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, fighter)
             .set_mode(TimeMode::TurnBased { encounter_id: None });
         systems::time::advance_time(
-            &mut game_state.world,
+            &mut game_state,
             fighter,
             TimeStep::TurnBoundary {
                 entity: fighter,
@@ -189,6 +190,7 @@ mod tests {
     fn fighter_extra_attack() {
         let mut game_state = fixtures::engine::game_state();
         let fighter = fixtures::creatures::heroes::fighter(&mut game_state.world).id();
+        let _ = systems::health::heal_full(&mut game_state.world, fighter);
 
         // Check that the fighter has the Extra Attack effect
         {
@@ -213,23 +215,32 @@ mod tests {
 
         // Fighter makes a weapon attack, which costs one Action and grants one stack of Extra Attack
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
+        println!(
+            "Available actions before attacking: {:#?}",
+            available_actions
+        );
         let action_id = ActionId::new("nat20_core", "action.weapon_attack");
         assert!(
             available_actions.contains_key(&action_id),
             "Fighter should have Weapon Attack action"
         );
         let contexts_and_costs = available_actions.get(&action_id).unwrap();
-        let _ = game_state.submit_decision(ActionDecision::without_response_to(
+        let result = game_state.submit_decision(ActionDecision::without_response_to(
             ActionDecisionKind::Action {
                 action: ActionData::new(
                     fighter,
                     action_id.clone(),
                     contexts_and_costs[0].0.clone(),
                     contexts_and_costs[0].1.clone(),
-                    vec![],
+                    vec![TargetInstance::Point(Point3::new(1.0, 0.0, 0.0))],
                 ),
             },
         ));
+        assert!(
+            result.is_ok(),
+            "Performing weapon attack action should succeed. Error: {:?}",
+            result.err()
+        );
 
         // Check that the fighter has one stack of Extra Attack
         assert!(
@@ -250,18 +261,27 @@ mod tests {
 
         // Fighter makes another attack, which should consume the Extra Attack stack
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
+        assert!(
+            available_actions.contains_key(&action_id),
+            "Fighter should have Weapon Attack action available for second attack"
+        );
         let contexts_and_costs = available_actions.get(&action_id).unwrap();
-        let _ = game_state.submit_decision(ActionDecision::without_response_to(
+        let result = game_state.submit_decision(ActionDecision::without_response_to(
             ActionDecisionKind::Action {
                 action: ActionData::new(
                     fighter,
                     action_id.clone(),
                     contexts_and_costs[0].0.clone(),
                     contexts_and_costs[0].1.clone(),
-                    vec![],
+                    vec![TargetInstance::Point(Point3::new(1.0, 0.0, 0.0))],
                 ),
             },
         ));
+        assert!(
+            result.is_ok(),
+            "Performing second weapon attack action should succeed. Error: {:?}",
+            result.err()
+        );
 
         // Check that the fighter has no stacks of Extra Attack left
         assert!(

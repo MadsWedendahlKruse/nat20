@@ -4,7 +4,8 @@ use hecs::Entity;
 use nat20_core::{
     components::id::Name,
     engine::{
-        event::{ActionDecision, ActionDecisionKind, ActionPromptId, Event, ReactionData},
+        action_prompt::{ActionDecision, ActionDecisionKind, ActionPromptId, ReactionData},
+        event::Event,
         game_state::GameState,
     },
     systems,

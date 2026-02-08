@@ -57,7 +57,6 @@ pub mod creatures {
 
         use crate::{
             components::{
-                class::ClassAndSubclass,
                 id::{
                     BackgroundId, ClassId, EntityIdentifier, FeatId, ItemId, Name, SpeciesId,
                     SpellId, SubclassId, SubspeciesId,
@@ -65,7 +64,6 @@ pub mod creatures {
                 level_up::ChoiceItem,
                 modifier::KeyedModifiable,
                 skill::SkillSet,
-                spells::spellbook::{SpellSource, Spellbook},
             },
             entities::character::Character,
             registry::registry::{ClassesRegistry, ItemsRegistry},
@@ -226,7 +224,6 @@ pub mod creatures {
                     .unwrap()
                     .clone(),
             );
-
             let _ = systems::inventory::add_item(
                 world,
                 entity,

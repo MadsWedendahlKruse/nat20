@@ -6,7 +6,7 @@ use nat20_core::{
         health::{hit_points::HitPoints, life_state::LifeState},
         id::Name,
     },
-    engine::{event::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
+    engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
     systems::{
         self,
         geometry::{CreaturePose, RaycastFilter, RaycastHitKind},

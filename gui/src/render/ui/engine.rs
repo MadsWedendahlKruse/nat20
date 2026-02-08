@@ -1,9 +1,11 @@
-use chrono::format;
 use hecs::World;
 use imgui::TreeNodeFlags;
 use nat20_core::{
-    components::{actions::targeting::TargetInstance, id::Name},
-    engine::event::{ActionData, EncounterEvent, Event, EventKind, EventLog},
+    components::{actions::targeting::TargetInstance, id::Name, time::TurnBoundary},
+    engine::{
+        action_prompt::ActionData,
+        event::{EncounterEvent, Event, EventKind, EventLog},
+    },
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
@@ -48,6 +50,7 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         },
         EventKind::DamageRollPerformed(_, _) => LogLevel::Debug,
         EventKind::DamageRollResolved(_, _) => LogLevel::Debug,
+        EventKind::TurnBoundary { .. } => LogLevel::Info,
         EventKind::RestStarted { .. } => LogLevel::Info,
         EventKind::RestFinished { .. } => LogLevel::Info,
     }
@@ -87,11 +90,7 @@ pub fn render_event_description(ui: &imgui::Ui, event: &Event, world: &World) {
             segments.extend(label);
             TextSegments::new(segments).render(ui);
         }
-        _ => TextSegments::new(vec![(
-            format!("{:?}", event.kind.name()),
-            TextKind::Details,
-        )])
-        .render(ui),
+        _ => TextSegments::new(vec![(format!("{:?}", event.kind), TextKind::Details)]).render(ui),
     };
 }
 
@@ -296,6 +295,20 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                         damage_roll_result.render(ui);
                     });
                 }
+            }
+            // TODO: Not sure how to render this?
+            EventKind::TurnBoundary { entity, boundary } => {
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+                let boundary_text = match boundary {
+                    TurnBoundary::Start => "Starting",
+                    TurnBoundary::End => "Ending",
+                };
+                TextSegments::new(vec![(
+                    format!("{} the turn for {}", boundary_text, entity_name),
+                    TextKind::Details,
+                )])
+                .render(ui);
             }
             // TODO: Improve rest event rendering
             EventKind::RestStarted { kind, participants } => {

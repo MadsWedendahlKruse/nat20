@@ -2,7 +2,7 @@ use hecs::Entity;
 
 use crate::{
     engine::{
-        event::{ActionDecision, ActionPrompt},
+        action_prompt::{ActionDecision, ActionPrompt},
         game_state::GameState,
     },
     systems::movement::PathResult,

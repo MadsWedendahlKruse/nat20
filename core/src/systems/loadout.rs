@@ -2,6 +2,7 @@ use hecs::{Entity, Ref, World};
 
 use crate::{
     components::{
+        actions::action::AttackRollProvider,
         damage::{AttackRoll, DamageRoll},
         items::{
             equipment::{
@@ -50,7 +51,6 @@ where
         .unwrap()
         .effects()
         .clone();
-
     systems::effects::add_permanent_effects(
         world,
         entity,
@@ -121,13 +121,4 @@ pub fn can_equip(world: &World, entity: Entity, equipment: &EquipmentInstance) -
 
 pub fn weapon_damage_roll(world: &World, entity: Entity, slot: &EquipmentSlot) -> DamageRoll {
     loadout(world, entity).damage_roll(world, entity, slot)
-}
-
-pub fn weapon_attack_roll(
-    world: &World,
-    entity: Entity,
-    target: Entity,
-    slot: &EquipmentSlot,
-) -> AttackRoll {
-    loadout(world, entity).attack_roll(world, entity, target, slot)
 }

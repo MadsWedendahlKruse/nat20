@@ -8,6 +8,7 @@ mod tests {
     use nat20_core::{
         components::{
             ability::Ability,
+            actions::action::{ActionContext, AttackRollProvider},
             d20::RollMode,
             id::{EffectId, ItemId},
             items::{
@@ -56,14 +57,19 @@ mod tests {
         );
 
         // Before equipping the ring
-        let roll = systems::damage::attack_roll_weapon(
+        let context = &ActionContext::Weapon {
+            slot: EquipmentSlot::MeleeMainHand,
+        };
+
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            context,
         );
+        let result = systems::damage::attack_roll(roll, &game_state.world, entity, entity);
         assert_eq!(
-            roll.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker.roll_mode(),
             RollMode::Normal
         );
 
@@ -74,27 +80,30 @@ mod tests {
             &EquipmentSlot::Ring1,
             ring,
         );
-        let roll = systems::damage::attack_roll_weapon(
+
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            context,
         );
+        let result = systems::damage::attack_roll(roll, &game_state.world, entity, entity);
         assert_eq!(
-            roll.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker.roll_mode(),
             RollMode::Advantage
         );
 
         // Unequip the ring
         systems::loadout::unequip(&mut game_state.world, entity, &EquipmentSlot::Ring1);
-        let roll = systems::damage::attack_roll_weapon(
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            context,
         );
+        let result = systems::damage::attack_roll(roll, &game_state.world, entity, entity);
         assert_eq!(
-            roll.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker.roll_mode(),
             RollMode::Normal
         );
     }

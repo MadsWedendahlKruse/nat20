@@ -13,11 +13,14 @@ use crate::{
         time::{EntityClock, TimeMode, TimeStep},
     },
     engine::{
+        action_prompt::{
+            ActionData, ActionDecision, ActionDecisionKind, ActionError, ActionPrompt,
+            ActionPromptId, ActionPromptKind, ReactionData,
+        },
         encounter::{Encounter, EncounterId},
         event::{
-            ActionData, ActionDecision, ActionDecisionKind, ActionError, ActionPrompt,
-            ActionPromptId, ActionPromptKind, EncounterEvent, Event, EventCallback, EventId,
-            EventKind, EventListener, EventLog, ReactionData,
+            EncounterEvent, Event, EventCallback, EventDispatcher, EventId, EventKind, EventLog,
+            EventResponseListener,
         },
         game_state,
         geometry::WorldGeometry,
@@ -41,7 +44,8 @@ pub struct GameState {
     pub resting: HashMap<Entity, RestKind>,
     pub interaction_engine: InteractionEngine,
     pub event_log: EventLog,
-    event_listeners: HashMap<EventId, EventListener>,
+    pub event_dispatcher: EventDispatcher,
+    event_response_listeners: HashMap<EventId, EventResponseListener>,
 }
 
 impl GameState {
@@ -54,7 +58,8 @@ impl GameState {
             resting: HashMap::new(),
             interaction_engine: InteractionEngine::default(),
             event_log: EventLog::new(),
-            event_listeners: HashMap::new(),
+            event_dispatcher: EventDispatcher::new(),
+            event_response_listeners: HashMap::new(),
         }
     }
 
@@ -103,7 +108,7 @@ impl GameState {
 
     pub fn end_encounter(&mut self, encounter_id: &EncounterId) {
         if let Some(mut encounter) = self.encounters.remove(encounter_id) {
-            for entity in encounter.participants(&self.world, EntityFilter::All) {
+            for entity in encounter.participants(&self.world, &[EntityFilter::All]) {
                 self.in_combat.remove(&entity);
                 systems::time::set_time_mode(&mut self.world, entity, TimeMode::RealTime);
             }
@@ -336,11 +341,18 @@ impl GameState {
         self.log_event(&scope, event.clone());
 
         if let Some(event_id) = event.response_to {
-            if let Some(listener) = self.event_listeners.get(&event_id) {
+            if let Some(listener) = self.event_response_listeners.get(&event_id) {
                 if listener.matches(&event) {
-                    let listener = self.event_listeners.remove(&event_id).unwrap();
+                    let listener = self.event_response_listeners.remove(&event_id).unwrap();
                     listener.callback(self, &event);
                 }
+            }
+        }
+
+        for listener_id in self.event_dispatcher.dispatch(&event) {
+            if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
+                let callback = listener.callback.clone();
+                callback.run(self, &event, listener_id);
             }
         }
 
@@ -452,7 +464,7 @@ impl GameState {
         let reactors = if let Some(encounter_id) = self.in_combat.get(&actor)
             && let Some(encounter) = self.encounters.get(encounter_id)
         {
-            encounter.participants(&self.world, EntityFilter::not_dead())
+            encounter.participants(&self.world, &[EntityFilter::not_dead()])
         } else if let Some((_, shape_pose)) = systems::geometry::get_shape(&self.world, actor) {
             systems::geometry::entities_in_shape(
                 &self.world,
@@ -662,8 +674,8 @@ impl GameState {
         }
     }
 
-    pub fn add_event_listener(&mut self, event_listener: EventListener) {
-        self.event_listeners
+    pub fn add_event_listener(&mut self, event_listener: EventResponseListener) {
+        self.event_response_listeners
             .insert(event_listener.trigger_id(), event_listener);
     }
 
@@ -673,7 +685,7 @@ impl GameState {
         callback: EventCallback,
     ) -> Result<(), ActionError> {
         if let Some(actor) = event.actor() {
-            self.add_event_listener(EventListener::new(event.id, callback));
+            self.add_event_listener(EventResponseListener::new(event.id, callback));
             self.process_event_scoped(self.scope_for_entity(actor), event)
         } else {
             panic!(
@@ -689,7 +701,7 @@ impl GameState {
         };
         let entities = self.world.iter().map(|e| e.entity()).collect::<Vec<_>>();
         for entity in entities {
-            systems::time::advance_time(&mut self.world, entity, time_step);
+            systems::time::advance_time(self, entity, time_step);
         }
     }
 }

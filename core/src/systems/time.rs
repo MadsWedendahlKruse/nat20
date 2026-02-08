@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
-use tracing_subscriber::field::debug;
 
 use crate::{
     components::{
@@ -12,7 +11,8 @@ use crate::{
         time::{EntityClock, TimeMode, TimeStep},
     },
     engine::{
-        event::{ActionError, Event, EventKind},
+        action_prompt::ActionError,
+        event::{Event, EventKind},
         game_state::GameState,
     },
     systems,
@@ -23,10 +23,11 @@ pub fn set_time_mode(world: &mut World, entity: Entity, mode: TimeMode) {
     clock.set_mode(mode);
 }
 
-pub fn advance_time(world: &mut World, entity: Entity, time_step: TimeStep) {
+pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeStep) {
     // TODO: Recharge resources on time advance?
     {
-        let mut clock = systems::helpers::get_component_mut::<EntityClock>(world, entity);
+        let mut clock =
+            systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, entity);
 
         if clock.mode() == TimeMode::Paused {
             return;
@@ -52,19 +53,23 @@ pub fn advance_time(world: &mut World, entity: Entity, time_step: TimeStep) {
                 "Advancing turn-based time for entity {:?} at turn boundary {:?} of entity {:?}",
                 entity, boundary, turn_entity
             );
+
+            if turn_entity == entity {
+                game_state.process_event(Event::new(EventKind::TurnBoundary { entity, boundary }));
+            }
         }
         _ => { /* no special logging for other time steps */ }
     }
 
     let mut expired_effects = Vec::new();
-    for (id, effect) in systems::effects::effects_mut(world, entity).iter_mut() {
+    for (id, effect) in systems::effects::effects_mut(&mut game_state.world, entity).iter_mut() {
         effect.advance_time(time_step);
         if effect.is_expired() {
             expired_effects.push(id.clone());
         }
     }
 
-    systems::effects::remove_effects(world, entity, &expired_effects);
+    systems::effects::remove_effects(&mut game_state.world, entity, &expired_effects);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

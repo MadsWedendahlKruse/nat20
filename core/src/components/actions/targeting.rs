@@ -15,7 +15,10 @@ use uom::{
 };
 
 use crate::{
-    components::{health::life_state::LifeState, items::equipment::weapon::MELEE_RANGE_REACH},
+    components::{
+        health::life_state::LifeState, items::equipment::weapon::MELEE_RANGE_REACH,
+        species::CreatureType,
+    },
     engine::geometry::WorldGeometry,
     entities::{character::CharacterTag, monster::MonsterTag},
     systems,
@@ -27,6 +30,7 @@ pub enum TargetingKind {
     Single,
     Multiple {
         max_targets: u8,
+        allow_duplicates: bool,
     },
     Area {
         shape: AreaShape,
@@ -119,6 +123,8 @@ pub enum EntityFilter {
     Specific(HashSet<Entity>),
     LifeStates(HashSet<LifeState>),
     NotLifeStates(HashSet<LifeState>),
+    CreatureTypes(HashSet<CreatureType>),
+    NotCreatureTypes(HashSet<CreatureType>),
 }
 
 impl EntityFilter {
@@ -132,6 +138,7 @@ impl EntityFilter {
             EntityFilter::Characters => world.get::<&CharacterTag>(*entity).is_ok(),
             EntityFilter::Monsters => world.get::<&MonsterTag>(*entity).is_ok(),
             EntityFilter::Specific(entities) => entities.contains(entity),
+
             EntityFilter::LifeStates(states) => {
                 if let Ok(life_state) = world.get::<&LifeState>(*entity) {
                     states.contains(&life_state)
@@ -146,6 +153,21 @@ impl EntityFilter {
                     true
                 }
             }
+
+            EntityFilter::CreatureTypes(types) => {
+                if let Ok(creature_type) = world.get::<&CreatureType>(*entity) {
+                    types.contains(&creature_type)
+                } else {
+                    false
+                }
+            }
+            EntityFilter::NotCreatureTypes(types) => {
+                if let Ok(creature_type) = world.get::<&CreatureType>(*entity) {
+                    !types.contains(&creature_type)
+                } else {
+                    true
+                }
+            }
         }
     }
 }
@@ -156,9 +178,14 @@ pub enum TargetInstance {
     Point(Point3<f32>),
 }
 
+// TODO: Slightly more descriptive errors
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetingError {
+    NoTargetsProvided,
     ExceedsMaxTargets,
+    DuplicateTargetNotAllowed {
+        target: TargetInstance,
+    },
     OutOfRange {
         target: TargetInstance,
         distance: Length,
@@ -302,7 +329,7 @@ pub struct TargetingContext {
     pub kind: TargetingKind,
     pub range: TargetingRange,
     pub require_line_of_sight: bool,
-    pub allowed_targets: EntityFilter,
+    pub allowed_targets: Vec<EntityFilter>,
 }
 
 impl TargetingContext {
@@ -310,7 +337,7 @@ impl TargetingContext {
         kind: TargetingKind,
         range: TargetingRange,
         require_line_of_sight: bool,
-        allowed_targets: EntityFilter,
+        allowed_targets: Vec<EntityFilter>,
     ) -> Self {
         TargetingContext {
             kind,
@@ -325,8 +352,17 @@ impl TargetingContext {
             kind: TargetingKind::SelfTarget,
             range: TargetingRange::new::<meter>(0.0),
             require_line_of_sight: false,
-            allowed_targets: EntityFilter::All,
+            allowed_targets: vec![EntityFilter::All],
         }
+    }
+
+    pub fn allowed_target(&self, world: &World, entity: &Entity) -> bool {
+        for filter in &self.allowed_targets {
+            if filter.matches(world, entity) {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn validate_targets(
@@ -336,6 +372,53 @@ impl TargetingContext {
         actor: Entity,
         targets: &[TargetInstance],
     ) -> Result<(), TargetingError> {
+        if targets.is_empty() {
+            return Err(TargetingError::NoTargetsProvided);
+        }
+
+        match self.kind {
+            TargetingKind::SelfTarget => {
+                if targets.len() > 1 {
+                    return Err(TargetingError::ExceedsMaxTargets);
+                }
+                if targets[0] != TargetInstance::Entity(actor) {
+                    return Err(TargetingError::InvalidTarget {
+                        target: targets[0].clone(),
+                    });
+                }
+            }
+
+            TargetingKind::Single => {
+                if targets.len() > 1 {
+                    return Err(TargetingError::ExceedsMaxTargets);
+                }
+            }
+
+            TargetingKind::Multiple {
+                max_targets,
+                allow_duplicates,
+            } => {
+                if targets.len() as u8 > max_targets {
+                    return Err(TargetingError::ExceedsMaxTargets);
+                }
+                if !allow_duplicates {
+                    let mut seen = Vec::new();
+                    for target in targets {
+                        if seen.contains(target) {
+                            return Err(TargetingError::DuplicateTargetNotAllowed {
+                                target: target.clone(),
+                            });
+                        }
+                        seen.push(target.clone());
+                    }
+                }
+            }
+
+            TargetingKind::Area { .. } => {
+                // No max target validation for area targeting - the shape will determine the valid targets
+            }
+        }
+
         for target in targets {
             // Check range
             let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
@@ -387,7 +470,7 @@ impl TargetingContext {
             // Check allowed targets
             match target {
                 TargetInstance::Entity(entity) => {
-                    if !self.allowed_targets.matches(world, entity) {
+                    if !self.allowed_target(world, entity) {
                         return Err(TargetingError::InvalidTarget {
                             target: target.clone(),
                         });

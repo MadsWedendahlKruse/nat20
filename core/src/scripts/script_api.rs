@@ -26,9 +26,12 @@ use crate::{
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
     },
-    engine::event::{ActionData, Event, EventKind, ReactionData},
+    engine::{
+        action_prompt::{ActionData, ReactionData},
+        event::{Event, EventKind},
+    },
     registry::serialize::{
-        d20::SavingThrowProvider,
+        d20::SavingThrowDefinition,
         parser::{DiceExpression, Evaluable, IntExpression, Parser},
         variables::PARSER_VARIABLES,
     },
@@ -863,7 +866,7 @@ pub enum ScriptEventRef {
 pub struct ScriptSavingThrow {
     /// Entity role where the saving throw originates
     pub entity: ScriptEntityRole,
-    pub saving_throw: SavingThrowProvider,
+    pub saving_throw: SavingThrowDefinition,
 }
 
 /// Bonus to apply to a D20 roll.

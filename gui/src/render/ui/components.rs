@@ -1476,7 +1476,7 @@ impl ImguiRenderable for DamageMitigationEffect {
 impl ImguiRenderableWithContext<&TimeMode> for EffectLifetime {
     fn render_with_context(&self, ui: &imgui::Ui, time_mode: &TimeMode) {
         match self {
-            EffectLifetime::AtTurnBoundary { remaining, duration, .. } => {
+            EffectLifetime::TurnBoundary { remaining, duration, .. } => {
                 remaining.render_with_context(ui, time_mode);
                 ui.same_line();
                 TextSegment::new("/", TextKind::Details).render(ui);
@@ -1756,7 +1756,11 @@ impl ImguiRenderable for TargetingKind {
         let text = match self {
             TargetingKind::SelfTarget => "Self Target".to_string(),
             TargetingKind::Single => "Single Target".to_string(),
-            TargetingKind::Multiple { max_targets } => format!("{} Targets", max_targets),
+            TargetingKind::Multiple { max_targets, allow_duplicates } => if *allow_duplicates {
+                format!("{} Targets", max_targets)
+            } else {
+                format!("{} Targets (Unique)", max_targets)
+            },
             TargetingKind::Area { shape, .. } => match shape {
                 AreaShape::Arc { angle, length } => {
                     format!(

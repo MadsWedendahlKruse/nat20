@@ -10,8 +10,8 @@ use crate::{
             action::{
                 Action, ActionCondition, ActionContext, ActionCooldownMap, ActionKind,
                 ActionKindResult, ActionMap, ActionOutcomeBundle, ActionPayload, ActionProvider,
-                AttackRollFunction, DamageOnFailure, DamageOutcome, EffectApplyRule, EffectOutcome,
-                HealingOutcome, SavingThrowFunction,
+                AttackRollFunction, DamageOnFailure, DamageOutcome, EffectApplyCondition,
+                EffectOutcome, HealingOutcome, SavingThrowFunction,
             },
             targeting::{
                 AreaShape, TargetInstance, TargetingContext, TargetingError, TargetingKind,
@@ -19,7 +19,6 @@ use crate::{
         },
         d20::D20CheckOutcome,
         damage::DamageRollResult,
-        health::life_state::LifeState,
         id::{ActionId, ResourceId, ScriptId},
         items::equipment::loadout::Loadout,
         modifier::{Modifiable, ModifierSource},
@@ -30,9 +29,8 @@ use crate::{
         },
     },
     engine::{
-        event::{
-            ActionData, ActionError, CallbackResult, Event, EventCallback, EventKind, ReactionData,
-        },
+        action_prompt::{ActionData, ActionError, ReactionData},
+        event::{CallbackResult, Event, EventCallback, EventKind},
         game_state::GameState,
         geometry::WorldGeometry,
     },
@@ -188,7 +186,18 @@ pub fn available_actions(world: &World, entity: Entity) -> ActionMap {
                     resource_cost,
                 );
             }
-            action_usable(world, entity, action_id, &action_context, resource_cost).is_ok()
+            // action_usable(world, entity, action_id, &action_context, resource_cost).is_ok()
+            let result = action_usable(world, entity, action_id, action_context, resource_cost);
+            match result {
+                Ok(_) => true,
+                Err(e) => {
+                    println!(
+                        "Action {:?} with context {:?} is not usable for entity {:?} due to {:?}",
+                        action_id, action_context, entity, e
+                    );
+                    false
+                }
+            }
         });
 
         !action_data.is_empty() // Keep the action if there's at least one usable context
@@ -228,7 +237,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
         &action_data.action_id,
         &action_data.context,
     );
-    match targeting_context.kind {
+    match &targeting_context.kind {
         TargetingKind::SelfTarget | TargetingKind::Single | TargetingKind::Multiple { .. } => {
             for target in &action_data.targets {
                 match target {
@@ -260,7 +269,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
                 let (shape_hitbox, shape_pose) = shape.parry3d_shape(
                     &game_state.world,
                     action_data.actor,
-                    fixed_on_actor,
+                    *fixed_on_actor,
                     point,
                 );
 
@@ -271,11 +280,8 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
                 );
 
                 // Only keep the entities that are valid targets
-                entities_in_shape.retain(|entity| {
-                    targeting_context
-                        .allowed_targets
-                        .matches(&game_state.world, entity)
-                });
+                entities_in_shape
+                    .retain(|entity| targeting_context.allowed_target(&game_state.world, entity));
 
                 // Check if any of the entities are behind cover and remove them
                 // TODO: Not sure what the best way to do this is, I guess it
@@ -469,11 +475,11 @@ fn perform_unconditional(
 ) -> Result<(), ActionError> {
     // Apply effect immediately (no gating for unconditional).
     let effect_outcome: Option<EffectOutcome> = get_effect_outcome(
-        &mut game_state.world,
+        game_state,
         target,
         &action_data,
         &payload,
-        EffectApplyRule::Unconditional,
+        EffectApplyCondition::Unconditional,
     );
 
     // Apply healing immediately (no gating for unconditional).
@@ -523,11 +529,11 @@ fn perform_unconditional(
         damage_roll,
     ));
 
-    let callback: EventCallback = Arc::new({
+    let callback = EventCallback::new({
         let action_data = action_data.clone();
         let effect_result = effect_outcome.clone();
 
-        move |game_state, event| match &event.kind {
+        move |game_state, event, _| match &event.kind {
             EventKind::DamageRollResolved(_, damage_roll_result) => {
                 let (damage_taken, new_life_state) =
                     systems::health::damage(game_state, target, damage_roll_result, None);
@@ -586,13 +592,13 @@ fn perform_attack_roll(
         D20CheckDCKind::AttackRoll(target, armor_class),
     ));
 
-    let callback: EventCallback = Arc::new({
+    let callback = EventCallback::new({
         let action_data = action_data.clone();
         let attack_roll = attack_roll.clone();
         let payload = payload.clone();
         let damage_on_miss = damage_on_miss.clone();
 
-        move |game_state, event| match &event.kind {
+        move |game_state, event, _| match &event.kind {
             EventKind::D20CheckResolved(_, result, dc) => {
                 let armor_class = match dc {
                     D20CheckDCKind::AttackRoll(_, armor_class) => armor_class.clone(),
@@ -604,11 +610,14 @@ fn perform_attack_roll(
                 // Decide effect application
                 let effect_result: Option<EffectOutcome> = if hit {
                     get_effect_outcome(
-                        &mut game_state.world,
+                        game_state,
                         target,
                         &action_data,
                         &payload,
-                        EffectApplyRule::OnHit,
+                        EffectApplyCondition::OnHit {
+                            attack_roll: attack_roll.clone(),
+                            armor_class: armor_class.clone(),
+                        },
                     )
                 } else {
                     None
@@ -657,14 +666,14 @@ fn perform_attack_roll(
 
                 CallbackResult::EventWithCallback(
                     damage_event,
-                    Arc::new({
+                    EventCallback::new({
                         let action_data = action_data.clone();
                         let attack_roll = attack_roll.clone();
                         let armor_class = armor_class.clone();
                         let hit = hit;
                         let effect_result = effect_result.clone();
 
-                        move |game_state, event| match &event.kind {
+                        move |game_state, event, _| match &event.kind {
                             EventKind::DamageRollResolved(_, damage_roll_result) => {
                                 let (damage_taken, new_life_state) = if hit {
                                     systems::health::damage(
@@ -726,12 +735,12 @@ fn perform_saving_throw(
         &D20CheckDCKind::SavingThrow(saving_throw_dc.clone()),
     );
 
-    let callback: EventCallback = Arc::new({
+    let callback = EventCallback::new({
         let action_data = action_data.clone();
         let payload = payload.clone();
         let damage_on_save = damage_on_save.clone();
 
-        move |game_state, event| match &event.kind {
+        move |game_state, event, _| match &event.kind {
             EventKind::D20CheckResolved(_, result, dc) => {
                 let saving_throw_dc = match dc {
                     D20CheckDCKind::SavingThrow(dc) => dc.clone(),
@@ -745,11 +754,14 @@ fn perform_saving_throw(
                     None
                 } else {
                     get_effect_outcome(
-                        &mut game_state.world,
+                        game_state,
                         target,
                         &action_data,
                         &payload,
-                        EffectApplyRule::OnFailedSave,
+                        EffectApplyCondition::OnFailedSave {
+                            saving_throw_result: result.d20_result().clone(),
+                            saving_throw_dc: saving_throw_dc.clone(),
+                        },
                     )
                 };
 
@@ -785,13 +797,13 @@ fn perform_saving_throw(
 
                 CallbackResult::EventWithCallback(
                     damage_event,
-                    Arc::new({
+                    EventCallback::new({
                         let action_data = action_data.clone();
                         let saving_throw_result = result.clone();
                         let saving_throw_dc = saving_throw_dc.clone();
                         let effect_result = effect_result.clone();
 
-                        move |game_state, event| match &event.kind {
+                        move |game_state, event, _| match &event.kind {
                             EventKind::DamageRollResolved(_, damage_roll_result) => {
                                 let (damage_taken, new_life_state) = systems::health::damage(
                                     game_state,
@@ -888,20 +900,21 @@ fn get_damage_roll(
 }
 
 fn get_effect_outcome(
-    world: &mut World,
+    game_state: &mut GameState,
     target: Entity,
     action_data: &ActionData,
     payload: &ActionPayload,
-    apply_rule: EffectApplyRule,
+    apply_condition: EffectApplyCondition,
 ) -> Option<EffectOutcome> {
     payload.effect().map(|effect| {
         let effect_instance_id = systems::effects::add_effect_template(
-            world,
+            game_state,
             action_data.actor,
             target,
             ModifierSource::Action(action_data.action_id.clone()),
             effect,
             Some(&action_data.context),
+            apply_condition.clone(),
         );
 
         // Add concentration tracking if needed
@@ -909,7 +922,7 @@ fn get_effect_outcome(
         if let Some(spell) = SpellsRegistry::get(&spell_id) {
             if spell.has_flag(SpellFlag::Concentration) {
                 systems::spells::add_concentration_instance(
-                    world,
+                    &mut game_state.world,
                     action_data.actor,
                     ConcentrationInstance::Effect {
                         entity: target,
@@ -923,7 +936,7 @@ fn get_effect_outcome(
         EffectOutcome {
             effect: effect.effect_id.clone(),
             applied: true,
-            rule: apply_rule,
+            rule: apply_condition,
         }
     })
 }

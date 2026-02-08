@@ -20,13 +20,10 @@ use crate::{
         id::{ActionId, EffectId, EntityIdentifier, IdProvider, ScriptId, SpellId},
         items::equipment::{armor::ArmorClass, slots::EquipmentSlot},
         resource::{RechargeRule, ResourceAmountMap},
-        saving_throw::SavingThrowDC,
+        saving_throw::{SavingThrowDC, SavingThrowKind},
         spells::spellbook::SpellSource,
     },
-    engine::{
-        event::{ActionData, Event},
-        game_state::GameState,
-    },
+    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{self},
 };
@@ -60,6 +57,26 @@ pub type AttackRollFunction =
 pub type SavingThrowFunction =
     dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
 pub type HealFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
+
+pub trait AttackRollProvider {
+    fn attack_roll(
+        &self,
+        world: &World,
+        performer: Entity,
+        target: Entity,
+        context: &ActionContext,
+    ) -> AttackRoll;
+}
+
+pub trait SavingThrowProvider {
+    fn saving_throw(
+        &self,
+        world: &World,
+        performer: Entity,
+        context: &ActionContext,
+        kind: SavingThrowKind,
+    ) -> SavingThrowDC;
+}
 
 #[derive(Clone)]
 pub enum DamageOnFailure {
@@ -246,16 +263,20 @@ impl DamageOutcome {
 pub struct EffectOutcome {
     pub effect: EffectId,
     pub applied: bool,
-    pub rule: EffectApplyRule, // useful for debugging/telemetry
+    pub rule: EffectApplyCondition, // useful for debugging/telemetry
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EffectApplyRule {
+pub enum EffectApplyCondition {
     Unconditional,
-    OnHit,
-    OnMiss,
-    OnFailedSave,
-    OnSuccessfulSave,
+    OnHit {
+        attack_roll: AttackRollResult,
+        armor_class: ArmorClass,
+    },
+    OnFailedSave {
+        saving_throw_dc: SavingThrowDC,
+        saving_throw_result: D20CheckResult,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -515,8 +536,6 @@ impl ActionResult {
 pub type ActionMap = HashMap<ActionId, Vec<(ActionContext, ResourceAmountMap)>>;
 
 pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
-
-pub type ReactionSet = HashSet<ActionId>;
 
 // TODO: Not sure if this is the best solution
 pub fn default_actions() -> ActionMap {

@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionContext, ActionMap, ActionProvider},
+        actions::action::{ActionContext, ActionMap, ActionProvider, AttackRollProvider},
         d20::AdvantageType,
         damage::{AttackRoll, AttackRollResult, DamageRoll},
         id::{EffectId, ItemId},
@@ -291,7 +291,6 @@ impl Loadout {
             // Check that:
             // 1. The main hand weapon is two-handed or versatile.
             // 2. The off hand is empty
-            // (Instead of checking for a specific Versatile(DiceSet), just check for any Versatile property)
             return (main_hand_weapon.has_property(&WeaponProperties::TwoHanded)
                 || main_hand_weapon
                     .properties()
@@ -302,36 +301,6 @@ impl Loadout {
         false
     }
 
-    pub fn attack_roll(
-        &self,
-        world: &World,
-        entity: Entity,
-        target: Entity,
-        slot: &EquipmentSlot,
-    ) -> AttackRoll {
-        // TODO: Unarmed attacks
-        let weapon = self
-            .weapon_in_hand(slot)
-            .expect("No weapon equipped in the specified slot");
-        let mut attack_roll = weapon.attack_roll(
-            &systems::helpers::get_component::<AbilityScoreMap>(world, entity),
-            &systems::helpers::get_component::<WeaponProficiencyMap>(world, entity)
-                .proficiency(&weapon.category()),
-        );
-        let range = weapon.range();
-        if range.normal() != range.max() {
-            let distance =
-                systems::geometry::distance_between_entities(world, entity, target).unwrap();
-            if distance > range.normal() {
-                attack_roll.d20_check.advantage_tracker_mut().add(
-                    AdvantageType::Disadvantage,
-                    ModifierSource::Custom("Target is outside normal range".to_string()),
-                );
-            }
-        }
-        attack_roll
-    }
-
     pub fn damage_roll(&self, world: &World, entity: Entity, slot: &EquipmentSlot) -> DamageRoll {
         let weapon = self
             .weapon_in_hand(slot)
@@ -340,6 +309,45 @@ impl Loadout {
             &systems::helpers::get_component::<AbilityScoreMap>(world, entity),
             self.is_wielding_weapon_with_both_hands(weapon.kind()),
         )
+    }
+}
+
+impl AttackRollProvider for Loadout {
+    fn attack_roll(
+        &self,
+        world: &World,
+        performer: Entity,
+        target: Entity,
+        context: &ActionContext,
+    ) -> AttackRoll {
+        let slot = match context {
+            ActionContext::Weapon { slot } => slot,
+            _ => panic!("Action context must be Weapon"),
+        };
+
+        // TODO: Unarmed attacks
+        let weapon = self
+            .weapon_in_hand(slot)
+            .expect("No weapon equipped in the specified slot");
+        let mut attack_roll = weapon.attack_roll(
+            &systems::helpers::get_component::<AbilityScoreMap>(world, performer),
+            &systems::helpers::get_component::<WeaponProficiencyMap>(world, performer)
+                .proficiency(&weapon.category()),
+        );
+
+        let range = weapon.range();
+        if range.normal() < range.max() {
+            let distance =
+                systems::geometry::distance_between_entities(world, performer, target).unwrap();
+            if distance > range.normal() {
+                attack_roll.d20_check.advantage_tracker_mut().add(
+                    AdvantageType::Disadvantage,
+                    ModifierSource::Custom("Target is outside normal range".to_string()),
+                );
+            }
+        }
+
+        attack_roll
     }
 }
 

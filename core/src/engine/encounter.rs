@@ -14,14 +14,11 @@ use crate::{
         time::{TimeStep, TurnBoundary},
     },
     engine::{
-        event::{
-            ActionPrompt, ActionPromptKind, CallbackResult, EncounterEvent, Event, EventKind,
-            EventLog,
-        },
+        action_prompt::{ActionPrompt, ActionPromptKind},
+        event::{CallbackResult, EncounterEvent, Event, EventCallback, EventKind, EventLog},
         game_state::GameState,
         interaction::InteractionScopeId,
     },
-    entities::{character::CharacterTag, monster::MonsterTag},
     systems::{self, d20::D20CheckDCKind},
 };
 
@@ -92,50 +89,12 @@ impl Encounter {
         idx
     }
 
-    pub fn participants(&self, world: &World, filter: EntityFilter) -> Vec<Entity> {
-        match filter {
-            EntityFilter::All => self.participants.iter().cloned().collect(),
-
-            EntityFilter::Characters => world
-                .query::<&CharacterTag>()
-                .iter()
-                .map(|(e, _)| e)
-                .collect(),
-
-            EntityFilter::Monsters => world
-                .query::<&MonsterTag>()
-                .iter()
-                .map(|(e, _)| e)
-                .collect(),
-
-            EntityFilter::Specific(entities) => {
-                self.participants.intersection(&entities).cloned().collect()
-            }
-
-            EntityFilter::LifeStates(life_states) => world
-                .query::<&LifeState>()
-                .iter()
-                .filter_map(|(e, ls)| {
-                    if life_states.contains(ls) {
-                        Some(e)
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-
-            EntityFilter::NotLifeStates(life_states) => world
-                .query::<&LifeState>()
-                .iter()
-                .filter_map(|(e, ls)| {
-                    if !life_states.contains(ls) {
-                        Some(e)
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        }
+    pub fn participants(&self, world: &World, filters: &[EntityFilter]) -> Vec<Entity> {
+        self.participants
+            .iter()
+            .filter(|entity| filters.iter().all(|filter| filter.matches(world, *entity)))
+            .cloned()
+            .collect()
     }
 
     fn start_turn(&mut self, game_state: &mut GameState) {
@@ -219,8 +178,8 @@ impl Encounter {
 
             game_state.process_event_with_callback(
                 death_saving_throw_event,
-                Arc::new({
-                    move |game_state, event| match &event.kind {
+                EventCallback::new({
+                    move |game_state, event, source| match &event.kind {
                         EventKind::D20CheckResolved(performer, result, dc) => {
                             let mut life_state = systems::helpers::get_component_mut::<LifeState>(
                                 &mut game_state.world,
@@ -283,10 +242,10 @@ impl Encounter {
                 systems::time::on_turn_end(&mut game_state.world, self.current_entity());
             }
         }
-        for entity in self.participants(&game_state.world, EntityFilter::All) {
+        for entity in self.participants.iter() {
             systems::time::advance_time(
-                &mut game_state.world,
-                entity,
+                game_state,
+                *entity,
                 TimeStep::TurnBoundary {
                     entity: self.current_entity(),
                     boundary,

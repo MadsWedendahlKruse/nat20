@@ -22,11 +22,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::{ActionContext, ActionMap, ActionProvider},
+        ability::{Ability, AbilityScoreMap},
+        actions::action::{
+            ActionContext, ActionMap, ActionProvider, AttackRollProvider, SavingThrowProvider,
+        },
         class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel, SpellcastingRules},
+        d20::{D20Check, D20CheckDC},
+        damage::{AttackRange, AttackRoll, AttackSource},
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
+        modifier::{Modifiable, ModifierSet, ModifierSource},
+        proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
-        spells::spell::ConcentrationTracker,
+        saving_throw::{SavingThrowDC, SavingThrowKind},
+        spells::spell::{ConcentrationTracker, SPELL_CASTING_ABILITIES},
     },
     registry::registry::{ClassesRegistry, SpellsRegistry},
     systems,
@@ -220,15 +228,16 @@ pub enum SpellbookError {
     NotFound,
 }
 
-/// The main Spellbook container.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Spellbook {
     /// Per-class spellcasting state.
     class_states: HashMap<ClassAndSubclass, ClassSpellcastingState>,
     /// External sources (items/feats/race).
     granted: HashMap<GrantedSpellSource, GrantedSpellMap>,
-    /// Concentration tracking state.
     concentration: ConcentrationTracker,
+
+    saving_throw_modifiers: ModifierSet,
+    attack_roll_modifiers: ModifierSet,
 }
 
 impl Spellbook {
@@ -237,6 +246,8 @@ impl Spellbook {
             class_states: HashMap::new(),
             granted: HashMap::new(),
             concentration: ConcentrationTracker::default(),
+            saving_throw_modifiers: ModifierSet::new(),
+            attack_roll_modifiers: ModifierSet::new(),
         }
     }
 
@@ -711,6 +722,123 @@ impl Spellbook {
 
     pub fn concentration_tracker_mut(&mut self) -> &mut ConcentrationTracker {
         &mut self.concentration
+    }
+
+    pub fn spellcasting_ability(
+        &self,
+        world: &World,
+        entity: Entity,
+        source: &SpellSource,
+    ) -> Ability {
+        match source {
+            SpellSource::Class(class_and_subclass) => {
+                if let Some(class) = ClassesRegistry::get(&class_and_subclass.class)
+                    && let Some(spellcasting_rules) =
+                        class.spellcasting_rules(&class_and_subclass.subclass)
+                {
+                    spellcasting_rules.spellcasting_ability
+                } else {
+                    panic!(
+                        "Class {:?} does not have spellcasting capabilities",
+                        class_and_subclass
+                    );
+                }
+            }
+            SpellSource::Granted { .. } => {
+                // Use the highest spellcasting ability
+                systems::helpers::get_component::<AbilityScoreMap>(world, entity)
+                    .get_max_score(SPELL_CASTING_ABILITIES)
+                    .0
+            }
+        }
+    }
+}
+
+impl AttackRollProvider for Spellbook {
+    fn attack_roll(
+        &self,
+        world: &World,
+        entity: Entity,
+        target: Entity,
+        context: &ActionContext,
+    ) -> AttackRoll {
+        if let ActionContext::Spell {
+            id: spell_id,
+            source,
+            ..
+        } = context
+        {
+            let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
+            let spellcasting_ability = self.spellcasting_ability(world, entity, source);
+
+            let mut roll = D20Check::new(Proficiency::new(
+                ProficiencyLevel::Proficient,
+                ModifierSource::Base,
+            ));
+            let spellcasting_modifier = ability_scores
+                .ability_modifier(&spellcasting_ability)
+                .total();
+            roll.add_modifier(
+                ModifierSource::Ability(spellcasting_ability),
+                spellcasting_modifier,
+            );
+
+            let spell = SpellsRegistry::get(spell_id).expect("Spell must exist in registry");
+            let spell_range = (spell.action().targeting)(world, entity, context).range;
+            let attack_range = if spell_range.is_melee() {
+                AttackRange::Melee
+            } else {
+                AttackRange::Ranged
+            };
+
+            return AttackRoll::new(roll, AttackSource::Spell, attack_range);
+        }
+        panic!("Action context must be Spell");
+    }
+}
+
+const BASE_SAVE_DC: i32 = 8;
+
+impl SavingThrowProvider for Spellbook {
+    fn saving_throw(
+        &self,
+        world: &World,
+        entity: Entity,
+        context: &ActionContext,
+        kind: SavingThrowKind,
+    ) -> SavingThrowDC {
+        let source = if let ActionContext::Spell { source, .. } = context {
+            source
+        } else {
+            panic!("Action context must be Spell");
+        };
+
+        let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
+        let spellcasting_ability = self.spellcasting_ability(world, entity, source);
+        let proficiency_bonus = systems::helpers::level(world, entity)
+            .unwrap()
+            .proficiency_bonus();
+
+        let mut spell_save_dc = ModifierSet::new();
+        spell_save_dc.add_modifier(ModifierSource::Base, BASE_SAVE_DC);
+        let spellcasting_modifier = ability_scores
+            .ability_modifier(&spellcasting_ability)
+            .total();
+        spell_save_dc.add_modifier(
+            ModifierSource::Ability(spellcasting_ability),
+            spellcasting_modifier,
+        );
+        // TODO: Not sure if Proficiency is the correct modifier source here, since I don't think
+        // you can have e.g. Expertise in spell save DCs.
+        spell_save_dc.add_modifier(
+            ModifierSource::Proficiency(ProficiencyLevel::Proficient),
+            proficiency_bonus as i32,
+        );
+
+        D20CheckDC {
+            key: kind,
+            dc: spell_save_dc,
+        }
     }
 }
 

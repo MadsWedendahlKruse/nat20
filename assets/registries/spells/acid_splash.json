@@ -33,6 +33,8 @@
         },
         "range": "60 feet",
         "require_line_of_sight": true,
-        "allowed_targets": "not_dead"
+        "allowed_targets": [
+            "not_dead"
+        ]
     }
 }

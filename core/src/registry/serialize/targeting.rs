@@ -17,6 +17,7 @@ use crate::{
         },
         health::life_state::LifeState,
         items::equipment::loadout::Loadout,
+        species::CreatureType,
     },
     registry::serialize::{
         parser::{Evaluable, EvaluationError, IntExpression, Parser},
@@ -42,7 +43,7 @@ static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
                                     .range()
                                     .clone(),
                                 require_line_of_sight: true,
-                                allowed_targets: EntityFilter::not_dead(),
+                                allowed_targets: vec![EntityFilter::not_dead()],
                             }
                         } else {
                             panic!("Action context must be Weapon");
@@ -165,6 +166,7 @@ pub enum TargetingKindDefinition {
     Single,
     Multiple {
         max_targets: IntExpressionDefinition,
+        allow_duplicates: bool,
     },
     Area {
         shape: AreaShapeDefinition,
@@ -185,7 +187,10 @@ impl Evaluable for TargetingKindDefinition {
         match self {
             TargetingKindDefinition::SelfTarget => Ok(TargetingKind::SelfTarget),
             TargetingKindDefinition::Single => Ok(TargetingKind::Single),
-            TargetingKindDefinition::Multiple { max_targets } => {
+            TargetingKindDefinition::Multiple {
+                max_targets,
+                allow_duplicates,
+            } => {
                 let value = max_targets
                     .expression
                     .evaluate(world, entity, context, variables)?;
@@ -194,6 +199,7 @@ impl Evaluable for TargetingKindDefinition {
                 let max_targets_i32 = value.max(0).min(u8::MAX as i32);
                 Ok(TargetingKind::Multiple {
                     max_targets: max_targets_i32 as u8,
+                    allow_duplicates: *allow_duplicates,
                 })
             }
             TargetingKindDefinition::Area {
@@ -207,6 +213,7 @@ impl Evaluable for TargetingKindDefinition {
     }
 }
 
+// TODO: This looks pretty weird in JSON format, see "Hold Person"
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityFilterDefinition {
@@ -216,6 +223,8 @@ pub enum EntityFilterDefinition {
     LifeStates(HashSet<LifeState>),
     NotLifeStates(HashSet<LifeState>),
     NotDead,
+    CreatureTypes(HashSet<CreatureType>),
+    NotCreatureTypes(HashSet<CreatureType>),
 }
 
 impl EntityFilterDefinition {
@@ -229,6 +238,12 @@ impl EntityFilterDefinition {
                 EntityFilter::NotLifeStates(states.clone())
             }
             EntityFilterDefinition::NotDead => EntityFilter::not_dead(),
+            EntityFilterDefinition::CreatureTypes(types) => {
+                EntityFilter::CreatureTypes(types.clone())
+            }
+            EntityFilterDefinition::NotCreatureTypes(types) => {
+                EntityFilter::NotCreatureTypes(types.clone())
+            }
         }
     }
 }
@@ -238,7 +253,7 @@ pub struct TargetingContextDefinition {
     pub kind: TargetingKindDefinition,
     pub range: LengthExpressionDefinition,
     pub require_line_of_sight: bool,
-    pub allowed_targets: EntityFilterDefinition,
+    pub allowed_targets: Vec<EntityFilterDefinition>,
 }
 
 impl TargetingContextDefinition {
@@ -261,7 +276,11 @@ impl TargetingContextDefinition {
                     kind,
                     range,
                     require_line_of_sight: definition.require_line_of_sight,
-                    allowed_targets: definition.allowed_targets.evaluate(),
+                    allowed_targets: definition
+                        .allowed_targets
+                        .iter()
+                        .map(|entity_filter| entity_filter.evaluate())
+                        .collect(),
                 }
             }
         })

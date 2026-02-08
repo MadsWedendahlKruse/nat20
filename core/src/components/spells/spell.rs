@@ -12,7 +12,7 @@ use crate::{
         id::{IdProvider, ScriptId, SpellId},
         resource::ResourceAmountMap,
     },
-    engine::event::ActionExecutionInstanceId,
+    engine::action_prompt::ActionExecutionInstanceId,
     registry::serialize::spell::SpellDefinition,
     systems,
 };

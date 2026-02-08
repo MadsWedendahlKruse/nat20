@@ -11,7 +11,8 @@ use crate::{
         resource::ResourceAmountMap,
     },
     engine::{
-        event::{ActionData, CallbackResult, Event, EventCallback, EventKind, ReactionData},
+        action_prompt::{ActionData, ReactionData},
+        event::{CallbackResult, Event, EventCallback, EventKind},
         game_state::GameState,
     },
     registry::registry::ScriptsRegistry,
@@ -541,7 +542,7 @@ pub fn apply_reaction_plan(
             let on_success_plan = *on_success;
             let on_failure_plan = *on_failure;
 
-            let callback: EventCallback = Arc::new(move |game_state, event| {
+            let callback = EventCallback::new(move |game_state, event, _| {
                 if let EventKind::D20CheckResolved(_, result_kind, _) = &event.kind {
                     let success = match result_kind {
                         D20ResultKind::SavingThrow { .. } => result_kind.is_success(&dc_kind),

@@ -14,7 +14,7 @@ use crate::{
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
     },
-    engine::event::ActionData,
+    engine::action_prompt::ActionData,
 };
 
 pub type ApplyEffectHook = Arc<dyn Fn(&mut World, Entity, Option<&ActionContext>) + Send + Sync>;

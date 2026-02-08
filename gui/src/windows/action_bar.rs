@@ -16,7 +16,7 @@ use nat20_core::{
         speed::Speed,
     },
     engine::{
-        event::{ActionData, ActionDecision, ActionDecisionKind, ActionPromptKind},
+        action_prompt::{ActionData, ActionDecision, ActionDecisionKind, ActionPromptKind},
         game_state::GameState,
     },
     registry::registry::ResourcesRegistry,
@@ -227,8 +227,6 @@ fn render_actions(
                 }) {
                     continue;
                 }
-
-                for (_, cost) in contexts_and_costs.iter() {}
 
                 let mut action_usable = false;
                 for (context, cost) in contexts_and_costs.iter_mut() {
@@ -620,7 +618,10 @@ fn render_target_selection(
                 }
             }
 
-            TargetingKind::Multiple { max_targets } => {
+            TargetingKind::Multiple {
+                max_targets,
+                allow_duplicates,
+            } => {
                 let max_targets = max_targets as usize;
                 if ui.is_mouse_clicked(MouseButton::Right) {
                     action.targets.pop();
@@ -632,7 +633,11 @@ fn render_target_selection(
                     && action.targets.len() < max_targets
                     && ui.is_mouse_clicked(MouseButton::Left)
                 {
-                    action.targets.push(potential_target.clone());
+                    if !allow_duplicates && action.targets.contains(potential_target) {
+                        action.targets.retain(|t| t != potential_target);
+                    } else {
+                        action.targets.push(potential_target.clone());
+                    }
                     gui_state.cursor_ray_result.take();
                     if action.targets.len() == max_targets {
                         submit_action = true;
