@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use hecs::{Entity, World};
-use tracing::{debug, warn};
-use uuid::Uuid;
+use tracing::debug;
 
 use crate::{
     components::{
@@ -186,18 +185,7 @@ pub fn available_actions(world: &World, entity: Entity) -> ActionMap {
                     resource_cost,
                 );
             }
-            // action_usable(world, entity, action_id, &action_context, resource_cost).is_ok()
-            let result = action_usable(world, entity, action_id, action_context, resource_cost);
-            match result {
-                Ok(_) => true,
-                Err(e) => {
-                    println!(
-                        "Action {:?} with context {:?} is not usable for entity {:?} due to {:?}",
-                        action_id, action_context, entity, e
-                    );
-                    false
-                }
-            }
+            action_usable(world, entity, action_id, &action_context, resource_cost).is_ok()
         });
 
         !action_data.is_empty() // Keep the action if there's at least one usable context
