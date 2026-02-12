@@ -20,7 +20,7 @@ mod tests {
         let character = game_state.world.spawn(Character::default());
 
         let _ = systems::loadout::equip(
-            &mut game_state.world,
+            &mut game_state,
             character,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.chainmail"))
                 .unwrap()
@@ -65,7 +65,7 @@ mod tests {
         }
 
         let _ = systems::loadout::equip(
-            &mut game_state.world,
+            &mut game_state,
             character,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.studded_leather_armor"))
                 .unwrap()
@@ -83,8 +83,7 @@ mod tests {
 
         // Un-equip the armor
         let armor =
-            systems::loadout::unequip(&mut game_state.world, character, &EquipmentSlot::Armor)
-                .unwrap();
+            systems::loadout::unequip(&mut game_state, character, &EquipmentSlot::Armor).unwrap();
         let armor_class = systems::loadout::armor_class(&game_state.world, character);
         println!("Un-equipped {:?}", armor);
         // Check if the armor class is updated

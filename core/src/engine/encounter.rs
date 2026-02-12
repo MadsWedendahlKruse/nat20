@@ -176,7 +176,7 @@ impl Encounter {
                 }),
             );
 
-            game_state.process_event_with_callback(
+            game_state.process_event_with_response_callback(
                 death_saving_throw_event,
                 EventCallback::new({
                     move |game_state, event, source| match &event.kind {

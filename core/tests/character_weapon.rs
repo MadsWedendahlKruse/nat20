@@ -3,7 +3,6 @@ extern crate nat20_core;
 mod tests {
     use std::{collections::HashSet, str::FromStr};
 
-    use hecs::World;
     use nat20_core::{
         components::{
             ability::{Ability, AbilityScore, AbilityScoreMap},
@@ -94,11 +93,11 @@ mod tests {
         let longsword = ItemsRegistry::get(&ItemId::new("nat20_core", "item.longsword"))
             .unwrap()
             .clone();
-        let _ = systems::loadout::equip(&mut game_state.world, entity, longsword);
+        let _ = systems::loadout::equip(&mut game_state, entity, longsword);
 
         // Longsword used with two hands
         let roll = systems::loadout::weapon_damage_roll(
-            &mut game_state.world,
+            &game_state.world,
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
@@ -106,7 +105,7 @@ mod tests {
         assert_eq!(roll.primary.dice_roll.dice.die_size, DieSize::D10);
 
         systems::loadout::equip_in_slot(
-            &mut game_state.world,
+            &mut game_state,
             entity,
             &EquipmentSlot::MeleeOffHand,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
@@ -125,9 +124,8 @@ mod tests {
         assert_eq!(roll.primary.dice_roll.dice.die_size, DieSize::D8);
 
         // Unequip dagger
-        let _ =
-            systems::loadout::unequip(&mut game_state.world, entity, &EquipmentSlot::MeleeOffHand)
-                .unwrap();
+        let _ = systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::MeleeOffHand)
+            .unwrap();
 
         // Longsword used with two hands again
         let roll = systems::loadout::weapon_damage_roll(
@@ -140,11 +138,11 @@ mod tests {
 
     #[test]
     fn character_two_handed_weapon() {
-        let mut world = World::new();
-        let entity = world.spawn(Character::default());
+        let mut game_state = fixtures::engine::game_state();
+        let entity = game_state.world.spawn(Character::default());
 
         systems::loadout::equip_in_slot(
-            &mut world,
+            &mut game_state,
             entity,
             &EquipmentSlot::MeleeOffHand,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
@@ -153,7 +151,7 @@ mod tests {
         )
         .unwrap();
         let _ = systems::loadout::equip_in_slot(
-            &mut world,
+            &mut game_state,
             entity,
             &EquipmentSlot::MeleeMainHand,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.longsword"))
@@ -162,7 +160,7 @@ mod tests {
         );
 
         let unequipped = systems::loadout::equip(
-            &mut world,
+            &mut game_state,
             entity,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.greatsword"))
                 .unwrap()
@@ -172,18 +170,19 @@ mod tests {
         assert_eq!(unequipped.len(), 2);
 
         // Main hand has greatsword, off-hand should be empty
-        let loadout = systems::helpers::get_component::<Loadout>(&world, entity);
+        let loadout = systems::helpers::get_component::<Loadout>(&game_state.world, entity);
         assert!(loadout.has_weapon_in_hand(&EquipmentSlot::MeleeMainHand));
         assert!(!loadout.has_weapon_in_hand(&EquipmentSlot::MeleeOffHand));
     }
 
     #[test]
     fn character_attack_roll_basic() {
-        let mut world = World::new();
-        let entity = world.spawn(Character::default());
+        let mut game_state = fixtures::engine::game_state();
+        let entity = game_state.world.spawn(Character::default());
 
         {
-            let mut scores = helpers::get_component_mut::<AbilityScoreMap>(&mut world, entity);
+            let mut scores =
+                helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity);
             scores.set(Ability::Strength, AbilityScore::new(Ability::Strength, 14));
             scores.set(
                 Ability::Dexterity,
@@ -208,10 +207,10 @@ mod tests {
             vec![],
         );
 
-        systems::loadout::equip(&mut world, entity, longsword).unwrap();
+        systems::loadout::equip(&mut game_state, entity, longsword).unwrap();
 
-        let roll = systems::loadout::loadout(&world, entity).attack_roll(
-            &world,
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
+            &game_state.world,
             entity,
             entity,
             &ActionContext::Weapon {

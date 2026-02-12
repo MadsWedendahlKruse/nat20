@@ -1,7 +1,10 @@
 use hecs::World;
 use imgui::TreeNodeFlags;
 use nat20_core::{
-    components::{actions::targeting::TargetInstance, id::Name, time::TurnBoundary},
+    components::{
+        actions::targeting::TargetInstance, id::Name, spells::spell::ConcentrationInstance,
+        time::TurnBoundary,
+    },
     engine::{
         action_prompt::ActionData,
         event::{EncounterEvent, Event, EventKind, EventLog},
@@ -53,6 +56,8 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::TurnBoundary { .. } => LogLevel::Info,
         EventKind::RestStarted { .. } => LogLevel::Info,
         EventKind::RestFinished { .. } => LogLevel::Info,
+        EventKind::LostConcentration { .. } => LogLevel::Info,
+        EventKind::LostEffect { .. } => LogLevel::Info,
     }
 }
 
@@ -340,6 +345,57 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     .cloned()
                     .collect::<Vec<_>>()
                     .render_with_context(ui, &world);
+            }
+            EventKind::LostConcentration { entity, instances } => {
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+
+                let instance_descriptions = instances
+                    .iter()
+                    .map(|instance| match instance {
+                        ConcentrationInstance::Effect { effect, .. } => {
+                            (effect.to_string(), TextKind::Effect)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                TextSegments::new(vec![
+                    (entity_name, TextKind::Actor),
+                    ("lost concentration on".to_string(), TextKind::Normal),
+                ])
+                .render(ui);
+
+                // TODO: Just render the first for now
+                ui.same_line();
+                TextSegment::new(
+                    instance_descriptions[0].0.clone(),
+                    instance_descriptions[0].1.clone(),
+                )
+                .render(ui);
+
+                // if instance_descriptions.len() == 1 {
+                //     ui.same_line();
+                //     TextSegment::new(
+                //         instance_descriptions[0].0.clone(),
+                //         instance_descriptions[0].1.clone(),
+                //     )
+                //     .render(ui);
+                // } else {
+                //     TextSegments::new(instance_descriptions)
+                //         .with_indent(1)
+                //         .render(ui);
+                // }
+            }
+            EventKind::LostEffect { entity, effect } => {
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+
+                TextSegments::new(vec![
+                    (entity_name, TextKind::Actor),
+                    ("lost effect".to_string(), TextKind::Normal),
+                    (effect.to_string(), TextKind::Effect),
+                ])
+                .render(ui);
             }
         }
 

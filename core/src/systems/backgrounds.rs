@@ -8,6 +8,7 @@ use crate::{
         proficiency::{Proficiency, ProficiencyLevel},
         skill::SkillSet,
     },
+    engine::game_state::GameState,
     registry::registry::BackgroundsRegistry,
     systems,
 };
@@ -21,7 +22,7 @@ pub fn background_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, Bac
 }
 
 pub fn set_background(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     background_id: &BackgroundId,
 ) -> Vec<LevelUpPrompt> {
@@ -30,16 +31,17 @@ pub fn set_background(
         background_id
     ));
 
-    *background_mut(world, entity) = background_id.clone();
+    *background_mut(&mut game_state.world, entity) = background_id.clone();
 
-    let feat_result = systems::feats::add_feat(world, entity, &background.feat);
+    let feat_result = systems::feats::add_feat(game_state, entity, &background.feat);
     if let Err(e) = feat_result {
         // TODO: Not sure what to do here
         panic!("Error adding background feat: {:?}", e);
     }
     let mut prompts = feat_result.unwrap();
 
-    let mut skill_set = systems::helpers::get_component_mut::<SkillSet>(world, entity);
+    let mut skill_set =
+        systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
     for skill in background.skill_proficiencies {
         skill_set.set_proficiency(
             &skill,

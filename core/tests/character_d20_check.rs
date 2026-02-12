@@ -47,70 +47,71 @@ mod tests {
 
     #[test]
     fn character_saving_throw_proficiency() {
-        let mut world = World::new();
+        let mut game_state = fixtures::engine::game_state();
 
         // Default character is level 0, meaning it has no proficieny bonus, so
         // if we want to test that we need a character with at least one level.
         // Easiest way is to use one of the fixtures.
-        let entity = fixtures::creatures::heroes::wizard(&mut world).id();
+        let entity = fixtures::creatures::heroes::wizard(&mut game_state).id();
 
-        systems::helpers::get_component_mut::<AbilityScoreMap>(&mut world, entity)
+        systems::helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity)
             .set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));
-        systems::helpers::get_component_mut::<SavingThrowSet>(&mut world, entity).set_proficiency(
-            &SavingThrowKind::Ability(Ability::Strength),
-            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
-        );
+        systems::helpers::get_component_mut::<SavingThrowSet>(&mut game_state.world, entity)
+            .set_proficiency(
+                &SavingThrowKind::Ability(Ability::Strength),
+                Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+            );
 
-        let result = systems::helpers::get_component::<SavingThrowSet>(&world, entity).check(
-            &SavingThrowKind::Ability(Ability::Strength),
-            &world,
-            entity,
-        );
+        let result = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
+            .check(
+                &SavingThrowKind::Ability(Ability::Strength),
+                &game_state.world,
+                entity,
+            );
         assert_eq!(result.modifier_breakdown.total(), 6);
     }
 
     #[test]
     fn character_saving_throw_proficiency_expertise() {
-        let mut world = World::new();
+        let mut game_state = fixtures::engine::game_state();
 
         // Default character is level 0, meaning it has no proficieny bonus, so
         // if we want to test that we need a character with at least one level.
         // Easiest way is to use one of the fixtures.
-        let entity = fixtures::creatures::heroes::wizard(&mut world).id();
+        let entity = fixtures::creatures::heroes::wizard(&mut game_state).id();
 
-        systems::helpers::get_component_mut::<AbilityScoreMap>(&mut world, entity)
+        systems::helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity)
             .set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));
-        systems::helpers::get_component_mut::<SavingThrowSet>(&mut world, entity).set_proficiency(
-            &SavingThrowKind::Ability(Ability::Strength),
-            Proficiency::new(ProficiencyLevel::Expertise, ModifierSource::None),
-        );
+        systems::helpers::get_component_mut::<SavingThrowSet>(&mut game_state.world, entity)
+            .set_proficiency(
+                &SavingThrowKind::Ability(Ability::Strength),
+                Proficiency::new(ProficiencyLevel::Expertise, ModifierSource::None),
+            );
 
-        let result = systems::helpers::get_component::<SavingThrowSet>(&world, entity).check(
-            &SavingThrowKind::Ability(Ability::Strength),
-            &world,
-            entity,
-        );
+        let result = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
+            .check(
+                &SavingThrowKind::Ability(Ability::Strength),
+                &game_state.world,
+                entity,
+            );
         assert_eq!(result.modifier_breakdown.total(), 9);
     }
 
     #[test]
     fn character_skill_disadvantage() {
-        let mut world = World::new();
-        let character = world.spawn(Character::default());
+        let mut game_state = fixtures::engine::game_state();
+        let character = game_state.world.spawn(Character::default());
 
         let _ = systems::loadout::equip(
-            &mut world,
+            &mut game_state,
             character,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.chainmail"))
                 .unwrap()
                 .clone(),
         );
 
-        let result = systems::helpers::get_component::<SkillSet>(&world, character).check(
-            &Skill::Stealth,
-            &world,
-            character,
-        );
+        let result = systems::helpers::get_component::<SkillSet>(&game_state.world, character)
+            .check(&Skill::Stealth, &game_state.world, character);
         assert!(result.advantage_tracker.roll_mode() == RollMode::Disadvantage);
     }
 }

@@ -2,8 +2,7 @@ use hecs::{Entity, Ref, World};
 
 use crate::{
     components::{
-        actions::action::AttackRollProvider,
-        damage::{AttackRoll, DamageRoll},
+        damage::DamageRoll,
         items::{
             equipment::{
                 armor::ArmorClass,
@@ -14,6 +13,7 @@ use crate::{
         },
         modifier::ModifierSource,
     },
+    engine::game_state::GameState,
     systems,
 };
 
@@ -26,7 +26,7 @@ pub fn loadout_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, Loadou
 }
 
 pub fn equip_in_slot<T>(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     slot: &EquipmentSlot,
     equipment: T,
@@ -37,22 +37,23 @@ where
     let equipment = equipment.into();
     let item_id = equipment.item().id.clone();
 
-    let unequipped_items = loadout_mut(world, entity).equip_in_slot(slot, equipment)?;
+    let unequipped_items =
+        loadout_mut(&mut game_state.world, entity).equip_in_slot(slot, equipment)?;
     for unequipped_item in &unequipped_items {
         systems::effects::remove_effects_by_source(
-            world,
+            game_state,
             entity,
             &ModifierSource::Item(unequipped_item.item().id.clone()),
         );
     }
 
-    let effects = loadout(world, entity)
+    let effects = loadout(&game_state.world, entity)
         .item_in_slot(slot)
         .unwrap()
         .effects()
         .clone();
     systems::effects::add_permanent_effects(
-        world,
+        game_state,
         entity,
         effects,
         &ModifierSource::Item(item_id),
@@ -63,7 +64,7 @@ where
 }
 
 pub fn equip<T>(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     equipment: T,
 ) -> Result<Vec<EquipmentInstance>, TryEquipError>
@@ -75,17 +76,17 @@ where
     // TODO: Slightly less performant than calling `equip_in_slot` directly
     let effects = equipment.effects().clone();
 
-    let unequipped_items = loadout_mut(world, entity).equip(equipment)?;
+    let unequipped_items = loadout_mut(&mut game_state.world, entity).equip(equipment)?;
     for unequipped_item in &unequipped_items {
         systems::effects::remove_effects_by_source(
-            world,
+            game_state,
             entity,
             &ModifierSource::Item(unequipped_item.item().id.clone()),
         );
     }
 
     systems::effects::add_permanent_effects(
-        world,
+        game_state,
         entity,
         effects,
         &ModifierSource::Item(item_id),
@@ -96,14 +97,14 @@ where
 }
 
 pub fn unequip(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     slot: &EquipmentSlot,
 ) -> Option<EquipmentInstance> {
-    let unequipped_item = loadout_mut(world, entity).unequip(slot);
+    let unequipped_item = loadout_mut(&mut game_state.world, entity).unequip(slot);
     if let Some(item) = &unequipped_item {
         systems::effects::remove_effects_by_source(
-            world,
+            game_state,
             entity,
             &ModifierSource::Item(item.item().id.clone()),
         );

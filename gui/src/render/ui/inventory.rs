@@ -5,6 +5,7 @@ use nat20_core::{
         inventory::{Inventory, ItemContainer, ItemInstance},
         item::Item,
     },
+    engine::game_state::GameState,
     systems,
 };
 use strum::IntoEnumIterator;
@@ -181,8 +182,8 @@ pub fn render_loadout(ui: &imgui::Ui, world: &World, entity: Entity) -> Option<I
     event
 }
 
-pub fn render_loadout_inventory(ui: &imgui::Ui, world: &mut World, entity: Entity) {
-    if let Some(event) = render_loadout(ui, world, entity) {
+pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) {
+    if let Some(event) = render_loadout(ui, &game_state.world, entity) {
         // Handle loadout interaction event
         info!("Loadout interaction: {:?}", event);
 
@@ -197,10 +198,10 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, world: &mut World, entity: Entit
             }
 
             InteractMode::DoubleClick => {
-                let result = systems::inventory::unequip(world, entity, &slot);
+                let result = systems::inventory::unequip(game_state, entity, &slot);
                 if let Some(item) = result {
                     info!("Unequipped item: {:?}", item);
-                    systems::inventory::add_item(world, entity, item);
+                    systems::inventory::add_item(&mut game_state.world, entity, item);
                 }
             }
 
@@ -211,14 +212,14 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, world: &mut World, entity: Entit
         }
     }
 
-    if let Some(event) = render_inventory(ui, world, entity) {
+    if let Some(event) = render_inventory(ui, &mut game_state.world, entity) {
         // Handle inventory interaction event
         info!("Inventory interaction: {:?}", event);
 
         let ContainerSlot::Inventory(index) = event.slot else {
             return;
         };
-        let item = systems::helpers::get_component::<Inventory>(world, entity)
+        let item = systems::helpers::get_component::<Inventory>(&game_state.world, entity)
             .items()
             .get(index)
             .cloned()
@@ -232,15 +233,19 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, world: &mut World, entity: Entit
 
             InteractMode::DoubleClick => {
                 // Try to equip the item
-                let result = systems::inventory::equip(world, entity, item);
+                let result = systems::inventory::equip(game_state, entity, item);
                 match result {
                     Ok(unequipped_items) => {
                         // Remove the item that was equipped from the inventory
-                        systems::inventory::remove_item(world, entity, index);
+                        systems::inventory::remove_item(&mut game_state.world, entity, index);
                         for unequipped_item in unequipped_items {
                             info!("Unequipped item: {:?}", unequipped_item);
                             // Add unequipped items back to inventory
-                            systems::inventory::add_item(world, entity, unequipped_item);
+                            systems::inventory::add_item(
+                                &mut game_state.world,
+                                entity,
+                                unequipped_item,
+                            );
                         }
                     }
                     Err(err) => {

@@ -15,6 +15,8 @@ use crate::{
         damage::DamageRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
+        id::EffectId,
+        spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
     engine::{
@@ -74,10 +76,12 @@ impl Event {
             EventKind::DamageRollPerformed(entity, _) => Some(*entity),
             EventKind::DamageRollResolved(entity, _) => Some(*entity),
             EventKind::Encounter(_) => None,
-            // TODO: Same problem as ReactionTriggered
             EventKind::TurnBoundary { entity, .. } => Some(*entity),
+            // TODO: Same problem as ReactionTriggered
             EventKind::RestStarted { participants, .. } => Some(*participants.first()?),
             EventKind::RestFinished { participants, .. } => Some(*participants.first()?),
+            EventKind::LostConcentration { entity, .. } => Some(*entity),
+            EventKind::LostEffect { entity, .. } => Some(*entity),
         }
     }
 
@@ -171,6 +175,15 @@ pub enum EventKind {
         kind: RestKind,
         participants: Vec<Entity>,
     },
+
+    LostConcentration {
+        entity: Entity,
+        instances: Vec<ConcentrationInstance>,
+    },
+    LostEffect {
+        entity: Entity,
+        effect: EffectId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,7 +241,11 @@ impl EventFilter {
     {
         Self(Arc::new(filter))
     }
-    
+
+    pub fn response_to_event_id(event_id: EventId) -> Self {
+        Self::new(move |event| event.response_to == Some(event_id))
+    }
+
     pub fn matches(&self, event: &Event) -> bool {
         (self.0)(event)
     }
@@ -236,25 +253,25 @@ impl EventFilter {
 
 #[derive(Clone)]
 pub struct EventCallback(
-    Arc<dyn Fn(&mut GameState, &Event, EventListenerId) -> CallbackResult + Send + Sync + 'static>,
+    Arc<dyn Fn(&mut GameState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static>,
 );
 
 impl EventCallback {
     pub fn new<F>(callback: F) -> Self
     where
-        F: Fn(&mut GameState, &Event, EventListenerId) -> CallbackResult + Send + Sync + 'static,
+        F: Fn(&mut GameState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static,
     {
         Self(Arc::new(callback))
     }
 
-    pub fn run(&self, game_state: &mut GameState, event: &Event, listener: EventListenerId) {
-        let result = (self.0)(game_state, event, listener);
+    pub fn run(&self, game_state: &mut GameState, event: &Event, source: &ListenerSource) {
+        let result = (self.0)(game_state, event, &source);
         match result {
             CallbackResult::Event(event) => {
                 game_state.process_event(event);
             }
             CallbackResult::EventWithCallback(event, callback) => {
-                game_state.process_event_with_callback(event, callback);
+                game_state.process_event_with_response_callback(event, callback);
             }
             CallbackResult::None => {}
         }
@@ -287,15 +304,22 @@ pub struct EventListener {
     pub source: ListenerSource,
     pub filter: EventFilter,
     pub callback: EventCallback,
+    pub one_shot: bool,
 }
 
 impl EventListener {
-    pub fn new(filter: EventFilter, callback: EventCallback, source: ListenerSource) -> Self {
+    pub fn new(
+        filter: EventFilter,
+        callback: EventCallback,
+        source: ListenerSource,
+        one_shot: bool,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             source,
             filter,
             callback,
+            one_shot,
         }
     }
 }
@@ -348,43 +372,5 @@ impl EventDispatcher {
                 self.listeners.remove(&listener_id);
             }
         }
-    }
-}
-
-// TODO: Replace with EventListener?
-#[derive(Clone)]
-pub struct EventResponseListener {
-    trigger_id: EventId,
-    callback: EventCallback,
-}
-
-impl EventResponseListener {
-    pub fn new(trigger_id: EventId, callback: EventCallback) -> Self {
-        Self {
-            trigger_id,
-            callback,
-        }
-    }
-
-    pub fn trigger_id(&self) -> EventId {
-        self.trigger_id
-    }
-
-    pub fn matches(&self, event: &Event) -> bool {
-        if let Some(id) = event.response_to {
-            if id == self.trigger_id {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    pub fn callback(&self, game_state: &mut GameState, event: &Event) {
-        self.callback.run(
-            game_state,
-            event,
-            // TEMPORARY
-            EventListenerId::new_v4(),
-        );
     }
 }

@@ -35,6 +35,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{CallbackResult, EventCallback, EventKind, ListenerSource},
+        game_state::GameState,
     },
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
@@ -140,9 +141,17 @@ impl From<EffectDefinition> for Effect {
             let effect_id = effect_id.clone();
             let modifiers = definition.modifiers.clone();
             effect.on_apply = Arc::new(
-                move |world: &mut World, entity: Entity, context: Option<&ActionContext>| {
+                move |game_state: &mut GameState,
+                      entity: Entity,
+                      context: Option<&ActionContext>| {
                     for modifier in &modifiers {
-                        modifier.evaluate(world, entity, &effect_id, EffectPhase::Apply, context);
+                        modifier.evaluate(
+                            game_state,
+                            entity,
+                            &effect_id,
+                            EffectPhase::Apply,
+                            context,
+                        );
                     }
                 },
             );
@@ -152,9 +161,9 @@ impl From<EffectDefinition> for Effect {
         {
             let effect_id = effect_id.clone();
             let modifiers_for_unapply = definition.modifiers;
-            effect.on_unapply = Arc::new(move |world: &mut World, entity: Entity| {
+            effect.on_unapply = Arc::new(move |game_state: &mut GameState, entity: Entity| {
                 for modifier in &modifiers_for_unapply {
-                    modifier.evaluate(world, entity, &effect_id, EffectPhase::Unapply, None);
+                    modifier.evaluate(game_state, entity, &effect_id, EffectPhase::Unapply, None);
                 }
             });
         }
@@ -327,7 +336,7 @@ pub enum EffectPhase {
 impl EffectModifier {
     pub fn evaluate(
         &self,
-        world: &mut World,
+        game_state: &mut GameState,
         entity: Entity,
         effect_id: &EffectId,
         phase: EffectPhase,
@@ -336,8 +345,10 @@ impl EffectModifier {
         let source = ModifierSource::Effect(effect_id.clone());
         match self {
             EffectModifier::Ability { ability: modifier } => {
-                let mut abilities =
-                    systems::helpers::get_component_mut::<AbilityScoreMap>(world, entity);
+                let mut abilities = systems::helpers::get_component_mut::<AbilityScoreMap>(
+                    &mut game_state.world,
+                    entity,
+                );
                 match phase {
                     EffectPhase::Apply => {
                         abilities.add_modifier(&modifier.ability, source, modifier.delta);
@@ -349,23 +360,28 @@ impl EffectModifier {
             }
 
             EffectModifier::Skill { skill: modifier } => {
-                let mut skills = systems::helpers::get_component_mut::<SkillSet>(world, entity);
+                let mut skills =
+                    systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
                 Self::apply_d20_check_modifier(&mut *skills, modifier, source, phase);
             }
 
             EffectModifier::SavingThrow {
                 saving_throw: modifier,
             } => {
-                let mut saves =
-                    systems::helpers::get_component_mut::<SavingThrowSet>(world, entity);
+                let mut saves = systems::helpers::get_component_mut::<SavingThrowSet>(
+                    &mut game_state.world,
+                    entity,
+                );
                 Self::apply_d20_check_modifier(&mut *saves, modifier, source, phase);
             }
 
             EffectModifier::DamageResistance {
                 resistance: modifier,
             } => {
-                let mut res =
-                    systems::helpers::get_component_mut::<DamageResistances>(world, entity);
+                let mut res = systems::helpers::get_component_mut::<DamageResistances>(
+                    &mut game_state.world,
+                    entity,
+                );
                 let mitigation_effect = DamageMitigationEffect {
                     source: source.clone(),
                     operation: modifier.operation.clone(),
@@ -385,8 +401,10 @@ impl EffectModifier {
                 amount,
                 disable,
             } => {
-                let mut resources =
-                    systems::helpers::get_component_mut::<ResourceMap>(world, entity);
+                let mut resources = systems::helpers::get_component_mut::<ResourceMap>(
+                    &mut game_state.world,
+                    entity,
+                );
                 match phase {
                     EffectPhase::Apply => {
                         if let Some(amount) = amount {
@@ -408,7 +426,8 @@ impl EffectModifier {
             }
 
             EffectModifier::Speed { speed: modifier } => {
-                let mut speed = systems::helpers::get_component_mut::<Speed>(world, entity);
+                let mut speed =
+                    systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
                 match phase {
                     EffectPhase::Apply => match &modifier.modifier {
                         SpeedModifier::Flat(bonus) => {
@@ -436,11 +455,14 @@ impl EffectModifier {
                 temporary_hit_points,
             } => {
                 if let Some(context) = context {
-                    let amount = (temporary_hit_points.function)(world, entity, context)
-                        .roll()
-                        .subtotal as u32;
-                    let mut hit_points =
-                        systems::helpers::get_component_mut::<HitPoints>(world, entity);
+                    let amount =
+                        (temporary_hit_points.function)(&mut game_state.world, entity, context)
+                            .roll()
+                            .subtotal as u32;
+                    let mut hit_points = systems::helpers::get_component_mut::<HitPoints>(
+                        &mut game_state.world,
+                        entity,
+                    );
                     let source = ModifierSource::Effect(effect_id.clone());
                     match phase {
                         EffectPhase::Apply => {
@@ -457,7 +479,7 @@ impl EffectModifier {
                 break_concentration,
             } => {
                 if *break_concentration && phase == EffectPhase::Apply {
-                    systems::spells::break_concentration(world, entity);
+                    systems::spells::break_concentration(game_state, entity);
                 }
             }
         }
@@ -1104,11 +1126,9 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
                     event_filter: event.into(),
                     callback: match callback {
                         EventCallbackDefinition::RepeatApplyCondition => {
-                            EventCallback::new(move |game_state, event, listener| {
-                                if let Some(listener) =
-                                    game_state.event_dispatcher.get_listener(&listener)
-                                    && let ListenerSource::EffectInstance { id, entity } =
-                                        listener.source.clone()
+                            EventCallback::new(move |game_state, event, source| {
+                                if let ListenerSource::EffectInstance { id, entity } =
+                                    source.clone()
                                 {
                                     debug!(
                                         "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
@@ -1142,7 +1162,7 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
                                                     saving_throw_dc.clone(),
                                                 ),
                                             );
-                                            game_state.process_event_with_callback(
+                                            game_state.process_event_with_response_callback(
                                                 event,
                                                 EventCallback::new({
                                                     move |game_state, event, _| {
@@ -1154,7 +1174,7 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
                                                         {
                                                             if result.is_success(dc) {
                                                                 systems::effects::remove_effect(
-                                                                    &mut game_state.world,
+                                                                    game_state,
                                                                     entity,
                                                                     &instance_id,
                                                                 );

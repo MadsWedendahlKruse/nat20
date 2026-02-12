@@ -17,7 +17,11 @@ use crate::{
             spellbook::{ClassSpellcastingState, Spellbook},
         },
     },
-    engine::action_prompt::ActionExecutionInstanceId,
+    engine::{
+        action_prompt::ActionExecutionInstanceId,
+        event::{Event, EventKind},
+        game_state::GameState,
+    },
     registry::registry::ClassesRegistry,
     systems,
 };
@@ -208,7 +212,7 @@ pub fn update_spellbook(
 }
 
 pub fn add_concentration_instance(
-    world: &mut World,
+    game_state: &mut GameState,
     caster: Entity,
     instance: ConcentrationInstance,
     action_instance: &ActionExecutionInstanceId,
@@ -219,7 +223,8 @@ pub fn add_concentration_instance(
     );
 
     let current_action = {
-        let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(world, caster);
+        let mut spellbook =
+            systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, caster);
         let tracker = spellbook.concentration_tracker_mut();
         tracker.action_instance().cloned()
     };
@@ -227,29 +232,37 @@ pub fn add_concentration_instance(
     if let Some(existing_action_instance) = current_action
         && existing_action_instance != *action_instance
     {
-        break_concentration(world, caster);
+        break_concentration(game_state, caster);
     }
 
     {
-        let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(world, caster);
+        let mut spellbook =
+            systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, caster);
         spellbook
             .concentration_tracker_mut()
             .add_instance(instance, action_instance);
     }
 }
 
-pub fn break_concentration(world: &mut World, target: Entity) {
-    // TODO: Do we need some kind of event for this? Then we can log that some
-    // entities lost an effect due to concentration breakage, etc.
-
+pub fn break_concentration(game_state: &mut GameState, target: Entity) {
     debug!("Breaking concentration for entity {:?}", target);
 
     let instances_to_break: Vec<ConcentrationInstance> = {
-        let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(world, target);
+        let mut spellbook =
+            systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, target);
         spellbook.concentration_tracker_mut().take_instances()
     };
 
-    for instance in instances_to_break {
-        instance.break_concentration(world);
+    if instances_to_break.is_empty() {
+        return;
+    }
+
+    game_state.process_event(Event::new(EventKind::LostConcentration {
+        entity: target,
+        instances: instances_to_break.clone(),
+    }));
+
+    for instance in &instances_to_break {
+        instance.break_concentration(game_state);
     }
 }

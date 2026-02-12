@@ -4,6 +4,7 @@ use nat20_core::{
         ai::PlayerControlledTag,
         d20::D20CheckDC,
         modifier::{ModifierSet, ModifierSource},
+        resource::RechargeRule,
         saving_throw::SavingThrowKind,
         skill::Skill,
         time::{EntityClock, TimeStep, TurnBoundary},
@@ -60,6 +61,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     [
                         "Despawn",
                         "Heal Full",
+                        "Restore All Resources",
                         "Clock (Advance Time)",
                         "Toggle Player Control",
                         "Saving Throw",
@@ -78,24 +80,32 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                             ui.close_current_popup();
                         }
                         2 => {
-                            self.state = CreatureDebugState::Clock;
+                            systems::resources::recharge(
+                                &mut game_state.world,
+                                self.creature,
+                                &RechargeRule::Daily,
+                            );
+                            ui.close_current_popup();
                         }
                         3 => {
-                            self.state = CreatureDebugState::TogglePlayerControl;
+                            self.state = CreatureDebugState::Clock;
                         }
                         4 => {
+                            self.state = CreatureDebugState::TogglePlayerControl;
+                        }
+                        5 => {
                             self.state = CreatureDebugState::Check {
                                 kind: CheckKind::SavingThrow,
                                 dc_value: 10,
                             };
                         }
-                        5 => {
+                        6 => {
                             self.state = CreatureDebugState::Check {
                                 kind: CheckKind::SkillCheck,
                                 dc_value: 10,
                             };
                         }
-                        6 => {
+                        7 => {
                             let starting_pose = game_state
                                 .world
                                 .get::<&CreaturePose>(self.creature)

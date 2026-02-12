@@ -69,7 +69,7 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
         }
     }
 
-    systems::effects::remove_effects(&mut game_state.world, entity, &expired_effects);
+    systems::effects::remove_effects(game_state, entity, &expired_effects);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -84,7 +84,6 @@ pub enum RestError {
     InCombat { entities: Vec<Entity> },
     NotResting { entities: Vec<Entity> },
     DifferentRestKinds { entities: HashMap<Entity, RestKind> },
-    ActionError(ActionError),
 }
 
 pub fn on_turn_start(world: &mut World, entity: Entity) {
@@ -117,15 +116,13 @@ pub fn start_rest(
         kind: *kind,
         participants: participants.clone(),
     });
-    let result = game_state
-        .process_event(event)
-        .map_err(RestError::ActionError);
+    game_state.process_event(event);
 
     participants.iter().for_each(|&entity| {
         game_state.resting.insert(entity, *kind);
     });
 
-    result
+    Ok(())
 }
 
 pub fn finish_rest(game_state: &mut GameState, participants: Vec<Entity>) -> Result<(), RestError> {
@@ -165,9 +162,7 @@ pub fn finish_rest(game_state: &mut GameState, participants: Vec<Entity>) -> Res
         kind: *first_kind,
         participants: participants.clone(),
     });
-    game_state
-        .process_event(event)
-        .map_err(RestError::ActionError)?;
+    game_state.process_event(event);
 
     on_rest_end(&mut game_state.world, &participants, first_kind);
 

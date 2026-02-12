@@ -14,11 +14,12 @@ use crate::{
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
     },
-    engine::action_prompt::ActionData,
+    engine::{action_prompt::ActionData, game_state::GameState},
 };
 
-pub type ApplyEffectHook = Arc<dyn Fn(&mut World, Entity, Option<&ActionContext>) + Send + Sync>;
-pub type UnapplyEffectHook = Arc<dyn Fn(&mut World, Entity) + Send + Sync>;
+pub type ApplyEffectHook =
+    Arc<dyn Fn(&mut GameState, Entity, Option<&ActionContext>) + Send + Sync>;
+pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 pub type AttackRollHook = Arc<dyn Fn(&World, Entity, &mut AttackRoll) + Send + Sync>;
 pub type AttackRollResultHook = Arc<dyn Fn(&World, Entity, &mut AttackRollResult) + Send + Sync>;
 /// Hook for when an entity is attacked. Parameters are: world, victim, attacker, attack roll result.

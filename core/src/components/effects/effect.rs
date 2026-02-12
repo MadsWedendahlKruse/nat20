@@ -32,6 +32,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{EventCallback, EventFilter},
+        game_state::GameState,
     },
     registry::{
         registry::EffectsRegistry,
@@ -147,9 +148,9 @@ impl Effect {
             replaces: None,
             children: Vec::new(),
 
-            on_apply: Arc::new(|_: &mut World, _: Entity, _: Option<&ActionContext>| {})
+            on_apply: Arc::new(|_: &mut GameState, _: Entity, _: Option<&ActionContext>| {})
                 as ApplyEffectHook,
-            on_unapply: Arc::new(|_: &mut World, _: Entity| {}) as UnapplyEffectHook,
+            on_unapply: Arc::new(|_: &mut GameState, _: Entity| {}) as UnapplyEffectHook,
             on_skill_check: HashMap::new(),
             on_saving_throw: HashMap::new(),
             pre_attack_roll: Arc::new(|_: &World, _: Entity, _: &mut AttackRoll| {})
@@ -366,6 +367,14 @@ impl EffectInstance {
 
             EffectLifetime::TurnBoundary { ref remaining, .. } => remaining.as_turns() == 0,
         }
+    }
+
+    pub fn is_permanent(&self) -> bool {
+        matches!(self.lifetime, EffectLifetime::Permanent)
+    }
+
+    pub fn is_parent(&self) -> bool {
+        self.parent.is_none()
     }
 }
 

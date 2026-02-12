@@ -418,7 +418,7 @@ pub fn perform_standard_action(
     action_kind: &ActionKind,
     action_data: &ActionData,
     target: Entity,
-) -> Result<(), ActionError> {
+) {
     match action_kind {
         ActionKind::Standard { condition, payload } => match condition {
             ActionCondition::None => {
@@ -460,7 +460,7 @@ fn perform_unconditional(
     action_data: &ActionData,
     target: Entity,
     payload: &ActionPayload,
-) -> Result<(), ActionError> {
+) {
     // Apply effect immediately (no gating for unconditional).
     let effect_outcome: Option<EffectOutcome> = get_effect_outcome(
         game_state,
@@ -551,7 +551,7 @@ fn perform_unconditional(
         }
     });
 
-    game_state.process_event_with_callback(damage_event, callback)
+    game_state.process_event_with_response_callback(damage_event, callback)
 }
 
 fn perform_attack_roll(
@@ -561,7 +561,7 @@ fn perform_attack_roll(
     attack_roll_function: &Arc<AttackRollFunction>,
     payload: &ActionPayload,
     damage_on_miss: &Option<DamageOnFailure>,
-) -> Result<(), ActionError> {
+) {
     let attack_roll = systems::damage::attack_roll_fn(
         attack_roll_function.as_ref(),
         &game_state.world,
@@ -703,7 +703,7 @@ fn perform_attack_roll(
         }
     });
 
-    game_state.process_event_with_callback(attack_event, callback)
+    game_state.process_event_with_response_callback(attack_event, callback)
 }
 
 fn perform_saving_throw(
@@ -713,7 +713,7 @@ fn perform_saving_throw(
     saving_throw_function: &Arc<SavingThrowFunction>,
     payload: &ActionPayload,
     damage_on_save: &Option<DamageOnFailure>,
-) -> Result<(), ActionError> {
+) {
     let saving_throw_dc =
         saving_throw_function(&game_state.world, action_data.actor, &action_data.context);
 
@@ -832,7 +832,7 @@ fn perform_saving_throw(
         }
     });
 
-    game_state.process_event_with_callback(saving_throw_event, callback)
+    game_state.process_event_with_response_callback(saving_throw_event, callback)
 }
 
 // TODO: Doesn't seem like the cleanest solution
@@ -910,11 +910,12 @@ fn get_effect_outcome(
         if let Some(spell) = SpellsRegistry::get(&spell_id) {
             if spell.has_flag(SpellFlag::Concentration) {
                 systems::spells::add_concentration_instance(
-                    &mut game_state.world,
+                    game_state,
                     action_data.actor,
                     ConcentrationInstance::Effect {
                         entity: target,
-                        effect: effect_instance_id,
+                        effect: effect.effect_id.clone(),
+                        instance: effect_instance_id,
                     },
                     &action_data.instance_id,
                 );

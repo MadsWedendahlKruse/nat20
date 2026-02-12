@@ -1,4 +1,4 @@
-use std::{cmp::max, ops::Deref, sync::Arc};
+use std::{cmp::max, ops::Deref};
 
 use hecs::{Entity, World};
 use tracing::debug;
@@ -191,7 +191,7 @@ pub fn damage(
                         .remove_instances_by_entity(target);
                 }
 
-                systems::effects::remove_effect(&mut game_state.world, target, &id);
+                systems::effects::remove_effect(game_state, target, &id);
             }
         }
     }
@@ -210,7 +210,7 @@ pub fn damage(
         match source {
             ModifierSource::Effect(effect_id) => {
                 // TODO: Source should be EffectInstanceId?
-                systems::effects::remove_effects_by_id(&mut game_state.world, target, effect_id);
+                systems::effects::remove_effects_by_id(game_state, target, effect_id);
             }
             _ => { /* Other sources don't need to be removed? */ }
         }
@@ -245,7 +245,7 @@ pub fn damage(
                 match &event.kind {
                     EventKind::D20CheckResolved(_, check_result, dc) => {
                         if !check_result.is_success(dc) {
-                            systems::spells::break_concentration(&mut game_state.world, target);
+                            systems::spells::break_concentration(game_state, target);
                         }
                     }
                     _ => {}
@@ -253,7 +253,7 @@ pub fn damage(
                 CallbackResult::None
             }
         });
-        game_state.process_event_with_callback(saving_throw_event, callback);
+        game_state.process_event_with_response_callback(saving_throw_event, callback);
     }
 
     (Some(mitigation_result), new_life_state)

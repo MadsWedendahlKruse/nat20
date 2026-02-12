@@ -9,10 +9,13 @@ use crate::{
         ability::Ability,
         actions::action::{Action, ActionKind, TargetingFunction},
         effects::effect::EffectInstanceId,
-        id::{IdProvider, ScriptId, SpellId},
+        id::{EffectId, IdProvider, ScriptId, SpellId},
         resource::ResourceAmountMap,
     },
-    engine::action_prompt::ActionExecutionInstanceId,
+    engine::{
+        action_prompt::ActionExecutionInstanceId,
+        game_state::{self, GameState},
+    },
     registry::serialize::spell::SpellDefinition,
     systems,
 };
@@ -135,21 +138,24 @@ pub const SPELL_CASTING_ABILITIES: &[Ability; 3] =
 
 pub const CONCENTRATION_SAVING_THROW_DC_DEFAULT: i32 = 10;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConcentrationInstance {
     Effect {
         entity: Entity,
-        effect: EffectInstanceId,
+        effect: EffectId,
+        instance: EffectInstanceId,
     },
     // TODO: Environmental effects (e.g. web)
 }
 
 impl ConcentrationInstance {
-    pub fn break_concentration(&self, world: &mut World) {
+    pub fn break_concentration(&self, game_state: &mut GameState) {
         match self {
-            ConcentrationInstance::Effect { entity, effect } => {
-                systems::effects::remove_effect(world, *entity, effect);
+            ConcentrationInstance::Effect {
+                entity, instance, ..
+            } => {
+                systems::effects::remove_effect(game_state, *entity, instance);
             }
         }
     }

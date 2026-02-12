@@ -19,8 +19,8 @@ use crate::{
         },
         encounter::{Encounter, EncounterId},
         event::{
-            EncounterEvent, Event, EventCallback, EventDispatcher, EventId, EventKind, EventLog,
-            EventResponseListener,
+            EncounterEvent, Event, EventCallback, EventDispatcher, EventFilter, EventId, EventKind,
+            EventListener, EventLog, ListenerSource,
         },
         game_state,
         geometry::WorldGeometry,
@@ -45,7 +45,6 @@ pub struct GameState {
     pub interaction_engine: InteractionEngine,
     pub event_log: EventLog,
     pub event_dispatcher: EventDispatcher,
-    event_response_listeners: HashMap<EventId, EventResponseListener>,
 }
 
 impl GameState {
@@ -59,7 +58,6 @@ impl GameState {
             interaction_engine: InteractionEngine::default(),
             event_log: EventLog::new(),
             event_dispatcher: EventDispatcher::new(),
-            event_response_listeners: HashMap::new(),
         }
     }
 
@@ -288,7 +286,7 @@ impl GameState {
                         Event::new(EventKind::ActionRequested {
                             action: action.clone(),
                         }),
-                    )?;
+                    );
                 }
 
                 ActionDecisionKind::Reaction { choice, .. } => {
@@ -305,7 +303,7 @@ impl GameState {
                         Event::new(EventKind::ReactionRequested {
                             reaction: reaction_data.clone(),
                         }),
-                    )?;
+                    );
                 }
             }
         }
@@ -325,7 +323,7 @@ impl GameState {
         Ok(())
     }
 
-    pub fn process_event(&mut self, event: Event) -> Result<(), ActionError> {
+    pub fn process_event(&mut self, event: Event) {
         if let Some(actor) = event.actor() {
             self.process_event_scoped(self.scope_for_entity(actor), event)
         } else {
@@ -333,26 +331,21 @@ impl GameState {
         }
     }
 
-    pub(crate) fn process_event_scoped(
-        &mut self,
-        scope: InteractionScopeId,
-        event: Event,
-    ) -> Result<(), ActionError> {
+    pub(crate) fn process_event_scoped(&mut self, scope: InteractionScopeId, event: Event) {
         self.log_event(&scope, event.clone());
 
-        if let Some(event_id) = event.response_to {
-            if let Some(listener) = self.event_response_listeners.get(&event_id) {
-                if listener.matches(&event) {
-                    let listener = self.event_response_listeners.remove(&event_id).unwrap();
-                    listener.callback(self, &event);
-                }
-            }
-        }
-
-        for listener_id in self.event_dispatcher.dispatch(&event) {
+        let triggerd_listeners = self.event_dispatcher.dispatch(&event);
+        for listener_id in &triggerd_listeners {
             if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
                 let callback = listener.callback.clone();
-                callback.run(self, &event, listener_id);
+                callback.run(self, &event, &listener.source.clone());
+            }
+        }
+        for listener_id in triggerd_listeners {
+            if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
+                if listener.one_shot {
+                    self.event_dispatcher.remove_listener_by_id(&listener_id);
+                }
             }
         }
 
@@ -369,13 +362,12 @@ impl GameState {
                     true,
                 );
                 session.queue_event(event, true);
-                return Ok(());
+                return;
             }
         }
 
         // No reaction window → advance now
         self.advance_event(event, false);
-        Ok(())
     }
 
     fn validate_or_refill_prompt_queue(&mut self, scope: InteractionScopeId) {
@@ -674,19 +666,18 @@ impl GameState {
         }
     }
 
-    pub fn add_event_listener(&mut self, event_listener: EventResponseListener) {
-        self.event_response_listeners
-            .insert(event_listener.trigger_id(), event_listener);
-    }
-
-    pub fn process_event_with_callback(
-        &mut self,
-        event: Event,
-        callback: EventCallback,
-    ) -> Result<(), ActionError> {
+    pub fn process_event_with_response_callback(&mut self, event: Event, callback: EventCallback) {
         if let Some(actor) = event.actor() {
-            self.add_event_listener(EventResponseListener::new(event.id, callback));
-            self.process_event_scoped(self.scope_for_entity(actor), event)
+            self.event_dispatcher.register_listener(EventListener::new(
+                EventFilter::response_to_event_id(event.id),
+                callback,
+                ListenerSource::EventResponse {
+                    trigger_id: event.id,
+                },
+                true,
+            ));
+
+            self.process_event_scoped(self.scope_for_entity(actor), event);
         } else {
             panic!(
                 "Cannot process event with callback for event without actor: {:#?}",

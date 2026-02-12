@@ -10,7 +10,7 @@ use crate::{
         modifier::ModifierSource,
     },
     engine::{
-        event::{EventListener, ListenerSource},
+        event::{Event, EventKind, EventListener, ListenerSource},
         game_state::GameState,
     },
     systems,
@@ -55,11 +55,12 @@ pub fn add_effect_template(
                     id: parent_id.clone(),
                     entity: target,
                 },
+                false,
             ));
     }
 
     add_effect_instance(
-        &mut game_state.world,
+        game_state,
         target,
         parent_id,
         &mut effect_instances,
@@ -70,7 +71,7 @@ pub fn add_effect_template(
 }
 
 pub fn add_permanent_effect(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     effect_id: EffectId,
     source: &ModifierSource,
@@ -78,24 +79,24 @@ pub fn add_permanent_effect(
 ) {
     let effect_instance = EffectInstance::permanent(effect_id.clone(), source.clone());
     let instance_id = Uuid::new_v4();
-    apply_and_replace(world, entity, &effect_instance, context);
-    effects_mut(world, entity).insert(instance_id, effect_instance);
+    apply_and_replace(game_state, entity, &effect_instance, context);
+    effects_mut(&mut game_state.world, entity).insert(instance_id, effect_instance);
 }
 
 pub fn add_permanent_effects(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     effects: Vec<EffectId>,
     source: &ModifierSource,
     context: Option<&ActionContext>,
 ) {
     for effect_id in effects {
-        add_permanent_effect(world, entity, effect_id, source, context);
+        add_permanent_effect(game_state, entity, effect_id, source, context);
     }
 }
 
 fn add_effect_instance(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     instance_id: EffectInstanceId,
     effect_instances: &mut EffectsMap,
@@ -106,73 +107,93 @@ fn add_effect_instance(
             "Adding effect instance (id: {:?}) {:?} to entity {:?}",
             instance_id, instance, entity
         );
-        apply_and_replace(world, entity, &instance, context);
+        apply_and_replace(game_state, entity, &instance, context);
         for child_instance in &instance.children {
             add_effect_instance(
-                world,
+                game_state,
                 entity,
                 child_instance.clone(),
                 effect_instances,
                 context,
             );
         }
-        effects_mut(world, entity).insert(instance_id, instance);
+        effects_mut(&mut game_state.world, entity).insert(instance_id, instance);
     }
 }
 
 fn apply_and_replace(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     effect_instance: &EffectInstance,
     context: Option<&ActionContext>,
 ) {
     let effect = effect_instance.effect();
-    (effect.on_apply)(world, entity, context);
+    (effect.on_apply)(game_state, entity, context);
     if let Some(replaces) = &effect.replaces {
         // TODO: Not sure how best to find the instance that should be replaced.
         // It's probably always just one?
-        remove_effects_by_id(world, entity, replaces);
+        remove_effects_by_id(game_state, entity, replaces);
     }
 }
 
-pub fn remove_effect(world: &mut World, entity: Entity, instance_id: &EffectInstanceId) {
+pub fn remove_effect(game_state: &mut GameState, entity: Entity, instance_id: &EffectInstanceId) {
     debug!("Removing effect {:?} from entity {:?}", instance_id, entity);
-    if let Ok(effects) = world.query_one_mut::<&mut EffectsMap>(entity) {
+    if let Ok(effects) = game_state.world.query_one_mut::<&mut EffectsMap>(entity) {
         if let Some(effect_instance) = effects.remove(instance_id) {
             let effect = effect_instance.effect();
-            (effect.on_unapply)(world, entity);
+            (effect.on_unapply)(game_state, entity);
+
+            if !effect_instance.is_permanent() {
+                game_state.event_dispatcher.remove_listeners_by_source(
+                    &ListenerSource::EffectInstance {
+                        id: *instance_id,
+                        entity,
+                    },
+                );
+
+                if effect_instance.is_parent() {
+                    game_state.process_event(Event::new(EventKind::LostEffect {
+                        entity,
+                        effect: effect.id.clone(),
+                    }));
+                }
+            }
 
             for child_id in effect_instance.children.iter() {
-                remove_effect(world, entity, child_id);
+                remove_effect(game_state, entity, child_id);
             }
         }
     }
 }
 
-pub fn remove_effects(world: &mut World, entity: Entity, effects: &[EffectInstanceId]) {
+pub fn remove_effects(game_state: &mut GameState, entity: Entity, effects: &[EffectInstanceId]) {
     for effect_id in effects {
-        remove_effect(world, entity, effect_id);
+        remove_effect(game_state, entity, effect_id);
     }
 }
 
-pub fn remove_effects_by_source(world: &mut World, entity: Entity, source: &ModifierSource) {
-    remove_effects_by_filter(world, entity, |effect_instance| {
+pub fn remove_effects_by_source(
+    game_state: &mut GameState,
+    entity: Entity,
+    source: &ModifierSource,
+) {
+    remove_effects_by_filter(game_state, entity, |effect_instance| {
         effect_instance.source == *source
     });
 }
 
-pub fn remove_effects_by_id(world: &mut World, entity: Entity, effect_id: &EffectId) {
-    remove_effects_by_filter(world, entity, |effect_instance| {
+pub fn remove_effects_by_id(game_state: &mut GameState, entity: Entity, effect_id: &EffectId) {
+    remove_effects_by_filter(game_state, entity, |effect_instance| {
         effect_instance.effect_id == *effect_id
     });
 }
 
 fn remove_effects_by_filter(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     filter: impl Fn(&EffectInstance) -> bool,
 ) {
-    let instance_ids: Vec<EffectInstanceId> = effects(world, entity)
+    let instance_ids: Vec<EffectInstanceId> = effects(&game_state.world, entity)
         .iter()
         .filter_map(|(id, effect_instance)| {
             if filter(effect_instance) {
@@ -184,6 +205,6 @@ fn remove_effects_by_filter(
         .collect();
 
     for instance_id in instance_ids {
-        remove_effect(world, entity, &instance_id);
+        remove_effect(game_state, entity, &instance_id);
     }
 }

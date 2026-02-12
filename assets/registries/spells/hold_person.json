@@ -5,7 +5,8 @@
     "school": "enchantment",
     "flags": [
         "verbal",
-        "somatic"
+        "somatic",
+        "concentration"
     ],
     "kind": {
         "standard": {
