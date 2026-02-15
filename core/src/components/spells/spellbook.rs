@@ -40,6 +40,8 @@ use crate::{
     systems,
 };
 
+const BASE_SPELL_SAVE_DC: i32 = 8;
+
 /// A deterministic bounded set:
 /// - stable iteration order (insertion order)
 /// - stable truncation behavior when shrinking caps
@@ -236,8 +238,8 @@ pub struct Spellbook {
     granted: HashMap<GrantedSpellSource, GrantedSpellMap>,
     concentration: ConcentrationTracker,
 
-    saving_throw_modifiers: ModifierSet,
-    attack_roll_modifiers: ModifierSet,
+    saving_throw: ModifierSet,
+    attack_roll: D20Check,
 }
 
 impl Spellbook {
@@ -246,8 +248,11 @@ impl Spellbook {
             class_states: HashMap::new(),
             granted: HashMap::new(),
             concentration: ConcentrationTracker::default(),
-            saving_throw_modifiers: ModifierSet::new(),
-            attack_roll_modifiers: ModifierSet::new(),
+            saving_throw: ModifierSet::from(ModifierSource::Base, BASE_SPELL_SAVE_DC),
+            attack_roll: D20Check::new(Proficiency::new(
+                ProficiencyLevel::Proficient,
+                ModifierSource::Base,
+            )),
         }
     }
 
@@ -752,6 +757,14 @@ impl Spellbook {
             }
         }
     }
+
+    pub fn saving_throw_modifiers_mut(&mut self) -> &mut ModifierSet {
+        &mut self.saving_throw
+    }
+
+    pub fn attack_roll_modifiers_mut(&mut self) -> &mut D20Check {
+        &mut self.attack_roll
+    }
 }
 
 impl AttackRollProvider for Spellbook {
@@ -771,10 +784,7 @@ impl AttackRollProvider for Spellbook {
             let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
             let spellcasting_ability = self.spellcasting_ability(world, entity, source);
 
-            let mut roll = D20Check::new(Proficiency::new(
-                ProficiencyLevel::Proficient,
-                ModifierSource::Base,
-            ));
+            let mut roll = self.attack_roll.clone();
             let spellcasting_modifier = ability_scores
                 .ability_modifier(&spellcasting_ability)
                 .total();
@@ -797,8 +807,6 @@ impl AttackRollProvider for Spellbook {
     }
 }
 
-const BASE_SAVE_DC: i32 = 8;
-
 impl SavingThrowProvider for Spellbook {
     fn saving_throw(
         &self,
@@ -819,8 +827,7 @@ impl SavingThrowProvider for Spellbook {
             .unwrap()
             .proficiency_bonus();
 
-        let mut spell_save_dc = ModifierSet::new();
-        spell_save_dc.add_modifier(ModifierSource::Base, BASE_SAVE_DC);
+        let mut spell_save_dc = self.saving_throw.clone();
         let spellcasting_modifier = ability_scores
             .ability_modifier(&spellcasting_ability)
             .total();
