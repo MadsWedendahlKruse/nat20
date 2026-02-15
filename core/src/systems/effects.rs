@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::action::{ActionContext, EffectApplyCondition},
+        actions::action::{ActionConditionResolution, ActionContext},
         effects::effect::{EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectsMap},
         id::EffectId,
         modifier::ModifierSource,
@@ -32,10 +32,10 @@ pub fn add_effect_template(
     source: ModifierSource,
     template: &EffectInstanceTemplate,
     context: Option<&ActionContext>,
-    apply_condition: EffectApplyCondition,
+    action_resolution: ActionConditionResolution,
 ) -> EffectInstanceId {
     let (parent_id, mut effect_instances) =
-        template.instantiate(applier, target, source, apply_condition);
+        template.instantiate(applier, target, source, action_resolution);
 
     debug!(
         "Instantiated effect instances from template\n{:#?} ->\n{:#?}",

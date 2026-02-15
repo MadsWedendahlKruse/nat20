@@ -188,7 +188,7 @@ pub enum ActionKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum DamageResolutionKind {
+pub enum ActionConditionResolution {
     Unconditional,
     AttackRoll {
         attack_roll: AttackRollResult,
@@ -202,7 +202,7 @@ pub enum DamageResolutionKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DamageOutcome {
-    pub kind: DamageResolutionKind, // Unconditional / AttackRoll / SavingThrow
+    pub resolution: ActionConditionResolution,
     pub damage_roll: Option<DamageRollResult>,
     pub damage_taken: Option<DamageMitigationResult>,
     pub new_life_state: Option<LifeState>,
@@ -215,7 +215,7 @@ impl DamageOutcome {
         new_life_state: Option<LifeState>,
     ) -> Self {
         DamageOutcome {
-            kind: DamageResolutionKind::Unconditional,
+            resolution: ActionConditionResolution::Unconditional,
             damage_roll,
             damage_taken,
             new_life_state,
@@ -230,7 +230,7 @@ impl DamageOutcome {
         armor_class: ArmorClass,
     ) -> Self {
         DamageOutcome {
-            kind: DamageResolutionKind::AttackRoll {
+            resolution: ActionConditionResolution::AttackRoll {
                 attack_roll,
                 armor_class,
             },
@@ -248,7 +248,7 @@ impl DamageOutcome {
         saving_throw_result: D20CheckResult,
     ) -> Self {
         DamageOutcome {
-            kind: DamageResolutionKind::SavingThrow {
+            resolution: ActionConditionResolution::SavingThrow {
                 saving_throw_dc,
                 saving_throw_result,
             },
@@ -261,22 +261,9 @@ impl DamageOutcome {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectOutcome {
+    pub resolution: ActionConditionResolution,
     pub effect: EffectId,
     pub applied: bool,
-    pub rule: EffectApplyCondition, // useful for debugging/telemetry
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EffectApplyCondition {
-    Unconditional,
-    OnHit {
-        attack_roll: AttackRollResult,
-        armor_class: ArmorClass,
-    },
-    OnFailedSave {
-        saving_throw_dc: SavingThrowDC,
-        saving_throw_result: D20CheckResult,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

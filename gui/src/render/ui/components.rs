@@ -8,7 +8,7 @@ use nat20_core::{
         actions::{
             action::{
                 ActionCondition, ActionContext, ActionKind, ActionKindResult, ActionResult,
-                DamageResolutionKind, ReactionResult,
+                ActionConditionResolution, ReactionResult,
             },
             targeting::{AreaShape, TargetInstance, TargetingKind, TargetingRange},
         },
@@ -985,10 +985,10 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
         match &self.kind {
             ActionKindResult::Standard(action_outcome) => {
                 if let Some(damage) = &action_outcome.damage {
-                    let no_damage_text = match damage.kind {
-                        DamageResolutionKind::Unconditional => "took no damage",
-                        DamageResolutionKind::AttackRoll { .. } => "was not hit",
-                        DamageResolutionKind::SavingThrow { .. } => "took no damage",
+                    let no_damage_text = match damage.resolution {
+                        ActionConditionResolution::Unconditional => "took no damage",
+                        ActionConditionResolution::AttackRoll { .. } => "was not hit",
+                        ActionConditionResolution::SavingThrow { .. } => "took no damage",
                     };
 
                     ui.group(|| {
@@ -1008,13 +1008,13 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
 
                     if ui.is_item_hovered() {
                         ui.tooltip(|| {
-                            match damage.kind {
-                                DamageResolutionKind::Unconditional => {
+                            match damage.resolution {
+                                ActionConditionResolution::Unconditional => {
                                     (&damage.damage_roll, &damage.damage_taken)
                                         .render(ui);
                                 }
 
-                                DamageResolutionKind::AttackRoll {
+                                ActionConditionResolution::AttackRoll {
                                     ref attack_roll,
                                     ref armor_class,
                                 } => {
@@ -1049,7 +1049,7 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
                                     }
                                 }
 
-                                DamageResolutionKind::SavingThrow {
+                                ActionConditionResolution::SavingThrow {
                                     ref saving_throw_dc,
                                     ref saving_throw_result,
                                 } => {

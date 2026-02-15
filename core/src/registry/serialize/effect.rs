@@ -6,7 +6,7 @@ use tracing::debug;
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionContext, EffectApplyCondition},
+        actions::action::{ActionConditionResolution, ActionContext},
         d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
             AttackRange, AttackSource, DamageMitigationEffect, DamageMitigationResult,
@@ -1142,16 +1142,16 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
                                             .clone();
                                     let instance_id = id.clone();
 
-                                    match &instance.apply_condition {
-                                        EffectApplyCondition::Unconditional => { /* No check to repeat */
+                                    match &instance.action_resolution {
+                                        ActionConditionResolution::Unconditional => { /* No check to repeat */
                                         }
 
-                                        EffectApplyCondition::OnHit {
+                                        ActionConditionResolution::AttackRoll {
                                             attack_roll,
                                             armor_class,
                                         } => todo!(),
 
-                                        EffectApplyCondition::OnFailedSave {
+                                        ActionConditionResolution::SavingThrow {
                                             saving_throw_dc,
                                             saving_throw_result,
                                         } => {

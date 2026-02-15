@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::action::{ActionContext, EffectApplyCondition},
+        actions::action::{ActionConditionResolution, ActionContext},
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
         },
@@ -288,7 +288,7 @@ pub struct EffectInstance {
     pub effect_id: EffectId,
     pub source: ModifierSource,
     pub applier: Option<Entity>,
-    pub apply_condition: EffectApplyCondition,
+    pub action_resolution: ActionConditionResolution,
     pub lifetime: EffectLifetime,
     pub parent: Option<EffectInstanceId>,
     pub children: HashSet<EffectInstanceId>,
@@ -301,7 +301,7 @@ impl EffectInstance {
         source: ModifierSource,
         lifetime: EffectLifetime,
         applier: Option<Entity>,
-        apply_condition: EffectApplyCondition,
+        action_resolution: ActionConditionResolution,
         end_condition: Option<EffectEndCondition>,
     ) -> Self {
         Self {
@@ -310,7 +310,7 @@ impl EffectInstance {
             source,
             lifetime,
             applier,
-            apply_condition,
+            action_resolution,
             parent: None,
             children: HashSet::new(),
             end_condition,
@@ -323,7 +323,7 @@ impl EffectInstance {
             source,
             EffectLifetime::Permanent,
             None,
-            EffectApplyCondition::Unconditional,
+            ActionConditionResolution::Unconditional,
             None,
         )
     }
@@ -394,7 +394,7 @@ impl EffectInstanceTemplate {
         applier: Entity,
         target: Entity,
         source: ModifierSource,
-        apply_condition: EffectApplyCondition,
+        action_resolution: ActionConditionResolution,
     ) -> (EffectInstanceId, EffectsMap) {
         let parent_lifetime = self.lifetime.instantiate(applier, target);
         let mut parent_instance = EffectInstance::new(
@@ -402,7 +402,7 @@ impl EffectInstanceTemplate {
             source.clone(),
             parent_lifetime,
             Some(applier),
-            apply_condition.clone(),
+            action_resolution.clone(),
             self.end_condition
                 .as_ref()
                 .map(|cond| cond.instantiate(applier, target)),
@@ -424,7 +424,7 @@ impl EffectInstanceTemplate {
                 applier,
                 target,
                 source.clone(),
-                apply_condition.clone(),
+                action_resolution.clone(),
             );
 
             // Register only the *root* child as a direct child of the parent

@@ -7,9 +7,9 @@ use crate::{
     components::{
         actions::{
             action::{
-                Action, ActionCondition, ActionContext, ActionCooldownMap, ActionKind,
-                ActionKindResult, ActionMap, ActionOutcomeBundle, ActionPayload, ActionProvider,
-                AttackRollFunction, DamageOnFailure, DamageOutcome, EffectApplyCondition,
+                Action, ActionCondition, ActionConditionResolution, ActionContext,
+                ActionCooldownMap, ActionKind, ActionKindResult, ActionMap, ActionOutcomeBundle,
+                ActionPayload, ActionProvider, AttackRollFunction, DamageOnFailure, DamageOutcome,
                 EffectOutcome, HealingOutcome, SavingThrowFunction,
             },
             targeting::{
@@ -28,7 +28,7 @@ use crate::{
         },
     },
     engine::{
-        action_prompt::{ActionData, ActionError, ReactionData},
+        action_prompt::{ActionData, ReactionData},
         event::{CallbackResult, Event, EventCallback, EventKind},
         game_state::GameState,
         geometry::WorldGeometry,
@@ -467,7 +467,7 @@ fn perform_unconditional(
         target,
         &action_data,
         &payload,
-        EffectApplyCondition::Unconditional,
+        ActionConditionResolution::Unconditional,
     );
 
     // Apply healing immediately (no gating for unconditional).
@@ -602,7 +602,7 @@ fn perform_attack_roll(
                         target,
                         &action_data,
                         &payload,
-                        EffectApplyCondition::OnHit {
+                        ActionConditionResolution::AttackRoll {
                             attack_roll: attack_roll.clone(),
                             armor_class: armor_class.clone(),
                         },
@@ -746,7 +746,7 @@ fn perform_saving_throw(
                         target,
                         &action_data,
                         &payload,
-                        EffectApplyCondition::OnFailedSave {
+                        ActionConditionResolution::SavingThrow {
                             saving_throw_result: result.d20_result().clone(),
                             saving_throw_dc: saving_throw_dc.clone(),
                         },
@@ -892,7 +892,7 @@ fn get_effect_outcome(
     target: Entity,
     action_data: &ActionData,
     payload: &ActionPayload,
-    apply_condition: EffectApplyCondition,
+    action_resolution: ActionConditionResolution,
 ) -> Option<EffectOutcome> {
     payload.effect().map(|effect| {
         let effect_instance_id = systems::effects::add_effect_template(
@@ -902,7 +902,7 @@ fn get_effect_outcome(
             ModifierSource::Action(action_data.action_id.clone()),
             effect,
             Some(&action_data.context),
-            apply_condition.clone(),
+            action_resolution.clone(),
         );
 
         // Add concentration tracking if needed
@@ -923,9 +923,9 @@ fn get_effect_outcome(
         }
 
         EffectOutcome {
+            resolution: action_resolution,
             effect: effect.effect_id.clone(),
             applied: true,
-            rule: apply_condition,
         }
     })
 }
