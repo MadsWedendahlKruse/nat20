@@ -1,15 +1,14 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    sync::Arc,
-};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use hecs::{Entity, World};
 use serde::Deserialize;
 
 use crate::{
     components::{
-        actions::targeting::{TargetInstance, TargetingContext},
+        actions::{
+            action_execution::perform_standard_action,
+            targeting::{TargetInstance, TargetingContext},
+        },
         d20::D20CheckResult,
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
@@ -381,12 +380,7 @@ impl ActionKind {
         match self {
             ActionKind::Standard { .. } => {
                 for target in targets {
-                    systems::actions::perform_standard_action(
-                        game_state,
-                        self,
-                        action_data,
-                        *target,
-                    );
+                    perform_standard_action(game_state, self, action_data, *target);
                 }
             }
 
