@@ -194,30 +194,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 }
 
 fn set_unique_name(world: &mut World, entity: Entity) {
-    let name = if let Ok(name) = world.get::<&Name>(entity) {
-        name.as_str().to_string()
-    } else {
-        "Unnamed".to_string()
-    };
-    let mut unique_name = name.clone();
-    let mut counter = 0;
-
-    while world
-        .query::<&Name>()
-        .iter()
-        .any(|(_, n)| n.as_str() == unique_name)
-    {
-        unique_name = format!("{} ({})", name, counter);
-        counter += 1;
-    }
-
-    // Counter is going to be at least 1 here because the original name was found
-    if counter < 2 {
-        // Name is already unique, no need to update
-        return;
-    }
-
     if let Ok(mut name) = world.get::<&mut Name>(entity) {
-        *name = Name::new(unique_name);
+        *name = Name::new(format!("{} ({:?})", name.as_str(), entity));
     }
 }
