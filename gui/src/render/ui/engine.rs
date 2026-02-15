@@ -274,6 +274,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                         ui.text("D20 Check:");
                         ui.same_line();
                         result_kind.render(ui);
+                        ui.same_line();
                         if result_kind.is_success(dc_kind) {
                             TextSegment::new("(Success)", TextKind::Details).render(ui);
                         } else {

@@ -984,6 +984,15 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
 
         match &self.kind {
             ActionKindResult::Standard(action_outcome) => {
+                if action_outcome.is_empty() {
+                    ui.same_line();
+                    TextSegment::new(
+                        "with no effect",
+                        TextKind::Normal,
+                    ).render(ui);
+                    return;
+                }
+
                 if let Some(damage) = &action_outcome.damage {
                     let no_damage_text = match damage.resolution {
                         ActionConditionResolution::Unconditional => "took no damage",
@@ -1112,6 +1121,12 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
 
                 if let Some(effect) = &action_outcome.effect {
                     if !effect.applied {
+                        ui.same_line();
+                        TextSegments::new(vec![
+                            (target_name.as_str(), TextKind::Target),
+                            ("was unaffected by", TextKind::Normal),
+                            (&effect.effect.to_string(), TextKind::Effect),
+                        ]).with_indent(indent_level + 1).render(ui);
                         return;
                     }
 
