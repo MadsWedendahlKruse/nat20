@@ -3,15 +3,16 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{Action, ActionCondition, ActionKind, ActionPayload, DamageOnFailure},
-        effects::effect::{EffectInstanceTemplate, EffectLifetimeTemplate},
-        id::{ActionId, EffectId, ScriptId},
+        effects::effect::EffectInstanceTemplate,
+        id::{ActionId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
     },
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
-            d20::{AttackRollProvider, SavingThrowProvider},
+            d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
+            effect::EffectInstanceDefinition,
             targeting::TargetingDefinition,
         },
     },
@@ -29,22 +30,15 @@ pub enum DamageOnFailureDefinition {
 #[serde(untagged)]
 pub enum ActionConditionDefinition {
     AttackRoll {
-        attack_roll: AttackRollProvider,
+        attack_roll: AttackRollDefinition,
         #[serde(default)]
         damage_on_miss: Option<DamageOnFailureDefinition>,
     },
     SavingThrow {
-        saving_throw: SavingThrowProvider,
+        saving_throw: SavingThrowDefinition,
         #[serde(default)]
         damage_on_save: Option<DamageOnFailureDefinition>,
     },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EffectInstanceDefinition {
-    pub effect_id: EffectId,
-    pub lifetime: EffectLifetimeTemplate,
-    pub children: Vec<(EffectId, EffectLifetimeTemplate)>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -54,7 +48,7 @@ pub struct ActionPayloadDefinition {
     #[serde(default)]
     pub healing: Option<HealEquation>,
     #[serde(default)]
-    pub effect: Option<EffectInstanceTemplate>,
+    pub effect: Option<EffectInstanceDefinition>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -123,7 +117,9 @@ impl From<ActionKindDefinition> for ActionKind {
                 },
                 payload: ActionPayload::new(
                     payload.damage.map(|eq| eq.function),
-                    payload.effect,
+                    payload
+                        .effect
+                        .map(|effect_instance_definition| effect_instance_definition.into()),
                     payload.healing.map(|eq| eq.function),
                 )
                 .unwrap(),

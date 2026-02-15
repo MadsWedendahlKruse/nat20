@@ -4,7 +4,9 @@
     "description": "You gain a +2 bonus to attack rolls you make with Ranged weapons.",
     "pre_attack_roll": [
         {
-            "modifier": "ranged +2"
+            "source": "weapon",
+            "range": "ranged",
+            "modifier": "+2"
         }
     ]
 }

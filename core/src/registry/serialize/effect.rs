@@ -1,20 +1,25 @@
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, sync::Arc};
+use tracing::debug;
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::ActionContext,
-        d20::{D20CheckKey, D20CheckSet},
+        actions::action::{ActionConditionResolution, ActionContext},
+        d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
-            DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRollResult,
+            AttackRange, AttackSource, DamageMitigationEffect, DamageMitigationResult,
+            DamageResistances, DamageRollResult,
         },
         effects::{
-            effect::{Effect, EffectInstance, EffectKind},
+            effect::{
+                Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
+                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
+            },
             hooks::{
-                ActionHook, ArmorClassHook, AttackRollHook, DamageRollResultHook, DeathHook,
-                PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
+                ActionHook, ArmorClassHook, AttackRollHook, AttackedHook, DamageRollResultHook,
+                DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -25,20 +30,24 @@ use crate::{
         saving_throw::SavingThrowSet,
         skill::SkillSet,
         speed::Speed,
-        time::TimeDuration,
+        time::{TimeDuration, TurnBoundary},
     },
-    engine::event::ActionData,
+    engine::{
+        action_prompt::ActionData,
+        event::{CallbackResult, EventCallback, EventKind, ListenerSource},
+        game_state::GameState,
+    },
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             dice::HealEquation,
             modifier::{
                 AbilityModifierProvider, ArmorClassModifierProvider, AttackRollModifier,
-                AttackRollModifierProvider, D20CheckModifierProvider, DamageResistanceProvider,
+                D20CheckModifierProvider, D20Modifier, DamageResistanceProvider,
                 SavingThrowModifierProvider, SkillModifierProvider, SpeedModifier,
                 SpeedModifierProvider,
             },
-            quantity::TimeExpressionDefinition,
+            quantity::{LengthExpressionDefinition, TimeExpressionDefinition},
         },
     },
     scripts::{
@@ -48,7 +57,7 @@ use crate::{
             ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
         },
     },
-    systems,
+    systems::{self, d20::D20CheckDCKind},
 };
 
 // TODO: Should this be it's own time module?
@@ -58,27 +67,6 @@ pub enum TimeDurationDefinition {
     RealTime { time: TimeExpressionDefinition },
     Turns { turns: u32 },
 }
-
-// impl Evaluable for TimeDurationDefinition {
-//     type Output = TimeDuration;
-
-//     fn evaluate(
-//         &self,
-//         world: &World,
-//         entity: Entity,
-//         action_context: &ActionContext,
-//         variables: &VariableMap,
-//     ) -> Result<Self::Output, EvaluationError> {
-//         match self {
-//             TimeDurationDefinition::RealTime { time } => Ok(TimeDuration::RealTime {
-//                 seconds: time
-//                     .evaluate(world, entity, action_context, variables)?
-//                     .value,
-//             }),
-//             TimeDurationDefinition::Turns { turns } => Ok(TimeDuration::Turns { turns: *turns }),
-//         }
-//     }
-// }
 
 impl From<TimeDurationDefinition> for TimeDuration {
     fn from(definition: TimeDurationDefinition) -> Self {
@@ -101,6 +89,9 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub replaces: Option<EffectId>,
 
+    #[serde(default)]
+    pub children: Vec<EffectId>,
+
     /// Simple effect modifiers like:
     /// - Ability score changes
     /// - Skill modifiers
@@ -115,6 +106,8 @@ pub struct EffectDefinition {
     pub pre_attack_roll: Vec<AttackRollHookDefinition>,
     // #[serde(default)]
     // pub post_attack_roll: Vec<AttackRollResultHookDef>,
+    #[serde(default)]
+    pub on_attacked: Vec<AttackedHookDefinition>,
     #[serde(default)]
     pub on_armor_class: Vec<ArmorClassHookDefinition>,
 
@@ -139,6 +132,8 @@ impl From<EffectDefinition> for Effect {
         let effect_id = definition.id.clone();
 
         let mut effect = Effect::new(effect_id.clone(), definition.kind, definition.description);
+        effect.replaces = definition.replaces;
+        effect.children = definition.children;
 
         // 1. Simple persistent modifiers
         // Build on_apply from all modifiers
@@ -146,9 +141,17 @@ impl From<EffectDefinition> for Effect {
             let effect_id = effect_id.clone();
             let modifiers = definition.modifiers.clone();
             effect.on_apply = Arc::new(
-                move |world: &mut World, entity: Entity, context: Option<&ActionContext>| {
+                move |game_state: &mut GameState,
+                      entity: Entity,
+                      context: Option<&ActionContext>| {
                     for modifier in &modifiers {
-                        modifier.evaluate(world, entity, &effect_id, EffectPhase::Apply, context);
+                        modifier.evaluate(
+                            game_state,
+                            entity,
+                            &effect_id,
+                            EffectPhase::Apply,
+                            context,
+                        );
                     }
                 },
             );
@@ -158,9 +161,9 @@ impl From<EffectDefinition> for Effect {
         {
             let effect_id = effect_id.clone();
             let modifiers_for_unapply = definition.modifiers;
-            effect.on_unapply = Arc::new(move |world: &mut World, entity: Entity| {
+            effect.on_unapply = Arc::new(move |game_state: &mut GameState, entity: Entity| {
                 for modifier in &modifiers_for_unapply {
-                    modifier.evaluate(world, entity, &effect_id, EffectPhase::Unapply, None);
+                    modifier.evaluate(game_state, entity, &effect_id, EffectPhase::Unapply, None);
                 }
             });
         }
@@ -170,6 +173,11 @@ impl From<EffectDefinition> for Effect {
         {
             let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
             effect.pre_attack_roll = AttackRollHookDefinition::combine_hooks(hooks);
+        }
+        // Build on_attacked hooks
+        {
+            let hooks = collect_effect_hooks(&definition.on_attacked, &effect_id);
+            effect.on_attacked = AttackedHookDefinition::combine_hooks(hooks);
         }
 
         // Build post_damage_roll hooks
@@ -303,7 +311,10 @@ pub enum EffectModifier {
     },
     Resource {
         resource: ResourceId,
-        amount: ResourceAmount,
+        #[serde(default)]
+        amount: Option<ResourceAmount>,
+        #[serde(default)]
+        disable: bool,
     },
     Speed {
         speed: SpeedModifierProvider,
@@ -311,9 +322,12 @@ pub enum EffectModifier {
     TemporaryHitPoints {
         temporary_hit_points: HealEquation,
     },
+    Concentration {
+        break_concentration: bool,
+    },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectPhase {
     Apply,
     Unapply,
@@ -322,7 +336,7 @@ pub enum EffectPhase {
 impl EffectModifier {
     pub fn evaluate(
         &self,
-        world: &mut World,
+        game_state: &mut GameState,
         entity: Entity,
         effect_id: &EffectId,
         phase: EffectPhase,
@@ -331,8 +345,10 @@ impl EffectModifier {
         let source = ModifierSource::Effect(effect_id.clone());
         match self {
             EffectModifier::Ability { ability: modifier } => {
-                let mut abilities =
-                    systems::helpers::get_component_mut::<AbilityScoreMap>(world, entity);
+                let mut abilities = systems::helpers::get_component_mut::<AbilityScoreMap>(
+                    &mut game_state.world,
+                    entity,
+                );
                 match phase {
                     EffectPhase::Apply => {
                         abilities.add_modifier(&modifier.ability, source, modifier.delta);
@@ -344,23 +360,28 @@ impl EffectModifier {
             }
 
             EffectModifier::Skill { skill: modifier } => {
-                let mut skills = systems::helpers::get_component_mut::<SkillSet>(world, entity);
+                let mut skills =
+                    systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
                 Self::apply_d20_check_modifier(&mut *skills, modifier, source, phase);
             }
 
             EffectModifier::SavingThrow {
                 saving_throw: modifier,
             } => {
-                let mut saves =
-                    systems::helpers::get_component_mut::<SavingThrowSet>(world, entity);
+                let mut saves = systems::helpers::get_component_mut::<SavingThrowSet>(
+                    &mut game_state.world,
+                    entity,
+                );
                 Self::apply_d20_check_modifier(&mut *saves, modifier, source, phase);
             }
 
             EffectModifier::DamageResistance {
                 resistance: modifier,
             } => {
-                let mut res =
-                    systems::helpers::get_component_mut::<DamageResistances>(world, entity);
+                let mut res = systems::helpers::get_component_mut::<DamageResistances>(
+                    &mut game_state.world,
+                    entity,
+                );
                 let mitigation_effect = DamageMitigationEffect {
                     source: source.clone(),
                     operation: modifier.operation.clone(),
@@ -375,21 +396,38 @@ impl EffectModifier {
                 }
             }
 
-            EffectModifier::Resource { resource, amount } => {
-                let mut resources =
-                    systems::helpers::get_component_mut::<ResourceMap>(world, entity);
+            EffectModifier::Resource {
+                resource,
+                amount,
+                disable,
+            } => {
+                let mut resources = systems::helpers::get_component_mut::<ResourceMap>(
+                    &mut game_state.world,
+                    entity,
+                );
                 match phase {
                     EffectPhase::Apply => {
-                        resources.add_uses(resource, amount);
+                        if let Some(amount) = amount {
+                            resources.add_uses(resource, amount);
+                        }
+                        if *disable {
+                            resources.disable_resource(resource, source.clone());
+                        }
                     }
                     EffectPhase::Unapply => {
-                        resources.remove_uses(resource, amount);
+                        if let Some(amount) = amount {
+                            resources.remove_uses(resource, amount);
+                        }
+                        if *disable {
+                            resources.enable_resource(resource);
+                        }
                     }
                 }
             }
 
             EffectModifier::Speed { speed: modifier } => {
-                let mut speed = systems::helpers::get_component_mut::<Speed>(world, entity);
+                let mut speed =
+                    systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
                 match phase {
                     EffectPhase::Apply => match &modifier.modifier {
                         SpeedModifier::Flat(bonus) => {
@@ -417,11 +455,14 @@ impl EffectModifier {
                 temporary_hit_points,
             } => {
                 if let Some(context) = context {
-                    let amount = (temporary_hit_points.function)(world, entity, context)
-                        .roll()
-                        .subtotal as u32;
-                    let mut hit_points =
-                        systems::helpers::get_component_mut::<HitPoints>(world, entity);
+                    let amount =
+                        (temporary_hit_points.function)(&mut game_state.world, entity, context)
+                            .roll()
+                            .subtotal as u32;
+                    let mut hit_points = systems::helpers::get_component_mut::<HitPoints>(
+                        &mut game_state.world,
+                        entity,
+                    );
                     let source = ModifierSource::Effect(effect_id.clone());
                     match phase {
                         EffectPhase::Apply => {
@@ -433,11 +474,19 @@ impl EffectModifier {
                     }
                 }
             }
+
+            EffectModifier::Concentration {
+                break_concentration,
+            } => {
+                if *break_concentration && phase == EffectPhase::Apply {
+                    systems::spells::break_concentration(game_state, entity);
+                }
+            }
         }
     }
 
     fn apply_d20_check_modifier<K>(
-        modifiable: &mut D20CheckSet<K>,
+        modifiable: &mut D20CheckMap<K>,
         modifier: &D20CheckModifierProvider<K>,
         source: ModifierSource,
         phase: EffectPhase,
@@ -445,22 +494,28 @@ impl EffectModifier {
         K: D20CheckKey + DeserializeOwned,
     {
         match phase {
-            EffectPhase::Apply => {
-                if let Some(delta) = modifier.delta {
+            EffectPhase::Apply => match modifier.modifier {
+                D20Modifier::Flat(delta) => {
                     for kind in &modifier.kind {
                         modifiable.add_modifier(kind, source.clone(), delta);
                     }
                 }
-                if let Some(advantage_type) = modifier.advantage {
+                D20Modifier::Advantage(advantage_type) => {
                     for kind in &modifier.kind {
                         modifiable.add_advantage(kind, advantage_type, source.clone());
                     }
                 }
-            }
+                D20Modifier::ForceOutcome(force_outcome) => {
+                    for kind in &modifier.kind {
+                        modifiable.set_forced_outcome(kind, source.clone(), force_outcome);
+                    }
+                }
+            },
             EffectPhase::Unapply => {
                 for kind in &modifier.kind {
                     modifiable.remove_modifier(kind, &source);
                     modifiable.remove_advantage(kind, &source);
+                    modifiable.clear_forced_outcome(kind);
                 }
             }
         }
@@ -491,7 +546,11 @@ where
 #[serde(untagged)]
 pub enum AttackRollHookDefinition {
     Modifier {
-        modifier: AttackRollModifierProvider,
+        #[serde(default)]
+        source: Option<AttackSource>,
+        #[serde(default)]
+        range: Option<AttackRange>,
+        modifier: AttackRollModifier,
     },
     Script {
         script: ScriptId,
@@ -501,34 +560,44 @@ pub enum AttackRollHookDefinition {
 impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
     fn build_hook(&self, effect: &EffectId) -> AttackRollHook {
         match self {
-            AttackRollHookDefinition::Modifier { modifier } => {
+            AttackRollHookDefinition::Modifier {
+                source,
+                range,
+                modifier,
+            } => {
                 let modifier_source = ModifierSource::Effect(effect.clone());
                 Arc::new({
+                    let source = source.clone();
+                    let range = range.clone();
                     let modifier = modifier.clone();
                     move |_world, _entity, attack_roll| {
-                        if let Some(damage_source) = &modifier.source
-                            && *damage_source != attack_roll.source
+                        if let Some(source) = source
+                            && attack_roll.source != source
+                        {
+                            // Only apply if the attack source matches
+                            return;
+                        }
+                        if let Some(range) = range
+                            && attack_roll.range != range
                         {
                             // Only apply if the damage source matches
                             return;
                         }
 
-                        if let Some(attack_modifier) = &modifier.modifier {
-                            match attack_modifier {
-                                AttackRollModifier::FlatBonus(bonus) => {
-                                    attack_roll
-                                        .d20_check
-                                        .add_modifier(modifier_source.clone(), *bonus);
-                                }
-                                AttackRollModifier::Advantage(advantage) => {
-                                    attack_roll
-                                        .d20_check
-                                        .advantage_tracker_mut()
-                                        .add(*advantage, modifier_source.clone());
-                                }
-                                AttackRollModifier::CritThreshold(threshold) => {
-                                    attack_roll.reduce_crit_threshold(*threshold);
-                                }
+                        match modifier {
+                            AttackRollModifier::FlatBonus(bonus) => {
+                                attack_roll
+                                    .d20_check
+                                    .add_modifier(modifier_source.clone(), bonus);
+                            }
+                            AttackRollModifier::Advantage(advantage) => {
+                                attack_roll
+                                    .d20_check
+                                    .advantage_tracker_mut()
+                                    .add(advantage, modifier_source.clone());
+                            }
+                            AttackRollModifier::CritThreshold(threshold) => {
+                                attack_roll.reduce_crit_threshold(threshold);
                             }
                         }
                     }
@@ -545,6 +614,74 @@ impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
         Arc::new(move |world, entity, attack_roll| {
             for hook in &hooks {
                 hook(world, entity, attack_roll);
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AttackedHookDefinition {
+    Modifier {
+        modifier: AttackRollModifier,
+    },
+    AutoCrit {
+        auto_crit_distance: LengthExpressionDefinition,
+    },
+}
+
+impl HookEffect<AttackedHook> for AttackedHookDefinition {
+    fn build_hook(&self, effect: &EffectId) -> AttackedHook {
+        match self {
+            AttackedHookDefinition::Modifier { modifier } => {
+                let modifier_source = ModifierSource::Effect(effect.clone());
+                Arc::new({
+                    let modifier = modifier.clone();
+                    move |_world, _victim, _attacker, attack_roll| match modifier {
+                        AttackRollModifier::FlatBonus(bonus) => {
+                            attack_roll
+                                .d20_check
+                                .add_modifier(modifier_source.clone(), bonus);
+                        }
+                        AttackRollModifier::Advantage(advantage) => {
+                            attack_roll
+                                .d20_check
+                                .advantage_tracker_mut()
+                                .add(advantage, modifier_source.clone());
+                        }
+                        AttackRollModifier::CritThreshold(threshold) => {
+                            attack_roll.reduce_crit_threshold(threshold);
+                        }
+                    }
+                })
+            }
+
+            AttackedHookDefinition::AutoCrit { auto_crit_distance } => {
+                let effect_id = effect.clone();
+                let distance_expression = auto_crit_distance.clone();
+                Arc::new(
+                    move |world: &World,
+                          victim: Entity,
+                          attacker: Entity,
+                          attack_roll: &mut crate::components::damage::AttackRoll| {
+                        let distance = distance_expression
+                            .evaluate_without_variables().unwrap();
+
+                        let distance_between = systems::geometry::distance_between_entities(world, victim, attacker).unwrap();
+
+                        if distance_between <= distance {
+                            attack_roll.d20_check.set_forced_outcome(ModifierSource::Effect(effect_id.clone()), D20CheckOutcome::CriticalSuccess);
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<AttackedHook>) -> AttackedHook {
+        Arc::new(move |world, victim, attacker, attack_roll| {
+            for hook in &hooks {
+                hook(world, victim, attacker, attack_roll);
             }
         })
     }
@@ -916,4 +1053,155 @@ fn take_entity_view_once(
     taken
         .entry(entity)
         .or_insert_with(|| ScriptEntityView::take_from_world(world, entity));
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct EffectInstanceDefinition {
+    pub effect_id: EffectId,
+    pub lifetime: EffectLifetimeTemplate,
+    #[serde(default)]
+    pub end_condition: Option<EffectEndConditionDefinition>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectEventFilterDefinition {
+    TurnBoundary {
+        entity: EffectEntiyReference,
+        boundary: TurnBoundary,
+    },
+    Script {
+        script: ScriptId,
+    },
+}
+
+impl From<EffectEventFilterDefinition> for EffectEventFilter {
+    fn from(def: EffectEventFilterDefinition) -> Self {
+        match def {
+            EffectEventFilterDefinition::TurnBoundary { entity, boundary } => {
+                EffectEventFilter::TurnBoundary { entity, boundary }
+            }
+
+            EffectEventFilterDefinition::Script { script } => {
+                todo!("Implement script-based EffectEventFilter")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EffectEndConditionDefinition {
+    Script {
+        script: ScriptId,
+    },
+    Event {
+        event: EffectEventFilterDefinition,
+        callback: EventCallbackDefinition,
+    },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventCallbackDefinition {
+    RepeatApplyCondition,
+}
+
+impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
+    fn from(def: EffectInstanceDefinition) -> Self {
+        let EffectInstanceDefinition {
+            effect_id,
+            lifetime,
+            end_condition,
+        } = def;
+
+        let end_condition = match end_condition {
+            Some(EffectEndConditionDefinition::Script { script }) => {
+                todo!("Implement script-based EffectEndCondition")
+            }
+
+            // TODO: Indentation is going out of control here
+            Some(EffectEndConditionDefinition::Event { event, callback }) => {
+                Some(EffectEndConditionTemplate {
+                    event_filter: event.into(),
+                    callback: match callback {
+                        EventCallbackDefinition::RepeatApplyCondition => {
+                            EventCallback::new(move |game_state, event, source| {
+                                if let ListenerSource::EffectInstance { id, entity } =
+                                    source.clone()
+                                {
+                                    debug!(
+                                        "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
+                                        id, entity, event
+                                    );
+
+                                    let instance =
+                                        systems::effects::effects(&game_state.world, entity)
+                                            .get(&id)
+                                            .unwrap()
+                                            .clone();
+                                    let instance_id = id.clone();
+
+                                    match &instance.action_resolution {
+                                        ActionConditionResolution::Unconditional => { /* No check to repeat */
+                                        }
+
+                                        ActionConditionResolution::AttackRoll {
+                                            attack_roll,
+                                            armor_class,
+                                        } => todo!(),
+
+                                        ActionConditionResolution::SavingThrow {
+                                            saving_throw_dc,
+                                            saving_throw_result,
+                                        } => {
+                                            let event = systems::d20::check(
+                                                game_state,
+                                                entity,
+                                                &D20CheckDCKind::SavingThrow(
+                                                    saving_throw_dc.clone(),
+                                                ),
+                                            );
+                                            game_state.process_event_with_response_callback(
+                                                event,
+                                                EventCallback::new({
+                                                    move |game_state, event, _| {
+                                                        if let EventKind::D20CheckResolved(
+                                                            _,
+                                                            result,
+                                                            dc,
+                                                        ) = &event.kind
+                                                        {
+                                                            if result.is_success(dc) {
+                                                                systems::effects::remove_effect(
+                                                                    game_state,
+                                                                    entity,
+                                                                    &instance_id,
+                                                                );
+                                                            }
+                                                        }
+
+                                                        CallbackResult::None
+                                                    }
+                                                }),
+                                            );
+                                        }
+                                    }
+                                }
+
+                                CallbackResult::None
+                            })
+                        }
+                    },
+                })
+            }
+            None => None,
+        };
+
+        EffectInstanceTemplate {
+            effect_id,
+            lifetime,
+            end_condition,
+        }
+    }
 }

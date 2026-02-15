@@ -14,7 +14,7 @@ use crate::{
         speed::Speed,
     },
     engine::{
-        event::{ActionData, ActionError},
+        action_prompt::{ActionData, ActionError},
         game_state::GameState,
         geometry::WorldPath,
     },

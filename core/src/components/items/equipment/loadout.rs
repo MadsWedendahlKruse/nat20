@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionContext, ActionMap, ActionProvider},
+        actions::action::{ActionContext, ActionMap, ActionProvider, AttackRollProvider},
         d20::AdvantageType,
         damage::{AttackRoll, AttackRollResult, DamageRoll},
         id::{EffectId, ItemId},
@@ -253,7 +253,7 @@ impl Loadout {
         if let Some(armor) = &self.armor() {
             let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
             let mut armor_class = armor.armor_class(&ability_scores);
-            for effect in systems::effects::effects(world, entity).iter() {
+            for effect in systems::effects::effects(world, entity).values() {
                 (effect.effect().on_armor_class)(world, entity, &mut armor_class);
             }
             armor_class
@@ -265,20 +265,6 @@ impl Loadout {
                 modifiers: ModifierSet::new(),
             }
         }
-    }
-
-    pub fn does_attack_hit(
-        &self,
-        world: &World,
-        entity: Entity,
-        attack_roll_result: &AttackRollResult,
-    ) -> bool {
-        let armor_class = self.armor_class(world, entity);
-        if attack_roll_result.roll_result.is_crit_fail {
-            return false;
-        }
-        attack_roll_result.roll_result.is_crit
-            || attack_roll_result.roll_result.total() >= armor_class.total() as u32
     }
 
     pub fn weapon_in_hand(&self, slot: &EquipmentSlot) -> Option<&Weapon> {
@@ -305,7 +291,6 @@ impl Loadout {
             // Check that:
             // 1. The main hand weapon is two-handed or versatile.
             // 2. The off hand is empty
-            // (Instead of checking for a specific Versatile(DiceSet), just check for any Versatile property)
             return (main_hand_weapon.has_property(&WeaponProperties::TwoHanded)
                 || main_hand_weapon
                     .properties()
@@ -316,36 +301,6 @@ impl Loadout {
         false
     }
 
-    pub fn attack_roll(
-        &self,
-        world: &World,
-        entity: Entity,
-        target: Entity,
-        slot: &EquipmentSlot,
-    ) -> AttackRoll {
-        // TODO: Unarmed attacks
-        let weapon = self
-            .weapon_in_hand(slot)
-            .expect("No weapon equipped in the specified slot");
-        let mut attack_roll = weapon.attack_roll(
-            &systems::helpers::get_component::<AbilityScoreMap>(world, entity),
-            &systems::helpers::get_component::<WeaponProficiencyMap>(world, entity)
-                .proficiency(&weapon.category()),
-        );
-        let range = weapon.range();
-        if range.normal() != range.max() {
-            let distance =
-                systems::geometry::distance_between_entities(world, entity, target).unwrap();
-            if distance > range.normal() {
-                attack_roll.d20_check.advantage_tracker_mut().add(
-                    AdvantageType::Disadvantage,
-                    ModifierSource::Custom("Target is outside normal range".to_string()),
-                );
-            }
-        }
-        attack_roll
-    }
-
     pub fn damage_roll(&self, world: &World, entity: Entity, slot: &EquipmentSlot) -> DamageRoll {
         let weapon = self
             .weapon_in_hand(slot)
@@ -354,6 +309,45 @@ impl Loadout {
             &systems::helpers::get_component::<AbilityScoreMap>(world, entity),
             self.is_wielding_weapon_with_both_hands(weapon.kind()),
         )
+    }
+}
+
+impl AttackRollProvider for Loadout {
+    fn attack_roll(
+        &self,
+        world: &World,
+        performer: Entity,
+        target: Entity,
+        context: &ActionContext,
+    ) -> AttackRoll {
+        let slot = match context {
+            ActionContext::Weapon { slot } => slot,
+            _ => panic!("Action context must be Weapon"),
+        };
+
+        // TODO: Unarmed attacks
+        let weapon = self
+            .weapon_in_hand(slot)
+            .expect("No weapon equipped in the specified slot");
+        let mut attack_roll = weapon.attack_roll(
+            &systems::helpers::get_component::<AbilityScoreMap>(world, performer),
+            &systems::helpers::get_component::<WeaponProficiencyMap>(world, performer)
+                .proficiency(&weapon.category()),
+        );
+
+        let range = weapon.range();
+        if range.normal() < range.max() {
+            let distance =
+                systems::geometry::distance_between_entities(world, performer, target).unwrap();
+            if distance > range.normal() {
+                attack_roll.d20_check.advantage_tracker_mut().add(
+                    AdvantageType::Disadvantage,
+                    ModifierSource::Custom("Target is outside normal range".to_string()),
+                );
+            }
+        }
+
+        attack_roll
     }
 }
 
@@ -495,10 +489,11 @@ mod tests {
     fn equip_unequip_weapon() {
         let mut loadout = Loadout::new();
 
-        let weapon: EquipmentInstance = ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
-            .unwrap()
-            .clone()
-            .into();
+        let weapon: EquipmentInstance =
+            ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
+                .unwrap()
+                .clone()
+                .into();
         let slot = weapon.valid_slots()[0];
         let unequipped = loadout.equip_in_slot(&slot, weapon);
         assert!(unequipped.is_ok());

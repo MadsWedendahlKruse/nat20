@@ -24,7 +24,14 @@
         "kind": "single",
         "range": "90 feet",
         "require_line_of_sight": true,
-        "allowed_targets": "not_dead"
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            }
+        ]
     },
     "resource_cost": {
         "nat20_core::resource.bonus_action": 1,

@@ -3,7 +3,7 @@ use std::{fmt, hash::Hash};
 use crate::{
     components::{
         ability::Ability,
-        d20::{D20CheckDC, D20CheckSet},
+        d20::{D20CheckDC, D20CheckMap},
         effects::hooks::D20CheckHooks,
     },
     systems,
@@ -93,13 +93,13 @@ skill_ability_map! {
     Initiative => Dexterity,
 }
 
-pub type SkillSet = D20CheckSet<Skill>;
+pub type SkillSet = D20CheckMap<Skill>;
 
 pub type SkillCheckDC = D20CheckDC<Skill>;
 
 pub fn get_skill_hooks(skill: &Skill, world: &World, entity: Entity) -> Vec<D20CheckHooks> {
     systems::effects::effects(world, entity)
-        .iter()
+        .values()
         .filter_map(|e| e.effect().on_skill_check.get(&skill))
         .cloned()
         .collect()

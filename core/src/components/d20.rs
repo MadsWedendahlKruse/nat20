@@ -76,11 +76,21 @@ impl AdvantageTracker {
 pub static D20_CRITICAL_SUCCESS: u8 = 20;
 pub static D20_CRITICAL_FAILURE: u8 = 1;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum D20CheckOutcome {
+    Success,
+    Failure,
+    CriticalSuccess,
+    CriticalFailure,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20Check {
     modifiers: ModifierSet,
     proficiency: Proficiency,
     advantage_tracker: AdvantageTracker,
+    forced_outcome: Option<(ModifierSource, D20CheckOutcome)>,
 }
 
 impl D20Check {
@@ -89,6 +99,7 @@ impl D20Check {
             modifiers: ModifierSet::new(),
             proficiency,
             advantage_tracker: AdvantageTracker::new(),
+            forced_outcome: None,
         }
     }
 
@@ -108,6 +119,14 @@ impl D20Check {
         &mut self.modifiers
     }
 
+    pub fn set_forced_outcome(&mut self, source: ModifierSource, outcome: D20CheckOutcome) {
+        self.forced_outcome = Some((source, outcome));
+    }
+
+    pub fn clear_forced_outcome(&mut self) {
+        self.forced_outcome = None;
+    }
+
     pub fn proficiency(&self) -> &Proficiency {
         &self.proficiency
     }
@@ -124,35 +143,62 @@ impl D20Check {
         );
 
         let mut rng = rand::rng();
-        // Technically inefficient to always roll two dice, but it's probably not a big deal
-        let roll1 = rng.random_range(1..=20) as u8;
-        let roll2 = rng.random_range(1..=20) as u8;
-
         let roll_mode = self.advantage_tracker.roll_mode();
-        let rolls = match roll_mode {
-            RollMode::Normal => vec![roll1],
-            _ => vec![roll1, roll2],
+        let mut rolls = match roll_mode {
+            RollMode::Normal => vec![rng.random_range(1..=20) as u8],
+            _ => vec![
+                rng.random_range(1..=20) as u8,
+                rng.random_range(1..=20) as u8,
+            ],
         };
+
+        if let Some((source, forced_outcome)) = &self.forced_outcome {
+            match forced_outcome {
+                D20CheckOutcome::Success => {
+                    // TODO: Success depends on the DC, so we can't just force it here?
+                    todo!()
+                }
+
+                D20CheckOutcome::Failure => {
+                    // We can approximate a failure by subtracting the total
+                    let total = (rolls.iter().max().unwrap().clone() as i32) + modifiers.total();
+                    modifiers.add_modifier(source.clone(), -total);
+                }
+
+                D20CheckOutcome::CriticalSuccess => {
+                    for roll in rolls.iter_mut() {
+                        *roll = D20_CRITICAL_SUCCESS;
+                    }
+                }
+
+                D20CheckOutcome::CriticalFailure => {
+                    for roll in rolls.iter_mut() {
+                        *roll = D20_CRITICAL_FAILURE;
+                    }
+                }
+            }
+        }
+
         let selected_roll = match roll_mode {
-            RollMode::Normal => roll1,
-            RollMode::Advantage => roll1.max(roll2),
-            RollMode::Disadvantage => roll1.min(roll2),
+            RollMode::Normal => rolls[0],
+            RollMode::Advantage => rolls.iter().max().unwrap().clone(),
+            RollMode::Disadvantage => rolls.iter().min().unwrap().clone(),
         };
 
-        let total_modifier = modifiers.total();
-        let total = (selected_roll as i32 + total_modifier) as u32;
-
-        let is_crit = selected_roll == D20_CRITICAL_SUCCESS;
+        let outcome = if selected_roll == D20_CRITICAL_SUCCESS {
+            Some(D20CheckOutcome::CriticalSuccess)
+        } else if selected_roll == D20_CRITICAL_FAILURE {
+            Some(D20CheckOutcome::CriticalFailure)
+        } else {
+            None
+        };
 
         D20CheckResult {
             advantage_tracker: self.advantage_tracker.clone(),
             rolls,
             selected_roll,
             modifier_breakdown: modifiers.clone(),
-            is_crit,
-            is_crit_fail: selected_roll == D20_CRITICAL_FAILURE,
-            // We can already now say the check is a success if it's a crit
-            success: is_crit,
+            outcome,
         }
     }
 
@@ -180,6 +226,13 @@ impl D20Check {
     }
 
     pub fn success_probability(&self, target_dc: u32, proficiency_bonus: u8) -> f64 {
+        if let Some(forced_outcome) = &self.forced_outcome {
+            return match forced_outcome.1 {
+                D20CheckOutcome::Success | D20CheckOutcome::CriticalSuccess => 1.0,
+                D20CheckOutcome::Failure | D20CheckOutcome::CriticalFailure => 0.0,
+            };
+        }
+
         let mut total_modifier = self.modifiers.total();
         total_modifier += self.proficiency.bonus(proficiency_bonus) as i32;
 
@@ -235,9 +288,7 @@ pub struct D20CheckResult {
     pub rolls: Vec<u8>,
     pub selected_roll: u8,
     pub modifier_breakdown: ModifierSet,
-    pub is_crit: bool,
-    pub is_crit_fail: bool,
-    pub success: bool,
+    pub outcome: Option<D20CheckOutcome>,
 }
 
 impl D20CheckResult {
@@ -253,7 +304,11 @@ impl D20CheckResult {
     where
         T: IntoEnumIterator + Copy + Eq + Hash,
     {
-        self.is_crit || (!self.is_crit_fail && self.total() >= dc.dc.total() as u32)
+        match self.outcome {
+            Some(D20CheckOutcome::CriticalSuccess) => true,
+            Some(D20CheckOutcome::CriticalFailure) => false,
+            _ => self.total() >= dc.dc.total() as u32,
+        }
     }
 
     pub fn add_bonus(&mut self, source: ModifierSource, value: i32) {
@@ -273,11 +328,10 @@ impl fmt::Display for D20CheckResult {
                 self.advantage_tracker.roll_mode()
             )?;
         }
-        if self.is_crit {
-            write!(f, " (Critical Success!)")?;
-        }
-        if self.is_crit_fail {
-            write!(f, " (Critical Failure!)")?;
+        match self.outcome {
+            Some(D20CheckOutcome::CriticalSuccess) => write!(f, " (Critical Success)")?,
+            Some(D20CheckOutcome::CriticalFailure) => write!(f, " (Critical Failure)")?,
+            _ => {}
         }
         if !self.modifier_breakdown.is_empty() {
             write!(f, " {}", self.modifier_breakdown)?;
@@ -292,7 +346,7 @@ pub trait D20CheckKey: Eq + Hash + IntoEnumIterator + Copy {}
 impl<T: Eq + Hash + IntoEnumIterator + Copy> D20CheckKey for T {}
 
 #[derive(Debug, Clone)]
-pub struct D20CheckSet<K>
+pub struct D20CheckMap<K>
 where
     K: D20CheckKey,
 {
@@ -301,7 +355,7 @@ where
     get_hooks: fn(&K, &World, Entity) -> Vec<D20CheckHooks>,
 }
 
-impl<K> D20CheckSet<K>
+impl<K> D20CheckMap<K>
 where
     K: D20CheckKey,
 {
@@ -347,6 +401,19 @@ where
         self.get_mut(key).advantage_tracker_mut().remove(source);
     }
 
+    pub fn set_forced_outcome(
+        &mut self,
+        key: &K,
+        source: ModifierSource,
+        outcome: D20CheckOutcome,
+    ) {
+        self.get_mut(key).set_forced_outcome(source, outcome);
+    }
+
+    pub fn clear_forced_outcome(&mut self, key: &K) {
+        self.get_mut(key).clear_forced_outcome();
+    }
+
     pub fn check(&self, key: &K, world: &World, entity: Entity) -> D20CheckResult {
         let mut d20 = self.get(key).clone();
         if let Some(ability) = (self.ability_mapper)(key) {
@@ -362,14 +429,19 @@ where
 
     pub fn check_dc(&self, dc: &D20CheckDC<K>, world: &World, entity: Entity) -> D20CheckResult {
         let mut result = self.check(&dc.key, world, entity);
-        result.success |= result.total() >= dc.dc.total() as u32;
-        result.success &= !result.is_crit_fail; // Critical failure cannot be a success
+        if result.outcome.is_none() {
+            result.outcome = if result.total() >= dc.dc.total() as u32 {
+                Some(D20CheckOutcome::Success)
+            } else {
+                Some(D20CheckOutcome::Failure)
+            };
+        }
 
         result
     }
 }
 
-impl<K> KeyedModifiable<K> for D20CheckSet<K>
+impl<K> KeyedModifiable<K> for D20CheckMap<K>
 where
     K: D20CheckKey,
 {
@@ -532,7 +604,78 @@ mod tests {
         }
 
         // Simulate a critical success by setting the selected roll to 20
-        assert!(result.is_crit);
+        assert!(matches!(
+            result.outcome,
+            Some(D20CheckOutcome::CriticalSuccess)
+        ));
         println!("Result: {}", result);
+    }
+
+    #[test]
+    fn d20_check_critical_failure() {
+        let mut check = D20Check::new(Proficiency::new(
+            ProficiencyLevel::Proficient,
+            ModifierSource::None,
+        ));
+        check.modifiers.add_modifier(
+            ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
+            2,
+        );
+        let mut result = check.roll(0);
+        while result.selected_roll != 1 {
+            // Simulate rolling again until we get a critical failure
+            result = check.roll(0);
+        }
+
+        // Simulate a critical failure by setting the selected roll to 1
+        assert!(matches!(
+            result.outcome,
+            Some(D20CheckOutcome::CriticalFailure)
+        ));
+        println!("Result: {}", result);
+    }
+
+    #[test]
+    fn d20_check_success_probability() {
+        let mut check = D20Check::new(Proficiency::new(
+            ProficiencyLevel::Proficient,
+            ModifierSource::None,
+        ));
+        check.modifiers.add_modifier(
+            ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
+            2,
+        );
+
+        let proficiency_bonus = 2;
+        let target_dc = 15;
+
+        let success_probability = check.success_probability(target_dc, proficiency_bonus);
+        println!(
+            "Success probability against DC {}: {:.2}%",
+            target_dc,
+            success_probability * 100.0
+        );
+
+        assert!(success_probability > 0.0 && success_probability < 1.0);
+    }
+
+    #[test]
+    fn d20_forced_outcome() {
+        let mut check = D20Check::new(Proficiency::new(
+            ProficiencyLevel::Proficient,
+            ModifierSource::None,
+        ));
+        check.set_forced_outcome(
+            ModifierSource::Custom("Test".to_string()),
+            D20CheckOutcome::CriticalSuccess,
+        );
+        let result = check.roll(2);
+
+        assert_eq!(result.selected_roll, D20_CRITICAL_SUCCESS);
+        assert!(matches!(
+            result.outcome,
+            Some(D20CheckOutcome::CriticalSuccess)
+        ));
+        println!("Result with forced critical success: {}", result);
     }
 }

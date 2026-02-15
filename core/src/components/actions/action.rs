@@ -1,15 +1,14 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    sync::Arc,
-};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use hecs::{Entity, World};
 use serde::Deserialize;
 
 use crate::{
     components::{
-        actions::targeting::{TargetInstance, TargetingContext},
+        actions::{
+            action_execution::perform_standard_action,
+            targeting::{TargetInstance, TargetingContext},
+        },
         d20::D20CheckResult,
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
@@ -20,13 +19,10 @@ use crate::{
         id::{ActionId, EffectId, EntityIdentifier, IdProvider, ScriptId, SpellId},
         items::equipment::{armor::ArmorClass, slots::EquipmentSlot},
         resource::{RechargeRule, ResourceAmountMap},
-        saving_throw::SavingThrowDC,
+        saving_throw::{SavingThrowDC, SavingThrowKind},
         spells::spellbook::SpellSource,
     },
-    engine::{
-        event::{ActionData, Event},
-        game_state::GameState,
-    },
+    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{self},
 };
@@ -60,6 +56,26 @@ pub type AttackRollFunction =
 pub type SavingThrowFunction =
     dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
 pub type HealFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
+
+pub trait AttackRollProvider {
+    fn attack_roll(
+        &self,
+        world: &World,
+        performer: Entity,
+        target: Entity,
+        context: &ActionContext,
+    ) -> AttackRoll;
+}
+
+pub trait SavingThrowProvider {
+    fn saving_throw(
+        &self,
+        world: &World,
+        performer: Entity,
+        context: &ActionContext,
+        kind: SavingThrowKind,
+    ) -> SavingThrowDC;
+}
 
 #[derive(Clone)]
 pub enum DamageOnFailure {
@@ -171,7 +187,7 @@ pub enum ActionKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum DamageResolutionKind {
+pub enum ActionConditionResolution {
     Unconditional,
     AttackRoll {
         attack_roll: AttackRollResult,
@@ -185,7 +201,7 @@ pub enum DamageResolutionKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DamageOutcome {
-    pub kind: DamageResolutionKind, // Unconditional / AttackRoll / SavingThrow
+    pub resolution: ActionConditionResolution,
     pub damage_roll: Option<DamageRollResult>,
     pub damage_taken: Option<DamageMitigationResult>,
     pub new_life_state: Option<LifeState>,
@@ -198,7 +214,7 @@ impl DamageOutcome {
         new_life_state: Option<LifeState>,
     ) -> Self {
         DamageOutcome {
-            kind: DamageResolutionKind::Unconditional,
+            resolution: ActionConditionResolution::Unconditional,
             damage_roll,
             damage_taken,
             new_life_state,
@@ -213,7 +229,7 @@ impl DamageOutcome {
         armor_class: ArmorClass,
     ) -> Self {
         DamageOutcome {
-            kind: DamageResolutionKind::AttackRoll {
+            resolution: ActionConditionResolution::AttackRoll {
                 attack_roll,
                 armor_class,
             },
@@ -231,7 +247,7 @@ impl DamageOutcome {
         saving_throw_result: D20CheckResult,
     ) -> Self {
         DamageOutcome {
-            kind: DamageResolutionKind::SavingThrow {
+            resolution: ActionConditionResolution::SavingThrow {
                 saving_throw_dc,
                 saving_throw_result,
             },
@@ -244,18 +260,9 @@ impl DamageOutcome {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectOutcome {
+    pub resolution: ActionConditionResolution,
     pub effect: EffectId,
     pub applied: bool,
-    pub rule: EffectApplyRule, // useful for debugging/telemetry
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EffectApplyRule {
-    Unconditional,
-    OnHit,
-    OnMiss,
-    OnFailedSave,
-    OnSuccessfulSave,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -373,12 +380,7 @@ impl ActionKind {
         match self {
             ActionKind::Standard { .. } => {
                 for target in targets {
-                    systems::actions::perform_standard_action(
-                        game_state,
-                        self,
-                        action_data,
-                        *target,
-                    );
+                    perform_standard_action(game_state, self, action_data, *target);
                 }
             }
 
@@ -441,7 +443,7 @@ impl Action {
         // hopefully since most of the effect just have a no-op as their
         // on_action component it'll be cheap to clone
         let hooks: Vec<_> = systems::effects::effects(&game_state.world, action_data.actor)
-            .iter()
+            .values()
             .filter_map(|effect| Some(effect.effect().on_action.clone()))
             .collect();
 
@@ -515,8 +517,6 @@ impl ActionResult {
 pub type ActionMap = HashMap<ActionId, Vec<(ActionContext, ResourceAmountMap)>>;
 
 pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
-
-pub type ReactionSet = HashSet<ActionId>;
 
 // TODO: Not sure if this is the best solution
 pub fn default_actions() -> ActionMap {

@@ -13,7 +13,7 @@
                 "effect": {
                     "effect_id": "nat20_core::effect.spell.shield",
                     "lifetime": {
-                        "at_turn_boundary": {
+                        "turn_boundary": {
                             "entity": "applier",
                             "boundary": "start",
                             "duration": {

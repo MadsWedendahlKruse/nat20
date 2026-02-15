@@ -1,0 +1,27 @@
+{
+    "id": "nat20_core::effect.condition.paralyzed",
+    "kind": "debuff",
+    "description": "TODO: Description for Paralyzed condition.",
+    "children": [
+        "nat20_core::effect.condition.incapacitated"
+    ],
+    "modifiers": [
+        {
+            "speed": "x0"
+        },
+        {
+            "saving_throw": "strength failure"
+        },
+        {
+            "saving_throw": "dexterity failure"
+        }
+    ],
+    "on_attacked": [
+        {
+            "modifier": "advantage"
+        },
+        {
+            "auto_crit_distance": "5 ft"
+        }
+    ]
+}

@@ -7,6 +7,7 @@ use crate::{
         resource::ResourceMap,
         saving_throw::SavingThrowKind,
     },
+    engine::game_state::GameState,
     registry::registry::ClassesRegistry,
 };
 use hecs::{Entity, World};
@@ -45,7 +46,7 @@ pub fn class_level(world: &World, entity: Entity, class_id: &ClassId) -> u8 {
 }
 
 pub fn increment_class_level(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     class_id: &ClassId,
 ) -> Vec<LevelUpPrompt> {
@@ -56,7 +57,7 @@ pub fn increment_class_level(
 
     let (new_level, subclass) = {
         let mut character_levels =
-            systems::helpers::get_component_mut::<CharacterLevels>(world, entity);
+            systems::helpers::get_component_mut::<CharacterLevels>(&mut game_state.world, entity);
         let new_level = character_levels.level_up(class_id.clone());
         let subclass = if let Some(subclass_id) = character_levels.subclass(&class_id) {
             class.subclass(&subclass_id)
@@ -68,22 +69,23 @@ pub fn increment_class_level(
 
     // TODO: Do we need to do this every time?
     for ability in class.saving_throw_proficiencies.iter() {
-        systems::helpers::get_component_mut::<SavingThrowSet>(world, entity).set_proficiency(
-            &SavingThrowKind::Ability(*ability),
-            Proficiency::new(
-                ProficiencyLevel::Proficient,
-                ModifierSource::ClassFeature(class_id.clone()),
-            ),
-        );
+        systems::helpers::get_component_mut::<SavingThrowSet>(&mut game_state.world, entity)
+            .set_proficiency(
+                &SavingThrowKind::Ability(*ability),
+                Proficiency::new(
+                    ProficiencyLevel::Proficient,
+                    ModifierSource::ClassFeature(class_id.clone()),
+                ),
+            );
     }
 
     // TODO: If it's a level that triggers a feat prompt, and ability score improvement
     // is selected, then the Constitution modifier might increase, in which case we need to
     // recalculate hit points.
-    systems::health::update_hit_points(world, entity);
+    systems::health::update_hit_points(&mut game_state.world, entity);
 
     let mut prompts = apply_class_base(
-        world,
+        game_state,
         entity,
         &class.base,
         ClassIdentifier::Class(class_id.clone()),
@@ -91,7 +93,7 @@ pub fn increment_class_level(
     );
     if let Some(subclass) = subclass {
         prompts.extend(apply_class_base(
-            world,
+            game_state,
             entity,
             subclass.base(),
             ClassIdentifier::Subclass(subclass.id.clone()),
@@ -100,7 +102,7 @@ pub fn increment_class_level(
     }
 
     prompts.extend(systems::spells::update_spellbook(
-        world,
+        &mut game_state.world,
         entity,
         ClassAndSubclass {
             class: class_id.clone(),
@@ -112,14 +114,14 @@ pub fn increment_class_level(
     // Feats need special handling since they can have prerequisites and
     // can (or can't) be repeatable.
     if class.feat_levels.contains(&new_level) {
-        prompts.push(LevelUpPrompt::feats(world, entity));
+        prompts.push(LevelUpPrompt::feats(&game_state.world, entity));
     }
 
     prompts
 }
 
 pub fn set_subclass(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     subclass_id: &SubclassId,
 ) -> Vec<LevelUpPrompt> {
@@ -133,7 +135,7 @@ pub fn set_subclass(
 
     let (subclass, level) = {
         let mut character_levels =
-            systems::helpers::get_component_mut::<CharacterLevels>(world, entity);
+            systems::helpers::get_component_mut::<CharacterLevels>(&mut game_state.world, entity);
         character_levels.set_subclass(class_id, &subclass_id);
 
         let subclass = class
@@ -145,7 +147,7 @@ pub fn set_subclass(
     };
 
     apply_class_base(
-        world,
+        game_state,
         entity,
         subclass.base(),
         ClassIdentifier::Subclass(subclass_id.clone()),
@@ -154,7 +156,7 @@ pub fn set_subclass(
 }
 
 fn apply_class_base(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     class_base: &ClassBase,
     id: ClassIdentifier,
@@ -163,7 +165,7 @@ fn apply_class_base(
     // Effect
     if let Some(effects_for_level) = class_base.effects_by_level.get(&level) {
         systems::effects::add_permanent_effects(
-            world,
+            game_state,
             entity,
             effects_for_level.clone(),
             &id.modifier_source(),
@@ -173,7 +175,8 @@ fn apply_class_base(
 
     // Resources
     {
-        let mut resources = systems::helpers::get_component_mut::<ResourceMap>(world, entity);
+        let mut resources =
+            systems::helpers::get_component_mut::<ResourceMap>(&mut game_state.world, entity);
         if let Some(resources_for_level) = class_base.resources_by_level.get(&level) {
             for (resource, amount, override_existing) in resources_for_level {
                 if *override_existing {
@@ -187,14 +190,16 @@ fn apply_class_base(
     // Actions
     {
         if let Some(actions_for_level) = class_base.actions_by_level.get(&level) {
-            systems::actions::add_actions(world, entity, actions_for_level);
+            systems::actions::add_actions(&mut game_state.world, entity, actions_for_level);
         }
     }
 
     // Weapons proficiencies
     {
-        let mut weapon_proficiencies =
-            systems::helpers::get_component_mut::<WeaponProficiencyMap>(world, entity);
+        let mut weapon_proficiencies = systems::helpers::get_component_mut::<WeaponProficiencyMap>(
+            &mut game_state.world,
+            entity,
+        );
         for proficiency in class_base.weapon_proficiencies.iter() {
             weapon_proficiencies.set_proficiency(
                 proficiency.clone(),
@@ -206,7 +211,7 @@ fn apply_class_base(
     // Armor training
     {
         let mut armor_training =
-            systems::helpers::get_component_mut::<ArmorTrainingSet>(world, entity);
+            systems::helpers::get_component_mut::<ArmorTrainingSet>(&mut game_state.world, entity);
         for armor_type in class_base.armor_proficiencies.iter() {
             armor_training.insert(armor_type.clone());
         }

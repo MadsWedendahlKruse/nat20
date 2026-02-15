@@ -3,8 +3,9 @@ use std::collections::{HashMap, VecDeque};
 use hecs::Entity;
 
 use crate::engine::{
+    action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
     encounter::EncounterId,
-    event::{ActionDecision, ActionPrompt, ActionPromptId, Event},
+    event::Event,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

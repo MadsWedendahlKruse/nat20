@@ -1,0 +1,67 @@
+{
+    "id": "nat20_core::spell.hold_person",
+    "description": "Choose a Humanoid that you can see within range. The target must succeed on a Wisdom saving throw or have the Paralyzed condition for the duration. At the end of each of its turns, the target repeats the save, ending the spell on itself on a success.",
+    "base_level": 2,
+    "school": "enchantment",
+    "flags": [
+        "verbal",
+        "somatic",
+        "concentration"
+    ],
+    "kind": {
+        "standard": {
+            "condition": {
+                "saving_throw": "spell_save_dc;wisdom"
+            },
+            "payload": {
+                "effect": {
+                    "effect_id": "nat20_core::effect.spell.hold_person",
+                    "lifetime": {
+                        "turn_boundary": {
+                            "entity": "target",
+                            "boundary": "end",
+                            "duration": {
+                                "time": "1 min"
+                            }
+                        }
+                    },
+                    "end_condition": {
+                        "event": {
+                            "turn_boundary": {
+                                "entity": "target",
+                                "boundary": "start"
+                            }
+                        },
+                        "callback": "repeat_apply_condition"
+                    }
+                }
+            }
+        }
+    },
+    "resource_cost": {
+        "nat20_core::resource.action": 1
+    },
+    "targeting": {
+        "kind": {
+            "multiple": {
+                "max_targets": "1 + spell_level - 2",
+                "allow_duplicates": false
+            }
+        },
+        "range": "60 feet",
+        "require_line_of_sight": true,
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            },
+            {
+                "creature_types": [
+                    "humanoid"
+                ]
+            }
+        ]
+    }
+}

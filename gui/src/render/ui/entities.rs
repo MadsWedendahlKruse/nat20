@@ -3,7 +3,7 @@ use nat20_core::{
     components::{
         ability::AbilityScoreMap,
         damage::DamageResistances,
-        effects::effect::{Effect, EffectInstance, EffectLifetime},
+        effects::effect::{EffectLifetime, EffectsMap},
         health::{hit_points::HitPoints, life_state::LifeState},
         id::{FeatId, Name, SpeciesId, SubspeciesId},
         level::{ChallengeRating, CharacterLevels},
@@ -12,14 +12,16 @@ use nat20_core::{
         species::{CreatureSize, CreatureType},
         speed::Speed,
         spells::spellbook::Spellbook,
-        time::{EntityClock, TimeMode},
+        time::EntityClock,
     },
+    engine::game_state::GameState,
     systems,
 };
 use strum::{Display, EnumIter};
 
 use crate::{
     render::ui::{
+        components::render_effect,
         inventory::{render_loadout, render_loadout_inventory},
         utils::{ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext},
     },
@@ -170,24 +172,28 @@ fn render_overview(ui: &imgui::Ui, world: &World, entity: Entity, mode: &Creatur
 
 fn render_effects(ui: &imgui::Ui, world: &World, entity: Entity) {
     let time_mode = systems::helpers::get_component::<EntityClock>(world, entity).mode();
-    if let Ok(effects) = world.get::<&Vec<EffectInstance>>(entity) {
+    if let Ok(effects) = world.get::<&EffectsMap>(entity) {
         effects.render_with_context(ui, &time_mode);
     }
 }
 
 fn render_effects_compact(ui: &imgui::Ui, world: &World, entity: Entity) {
     let time_mode = systems::helpers::get_component::<EntityClock>(world, entity).mode();
-    let effects = systems::helpers::get_component::<Vec<EffectInstance>>(world, entity);
+    let effects = systems::helpers::get_component::<EffectsMap>(world, entity);
     let conditions = effects
-        .iter()
+        .values()
         .filter(|e| !matches!(e.lifetime, EffectLifetime::Permanent))
         .collect::<Vec<_>>();
     ui.separator_with_text("Conditions");
     if !conditions.is_empty() {
         if let Some(table) = table_with_columns!(ui, "Conditions", "Condition", "Duration") {
             for effect in conditions {
+                // TODO: Duplicated logic with EffectsMap#render_with_context
+                if effect.parent.is_some() {
+                    continue;
+                }
                 ui.table_next_column();
-                ui.text(effect.effect_id.to_string());
+                render_effect(ui, effect, &effects);
                 ui.table_next_column();
                 effect.lifetime.render_with_context(ui, &time_mode);
             }
@@ -198,37 +204,38 @@ fn render_effects_compact(ui: &imgui::Ui, world: &World, entity: Entity) {
     }
 }
 
-impl ImguiRenderableMutWithContext<&mut World> for Entity {
-    fn render_mut_with_context(&mut self, ui: &imgui::Ui, world: &mut World) {
+impl ImguiRenderableMutWithContext<&mut GameState> for Entity {
+    fn render_mut_with_context(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
         let entity = *self;
         ui.text(format!("ID: {:?}", entity));
 
         if let Some(tab_bar) = ui.tab_bar(format!("CharacterTabs{:?}", entity)) {
             if let Some(tab) = ui.tab_item("Overview") {
-                render_overview(ui, world, entity, &CreatureRenderMode::Full);
+                render_overview(ui, &game_state.world, entity, &CreatureRenderMode::Full);
                 tab.end();
             }
 
             if let Some(tab) = ui.tab_item("Effects") {
-                render_effects(ui, world, entity);
-                render_if_present::<Vec<FeatId>>(ui, world, entity);
+                render_effects(ui, &game_state.world, entity);
+                render_if_present::<Vec<FeatId>>(ui, &game_state.world, entity);
                 tab.end();
             }
 
             if let Some(tab) = ui.tab_item("Skills") {
-                systems::helpers::get_component::<SkillSet>(world, entity)
-                    .render_with_context(ui, (world, entity));
+                systems::helpers::get_component::<SkillSet>(&game_state.world, entity)
+                    .render_with_context(ui, (&game_state.world, entity));
                 tab.end();
             }
 
             if let Some(tab) = ui.tab_item("Inventory") {
-                render_loadout_inventory(ui, world, entity);
+                render_loadout_inventory(ui, game_state, entity);
                 tab.end();
             }
 
             if let Some(tab) = ui.tab_item("Spellbook") {
-                if let Ok((spellbook, resources)) =
-                    world.query_one_mut::<(&mut Spellbook, &mut ResourceMap)>(entity)
+                if let Ok((spellbook, resources)) = game_state
+                    .world
+                    .query_one_mut::<(&mut Spellbook, &mut ResourceMap)>(entity)
                 {
                     spellbook.render_mut_with_context(ui, resources);
                 }
@@ -236,7 +243,7 @@ impl ImguiRenderableMutWithContext<&mut World> for Entity {
             }
 
             if let Some(tab) = ui.tab_item("Resources") {
-                render_if_present::<ResourceMap>(ui, world, entity);
+                render_if_present::<ResourceMap>(ui, &game_state.world, entity);
                 tab.end();
             }
 

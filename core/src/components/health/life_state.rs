@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::d20::D20CheckResult;
+use crate::components::d20::{D20CheckOutcome, D20CheckResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -10,7 +10,6 @@ pub enum LifeState {
     Unconscious(DeathSavingThrows), // at 0 HP and making saves
     Stable,                         // at 0 HP but not making saves
     Dead,                           // dead but still an entity (corpse)
-    Defeated,                       // Same as 'Dead' but for players
 }
 
 impl LifeState {
@@ -68,22 +67,27 @@ impl DeathSavingThrows {
     }
 
     pub fn update(&mut self, check_result: &D20CheckResult) {
-        if check_result.is_crit {
-            // Critical success
-            self.record_success(2);
-        } else if check_result.is_crit_fail {
-            // Critical failure
-            self.record_failure(2);
-        } else if check_result.success {
-            self.record_success(1);
-        } else {
-            self.record_failure(1);
+        match check_result.outcome {
+            Some(D20CheckOutcome::CriticalSuccess) => {
+                self.record_success(2);
+                return;
+            }
+            Some(D20CheckOutcome::CriticalFailure) => {
+                self.record_failure(2);
+                return;
+            }
+            Some(D20CheckOutcome::Success) => {
+                self.record_success(1);
+            }
+            _ => {
+                self.record_failure(1);
+            }
         }
     }
 
     pub fn next_state(&self) -> LifeState {
         if self.is_defeated() {
-            LifeState::Defeated
+            LifeState::Dead
         } else if self.is_stable() {
             LifeState::Stable
         } else {

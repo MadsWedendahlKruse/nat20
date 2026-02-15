@@ -23,11 +23,19 @@
     "targeting": {
         "kind": {
             "multiple": {
-                "max_targets": "1 + (character_level + 1) / 6"
+                "max_targets": "1 + (character_level + 1) / 6",
+                "allow_duplicates": true
             }
         },
         "range": "120 feet",
         "require_line_of_sight": true,
-        "allowed_targets": "not_dead"
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            }
+        ]
     }
 }

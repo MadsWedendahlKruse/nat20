@@ -18,7 +18,14 @@
         "kind": "single",
         "range": "60 feet",
         "require_line_of_sight": true,
-        "allowed_targets": "not_dead"
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            }
+        ]
     },
     "reaction_trigger": "nat20_core::script.spell.counterspell"
 }

@@ -102,6 +102,7 @@
             "nat20_core::spell.false_life",
             "nat20_core::spell.fire_bolt",
             "nat20_core::spell.fireball",
+            "nat20_core::spell.hold_person",
             "nat20_core::spell.longstrider",
             "nat20_core::spell.magic_missile",
             "nat20_core::spell.poison_spray",

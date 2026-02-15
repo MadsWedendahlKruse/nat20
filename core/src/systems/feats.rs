@@ -2,6 +2,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{id::FeatId, level_up::LevelUpPrompt, modifier::ModifierSource},
+    engine::game_state::{self, GameState},
     registry::registry::FeatsRegistry,
     systems,
 };
@@ -47,17 +48,17 @@ pub fn can_acquire_feat(world: &World, entity: Entity, feat_id: &FeatId) -> Resu
 }
 
 pub fn add_feat(
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     feat_id: &FeatId,
 ) -> Result<Vec<LevelUpPrompt>, FeatError> {
     let mut prompts = Vec::new();
 
-    can_acquire_feat(world, entity, feat_id)?;
+    can_acquire_feat(&game_state.world, entity, feat_id)?;
     let feat = FeatsRegistry::get(feat_id).unwrap();
 
     systems::effects::add_permanent_effects(
-        world,
+        game_state,
         entity,
         feat.effects().clone(),
         &ModifierSource::Feat(feat.id().clone()),
@@ -66,7 +67,7 @@ pub fn add_feat(
 
     prompts.extend(feat.prompts().iter().cloned());
 
-    feats_mut(world, entity).push(feat.id().clone());
+    feats_mut(&mut game_state.world, entity).push(feat.id().clone());
 
     Ok(prompts)
 }

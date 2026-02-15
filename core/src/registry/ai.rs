@@ -10,7 +10,9 @@ use crate::{
         id::AIControllerId,
     },
     engine::{
-        event::{ActionData, ActionDecision, ActionDecisionKind, ActionPrompt, ActionPromptKind},
+        action_prompt::{
+            ActionData, ActionDecision, ActionDecisionKind, ActionPrompt, ActionPromptKind,
+        },
         game_state::GameState,
     },
     systems::{self, movement::TargetPathFindingResult},
@@ -68,7 +70,7 @@ impl AIController for RandomController {
                         && let Some(encounter) = game_state.encounters.get(encounter_id)
                     {
                         encounter
-                            .participants(&game_state.world, targeting.allowed_targets)
+                            .participants(&game_state.world, &targeting.allowed_targets)
                             .into_iter()
                             .filter(|target| {
                                 let target_attitude = systems::factions::mutual_attitude(
@@ -97,10 +99,19 @@ impl AIController for RandomController {
                             }
                         }
 
-                        TargetingKind::Multiple { max_targets } => {
-                            let chosen_targets = possible_targets
-                                .iter()
-                                .choose_multiple(rng, max_targets.into());
+                        TargetingKind::Multiple {
+                            max_targets,
+                            allow_duplicates,
+                        } => {
+                            let chosen_targets = if allow_duplicates {
+                                possible_targets
+                                    .iter()
+                                    .choose_multiple(rng, max_targets as usize)
+                            } else {
+                                let max_unique_targets =
+                                    max_targets.min(possible_targets.len() as u8) as usize;
+                                possible_targets[0..max_unique_targets].iter().collect()
+                            };
                             targets.extend(chosen_targets);
                         }
 

@@ -8,7 +8,7 @@ use crate::{
         faction::Attitude,
         id::AIControllerId,
     },
-    engine::{event::ActionPrompt, game_state::GameState},
+    engine::{action_prompt::ActionPrompt, game_state::GameState},
     registry::{self},
     systems,
 };

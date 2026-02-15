@@ -4,7 +4,6 @@ use crate::{
     components::{
         actions::action::{ActionContext, AttackRollFunction, DamageFunction},
         damage::{AttackRoll, AttackRollResult, DamageRoll, DamageRollResult},
-        items::equipment::slots::EquipmentSlot,
     },
     systems,
 };
@@ -15,13 +14,13 @@ pub fn damage_roll(
     entity: Entity,
     crit: bool,
 ) -> DamageRollResult {
-    for effect in systems::effects::effects(world, entity).iter() {
+    for effect in systems::effects::effects(world, entity).values() {
         (effect.effect().pre_damage_roll)(world, entity, &mut damage_roll);
     }
 
     let mut result = damage_roll.roll(crit);
 
-    for effect in systems::effects::effects(world, entity).iter() {
+    for effect in systems::effects::effects(world, entity).values() {
         (effect.effect().post_damage_roll)(world, entity, &mut result);
     }
 
@@ -39,19 +38,28 @@ pub fn damage_roll_fn(
     damage_roll(roll, world, entity, crit)
 }
 
-pub fn attack_roll(mut attack_roll: AttackRoll, world: &World, entity: Entity) -> AttackRollResult {
-    for effect in systems::effects::effects(world, entity).iter() {
-        (effect.effect().pre_attack_roll)(world, entity, &mut attack_roll);
+pub fn attack_roll(
+    mut attack_roll: AttackRoll,
+    world: &World,
+    attacker: Entity,
+    target: Entity,
+) -> AttackRollResult {
+    for effect in systems::effects::effects(world, attacker).values() {
+        (effect.effect().pre_attack_roll)(world, attacker, &mut attack_roll);
+    }
+
+    for effect in systems::effects::effects(world, target).values() {
+        (effect.effect().on_attacked)(world, target, attacker, &mut attack_roll);
     }
 
     let mut result = {
         let level =
-            systems::helpers::level(world, entity).expect("Entity must have a level component");
+            systems::helpers::level(world, attacker).expect("Entity must have a level component");
         attack_roll.roll_raw(level.proficiency_bonus())
     };
 
-    for effect in systems::effects::effects(world, entity).iter() {
-        (effect.effect().post_attack_roll)(world, entity, &mut result);
+    for effect in systems::effects::effects(world, attacker).values() {
+        (effect.effect().post_attack_roll)(world, attacker, &mut result);
     }
 
     result
@@ -65,32 +73,5 @@ pub fn attack_roll_fn(
     context: &ActionContext,
 ) -> AttackRollResult {
     let roll = attack_roll_fn(world, entity, target, context);
-    attack_roll(roll, world, entity)
-}
-
-pub fn damage_roll_weapon(
-    world: &World,
-    entity: Entity,
-    slot: &EquipmentSlot,
-    crit: bool,
-) -> DamageRollResult {
-    damage_roll(
-        systems::loadout::weapon_damage_roll(world, entity, slot),
-        world,
-        entity,
-        crit,
-    )
-}
-
-pub fn attack_roll_weapon(
-    world: &World,
-    entity: Entity,
-    target: Entity,
-    slot: &EquipmentSlot,
-) -> AttackRollResult {
-    attack_roll(
-        systems::loadout::weapon_attack_roll(world, entity, target, slot),
-        world,
-        entity,
-    )
+    attack_roll(roll, world, entity, target)
 }

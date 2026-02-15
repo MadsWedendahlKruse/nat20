@@ -57,7 +57,6 @@ pub mod creatures {
 
         use crate::{
             components::{
-                class::ClassAndSubclass,
                 id::{
                     BackgroundId, ClassId, EntityIdentifier, FeatId, ItemId, Name, SpeciesId,
                     SpellId, SubclassId, SubspeciesId,
@@ -65,8 +64,8 @@ pub mod creatures {
                 level_up::ChoiceItem,
                 modifier::KeyedModifiable,
                 skill::SkillSet,
-                spells::spellbook::{SpellSource, Spellbook},
             },
+            engine::game_state::GameState,
             entities::character::Character,
             registry::registry::{ClassesRegistry, ItemsRegistry},
         };
@@ -81,12 +80,12 @@ pub mod creatures {
             );
         }
 
-        pub fn fighter(world: &mut World) -> EntityIdentifier {
+        pub fn fighter(game_state: &mut GameState) -> EntityIdentifier {
             let name = Name::new("Johnny Fighter");
             let character = Character::new(name.clone());
-            let entity = world.spawn(character);
+            let entity = game_state.world.spawn(character);
             systems::level_up::apply_level_up_decision(
-                world,
+                game_state,
                 entity,
                 9,
                 vec![
@@ -220,15 +219,14 @@ pub mod creatures {
             );
 
             let _ = systems::loadout::equip(
-                world,
+                game_state,
                 entity,
                 ItemsRegistry::get(&ItemId::new("nat20_core", "item.crossbow"))
                     .unwrap()
                     .clone(),
             );
-
             let _ = systems::inventory::add_item(
-                world,
+                &mut game_state.world,
                 entity,
                 ItemsRegistry::get(&ItemId::new("nat20_core", "item.admin_dagger"))
                     .unwrap()
@@ -238,12 +236,12 @@ pub mod creatures {
             EntityIdentifier::new(entity, name)
         }
 
-        pub fn wizard(world: &mut World) -> EntityIdentifier {
+        pub fn wizard(game_state: &mut GameState) -> EntityIdentifier {
             let name = Name::new("Jimmy Wizard");
             let character = Character::new(name.clone());
-            let entity = world.spawn(character);
+            let entity = game_state.world.spawn(character);
             systems::level_up::apply_level_up_decision(
-                world,
+                game_state,
                 entity,
                 5,
                 vec![
@@ -377,12 +375,12 @@ pub mod creatures {
             EntityIdentifier::new(entity, name)
         }
 
-        pub fn warlock(world: &mut World) -> EntityIdentifier {
+        pub fn warlock(game_state: &mut GameState) -> EntityIdentifier {
             let name = Name::new("Bobby Warlock");
             let character = Character::new(name.clone());
-            let entity = world.spawn(character);
+            let entity = game_state.world.spawn(character);
             systems::level_up::apply_level_up_decision(
-                world,
+                game_state,
                 entity,
                 5,
                 vec![
@@ -461,6 +459,12 @@ pub mod creatures {
                         "nat20_core",
                         "subclass.warlock.fiend_patron",
                     ))),
+                    LevelUpDecision::spells(
+                        "choice.spells",
+                        &ClassId::new("nat20_core", "class.warlock"),
+                        &None,
+                        vec![SpellId::new("nat20_core", "spell.hold_person")],
+                    ),
                     LevelUpDecision::ReplaceSpells { spells: Vec::new() },
                     // Level 4
                     LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
@@ -511,13 +515,14 @@ pub mod creatures {
                 species::{CreatureSize, CreatureType},
                 speed::Speed,
             },
+            engine::game_state::GameState,
             entities::monster::Monster,
             registry::{self, registry::ItemsRegistry},
         };
 
         use super::*;
 
-        pub fn goblin_warrior(world: &mut World) -> EntityIdentifier {
+        pub fn goblin_warrior(game_state: &mut GameState) -> EntityIdentifier {
             let name = Name::new("Goblin Warrior");
             let monster = Monster::new(
                 name.clone(),
@@ -537,9 +542,9 @@ pub mod creatures {
                 ]),
                 FactionSet::from([FactionId::new("nat20_core", "faction.goblins")]),
             );
-            let entity = world.spawn(monster);
+            let entity = game_state.world.spawn(monster);
             let _ = monster_equipment(
-                world,
+                game_state,
                 entity,
                 &[
                     // TODO: Should be LEATHER_ARMOR_ID
@@ -554,7 +559,7 @@ pub mod creatures {
         }
 
         fn monster_equipment(
-            world: &mut World,
+            game_state: &mut GameState,
             entity: Entity,
             item_ids: &[ItemId],
         ) -> Result<(), TryEquipError> {
@@ -564,23 +569,26 @@ pub mod creatures {
                 // so we can add proficiency for what they equip
                 match &item {
                     ItemInstance::Armor(armor) => {
-                        systems::helpers::get_component_mut::<ArmorTrainingSet>(world, entity)
-                            .insert(armor.armor_type.clone());
+                        systems::helpers::get_component_mut::<ArmorTrainingSet>(
+                            &mut game_state.world,
+                            entity,
+                        )
+                        .insert(armor.armor_type.clone());
                     }
                     ItemInstance::Weapon(weapon) => {
-                        systems::helpers::get_component_mut::<WeaponProficiencyMap>(world, entity)
-                            .set_proficiency(
-                                weapon.category().clone(),
-                                Proficiency::new(
-                                    ProficiencyLevel::Proficient,
-                                    ModifierSource::None,
-                                ),
-                            );
+                        systems::helpers::get_component_mut::<WeaponProficiencyMap>(
+                            &mut game_state.world,
+                            entity,
+                        )
+                        .set_proficiency(
+                            weapon.category().clone(),
+                            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+                        );
                     }
                     _ => {}
                 }
 
-                systems::loadout::equip(world, entity, item)?;
+                systems::loadout::equip(game_state, entity, item)?;
             }
             Ok(())
         }

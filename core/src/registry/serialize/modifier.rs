@@ -6,7 +6,7 @@ use strum::IntoEnumIterator;
 use crate::{
     components::{
         ability::Ability,
-        d20::AdvantageType,
+        d20::{AdvantageType, D20CheckOutcome},
         damage::{DamageSource, DamageType, MitigationOperation},
         saving_throw::SavingThrowKind,
         skill::Skill,
@@ -58,14 +58,19 @@ macro_rules! impl_display_roundtrip_spec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum D20Modifier {
+    Advantage(AdvantageType),
+    Flat(i32),
+    ForceOutcome(D20CheckOutcome),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct D20CheckModifierProvider<T: Clone + DeserializeOwned + IntoEnumIterator> {
     #[serde(skip)]
     pub kind: Vec<T>,
     #[serde(skip)]
-    pub delta: Option<i32>,
-    #[serde(skip)]
-    pub advantage: Option<AdvantageType>,
+    pub modifier: D20Modifier,
     pub raw: String,
 }
 
@@ -81,32 +86,26 @@ where
         // "stealth-1"
         // "investigation+2"
         // "strength disadvantage"
+        // "all disadvantage"
+        // "dexterity critical_success"
 
         let normalized = normalize_spec_string(input);
 
         let (check_str, modifier_str) =
             split_first_delimiter(&normalized, &[' ', '+', '-'], "D20CheckModifierProvider")?;
 
-        if check_str.to_lowercase().eq("all") {
-            let (delta, advantage) = parse_delta_or_advantage(modifier_str, &normalized)?;
+        let kind = if check_str.to_lowercase().eq("all") {
+            T::iter().collect()
+        } else {
+            vec![parse_plain_enum(check_str, "check kind", &normalized)?]
+        };
 
-            return Ok(D20CheckModifierProvider {
-                raw: normalized,
-                kind: T::iter().collect(),
-                delta,
-                advantage,
-            });
-        }
-
-        let kind: T = parse_plain_enum(check_str, "check kind", &normalized)?;
-
-        let (delta, advantage) = parse_delta_or_advantage(modifier_str, &normalized)?;
+        let modifier = parse_d20_modifier(modifier_str, &normalized)?;
 
         Ok(D20CheckModifierProvider {
             raw: normalized,
-            kind: vec![kind],
-            delta,
-            advantage,
+            kind,
+            modifier,
         })
     }
 }
@@ -279,61 +278,6 @@ impl_display_roundtrip_spec!(AttackRollModifier);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct AttackRollModifierProvider {
-    #[serde(skip)]
-    pub source: Option<DamageSource>,
-    #[serde(skip)]
-    pub modifier: Option<AttackRollModifier>,
-    pub raw: String,
-}
-
-impl FromStr for AttackRollModifierProvider {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Examples:
-        // "ranged +2"
-        // "spell advantage"
-        // "crit(-2)"
-        let parts: Vec<&str> = s.splitn(2, ' ').collect();
-
-        let (source, modifier) = if parts.len() == 1 {
-            if let Ok(modifier) = parts[0].trim().parse::<AttackRollModifier>() {
-                (None, Some(modifier))
-            } else {
-                return Err(format!("Invalid AttackRollModifierProvider: {}", s));
-            }
-        } else if parts.len() == 2 {
-            let source_str = parts[0].trim();
-            let modifier_str = parts[1].trim();
-
-            let source = match serde_plain::from_str::<DamageSource>(source_str) {
-                Ok(src) => Some(src),
-                Err(_) => return Err(format!("Unknown damage source in '{}'", s)),
-            };
-
-            let modifier = match modifier_str.parse::<AttackRollModifier>() {
-                Ok(modifier) => Some(modifier),
-                Err(e) => return Err(e),
-            };
-
-            (source, modifier)
-        } else {
-            (None, None)
-        };
-
-        Ok(AttackRollModifierProvider {
-            raw: s.to_string(),
-            source,
-            modifier,
-        })
-    }
-}
-
-impl_string_backed_spec!(AttackRollModifierProvider);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
 pub struct ArmorClassModifierProvider {
     #[serde(skip)]
     pub delta: i32,
@@ -389,20 +333,21 @@ where
     serde_plain::from_str(name).map_err(|_| format!("Unknown {} in '{}'", field_name, whole))
 }
 
-fn parse_delta_or_advantage(
-    modifier_str: &str,
-    full_input: &str,
-) -> Result<(Option<i32>, Option<AdvantageType>), String> {
+fn parse_d20_modifier(modifier_str: &str, full_input: &str) -> Result<D20Modifier, String> {
     let modifier_str = modifier_str.trim();
     match modifier_str {
-        "" => Ok((None, None)),
-        "advantage" => Ok((None, Some(AdvantageType::Advantage))),
-        "disadvantage" => Ok((None, Some(AdvantageType::Disadvantage))),
+        "" => Err(format!("Missing modifier in '{}'", full_input)),
+        "advantage" => Ok(D20Modifier::Advantage(AdvantageType::Advantage)),
+        "disadvantage" => Ok(D20Modifier::Advantage(AdvantageType::Disadvantage)),
+        "success" => Ok(D20Modifier::ForceOutcome(D20CheckOutcome::Success)),
+        "failure" => Ok(D20Modifier::ForceOutcome(D20CheckOutcome::Failure)),
+        "critical_success" => Ok(D20Modifier::ForceOutcome(D20CheckOutcome::CriticalSuccess)),
+        "critical_failure" => Ok(D20Modifier::ForceOutcome(D20CheckOutcome::CriticalFailure)),
         _ => {
             let delta: i32 = modifier_str
                 .parse()
                 .map_err(|_| format!("Invalid modifier in '{}'", full_input))?;
-            Ok((Some(delta), None))
+            Ok(D20Modifier::Flat(delta))
         }
     }
 }
@@ -480,19 +425,32 @@ mod tests {
     fn test_skill_modifier_provider_parsing() {
         let spec: SkillModifierProvider = "stealth+2".parse().unwrap();
         assert_eq!(spec.kind[0], Skill::Stealth);
-        assert_eq!(spec.delta, Some(2));
+        assert!(matches!(spec.modifier, D20Modifier::Flat(2)));
 
         let spec: SkillModifierProvider = "athletics-1".parse().unwrap();
         assert_eq!(spec.kind[0], Skill::Athletics);
-        assert_eq!(spec.delta, Some(-1));
+        assert!(matches!(spec.modifier, D20Modifier::Flat(-1)));
 
         let spec: SkillModifierProvider = "perception advantage".parse().unwrap();
         assert_eq!(spec.kind[0], Skill::Perception);
-        assert_eq!(spec.advantage, Some(AdvantageType::Advantage));
+        assert!(matches!(
+            spec.modifier,
+            D20Modifier::Advantage(AdvantageType::Advantage)
+        ));
 
         let spec: SkillModifierProvider = "all disadvantage".parse().unwrap();
         assert_eq!(spec.kind.len(), Skill::iter().count());
-        assert_eq!(spec.advantage, Some(AdvantageType::Disadvantage));
+        assert!(matches!(
+            spec.modifier,
+            D20Modifier::Advantage(AdvantageType::Disadvantage)
+        ));
+
+        let spec: SkillModifierProvider = "insight critical_success".parse().unwrap();
+        assert_eq!(spec.kind[0], Skill::Insight);
+        assert!(matches!(
+            spec.modifier,
+            D20Modifier::ForceOutcome(D20CheckOutcome::CriticalSuccess)
+        ));
     }
 
     #[test]
@@ -502,22 +460,35 @@ mod tests {
             spec.kind[0],
             SavingThrowKind::Ability(Ability::Constitution)
         );
-        assert_eq!(spec.advantage, Some(AdvantageType::Advantage));
-        assert_eq!(spec.delta, None);
+        assert!(matches!(
+            spec.modifier,
+            D20Modifier::Advantage(AdvantageType::Advantage)
+        ));
 
         let spec: SavingThrowModifierProvider = "dex disadvantage".parse().unwrap();
         assert_eq!(spec.kind[0], SavingThrowKind::Ability(Ability::Dexterity));
-        assert_eq!(spec.advantage, Some(AdvantageType::Disadvantage));
-        assert_eq!(spec.delta, None);
+        assert!(matches!(
+            spec.modifier,
+            D20Modifier::Advantage(AdvantageType::Disadvantage)
+        ));
 
         let spec: SavingThrowModifierProvider = "wis+2".parse().unwrap();
         assert_eq!(spec.kind[0], SavingThrowKind::Ability(Ability::Wisdom));
-        assert_eq!(spec.delta, Some(2));
-        assert_eq!(spec.advantage, None);
+        assert!(matches!(spec.modifier, D20Modifier::Flat(2)));
 
         let spec: SavingThrowModifierProvider = "all-1".parse().unwrap();
         assert_eq!(spec.kind.len(), SavingThrowKind::iter().count());
-        assert_eq!(spec.delta, Some(-1));
+        assert!(matches!(spec.modifier, D20Modifier::Flat(-1)));
+
+        let spec: SavingThrowModifierProvider = "int critical_failure".parse().unwrap();
+        assert_eq!(
+            spec.kind[0],
+            SavingThrowKind::Ability(Ability::Intelligence)
+        );
+        assert!(matches!(
+            spec.modifier,
+            D20Modifier::ForceOutcome(D20CheckOutcome::CriticalFailure)
+        ));
     }
 
     #[test]

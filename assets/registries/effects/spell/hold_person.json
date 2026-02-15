@@ -1,0 +1,8 @@
+{
+    "id": "nat20_core::effect.spell.hold_person",
+    "kind": "debuff",
+    "description": "The target is paralyzed for the duration. At the end of each of its turns, the target can make a Wisdom saving throw to end the effect.",
+    "children": [
+        "nat20_core::effect.condition.paralyzed"
+    ]
+}

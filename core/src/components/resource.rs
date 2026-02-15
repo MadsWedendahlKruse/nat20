@@ -9,7 +9,10 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
-    components::id::{IdProvider, ResourceId},
+    components::{
+        id::{IdProvider, ResourceId},
+        modifier::ModifierSource,
+    },
     systems::time::RestKind,
 };
 
@@ -322,7 +325,7 @@ impl ResourceBudgetKind {
         }
     }
 
-    pub fn can_afford(&self, cost: &ResourceAmount) -> bool {
+    fn can_afford(&self, cost: &ResourceAmount) -> bool {
         match (self, cost) {
             (ResourceBudgetKind::Flat(budget), ResourceAmount::Flat(amt)) => {
                 budget.can_afford(*amt)
@@ -555,12 +558,15 @@ pub type ResourceAmountMap = HashMap<ResourceId, ResourceAmount>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMap {
     resources: HashMap<ResourceId, ResourceBudgetKind>,
+    /// Some effects might prevent certain resources from being used
+    disabled_resources: HashMap<ResourceId, ModifierSource>,
 }
 
 impl ResourceMap {
     pub fn new() -> Self {
         Self {
             resources: HashMap::new(),
+            disabled_resources: HashMap::new(),
         }
     }
 
@@ -663,7 +669,9 @@ impl ResourceMap {
     }
 
     pub fn can_afford(&self, id: &ResourceId, cost: &ResourceAmount) -> bool {
-        if let Some(resource) = self.resources.get(id) {
+        if let Some(resource) = self.resources.get(id)
+            && !self.disabled_resources.contains_key(id)
+        {
             resource.can_afford(cost)
         } else {
             false
@@ -681,7 +689,9 @@ impl ResourceMap {
     }
 
     pub fn spend(&mut self, id: &ResourceId, cost: &ResourceAmount) -> Result<(), ResourceError> {
-        if let Some(resource) = self.resources.get_mut(id) {
+        if let Some(resource) = self.resources.get_mut(id)
+            && !self.disabled_resources.contains_key(id)
+        {
             resource.spend(cost)
         } else {
             Err(ResourceError::InvalidResourceKind(format!(
@@ -736,6 +746,18 @@ impl ResourceMap {
         }
 
         Ok(())
+    }
+
+    pub fn is_resource_disabled(&self, id: &ResourceId) -> Option<&ModifierSource> {
+        self.disabled_resources.get(id)
+    }
+
+    pub fn disable_resource(&mut self, id: &ResourceId, source: ModifierSource) {
+        self.disabled_resources.insert(id.clone(), source);
+    }
+
+    pub fn enable_resource(&mut self, id: &ResourceId) {
+        self.disabled_resources.remove(id);
     }
 }
 
@@ -1129,7 +1151,9 @@ mod tests {
         );
 
         assert!(map.spend_all(&cost).is_ok());
-        let res = map.get(&ResourceId::new("nat20_core", "Spell Slot")).unwrap();
+        let res = map
+            .get(&ResourceId::new("nat20_core", "Spell Slot"))
+            .unwrap();
         let uses = res.current_uses();
         assert_eq!(
             uses,
@@ -1186,7 +1210,10 @@ mod tests {
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
-        cost.insert(ResourceId::new("nat20_core", "Rage"), ResourceAmount::Flat(1));
+        cost.insert(
+            ResourceId::new("nat20_core", "Rage"),
+            ResourceAmount::Flat(1),
+        );
 
         assert!(map.spend_all(&cost).is_ok());
         let ki = map.get(&ResourceId::new("nat20_core", "Ki Point")).unwrap();
@@ -1221,7 +1248,9 @@ mod tests {
 
         assert!(map.spend_all(&cost).is_ok());
         let ki = map.get(&ResourceId::new("nat20_core", "Ki Point")).unwrap();
-        let spell_slot = map.get(&ResourceId::new("nat20_core", "Spell Slot")).unwrap();
+        let spell_slot = map
+            .get(&ResourceId::new("nat20_core", "Spell Slot"))
+            .unwrap();
         assert_eq!(ki.current_uses()[0], ResourceAmount::Flat(1));
         assert_eq!(
             spell_slot.current_uses(),

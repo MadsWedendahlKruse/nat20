@@ -63,9 +63,7 @@ pub struct ModifierSet {
 }
 
 pub trait Modifiable {
-    fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
-    where
-        T: Into<i32>;
+    fn add_modifier<T: Into<i32>>(&mut self, source: ModifierSource, value: T);
     fn remove_modifier(&mut self, source: &ModifierSource);
     fn total(&self) -> i32;
 }

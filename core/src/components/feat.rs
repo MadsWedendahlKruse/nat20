@@ -72,6 +72,10 @@ impl Feat {
     pub fn is_repeatable(&self) -> bool {
         self.repeatable
     }
+
+    pub fn description(&self) -> &str {
+        &self.description
+    }
 }
 
 impl IdProvider for Feat {

@@ -17,7 +17,7 @@
                 "effect": {
                     "effect_id": "nat20_core::effect.spell.ray_of_frost",
                     "lifetime": {
-                        "at_turn_boundary": {
+                        "turn_boundary": {
                             "entity": "applier",
                             "boundary": "start",
                             "duration": {
@@ -36,6 +36,13 @@
         "kind": "single",
         "range": "60 feet",
         "require_line_of_sight": true,
-        "allowed_targets": "not_dead"
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            }
+        ]
     }
 }

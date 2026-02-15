@@ -10,8 +10,8 @@ use crate::{
     components::{
         actions::{
             action::{
-                ActionCondition, ActionContext, ActionKind, ActionKindResult, ActionOutcomeBundle,
-                DamageOutcome, DamageResolutionKind,
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
+                ActionKindResult, ActionOutcomeBundle, DamageOutcome,
             },
             targeting::TargetInstance,
         },
@@ -26,9 +26,12 @@ use crate::{
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
     },
-    engine::event::{ActionData, Event, EventKind, ReactionData},
+    engine::{
+        action_prompt::{ActionData, ReactionData},
+        event::{Event, EventKind},
+    },
     registry::serialize::{
-        d20::SavingThrowProvider,
+        d20::SavingThrowDefinition,
         parser::{DiceExpression, Evaluable, IntExpression, Parser},
         variables::PARSER_VARIABLES,
     },
@@ -750,7 +753,7 @@ pub struct ScriptDamageOutcomeView {
 impl ScriptDamageOutcomeView {
     pub fn from(outcome: &DamageOutcome) -> Self {
         Self {
-            kind: ScriptDamageResolutionKindView::from(&outcome.kind),
+            kind: ScriptDamageResolutionKindView::from(&outcome.resolution),
             damage_roll: outcome.damage_roll.clone().map(ScriptDamageRollResult::new),
             damage_taken: outcome
                 .damage_taken
@@ -804,11 +807,11 @@ pub enum ScriptDamageResolutionKindView {
 }
 
 impl ScriptDamageResolutionKindView {
-    pub fn from(kind: &DamageResolutionKind) -> Self {
+    pub fn from(kind: &ActionConditionResolution) -> Self {
         match kind {
-            DamageResolutionKind::Unconditional => Self::Unconditional,
-            DamageResolutionKind::AttackRoll { .. } => Self::AttackRoll,
-            DamageResolutionKind::SavingThrow { .. } => Self::SavingThrow,
+            ActionConditionResolution::Unconditional => Self::Unconditional,
+            ActionConditionResolution::AttackRoll { .. } => Self::AttackRoll,
+            ActionConditionResolution::SavingThrow { .. } => Self::SavingThrow,
         }
     }
 
@@ -863,7 +866,7 @@ pub enum ScriptEventRef {
 pub struct ScriptSavingThrow {
     /// Entity role where the saving throw originates
     pub entity: ScriptEntityRole,
-    pub saving_throw: SavingThrowProvider,
+    pub saving_throw: SavingThrowDefinition,
 }
 
 /// Bonus to apply to a D20 roll.

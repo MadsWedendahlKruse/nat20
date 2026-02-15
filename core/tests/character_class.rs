@@ -21,15 +21,16 @@ mod tests {
         entities::character::Character,
         registry::registry::ClassesRegistry,
         systems::{self, level_up::LevelUpDecision},
+        test_utils::fixtures,
     };
 
     #[test]
     fn character_level_up_fighter() {
-        let mut world = World::new();
-        let character = world.spawn(Character::default());
+        let mut game_state = fixtures::engine::game_state();
+        let character = game_state.world.spawn(Character::default());
 
         systems::level_up::apply_level_up_decision(
-            &mut world,
+            &mut game_state,
             character,
             3,
             vec![
@@ -105,7 +106,8 @@ mod tests {
         );
 
         {
-            let levels = systems::helpers::get_component::<CharacterLevels>(&mut world, character);
+            let levels =
+                systems::helpers::get_component::<CharacterLevels>(&game_state.world, character);
             assert_eq!(levels.total_level(), 3);
             assert_eq!(
                 levels
@@ -124,8 +126,9 @@ mod tests {
         }
 
         {
-            let effects = systems::effects::effects(&mut world, character);
-            let effect_ids: HashSet<&EffectId> = effects.iter().map(|e| &e.effect_id).collect();
+            let effects = systems::effects::effects(&game_state.world, character);
+            let effect_ids: HashSet<&EffectId> =
+                effects.values().into_iter().map(|e| &e.effect_id).collect();
             for effect_id in [
                 EffectId::new("nat20_core", "effect.fighting_style.great_weapon_fighting"),
                 EffectId::new("nat20_core", "effect.fighter.champion.improved_critical"),
@@ -140,7 +143,7 @@ mod tests {
         }
 
         {
-            let skills = systems::helpers::get_component::<SkillSet>(&mut world, character);
+            let skills = systems::helpers::get_component::<SkillSet>(&game_state.world, character);
             for skill in [Skill::Athletics, Skill::Perception] {
                 assert_eq!(
                     skills.get(&skill).proficiency().level(),
@@ -151,7 +154,7 @@ mod tests {
 
         {
             let saving_throws =
-                systems::helpers::get_component::<SavingThrowSet>(&mut world, character);
+                systems::helpers::get_component::<SavingThrowSet>(&game_state.world, character);
             for ability in [Ability::Strength, Ability::Constitution] {
                 assert_eq!(
                     saving_throws

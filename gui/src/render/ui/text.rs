@@ -39,6 +39,7 @@ pub fn indent_text(ui: &imgui::Ui, indent_level: u8) {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum TextKind {
     Actor,
     Target,

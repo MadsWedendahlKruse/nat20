@@ -13,11 +13,14 @@ use crate::{
         time::{EntityClock, TimeMode, TimeStep},
     },
     engine::{
+        action_prompt::{
+            ActionData, ActionDecision, ActionDecisionKind, ActionError, ActionPrompt,
+            ActionPromptId, ActionPromptKind, ReactionData,
+        },
         encounter::{Encounter, EncounterId},
         event::{
-            ActionData, ActionDecision, ActionDecisionKind, ActionError, ActionPrompt,
-            ActionPromptId, ActionPromptKind, EncounterEvent, Event, EventCallback, EventId,
-            EventKind, EventListener, EventLog, ReactionData,
+            EncounterEvent, Event, EventCallback, EventDispatcher, EventFilter, EventId, EventKind,
+            EventListener, EventLog, ListenerSource,
         },
         game_state,
         geometry::WorldGeometry,
@@ -41,7 +44,7 @@ pub struct GameState {
     pub resting: HashMap<Entity, RestKind>,
     pub interaction_engine: InteractionEngine,
     pub event_log: EventLog,
-    event_listeners: HashMap<EventId, EventListener>,
+    pub event_dispatcher: EventDispatcher,
 }
 
 impl GameState {
@@ -54,7 +57,7 @@ impl GameState {
             resting: HashMap::new(),
             interaction_engine: InteractionEngine::default(),
             event_log: EventLog::new(),
-            event_listeners: HashMap::new(),
+            event_dispatcher: EventDispatcher::new(),
         }
     }
 
@@ -103,7 +106,7 @@ impl GameState {
 
     pub fn end_encounter(&mut self, encounter_id: &EncounterId) {
         if let Some(mut encounter) = self.encounters.remove(encounter_id) {
-            for entity in encounter.participants(&self.world, EntityFilter::All) {
+            for entity in encounter.participants(&self.world, &[EntityFilter::All]) {
                 self.in_combat.remove(&entity);
                 systems::time::set_time_mode(&mut self.world, entity, TimeMode::RealTime);
             }
@@ -283,7 +286,7 @@ impl GameState {
                         Event::new(EventKind::ActionRequested {
                             action: action.clone(),
                         }),
-                    )?;
+                    );
                 }
 
                 ActionDecisionKind::Reaction { choice, .. } => {
@@ -300,7 +303,7 @@ impl GameState {
                         Event::new(EventKind::ReactionRequested {
                             reaction: reaction_data.clone(),
                         }),
-                    )?;
+                    );
                 }
             }
         }
@@ -320,7 +323,7 @@ impl GameState {
         Ok(())
     }
 
-    pub fn process_event(&mut self, event: Event) -> Result<(), ActionError> {
+    pub fn process_event(&mut self, event: Event) {
         if let Some(actor) = event.actor() {
             self.process_event_scoped(self.scope_for_entity(actor), event)
         } else {
@@ -328,18 +331,20 @@ impl GameState {
         }
     }
 
-    pub(crate) fn process_event_scoped(
-        &mut self,
-        scope: InteractionScopeId,
-        event: Event,
-    ) -> Result<(), ActionError> {
+    pub(crate) fn process_event_scoped(&mut self, scope: InteractionScopeId, event: Event) {
         self.log_event(&scope, event.clone());
 
-        if let Some(event_id) = event.response_to {
-            if let Some(listener) = self.event_listeners.get(&event_id) {
-                if listener.matches(&event) {
-                    let listener = self.event_listeners.remove(&event_id).unwrap();
-                    listener.callback(self, &event);
+        let triggerd_listeners = self.event_dispatcher.dispatch(&event);
+        for listener_id in &triggerd_listeners {
+            if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
+                let callback = listener.callback.clone();
+                callback.run(self, &event, &listener.source.clone());
+            }
+        }
+        for listener_id in triggerd_listeners {
+            if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
+                if listener.one_shot {
+                    self.event_dispatcher.remove_listener_by_id(&listener_id);
                 }
             }
         }
@@ -357,13 +362,12 @@ impl GameState {
                     true,
                 );
                 session.queue_event(event, true);
-                return Ok(());
+                return;
             }
         }
 
         // No reaction window → advance now
         self.advance_event(event, false);
-        Ok(())
     }
 
     fn validate_or_refill_prompt_queue(&mut self, scope: InteractionScopeId) {
@@ -452,7 +456,7 @@ impl GameState {
         let reactors = if let Some(encounter_id) = self.in_combat.get(&actor)
             && let Some(encounter) = self.encounters.get(encounter_id)
         {
-            encounter.participants(&self.world, EntityFilter::not_dead())
+            encounter.participants(&self.world, &[EntityFilter::not_dead()])
         } else if let Some((_, shape_pose)) = systems::geometry::get_shape(&self.world, actor) {
             systems::geometry::entities_in_shape(
                 &self.world,
@@ -662,19 +666,18 @@ impl GameState {
         }
     }
 
-    pub fn add_event_listener(&mut self, event_listener: EventListener) {
-        self.event_listeners
-            .insert(event_listener.trigger_id(), event_listener);
-    }
-
-    pub fn process_event_with_callback(
-        &mut self,
-        event: Event,
-        callback: EventCallback,
-    ) -> Result<(), ActionError> {
+    pub fn process_event_with_response_callback(&mut self, event: Event, callback: EventCallback) {
         if let Some(actor) = event.actor() {
-            self.add_event_listener(EventListener::new(event.id, callback));
-            self.process_event_scoped(self.scope_for_entity(actor), event)
+            self.event_dispatcher.register_listener(EventListener::new(
+                EventFilter::response_to_event_id(event.id),
+                callback,
+                ListenerSource::EventResponse {
+                    trigger_id: event.id,
+                },
+                true,
+            ));
+
+            self.process_event_scoped(self.scope_for_entity(actor), event);
         } else {
             panic!(
                 "Cannot process event with callback for event without actor: {:#?}",
@@ -689,7 +692,7 @@ impl GameState {
         };
         let entities = self.world.iter().map(|e| e.entity()).collect::<Vec<_>>();
         for entity in entities {
-            systems::time::advance_time(&mut self.world, entity, time_step);
+            systems::time::advance_time(self, entity, time_step);
         }
     }
 }

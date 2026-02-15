@@ -1,0 +1,25 @@
+{
+    "id": "nat20_core::effect.condition.incapacitated",
+    "kind": "debuff",
+    "description": "You can't take actions or reactions.",
+    "modifiers": [
+        {
+            "resource": "nat20_core::resource.action",
+            "disable": true
+        },
+        {
+            "resource": "nat20_core::resource.bonus_action",
+            "disable": true
+        },
+        {
+            "resource": "nat20_core::resource.reaction",
+            "disable": true
+        },
+        {
+            "break_concentration": true
+        },
+        {
+            "skill": "initiative disadvantage"
+        }
+    ]
+}

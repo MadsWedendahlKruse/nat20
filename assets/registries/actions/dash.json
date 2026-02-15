@@ -7,7 +7,7 @@
                 "effect": {
                     "effect_id": "nat20_core::effect.dash",
                     "lifetime": {
-                        "at_turn_boundary": {
+                        "turn_boundary": {
                             "entity": "applier",
                             "boundary": "start",
                             "duration": {

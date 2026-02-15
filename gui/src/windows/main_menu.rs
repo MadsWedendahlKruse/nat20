@@ -6,7 +6,7 @@ use nat20_core::{
         health::{hit_points::HitPoints, life_state::LifeState},
         id::Name,
     },
-    engine::{event::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
+    engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
     systems::{
         self,
         geometry::{CreaturePose, RaycastFilter, RaycastHitKind},
@@ -328,7 +328,7 @@ impl MainMenuWindow {
                         format!("{}##{:?}", name.as_str(), entity),
                         imgui::TreeNodeFlags::FRAMED,
                     ) {
-                        entity.render_mut_with_context(ui, &mut game_state.world);
+                        entity.render_mut_with_context(ui, game_state);
                         ui.separator();
 
                         if ui.button(format!("Debug##{:?}", entity)) {
@@ -395,7 +395,7 @@ impl MainMenuWindow {
         });
 
         if let Some(level_up) = level_up_window {
-            level_up.render_mut_with_context(ui, &mut game_state.world);
+            level_up.render_mut_with_context(ui, game_state);
             if level_up.is_level_up_complete() {
                 level_up_window.take();
             }

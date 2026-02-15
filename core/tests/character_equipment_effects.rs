@@ -8,6 +8,7 @@ mod tests {
     use nat20_core::{
         components::{
             ability::Ability,
+            actions::action::{ActionContext, AttackRollProvider},
             d20::RollMode,
             id::{EffectId, ItemId},
             items::{
@@ -48,7 +49,7 @@ mod tests {
         };
 
         let _ = systems::loadout::equip(
-            &mut game_state.world,
+            &mut game_state,
             entity,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
                 .unwrap()
@@ -56,53 +57,57 @@ mod tests {
         );
 
         // Before equipping the ring
-        let roll = systems::damage::attack_roll_weapon(
+        let context = &ActionContext::Weapon {
+            slot: EquipmentSlot::MeleeMainHand,
+        };
+
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            context,
         );
+        let result = systems::damage::attack_roll(roll, &game_state.world, entity, entity);
         assert_eq!(
-            roll.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker.roll_mode(),
             RollMode::Normal
         );
 
         // Equip the ring
-        let _ = systems::loadout::equip_in_slot(
-            &mut game_state.world,
-            entity,
-            &EquipmentSlot::Ring1,
-            ring,
-        );
-        let roll = systems::damage::attack_roll_weapon(
+        let _ =
+            systems::loadout::equip_in_slot(&mut game_state, entity, &EquipmentSlot::Ring1, ring);
+
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            context,
         );
+        let result = systems::damage::attack_roll(roll, &game_state.world, entity, entity);
         assert_eq!(
-            roll.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker.roll_mode(),
             RollMode::Advantage
         );
 
         // Unequip the ring
-        systems::loadout::unequip(&mut game_state.world, entity, &EquipmentSlot::Ring1);
-        let roll = systems::damage::attack_roll_weapon(
+        systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::Ring1);
+        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
-            &EquipmentSlot::MeleeMainHand,
+            context,
         );
+        let result = systems::damage::attack_roll(roll, &game_state.world, entity, entity);
         assert_eq!(
-            roll.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker.roll_mode(),
             RollMode::Normal
         );
     }
 
     #[test]
     fn character_skill_bonus_effect() {
-        let mut world = World::new();
-        let entity = world.spawn(Character::default());
+        let mut game_state = fixtures::engine::game_state();
+        let entity = game_state.world.spawn(Character::default());
 
         let armor = Armor::light(
             Item {
@@ -116,21 +121,21 @@ mod tests {
             12,
             vec![EffectId::new("nat20_core", "effect.item.armor_of_sneaking")],
         );
-        let _ = systems::loadout::equip(&mut world, entity, armor);
+        let _ = systems::loadout::equip(&mut game_state, entity, armor);
 
-        let check = systems::helpers::get_component::<SkillSet>(&world, entity).check(
+        let check = systems::helpers::get_component::<SkillSet>(&game_state.world, entity).check(
             &Skill::Stealth,
-            &world,
+            &game_state.world,
             entity,
         );
         assert_eq!(check.total_modifier(), 2);
 
-        let _ = systems::loadout::unequip(&mut world, entity, &EquipmentSlot::Armor)
+        let _ = systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::Armor)
             .expect("Failed to unequip armor");
 
-        let check = systems::helpers::get_component::<SkillSet>(&world, entity).check(
+        let check = systems::helpers::get_component::<SkillSet>(&game_state.world, entity).check(
             &Skill::Stealth,
-            &world,
+            &game_state.world,
             entity,
         );
         assert_eq!(check.total_modifier(), 0);
@@ -138,8 +143,8 @@ mod tests {
 
     #[test]
     fn character_saving_throw_effect() {
-        let mut world = World::new();
-        let entity = world.spawn(Character::default());
+        let mut game_state = fixtures::engine::game_state();
+        let entity = game_state.world.spawn(Character::default());
 
         let armor = Armor::heavy(
             Item {
@@ -157,23 +162,25 @@ mod tests {
                 "effect.item.armor_of_constitution_saving_throws",
             )],
         );
-        let _ = systems::loadout::equip(&mut world, entity, armor);
+        let _ = systems::loadout::equip(&mut game_state, entity, armor);
 
-        let throw = systems::helpers::get_component::<SavingThrowSet>(&world, entity).check(
-            &SavingThrowKind::Ability(Ability::Constitution),
-            &world,
-            entity,
-        );
+        let throw = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
+            .check(
+                &SavingThrowKind::Ability(Ability::Constitution),
+                &game_state.world,
+                entity,
+            );
         assert_eq!(throw.advantage_tracker.roll_mode(), RollMode::Advantage);
 
-        systems::loadout::unequip(&mut world, entity, &EquipmentSlot::Armor)
+        systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::Armor)
             .expect("Failed to unequip armor");
 
-        let throw = systems::helpers::get_component::<SavingThrowSet>(&world, entity).check(
-            &SavingThrowKind::Ability(Ability::Constitution),
-            &world,
-            entity,
-        );
+        let throw = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
+            .check(
+                &SavingThrowKind::Ability(Ability::Constitution),
+                &game_state.world,
+                entity,
+            );
         assert_eq!(throw.advantage_tracker.roll_mode(), RollMode::Normal);
     }
 }

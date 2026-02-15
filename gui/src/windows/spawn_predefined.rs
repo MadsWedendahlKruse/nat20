@@ -4,15 +4,16 @@ use hecs::{Entity, World};
 use imgui::MouseButton;
 use nat20_core::{
     components::id::Name,
-    engine::game_state::GameState,
+    engine::{game_state::GameState, geometry::WorldGeometry},
     entities::{
         character::{Character, CharacterTag},
         monster::{Monster, MonsterTag},
     },
     systems::{self, time::RestKind},
-    test_utils::fixtures,
+    test_utils::fixtures::{self},
 };
 use parry3d::na::Point3;
+use rerecast::ConfigBuilder;
 use tracing::info;
 
 use crate::{
@@ -35,7 +36,11 @@ pub struct SpawnPredefinedWindow {
 
 impl SpawnPredefinedWindow {
     pub fn new() -> Self {
-        let mut world = World::new();
+        // TODO: Seems pretty scuffed to construct an entire new GameState here?
+        let mut game_state = GameState::new(WorldGeometry::from_obj_path(
+            "assets/models/geometry/test_terrain.obj",
+            &ConfigBuilder::default().build(),
+        ));
 
         let spawners = vec![
             fixtures::creatures::heroes::fighter,
@@ -45,14 +50,14 @@ impl SpawnPredefinedWindow {
         ];
 
         for spawner in spawners {
-            let entity = spawner(&mut world).id();
+            let entity = spawner(&mut game_state).id();
             info!("Spawned predefined entity: {:?}", entity);
             // Ensure all resources are fully recharged
-            systems::time::on_rest_end(&mut world, &[entity], &RestKind::Long);
+            systems::time::on_rest_end(&mut game_state.world, &[entity], &RestKind::Long);
         }
 
         Self {
-            world,
+            world: game_state.world,
             entity_to_spawn: None,
             current_entity: None,
             spawning_completed: false,
@@ -189,30 +194,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 }
 
 fn set_unique_name(world: &mut World, entity: Entity) {
-    let name = if let Ok(name) = world.get::<&Name>(entity) {
-        name.as_str().to_string()
-    } else {
-        "Unnamed".to_string()
-    };
-    let mut unique_name = name.clone();
-    let mut counter = 0;
-
-    while world
-        .query::<&Name>()
-        .iter()
-        .any(|(_, n)| n.as_str() == unique_name)
-    {
-        unique_name = format!("{} ({})", name, counter);
-        counter += 1;
-    }
-
-    // Counter is going to be at least 1 here because the original name was found
-    if counter < 2 {
-        // Name is already unique, no need to update
-        return;
-    }
-
     if let Ok(mut name) = world.get::<&mut Name>(entity) {
-        *name = Name::new(unique_name);
+        *name = Name::new(format!("{} ({:?})", name.as_str(), entity));
     }
 }

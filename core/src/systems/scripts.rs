@@ -11,7 +11,8 @@ use crate::{
         resource::ResourceAmountMap,
     },
     engine::{
-        event::{ActionData, CallbackResult, Event, EventCallback, EventKind, ReactionData},
+        action_prompt::{ActionData, ReactionData},
+        event::{CallbackResult, Event, EventCallback, EventKind},
         game_state::GameState,
     },
     registry::registry::ScriptsRegistry,
@@ -326,21 +327,11 @@ pub fn apply_reaction_plan(
                 }),
             };
 
-            let process_event_result = game_state.process_event(Event::action_performed_event(
+            game_state.process_event(Event::action_performed_event(
                 game_state,
                 &ActionData::from(reaction_data),
                 vec![(reaction_data.reactor, ActionKindResult::Reaction { result })],
             ));
-
-            match process_event_result {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(
-                        "Error processing ModifyD20Result reaction for reactor {:?}: {:?}",
-                        reaction_data.reactor, err
-                    );
-                }
-            }
         }
 
         ScriptReactionPlan::ModifyD20DC { modifier } => {
@@ -382,21 +373,11 @@ pub fn apply_reaction_plan(
                 }),
             };
 
-            let process_event_result = game_state.process_event(Event::action_performed_event(
+            game_state.process_event(Event::action_performed_event(
                 game_state,
                 &ActionData::from(reaction_data),
                 vec![(reaction_data.reactor, ActionKindResult::Reaction { result })],
             ));
-
-            match process_event_result {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(
-                        "Error processing ModifyD20DC reaction for reactor {:?}: {:?}",
-                        reaction_data.reactor, err
-                    );
-                }
-            }
         }
 
         ScriptReactionPlan::RerollD20Result {
@@ -446,21 +427,11 @@ pub fn apply_reaction_plan(
                 }),
             };
 
-            let process_event_result = game_state.process_event(Event::action_performed_event(
+            game_state.process_event(Event::action_performed_event(
                 game_state,
                 &ActionData::from(reaction_data),
                 vec![(reaction_data.reactor, ActionKindResult::Reaction { result })],
             ));
-
-            match process_event_result {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(
-                        "Error processing RerollD20Result reaction for reactor {:?}: {:?}",
-                        reaction_data.reactor, err
-                    );
-                }
-            }
         }
 
         ScriptReactionPlan::CancelEvent {
@@ -489,7 +460,7 @@ pub fn apply_reaction_plan(
                 resources_refunded,
             };
 
-            let process_event_result = game_state.process_event(Event::action_performed_event(
+            game_state.process_event(Event::action_performed_event(
                 game_state,
                 &ActionData::from(reaction_data),
                 vec![(
@@ -497,16 +468,6 @@ pub fn apply_reaction_plan(
                     ActionKindResult::Reaction { result },
                 )],
             ));
-
-            match process_event_result {
-                Ok(_) => {}
-                Err(err) => {
-                    error!(
-                        "Error processing CancelEvent reaction for reactor {:?}: {:?}",
-                        reaction_data.reactor, err
-                    );
-                }
-            }
         }
 
         ScriptReactionPlan::RequireSavingThrow {
@@ -541,10 +502,10 @@ pub fn apply_reaction_plan(
             let on_success_plan = *on_success;
             let on_failure_plan = *on_failure;
 
-            let callback: EventCallback = Arc::new(move |game_state, event| {
+            let callback = EventCallback::new(move |game_state, event, _| {
                 if let EventKind::D20CheckResolved(_, result_kind, _) = &event.kind {
                     let success = match result_kind {
-                        D20ResultKind::SavingThrow { result, .. } => result.success,
+                        D20ResultKind::SavingThrow { .. } => result_kind.is_success(&dc_kind),
                         _ => panic!("RequireSavingThrow expects a saving throw result"),
                     };
 
@@ -563,7 +524,7 @@ pub fn apply_reaction_plan(
                 }
             });
 
-            let _ = game_state.process_event_with_callback(check_event, callback);
+            let _ = game_state.process_event_with_response_callback(check_event, callback);
         }
     }
 }
