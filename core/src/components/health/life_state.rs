@@ -10,7 +10,6 @@ pub enum LifeState {
     Unconscious(DeathSavingThrows), // at 0 HP and making saves
     Stable,                         // at 0 HP but not making saves
     Dead,                           // dead but still an entity (corpse)
-    Defeated,                       // Same as 'Dead' but for players
 }
 
 impl LifeState {
@@ -88,7 +87,7 @@ impl DeathSavingThrows {
 
     pub fn next_state(&self) -> LifeState {
         if self.is_defeated() {
-            LifeState::Defeated
+            LifeState::Dead
         } else if self.is_stable() {
             LifeState::Stable
         } else {

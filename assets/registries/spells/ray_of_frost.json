@@ -37,7 +37,12 @@
         "range": "60 feet",
         "require_line_of_sight": true,
         "allowed_targets": [
-            "not_dead"
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            }
         ]
     }
 }

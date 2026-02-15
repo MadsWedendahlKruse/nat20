@@ -129,7 +129,7 @@ pub enum EntityFilter {
 
 impl EntityFilter {
     pub fn not_dead() -> Self {
-        EntityFilter::NotLifeStates(HashSet::from([LifeState::Dead, LifeState::Defeated]))
+        EntityFilter::NotLifeStates(HashSet::from([LifeState::Dead]))
     }
 
     pub fn matches(&self, world: &World, entity: &Entity) -> bool {

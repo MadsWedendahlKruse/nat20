@@ -215,34 +215,57 @@ impl Evaluable for TargetingKindDefinition {
 
 // TODO: This looks pretty weird in JSON format, see "Hold Person"
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(untagged)]
 pub enum EntityFilterDefinition {
+    Tags {
+        tag: EntityFilterTag,
+    },
+    LifeState {
+        life_states: HashSet<LifeState>,
+        #[serde(default)]
+        invert: bool,
+    },
+    CreatureType {
+        creature_types: HashSet<CreatureType>,
+        #[serde(default)]
+        invert: bool,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EntityFilterTag {
     All,
     Characters,
     Monsters,
-    LifeStates(HashSet<LifeState>),
-    NotLifeStates(HashSet<LifeState>),
-    NotDead,
-    CreatureTypes(HashSet<CreatureType>),
-    NotCreatureTypes(HashSet<CreatureType>),
 }
 
 impl EntityFilterDefinition {
     pub fn evaluate(&self) -> EntityFilter {
         match self {
-            EntityFilterDefinition::All => EntityFilter::All,
-            EntityFilterDefinition::Characters => EntityFilter::Characters,
-            EntityFilterDefinition::Monsters => EntityFilter::Monsters,
-            EntityFilterDefinition::LifeStates(states) => EntityFilter::LifeStates(states.clone()),
-            EntityFilterDefinition::NotLifeStates(states) => {
-                EntityFilter::NotLifeStates(states.clone())
+            EntityFilterDefinition::Tags { tag } => match tag {
+                EntityFilterTag::All => EntityFilter::All,
+                EntityFilterTag::Characters => EntityFilter::Characters,
+                EntityFilterTag::Monsters => EntityFilter::Monsters,
+            },
+            EntityFilterDefinition::LifeState {
+                life_states,
+                invert,
+            } => {
+                if *invert {
+                    EntityFilter::NotLifeStates(life_states.clone())
+                } else {
+                    EntityFilter::LifeStates(life_states.clone())
+                }
             }
-            EntityFilterDefinition::NotDead => EntityFilter::not_dead(),
-            EntityFilterDefinition::CreatureTypes(types) => {
-                EntityFilter::CreatureTypes(types.clone())
-            }
-            EntityFilterDefinition::NotCreatureTypes(types) => {
-                EntityFilter::NotCreatureTypes(types.clone())
+            EntityFilterDefinition::CreatureType {
+                creature_types,
+                invert,
+            } => {
+                if *invert {
+                    EntityFilter::NotCreatureTypes(creature_types.clone())
+                } else {
+                    EntityFilter::CreatureTypes(creature_types.clone())
+                }
             }
         }
     }

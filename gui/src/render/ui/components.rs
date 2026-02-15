@@ -1296,21 +1296,6 @@ pub fn new_life_state_text(
                 return vec![entity_component, ("died".to_string(), TextKind::Normal)];
             }
         }
-
-        LifeState::Defeated => {
-            if let Some(actor_component) = actor_component {
-                return vec![
-                    entity_component,
-                    ("was defeated by".to_string(), TextKind::Normal),
-                    actor_component,
-                ];
-            } else {
-                return vec![
-                    entity_component,
-                    ("was defeated".to_string(), TextKind::Normal),
-                ];
-            }
-        }
     }
 }
 
