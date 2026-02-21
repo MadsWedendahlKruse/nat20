@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use hecs::{Entity, World};
 use parry3d::{na::Point3, shape::Ball};
 use tracing::{info, warn};
+use uom::si::f32::Length;
 
 use crate::{
     components::{
@@ -147,7 +148,7 @@ impl GameState {
         &mut self,
         entity: Entity,
         goal: Point3<f32>,
-    ) -> Result<PathResult, MovementError> {
+    ) -> Result<(), MovementError> {
         if let Some(encounter_id) = self.in_combat.get(&entity) {
             if let Some(encounter) = self.encounters.get_mut(encounter_id) {
                 if encounter.current_entity() != entity {
@@ -157,8 +158,17 @@ impl GameState {
                 panic!("Inconsistent state: entity is in combat but encounter not found");
             }
         }
+
         let in_combat = self.in_combat.contains_key(&entity);
-        systems::movement::path(self, entity, &goal, true, true, in_combat, in_combat)
+        let path = systems::movement::path(self, entity, &goal, true, false, in_combat, false)?;
+        let event = Event::new(EventKind::MovementRequested {
+            entity,
+            path: path.taken_path,
+            // TODO: Placeholder
+            free_movement_distance: Length::new::<uom::si::length::meter>(0.0),
+        });
+        self.process_event(event);
+        Ok(())
     }
 
     fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
@@ -333,8 +343,6 @@ impl GameState {
                 let callback = listener.callback.clone();
                 callback.run(self, &event, &listener.source.clone());
             }
-        }
-        for listener_id in triggerd_listeners {
             if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
                 if listener.one_shot {
                     self.event_dispatcher.remove_listener_by_id(&listener_id);
@@ -535,6 +543,23 @@ impl GameState {
     // TODO: I guess this is where the event actually "does" something? New name?
     fn advance_event(&mut self, event: Event, process_pending_events: bool) {
         match &event.kind {
+            EventKind::MovementRequested { entity, path, .. } => {
+                if let Some(end) = path.end() {
+                    let in_combat = self.in_combat.contains_key(entity);
+                    let _ = systems::movement::path(
+                        self, *entity, end, false, true, in_combat, in_combat,
+                    );
+                }
+
+                let _ = self.process_event_scoped(
+                    self.scope_for_entity(*entity),
+                    Event::new(EventKind::MovementPerformed {
+                        entity: *entity,
+                        path: path.clone(),
+                    }),
+                );
+            }
+
             EventKind::ActionRequested { action } => {
                 systems::actions::perform_action(self, action);
             }

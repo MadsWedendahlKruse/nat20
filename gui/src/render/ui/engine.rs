@@ -41,6 +41,9 @@ impl From<usize> for LogLevel {
 pub fn event_log_level(event: &Event) -> LogLevel {
     match &event.kind {
         EventKind::Encounter(encounter_event) => LogLevel::Info,
+        EventKind::MovementRequested { .. } | EventKind::MovementPerformed { .. } => {
+            LogLevel::Debug
+        }
         EventKind::ActionRequested { .. } => LogLevel::Info,
         EventKind::ReactionRequested { .. } => LogLevel::Info,
         EventKind::ActionPerformed { .. } => LogLevel::Info,
@@ -165,6 +168,59 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     ui.separator_with_text(format!("Round {}", round));
                 }
             },
+            EventKind::MovementRequested {
+                entity,
+                path,
+                free_movement_distance,
+            } => {
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+                TextSegments::new(vec![
+                    (entity_name, TextKind::Actor),
+                    ("is moving to".to_string(), TextKind::Normal),
+                    (
+                        format!(
+                            "({:.1}, {:.1}, {:.1})",
+                            path.end().unwrap().x,
+                            path.end().unwrap().y,
+                            path.end().unwrap().z
+                        ),
+                        TextKind::Target,
+                    ),
+                ])
+                .render(ui);
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        ui.text("Movement Path:");
+                        for point in &path.points {
+                            ui.text(format!("({:.1}, {:.1}, {:.1})", point.x, point.y, point.z));
+                        }
+                        ui.text(format!(
+                            "Free movement distance: {:.1}m",
+                            free_movement_distance.get::<uom::si::length::meter>()
+                        ));
+                    });
+                }
+            }
+            EventKind::MovementPerformed { entity, path, .. } => {
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+                TextSegments::new(vec![
+                    (entity_name, TextKind::Actor),
+                    ("moved to".to_string(), TextKind::Normal),
+                    (
+                        format!(
+                            "({:.1}, {:.1}, {:.1})",
+                            path.end().unwrap().x,
+                            path.end().unwrap().y,
+                            path.end().unwrap().z
+                        ),
+                        TextKind::Target,
+                    ),
+                ])
+                .render(ui);
+            }
             EventKind::ActionRequested { action } => {
                 action.render_with_context(ui, world);
             }

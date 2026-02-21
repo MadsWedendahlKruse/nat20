@@ -30,7 +30,7 @@ pub enum MovementError {
     NotYourTurn,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PathResult {
     pub full_path: WorldPath,
     pub taken_path: WorldPath,

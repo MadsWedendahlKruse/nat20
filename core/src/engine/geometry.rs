@@ -215,7 +215,7 @@ fn build_navmesh(
     (poly_navmesh, detail_navmesh, polyanya_mesh)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorldPath {
     pub points: Vec<Point3<f32>>,
     pub length: Length,
