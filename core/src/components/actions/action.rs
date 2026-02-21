@@ -278,6 +278,12 @@ pub struct ActionOutcomeBundle {
     pub healing: Option<HealingOutcome>,
 }
 
+impl ActionOutcomeBundle {
+    pub fn is_empty(&self) -> bool {
+        self.damage.is_none() && self.effect.is_none() && self.healing.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionKindResult {
     Standard(ActionOutcomeBundle),

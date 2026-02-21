@@ -10,7 +10,7 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
-        time::{EntityClock, TimeMode, TimeStep},
+        time::{TimeMode, TimeStep},
     },
     engine::{
         action_prompt::{
@@ -19,10 +19,9 @@ use crate::{
         },
         encounter::{Encounter, EncounterId},
         event::{
-            EncounterEvent, Event, EventCallback, EventDispatcher, EventFilter, EventId, EventKind,
+            EncounterEvent, Event, EventCallback, EventDispatcher, EventFilter, EventKind,
             EventListener, EventLog, ListenerSource,
         },
-        game_state,
         geometry::WorldGeometry,
         interaction::{InteractionEngine, InteractionScopeId, InteractionSession},
     },
@@ -158,14 +157,8 @@ impl GameState {
                 panic!("Inconsistent state: entity is in combat but encounter not found");
             }
         }
-        systems::movement::path(
-            self,
-            entity,
-            &goal,
-            true,
-            true,
-            self.in_combat.get(&entity).is_some(),
-        )
+        let in_combat = self.in_combat.contains_key(&entity);
+        systems::movement::path(self, entity, &goal, true, true, in_combat, in_combat)
     }
 
     fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {

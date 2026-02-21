@@ -169,6 +169,29 @@ impl MainMenuWindow {
                     None
                 };
 
+                let window_manager_ptr =
+                    unsafe { &mut *(&mut gui_state.window_manager as *mut WindowManager) };
+
+                window_manager_ptr.render_window(
+                    ui,
+                    "World",
+                    &anchor::TOP_LEFT,
+                    AUTO_RESIZE,
+                    &mut true,
+                    || {
+                        Self::render_character_menu(
+                            ui,
+                            gui_state,
+                            game_state,
+                            level_up,
+                            spawn_predefined,
+                            encounters,
+                            creature_debug,
+                            log_source,
+                        );
+                    },
+                );
+
                 if let Some(entity) = gui_state.selected_entity {
                     if (action_bar.is_some() && action_bar.as_ref().unwrap().entity != entity)
                         || action_bar.is_none()
@@ -194,29 +217,6 @@ impl MainMenuWindow {
                     action_bar.render_mut_with_context(ui, gui_state, game_state);
                 }
                 reactions.render_mut_with_context(ui, gui_state, game_state);
-
-                let window_manager_ptr =
-                    unsafe { &mut *(&mut gui_state.window_manager as *mut WindowManager) };
-
-                window_manager_ptr.render_window(
-                    ui,
-                    "World",
-                    &anchor::TOP_LEFT,
-                    AUTO_RESIZE,
-                    &mut true,
-                    || {
-                        Self::render_character_menu(
-                            ui,
-                            gui_state,
-                            game_state,
-                            level_up,
-                            spawn_predefined,
-                            encounters,
-                            creature_debug,
-                            log_source,
-                        );
-                    },
-                );
 
                 Self::render_event_log(
                     ui,
@@ -266,20 +266,7 @@ impl MainMenuWindow {
                         }
 
                         RaycastHitKind::World => {
-                            if ui.is_mouse_clicked(MouseButton::Left)
-                                && let Some(entity) = gui_state.selected_entity
-                            {
-                                let result = game_state.submit_movement(entity, closest.poi);
-
-                                match result {
-                                    Ok(path_result) => {
-                                        gui_state.path_cache.insert(entity, path_result);
-                                    }
-                                    Err(err) => {
-                                        error!("Failed to submit movement: {:?}", err);
-                                    }
-                                }
-                            }
+                            // Nothing for now
                         }
                     }
                 }

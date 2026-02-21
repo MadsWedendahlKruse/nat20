@@ -152,7 +152,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                             self.entity_to_spawn = None;
                         }
 
-                        if let Some(raycast) = &gui_state.cursor_ray_result
+                        if let Some(raycast) = gui_state.cursor_ray_result.take()
                             && let Some(raycast_world) = raycast.world_hit()
                             && let Some(navmesh_point) = systems::geometry::navmesh_nearest_point(
                                 &game_state.geometry,
@@ -167,7 +167,6 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                             );
 
                             if ui.is_mouse_clicked(MouseButton::Left) {
-                                gui_state.cursor_ray_result.take();
                                 self.current_entity = None;
                             }
                         }

@@ -59,6 +59,7 @@ pub fn path(
     goal: &Point3<f32>,
     allow_partial: bool,
     move_entity: bool,
+    trim_to_movement: bool,
     spend_movement: bool,
 ) -> Result<PathResult, MovementError> {
     let full_path = systems::geometry::path(&game_state.world, &game_state.geometry, entity, *goal)
@@ -69,7 +70,7 @@ pub fn path(
             .remaining_movement()
             .clone();
 
-    let taken_path = if full_path.length > remaining_movement && spend_movement {
+    let taken_path = if full_path.length > remaining_movement && trim_to_movement {
         if !allow_partial {
             return Err(MovementError::InsufficientSpeed);
         }
@@ -106,6 +107,7 @@ pub fn path_in_range_of_point(
     allow_partial: bool,
     move_entity: bool,
     line_of_sight: bool,
+    trim_to_movement: bool,
     spend_movement: bool,
 ) -> Result<PathResult, MovementError> {
     trace!(
@@ -141,7 +143,15 @@ pub fn path_in_range_of_point(
 
     trace!("Distance to target: {:?}", distance_to_target);
 
-    let path_to_target = path(game_state, entity, &target, true, false, spend_movement)?;
+    let path_to_target = path(
+        game_state,
+        entity,
+        &target,
+        true,
+        false,
+        trim_to_movement,
+        spend_movement,
+    )?;
 
     if let Some(intersection) = determine_path_sphere_intersections(
         game_state,
@@ -157,6 +167,7 @@ pub fn path_in_range_of_point(
             &intersection,
             allow_partial,
             move_entity,
+            trim_to_movement,
             spend_movement,
         );
     }
@@ -312,6 +323,7 @@ pub fn path_to_target(
                 true,
                 false,
                 targeting_context.require_line_of_sight,
+                true,
                 true,
             ) {
                 return Ok(TargetPathFindingResult::PathFound(path_result));
