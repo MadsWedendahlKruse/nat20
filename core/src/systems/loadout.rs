@@ -2,6 +2,7 @@ use hecs::{Entity, Ref, World};
 
 use crate::{
     components::{
+        actions::targeting::TargetingRange,
         damage::DamageRoll,
         items::{
             equipment::{

@@ -14,7 +14,6 @@ use nat20_core::{
 };
 use parry3d::na::{Matrix4, Point3};
 use strum::IntoEnumIterator;
-use tracing::error;
 
 use crate::{
     render::{
@@ -213,11 +212,6 @@ impl MainMenuWindow {
                     *action_bar = None;
                 }
 
-                if let Some(action_bar) = action_bar {
-                    action_bar.render_mut_with_context(ui, gui_state, game_state);
-                }
-                reactions.render_mut_with_context(ui, gui_state, game_state);
-
                 Self::render_event_log(
                     ui,
                     &mut gui_state.window_manager,
@@ -239,13 +233,22 @@ impl MainMenuWindow {
                     encounters.retain(|encounter| encounter.id() != &id);
                 }
 
-                // If the raycast result was not taken by anyone, we can fallback
-                // to using it for inspecting entities or for movement
+                let mut take_ray_result = false;
                 if let Some(raycast) = &gui_state.cursor_ray_result
                     && let Some(closest) = raycast.closest()
                 {
                     match &closest.kind {
                         RaycastHitKind::Creature(entity) => {
+                            take_ray_result = true;
+                            // Highlight the entity under the cursor
+                            gui_state.creature_render_mode.insert(
+                                *entity,
+                                MeshRenderMode::MeshWithWireFrame {
+                                    color: [1.0, 1.0, 1.0, 1.0],
+                                    width: 2.0,
+                                },
+                            );
+
                             if ui.is_mouse_clicked(MouseButton::Right) {
                                 ui.open_popup("CreatureRightClick");
                                 creature_right_click
@@ -271,11 +274,20 @@ impl MainMenuWindow {
                     }
                 }
 
+                if take_ray_result {
+                    gui_state.cursor_ray_result.take();
+                }
+
                 if let Some(creature_right_click) = creature_right_click {
                     ui.popup("CreatureRightClick", || {
                         creature_right_click.render_mut_with_context(ui, game_state);
                     });
                 }
+
+                if let Some(action_bar) = action_bar {
+                    action_bar.render_mut_with_context(ui, gui_state, game_state);
+                }
+                reactions.render_mut_with_context(ui, gui_state, game_state);
 
                 Self::render_world(ui, gui_state, game_state);
             }
@@ -542,29 +554,15 @@ impl MainMenuWindow {
                         );
                     }
 
-                    // Highlight if mouse is over the creature
-                    let mode = if let Some(raycast) = &gui_state.cursor_ray_result
-                        && let Some(closest) = raycast.closest()
-                        && let RaycastHitKind::Creature(e) = &closest.kind
-                        && *e == entity
-                    {
-                        &MeshRenderMode::MeshWithWireFrame {
-                            color: [1.0, 1.0, 1.0, 1.0],
-                            width: 2.0,
-                        }
-                    } else {
-                        gui_state
-                            .creature_render_mode
-                            .get(&entity)
-                            .unwrap_or(&MeshRenderMode::MeshOnly)
-                    };
-
                     mesh.draw(
                         gui_state.ig_renderer.gl_context(),
                         &gui_state.program,
                         &shape_pose.to_homogeneous(),
                         [0.8, 0.8, 0.8, 1.0],
-                        mode,
+                        gui_state
+                            .creature_render_mode
+                            .get(&entity)
+                            .unwrap_or(&MeshRenderMode::MeshOnly),
                     );
 
                     // TEMP

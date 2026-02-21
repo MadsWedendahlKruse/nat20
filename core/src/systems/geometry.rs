@@ -8,7 +8,8 @@ use parry3d::{
     shape::{Capsule, Shape},
 };
 use polyanya::Coords;
-use uom::si::f32::Length;
+use tracing::trace;
+use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::species::CreatureSize,
@@ -527,4 +528,69 @@ pub fn entities_in_shape(
     }
 
     entities
+}
+
+pub fn line_sphere_intersections(
+    line_origin: Point3<f32>,
+    line_dir: Vector3<f32>,
+    sphere_center: Point3<f32>,
+    sphere_radius: f32,
+) -> Vec<Point3<f32>> {
+    let mut intersections = vec![];
+
+    let a = line_dir.dot(&line_dir);
+    let oc = line_origin - sphere_center;
+    let b = 2.0 * oc.dot(&line_dir);
+    let c = oc.dot(&oc) - sphere_radius * sphere_radius;
+
+    let discriminant = b * b - 4.0 * a * c;
+
+    // A negative discriminant corresponds to no intersection
+    if discriminant < 0.0 {
+        return intersections;
+    }
+
+    if discriminant.abs() < EPSILON {
+        // One intersection (tangent)
+        let t = -b / (2.0 * a);
+        intersections.push(line_origin + line_dir * t);
+    } else {
+        // Two intersections
+        let sqrt_disc = discriminant.sqrt();
+        let t1 = (-b - sqrt_disc) / (2.0 * a);
+        let t2 = (-b + sqrt_disc) / (2.0 * a);
+        intersections.push(line_origin + line_dir * t1);
+        intersections.push(line_origin + line_dir * t2);
+    }
+
+    intersections
+}
+
+pub fn path_intersections_within_radius(
+    path: &WorldPath,
+    point: Point3<f32>,
+    radius: Length,
+) -> Vec<Point3<f32>> {
+    let mut intersections = vec![];
+
+    for (start, end) in path.points.windows(2).map(|window| (window[0], window[1])) {
+        let possible_intersections =
+            line_sphere_intersections(start, end - start, point, radius.get::<meter>());
+        trace!(
+            "Possible intersections between line segment {:?}-{:?} and sphere at {:?} with radius {:?}: {:?}",
+            start, end, point, radius, possible_intersections
+        );
+        for intersection in possible_intersections {
+            // Check if the intersection is actually within the line segment
+            let to_intersection = intersection - start;
+            let segment = end - start;
+            if to_intersection.dot(&segment) >= 0.0
+                && to_intersection.dot(&to_intersection) <= segment.dot(&segment)
+            {
+                intersections.push(intersection);
+            }
+        }
+    }
+
+    intersections
 }

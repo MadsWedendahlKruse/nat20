@@ -7,7 +7,7 @@ use strum::Display;
 use crate::{
     components::{
         ability::Ability,
-        actions::action::{Action, ActionKind, TargetingFunction},
+        actions::action::{Action, ActionKind, ReactionTriggerFunction, TargetingFunction},
         effects::effect::EffectInstanceId,
         id::{EffectId, IdProvider, ScriptId, SpellId},
         resource::ResourceAmountMap,
@@ -69,7 +69,7 @@ impl Spell {
         kind: ActionKind,
         resource_cost: ResourceAmountMap,
         targeting: Arc<TargetingFunction>,
-        reaction_trigger: Option<ScriptId>,
+        reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
         granted_spells: Vec<(SpellId, u8)>,
     ) -> Self {
         let action_id = id.clone().into();

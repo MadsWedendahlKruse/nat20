@@ -279,4 +279,30 @@ impl WorldPath {
     pub fn end(&self) -> Option<&Point3<f32>> {
         self.points.last()
     }
+
+    pub fn is_point_on_path(&self, point: Point3<f32>, tolerance: Length) -> bool {
+        for i in 0..(self.points.len() - 1) {
+            let segment_start = self.points[i];
+            let segment_end = self.points[i + 1];
+            let segment_vector = segment_end - segment_start;
+            let segment_length = Length::new::<meter>(segment_vector.magnitude());
+
+            if segment_length == Length::new::<meter>(0.0) {
+                if (point - segment_start).magnitude() <= tolerance.get::<meter>() {
+                    return true;
+                }
+                continue;
+            }
+
+            let t = ((point - segment_start).dot(&segment_vector)
+                / segment_length.get::<meter>().powi(2))
+            .clamp(0.0, 1.0);
+            let closest_point = segment_start + segment_vector * t;
+            if (point - closest_point).magnitude() <= tolerance.get::<meter>() {
+                return true;
+            }
+        }
+
+        false
+    }
 }

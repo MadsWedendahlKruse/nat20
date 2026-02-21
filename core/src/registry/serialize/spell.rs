@@ -8,7 +8,9 @@ use crate::{
     },
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
-        serialize::{action::ActionKindDefinition, targeting::TargetingDefinition},
+        serialize::{
+            action::ActionKindDefinition, reaction::ReactionTrigger, targeting::TargetingDefinition,
+        },
     },
     scripts::script::ScriptFunction,
 };
@@ -25,7 +27,7 @@ pub struct SpellDefinition {
     pub resource_cost: ResourceAmountMap,
     pub targeting: TargetingDefinition,
     #[serde(default)]
-    pub reaction_trigger: Option<ScriptId>,
+    pub reaction_trigger: Option<ReactionTrigger>,
     /// TODO: Is there a better way to represent this?
     ///
     /// Some spells like Hex or Hunter's Mark grant an alternative version of themselves
@@ -48,7 +50,7 @@ impl From<SpellDefinition> for Spell {
             value.kind.into(),
             value.resource_cost,
             value.targeting.function(),
-            value.reaction_trigger,
+            value.reaction_trigger.map(|trigger| trigger.function),
             value.granted_spells,
         )
     }
@@ -60,7 +62,9 @@ impl RegistryReferenceCollector for SpellDefinition {
         for resource in self.resource_cost.keys() {
             collector.add(RegistryReference::Resource(resource.clone()));
         }
-        if let Some(script_id) = &self.reaction_trigger {
+        if let Some(reaction_trigger) = &self.reaction_trigger
+            && let Some(script_id) = &reaction_trigger.script
+        {
             collector.add(RegistryReference::Script(
                 script_id.clone(),
                 ScriptFunction::ReactionTrigger,

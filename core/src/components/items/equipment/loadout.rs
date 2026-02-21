@@ -2,11 +2,15 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use hecs::{Entity, World};
 use serde::Deserialize;
+use uom::si::f32::Length;
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionContext, ActionMap, ActionProvider, AttackRollProvider},
+        actions::{
+            action::{ActionContext, ActionMap, ActionProvider, AttackRollProvider},
+            targeting::TargetingRange,
+        },
         d20::AdvantageType,
         damage::{AttackRoll, AttackRollResult, DamageRoll},
         id::{EffectId, ItemId},
@@ -15,7 +19,9 @@ use crate::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus},
                 equipment::EquipmentItem,
                 slots::{EquipmentSlot, SlotProvider},
-                weapon::{Weapon, WeaponKind, WeaponProficiencyMap, WeaponProperties},
+                weapon::{
+                    MELEE_RANGE_DEFAULT, Weapon, WeaponKind, WeaponProficiencyMap, WeaponProperties,
+                },
             },
             inventory::{ItemContainer, ItemInstance},
             item::Item,
@@ -309,6 +315,16 @@ impl Loadout {
             &systems::helpers::get_component::<AbilityScoreMap>(world, entity),
             self.is_wielding_weapon_with_both_hands(weapon.kind()),
         )
+    }
+
+    pub fn melee_range(&self) -> &TargetingRange {
+        if self.has_weapon_in_hand(&EquipmentSlot::MeleeMainHand) {
+            self.weapon_in_hand(&EquipmentSlot::MeleeMainHand)
+                .unwrap()
+                .range()
+        } else {
+            &MELEE_RANGE_DEFAULT
+        }
     }
 }
 

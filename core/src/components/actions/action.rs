@@ -27,6 +27,105 @@ use crate::{
     systems::{self},
 };
 
+pub type DamageFunction = dyn Fn(&World, Entity, &ActionContext) -> DamageRoll + Send + Sync;
+pub type AttackRollFunction =
+    dyn Fn(&World, Entity, Entity, &ActionContext) -> AttackRoll + Send + Sync;
+pub type SavingThrowFunction =
+    dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
+pub type HealFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
+pub type TargetingFunction =
+    dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
+pub type ReactionTriggerFunction = dyn Fn(&World, &Entity, &Event) -> bool + Send + Sync;
+
+#[derive(Clone, Deserialize)]
+#[serde(from = "ActionDefinition")]
+pub struct Action {
+    pub id: ActionId,
+    pub description: String,
+    pub kind: ActionKind,
+    pub targeting: Arc<TargetingFunction>,
+    /// e.g. Action, Bonus Action, Reaction
+    pub resource_cost: ResourceAmountMap,
+    /// Optional cooldown for the action
+    pub cooldown: Option<RechargeRule>,
+    /// If the action is a reaction, this will describe what triggers the reaction.
+    pub reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
+}
+
+impl Action {
+    /// Targets are very explicitly passed as a separate parameter here, since the
+    /// targets in the `ActionData` can also be points, so prior to calling `perform`
+    /// the targetted entities are resolved.
+    pub fn perform(
+        &mut self,
+        game_state: &mut GameState,
+        action_data: &ActionData,
+        targets: &[Entity],
+    ) {
+        // TODO: Not a fan of having to clone to avoid borrowing issues, but
+        // hopefully since most of the effect just have a no-op as their
+        // on_action component it'll be cheap to clone
+        let hooks: Vec<_> = systems::effects::effects(&game_state.world, action_data.actor)
+            .values()
+            .filter_map(|effect| Some(effect.effect().on_action.clone()))
+            .collect();
+
+        for hook in hooks {
+            hook(&mut game_state.world, action_data);
+        }
+
+        self.kind.perform(game_state, action_data, targets);
+    }
+
+    pub fn id(&self) -> &ActionId {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &ActionKind {
+        &self.kind
+    }
+
+    pub fn targeting(
+        &self,
+    ) -> &Arc<dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync> {
+        &self.targeting
+    }
+
+    pub fn resource_cost(&self) -> &ResourceAmountMap {
+        &self.resource_cost
+    }
+
+    pub fn resource_cost_mut(&mut self) -> &mut ResourceAmountMap {
+        &mut self.resource_cost
+    }
+}
+
+impl IdProvider for Action {
+    type Id = ActionId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+}
+
+impl Debug for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Action")
+            .field("id", &self.id)
+            .field("kind", &self.kind)
+            .field("resource_cost", &self.resource_cost)
+            .field("cooldown", &self.cooldown)
+            .finish()
+    }
+}
+
+impl PartialEq for Action {
+    fn eq(&self, other: &Self) -> bool {
+        // TODO: For now we just assume actions are equal if their IDs are the same.
+        self.id == other.id
+    }
+}
+
 /// Represents the context in which an action is performed.
 /// This can be used to determine the type of action (e.g. weapon, spell, etc.)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,13 +148,6 @@ pub enum ActionContext {
     // TODO: Not sure if Other is needed
     Other,
 }
-
-pub type DamageFunction = dyn Fn(&World, Entity, &ActionContext) -> DamageRoll + Send + Sync;
-pub type AttackRollFunction =
-    dyn Fn(&World, Entity, Entity, &ActionContext) -> AttackRoll + Send + Sync;
-pub type SavingThrowFunction =
-    dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
-pub type HealFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
 
 pub trait AttackRollProvider {
     fn attack_roll(
@@ -336,24 +428,6 @@ impl PartialEq for ReactionResult {
     }
 }
 
-pub type TargetingFunction =
-    dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
-
-#[derive(Clone, Deserialize)]
-#[serde(from = "ActionDefinition")]
-pub struct Action {
-    pub id: ActionId,
-    pub description: String,
-    pub kind: ActionKind,
-    pub targeting: Arc<TargetingFunction>,
-    /// e.g. Action, Bonus Action, Reaction
-    pub resource_cost: ResourceAmountMap,
-    /// Optional cooldown for the action
-    pub cooldown: Option<RechargeRule>,
-    /// If the action is a reaction, this will describe what triggers the reaction.
-    pub reaction_trigger: Option<ScriptId>,
-}
-
 /// Represents the result of performing an action on a single target. For actions
 /// that affect multiple targets, multiple `ActionResult` instances can be collected.
 #[derive(Debug, Clone, PartialEq)]
@@ -432,80 +506,6 @@ impl Debug for ActionKind {
             ActionKind::Reaction { .. } => write!(f, "Reaction"),
             ActionKind::Custom(_) => write!(f, "CustomAction"),
         }
-    }
-}
-
-impl Action {
-    /// Targets are very explicitly passed as a separate parameter here, since the
-    /// targets in the `ActionData` can also be points, so prior to calling `perform`
-    /// the targetted entities are resolved.
-    pub fn perform(
-        &mut self,
-        game_state: &mut GameState,
-        action_data: &ActionData,
-        targets: &[Entity],
-    ) {
-        // TODO: Not a fan of having to clone to avoid borrowing issues, but
-        // hopefully since most of the effect just have a no-op as their
-        // on_action component it'll be cheap to clone
-        let hooks: Vec<_> = systems::effects::effects(&game_state.world, action_data.actor)
-            .values()
-            .filter_map(|effect| Some(effect.effect().on_action.clone()))
-            .collect();
-
-        for hook in hooks {
-            hook(&mut game_state.world, action_data);
-        }
-
-        self.kind.perform(game_state, action_data, targets);
-    }
-
-    pub fn id(&self) -> &ActionId {
-        &self.id
-    }
-
-    pub fn kind(&self) -> &ActionKind {
-        &self.kind
-    }
-
-    pub fn targeting(
-        &self,
-    ) -> &Arc<dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync> {
-        &self.targeting
-    }
-
-    pub fn resource_cost(&self) -> &ResourceAmountMap {
-        &self.resource_cost
-    }
-
-    pub fn resource_cost_mut(&mut self) -> &mut ResourceAmountMap {
-        &mut self.resource_cost
-    }
-}
-
-impl IdProvider for Action {
-    type Id = ActionId;
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-}
-
-impl Debug for Action {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Action")
-            .field("id", &self.id)
-            .field("kind", &self.kind)
-            .field("resource_cost", &self.resource_cost)
-            .field("cooldown", &self.cooldown)
-            .finish()
-    }
-}
-
-impl PartialEq for Action {
-    fn eq(&self, other: &Self) -> bool {
-        // TODO: For now we just assume actions are equal if their IDs are the same.
-        self.id == other.id
     }
 }
 

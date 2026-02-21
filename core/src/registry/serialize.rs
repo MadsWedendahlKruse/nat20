@@ -8,6 +8,7 @@ pub mod item;
 pub mod modifier;
 pub mod parser;
 pub mod quantity;
+pub mod reaction;
 pub mod species;
 pub mod spell;
 pub mod targeting;

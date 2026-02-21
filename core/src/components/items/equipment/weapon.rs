@@ -227,7 +227,11 @@ impl Weapon {
             WeaponKind::Ranged => Ability::Dexterity,
         };
 
-        let mut weapon_actions = vec![ActionId::new("nat20_core", "action.weapon_attack")];
+        let mut weapon_actions = vec![
+            ActionId::new("nat20_core", "action.weapon_attack"),
+            // TODO: Don't know where to put this
+            ActionId::new("nat20_core", "action.opportunity_attack"),
+        ];
 
         if damage.is_empty() {
             panic!("Weapon must have at least one damage type");

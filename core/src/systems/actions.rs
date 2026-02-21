@@ -326,14 +326,7 @@ pub fn available_reactions_to_event(
         let reaction = reaction.unwrap();
 
         if let Some(trigger) = &reaction.reaction_trigger {
-            let Some(script_event) = ScriptEventView::from_event(event) else {
-                continue;
-            };
-            let context = ScriptReactionTriggerContext {
-                reactor: reactor.into(),
-                event: script_event,
-            };
-            if systems::scripts::evaluate_reaction_trigger(trigger, &context) {
+            if trigger(world, &reactor, event) {
                 for (context, resource_cost) in &contexts_and_costs {
                     let self_target = matches!(
                         targeting_context(world, reactor, &reaction_id, context).kind,

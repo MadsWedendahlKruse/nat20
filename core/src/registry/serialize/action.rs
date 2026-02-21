@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{Action, ActionCondition, ActionKind, ActionPayload, DamageOnFailure},
-        effects::effect::EffectInstanceTemplate,
         id::{ActionId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
     },
@@ -13,6 +12,7 @@ use crate::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
             effect::EffectInstanceDefinition,
+            reaction::ReactionTrigger,
             targeting::TargetingDefinition,
         },
     },
@@ -178,7 +178,7 @@ pub struct ActionDefinition {
     pub cooldown: Option<RechargeRule>,
     // TODO: How to handle reaction triggers in serialization?
     #[serde(default)]
-    pub reaction_trigger: Option<ScriptId>,
+    pub reaction_trigger: Option<ReactionTrigger>,
 }
 
 impl RegistryReferenceCollector for ActionDefinition {
@@ -187,9 +187,11 @@ impl RegistryReferenceCollector for ActionDefinition {
         for resource in self.resource_cost.keys() {
             collector.add(RegistryReference::Resource(resource.clone()));
         }
-        if let Some(reaction_trigger) = &self.reaction_trigger {
+        if let Some(reaction_trigger) = &self.reaction_trigger
+            && let Some(script_id) = &reaction_trigger.script
+        {
             collector.add(RegistryReference::Script(
-                reaction_trigger.clone(),
+                script_id.clone(),
                 ScriptFunction::ReactionTrigger,
             ));
         }
@@ -205,7 +207,7 @@ impl From<ActionDefinition> for Action {
             resource_cost: value.resource_cost,
             targeting: value.targeting.function(),
             cooldown: value.cooldown,
-            reaction_trigger: value.reaction_trigger,
+            reaction_trigger: value.reaction_trigger.map(|trigger| trigger.function),
         }
     }
 }
