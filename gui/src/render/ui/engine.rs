@@ -80,6 +80,14 @@ pub fn render_action_description(ui: &imgui::Ui, action: &ActionData, world: &Wo
 
 pub fn render_event_description(ui: &imgui::Ui, event: &Event, world: &World) {
     match &event.kind {
+        EventKind::MovementRequested { entity, .. } => {
+            let entity_name = systems::helpers::get_component::<Name>(world, *entity).to_string();
+            TextSegments::new(vec![
+                (entity_name, TextKind::Actor),
+                ("moving".to_string(), TextKind::Normal),
+            ])
+            .render(ui);
+        }
         EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
             render_action_description(ui, action, world);
         }

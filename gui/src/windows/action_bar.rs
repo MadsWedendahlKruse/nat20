@@ -390,7 +390,7 @@ fn render_resources(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) 
             ui.separator_with_text("Speed");
             let speed = systems::helpers::get_component::<Speed>(&game_state.world, entity);
 
-            let total_speed = speed.get_total_speed();
+            let total_speed = speed.total_speed();
             let remaining_speed = speed.remaining_movement();
             render_progress_bar(
                 ui,
@@ -408,6 +408,77 @@ fn render_resources(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) 
                     color_empty_bg: LOW_HEALTH_BG_COLOR,
                 }),
             );
+
+            if ui.is_item_hovered() {
+                ui.tooltip(|| {
+                    TextSegments::new(vec![
+                        ("Total speed:".to_string(), TextKind::Details),
+                        (format!("{:.1} m", total_speed.value), TextKind::Normal),
+                    ])
+                    .render(ui);
+
+                    ui.separator_with_text("Flat bonus");
+                    let flat_bonuses = speed.flat_bonuses();
+                    TextSegments::new(vec![
+                        ("Total:".to_string(), TextKind::Details),
+                        (
+                            format!("{:.1} m", flat_bonuses.values().sum::<f32>()),
+                            TextKind::Normal,
+                        ),
+                    ])
+                    .render(ui);
+                    for (source, flat_bonus) in flat_bonuses {
+                        TextSegments::new(vec![
+                            (format!("{:.1} m", flat_bonus), TextKind::Normal),
+                            (source.to_string(), TextKind::Details),
+                        ])
+                        .with_indent(1)
+                        .render(ui);
+                    }
+
+                    let multipliers = speed.multipliers();
+                    if !multipliers.is_empty() {
+                        ui.separator_with_text("Multipliers");
+                        TextSegments::new(vec![
+                            ("Total:".to_string(), TextKind::Details),
+                            (
+                                format!("x{:.2}", multipliers.values().product::<f32>()),
+                                TextKind::Normal,
+                            ),
+                        ])
+                        .render(ui);
+                        for (source, multiplier) in speed.multipliers() {
+                            TextSegments::new(vec![
+                                (format!("x{:.2}", multiplier), TextKind::Normal),
+                                (source.to_string(), TextKind::Details),
+                            ])
+                            .with_indent(1)
+                            .render(ui);
+                        }
+                    }
+
+                    let free_movement_multipliers = speed.free_movement_multipliers();
+                    if !free_movement_multipliers.is_empty() {
+                        ui.separator_with_text("Free movement");
+                        TextSegments::new(vec![
+                            ("Remaining:".to_string(), TextKind::Details),
+                            (
+                                format!("{:.1} m", speed.free_movement_remaining().get::<meter>()),
+                                TextKind::Normal,
+                            ),
+                        ])
+                        .render(ui);
+                        for (source, multiplier) in speed.free_movement_multipliers() {
+                            TextSegments::new(vec![
+                                (format!("x{:.2}", multiplier), TextKind::Normal),
+                                (source.to_string(), TextKind::Details),
+                            ])
+                            .with_indent(1)
+                            .render(ui);
+                        }
+                    }
+                });
+            }
         });
 }
 
@@ -1102,6 +1173,11 @@ fn update_potential_target(
     targeting_context: &TargetingContext,
     closest: &RaycastHit,
 ) {
+    if !should_render_target_preview(targeting_context) {
+        // No point in computing potential target if we won't render the preview
+        return;
+    }
+
     let closest_target = match &closest.kind {
         RaycastHitKind::Creature(entity) => TargetInstance::Entity(*entity),
         RaycastHitKind::World => TargetInstance::Point(closest.poi),

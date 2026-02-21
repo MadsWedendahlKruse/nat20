@@ -319,6 +319,9 @@ pub enum EffectModifier {
     Speed {
         speed: SpeedModifierProvider,
     },
+    FreeMovement {
+        free_movement: f32,
+    },
     TemporaryHitPoints {
         temporary_hit_points: HealEquation,
     },
@@ -448,6 +451,19 @@ impl EffectModifier {
                             speed.remove_multiplier(&source);
                         }
                     },
+                }
+            }
+
+            EffectModifier::FreeMovement { free_movement } => {
+                let mut speed =
+                    systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
+                match phase {
+                    EffectPhase::Apply => {
+                        speed.add_free_movement_multiplier(source, *free_movement);
+                    }
+                    EffectPhase::Unapply => {
+                        speed.remove_free_movement_multiplier(&source);
+                    }
                 }
             }
 

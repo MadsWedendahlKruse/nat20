@@ -13,7 +13,6 @@ use crate::{
         actions::action::{ActionContext, DamageFunction, HealFunction},
         damage::{DamageRoll, DamageSource, DamageType},
         dice::{DiceSet, DiceSetRoll},
-        items::equipment::{slots::EquipmentSlot, weapon::WeaponKind},
         modifier::{Modifiable, ModifierSet, ModifierSource},
     },
     registry::serialize::{

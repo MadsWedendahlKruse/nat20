@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uom::si::{f32::Length, length::meter};
 
+use crate::systems::geometry::EPSILON;
+
 #[derive(Serialize, Deserialize)]
 pub struct WorldGeometry {
     points: Vec<[f32; 3]>,
@@ -280,29 +282,35 @@ impl WorldPath {
         self.points.last()
     }
 
-    pub fn is_point_on_path(&self, point: Point3<f32>, tolerance: Length) -> bool {
+    pub fn distance_along_path(&self, point: &Point3<f32>) -> Option<Length> {
+        let mut accumulated_length = 0.0;
+
         for i in 0..(self.points.len() - 1) {
             let segment_start = self.points[i];
             let segment_end = self.points[i + 1];
             let segment_vector = segment_end - segment_start;
-            let segment_length = Length::new::<meter>(segment_vector.magnitude());
+            let segment_length = segment_vector.magnitude();
 
-            if segment_length == Length::new::<meter>(0.0) {
-                if (point - segment_start).magnitude() <= tolerance.get::<meter>() {
-                    return true;
+            if segment_length == 0.0 {
+                if (point - segment_start).magnitude() <= EPSILON {
+                    return Some(Length::new::<meter>(accumulated_length));
                 }
                 continue;
             }
 
-            let t = ((point - segment_start).dot(&segment_vector)
-                / segment_length.get::<meter>().powi(2))
-            .clamp(0.0, 1.0);
-            let closest_point = segment_start + segment_vector * t;
-            if (point - closest_point).magnitude() <= tolerance.get::<meter>() {
-                return true;
+            let t = (point - segment_start).dot(&segment_vector) / segment_length.powi(2);
+            if t >= 0.0 && t <= 1.0 {
+                let projection = segment_start + segment_vector * t;
+                if (point - projection).magnitude() <= EPSILON {
+                    return Some(Length::new::<meter>(
+                        accumulated_length + segment_length * t,
+                    ));
+                }
             }
+
+            accumulated_length += segment_length;
         }
 
-        false
+        None
     }
 }

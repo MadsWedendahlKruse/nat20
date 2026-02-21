@@ -1714,7 +1714,7 @@ pub static SPEED_COLOR_BG: [f32; 4] = [0.15, 0.35, 0.4, 1.0];
 
 impl ImguiRenderable for Speed {
     fn render(&self, ui: &imgui::Ui) {
-        let total_speed = self.get_total_speed();
+        let total_speed = self.total_speed();
         let text = if self.moved_this_turn().value == 0.0 {
             format!("Speed: {} meters", total_speed.value)
         } else {

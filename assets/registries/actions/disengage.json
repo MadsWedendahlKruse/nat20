@@ -1,0 +1,26 @@
+{
+    "id": "nat20_core::action.disengage",
+    "description": "Your movement doesn't provoke opportunity attacks for the rest of the turn.",
+    "kind": {
+        "standard": {
+            "payload": {
+                "effect": {
+                    "effect_id": "nat20_core::effect.disengage",
+                    "lifetime": {
+                        "turn_boundary": {
+                            "entity": "applier",
+                            "boundary": "start",
+                            "duration": {
+                                "turns": 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "targeting": "self",
+    "resource_cost": {
+        "nat20_core::resource.action": 1
+    }
+}

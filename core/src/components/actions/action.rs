@@ -527,7 +527,10 @@ pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
 // TODO: Not sure if this is the best solution
 pub fn default_actions() -> ActionMap {
     let mut actions = ActionMap::new();
-    for action in [ActionId::new("nat20_core", "action.dash")] {
+    for action in [
+        ActionId::new("nat20_core", "action.dash"),
+        ActionId::new("nat20_core", "action.disengage"),
+    ] {
         let resource_cost = ActionsRegistry::get(&action).unwrap().resource_cost.clone();
         actions.insert(action.clone(), vec![(ActionContext::Other, resource_cost)]);
     }

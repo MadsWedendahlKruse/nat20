@@ -11,6 +11,7 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
+        speed::Speed,
         time::{TimeMode, TimeStep},
     },
     engine::{
@@ -161,12 +162,14 @@ impl GameState {
 
         let in_combat = self.in_combat.contains_key(&entity);
         let path = systems::movement::path(self, entity, &goal, true, false, in_combat, false)?;
-        let event = Event::new(EventKind::MovementRequested {
-            entity,
-            path: path.taken_path,
-            // TODO: Placeholder
-            free_movement_distance: Length::new::<uom::si::length::meter>(0.0),
-        });
+        let event = {
+            let speed = systems::helpers::get_component::<Speed>(&self.world, entity);
+            Event::new(EventKind::MovementRequested {
+                entity,
+                path: path.taken_path,
+                free_movement_distance: speed.free_movement_remaining(),
+            })
+        };
         self.process_event(event);
         Ok(())
     }
