@@ -8,7 +8,7 @@
     ],
     "kind": {
         "reaction": {
-            "script": "nat20_core::script.spell.counterspell"
+            "reaction": "nat20_core::script.spell.counterspell"
         }
     },
     "resource_cost": {

@@ -17,7 +17,7 @@ use strum::IntoEnumIterator;
 
 use crate::{
     render::{
-        common::utils::RenderableMutWithContext,
+        common::utils::{RenderableMutWithContext, RenderableWithContext},
         ui::{
             engine::LogLevel,
             entities::render_if_present,
@@ -39,6 +39,7 @@ use crate::{
         creature_debug::CreatureDebugWindow,
         creature_right_click::CreatureRightClickWindow,
         encounter::EncounterWindow,
+        game_state_debug::GameStateDebugWindow,
         level_up::LevelUpWindow,
         line_of_sight_debug::LineOfSightDebugWindow,
         navigation_debug::NavigationDebugWindow,
@@ -62,6 +63,7 @@ pub enum MainMenuState {
         reactions: ReactionsWindow,
         navigation_debug: NavigationDebugWindow,
         line_of_sight_debug: LineOfSightDebugWindow,
+        game_state_debug: GameStateDebugWindow,
     },
 }
 
@@ -115,6 +117,7 @@ impl MainMenuWindow {
                 reactions: ReactionsWindow::new(),
                 navigation_debug: NavigationDebugWindow::new(&initial_config),
                 line_of_sight_debug: LineOfSightDebugWindow::new(),
+                game_state_debug: GameStateDebugWindow::new(),
             },
         }
     }
@@ -135,9 +138,11 @@ impl MainMenuWindow {
                 reactions,
                 navigation_debug,
                 line_of_sight_debug,
+                game_state_debug,
             } => {
                 game_state.update(ui.io().delta_time);
 
+                game_state_debug.render_with_context(ui, gui_state, game_state);
                 navigation_debug.render_mut_with_context(ui, gui_state, game_state);
                 line_of_sight_debug.render_mut_with_context(ui, gui_state, game_state);
 

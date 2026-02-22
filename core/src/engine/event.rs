@@ -28,7 +28,6 @@ use crate::{
     },
     systems::{
         d20::{D20CheckDCKind, D20ResultKind},
-        movement::PathResult,
         time::RestKind,
     },
 };
@@ -63,6 +62,7 @@ impl Event {
     pub fn actor(&self) -> Option<Entity> {
         match &self.kind {
             EventKind::MovementRequested { entity, .. } => Some(*entity),
+            EventKind::MovingOutOfReach { mover, .. } => Some(*mover),
             EventKind::MovementPerformed { entity, .. } => Some(*entity),
             EventKind::ActionRequested { action } => Some(action.actor),
             EventKind::ActionPerformed { action, .. } => Some(action.actor),
@@ -135,13 +135,15 @@ pub enum EventKind {
     MovementRequested {
         entity: Entity,
         path: WorldPath,
-        /// The distance along the path which the entity can move unhindered, e.g.
-        /// without provoking opportunity attacks
-        free_movement_distance: Length,
     },
     MovementPerformed {
         entity: Entity,
         path: WorldPath,
+    },
+    MovingOutOfReach {
+        mover: Entity,
+        entity: Entity,
+        continue_movement: bool,
     },
 
     /// An entity has declared they want to take an action. The engine can then

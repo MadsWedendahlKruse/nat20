@@ -41,9 +41,9 @@ impl From<usize> for LogLevel {
 pub fn event_log_level(event: &Event) -> LogLevel {
     match &event.kind {
         EventKind::Encounter(encounter_event) => LogLevel::Info,
-        EventKind::MovementRequested { .. } | EventKind::MovementPerformed { .. } => {
-            LogLevel::Debug
-        }
+        EventKind::MovementRequested { .. }
+        | EventKind::MovingOutOfReach { .. }
+        | EventKind::MovementPerformed { .. } => LogLevel::Debug,
         EventKind::ActionRequested { .. } => LogLevel::Info,
         EventKind::ReactionRequested { .. } => LogLevel::Info,
         EventKind::ActionPerformed { .. } => LogLevel::Info,
@@ -176,11 +176,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     ui.separator_with_text(format!("Round {}", round));
                 }
             },
-            EventKind::MovementRequested {
-                entity,
-                path,
-                free_movement_distance,
-            } => {
+            EventKind::MovementRequested { entity, path } => {
                 let entity_name =
                     systems::helpers::get_component::<Name>(world, *entity).to_string();
                 TextSegments::new(vec![
@@ -204,12 +200,23 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                         for point in &path.points {
                             ui.text(format!("({:.1}, {:.1}, {:.1})", point.x, point.y, point.z));
                         }
-                        ui.text(format!(
-                            "Free movement distance: {:.1}m",
-                            free_movement_distance.get::<uom::si::length::meter>()
-                        ));
                     });
                 }
+            }
+            EventKind::MovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            } => {
+                let mover_name = systems::helpers::get_component::<Name>(world, *mover).to_string();
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+                TextSegments::new(vec![
+                    (mover_name, TextKind::Actor),
+                    ("is moving out of reach of".to_string(), TextKind::Normal),
+                    (entity_name, TextKind::Target),
+                ])
+                .render(ui);
             }
             EventKind::MovementPerformed { entity, path, .. } => {
                 let entity_name =

@@ -313,4 +313,85 @@ impl WorldPath {
 
         None
     }
+
+    pub fn point_at_distance(&self, distance: Length) -> Option<Point3<f32>> {
+        let distance = distance.get::<meter>();
+        let mut accumulated_length = 0.0;
+
+        for i in 0..(self.points.len() - 1) {
+            let segment_start = self.points[i];
+            let segment_end = self.points[i + 1];
+            let segment_vector = segment_end - segment_start;
+            let segment_length = segment_vector.magnitude();
+
+            if accumulated_length + segment_length >= distance {
+                let remaining_length = distance - accumulated_length;
+                let t = remaining_length / segment_length;
+                return Some(segment_start + segment_vector * t);
+            }
+
+            accumulated_length += segment_length;
+        }
+
+        // If distance exceeds path length, return the last point
+        self.points.last().cloned()
+    }
+
+    /// Splits the path into multiple paths at the specified split points.
+    /// The split points must lie on the path and must be sorted in the order
+    /// they appear on the path.
+    pub fn split_at_points(&self, split_points: Vec<Point3<f32>>) -> Vec<WorldPath> {
+        if split_points.is_empty() {
+            return vec![self.clone()];
+        }
+
+        let mut paths = Vec::new();
+        let mut current_points = Vec::new();
+        let mut split_iter = split_points.iter().peekable();
+
+        for i in 0..(self.points.len() - 1) {
+            let segment_start = self.points[i];
+            let segment_end = self.points[i + 1];
+            current_points.push(segment_start);
+
+            while let Some(split_point) = split_iter.peek() {
+                if Self::is_point_on_segment(split_point, &segment_start, &segment_end) {
+                    current_points.push(**split_point);
+                    paths.push(WorldPath::new(current_points.clone()));
+                    current_points.clear();
+                    split_iter.next();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if let Some(last_point) = self.points.last() {
+            current_points.push(*last_point);
+        }
+
+        if !current_points.is_empty() {
+            paths.push(WorldPath::new(current_points));
+        }
+
+        paths
+    }
+
+    fn is_point_on_segment(point: &Point3<f32>, start: &Point3<f32>, end: &Point3<f32>) -> bool {
+        let segment_vector = *end - *start;
+        let point_vector = *point - *start;
+
+        let segment_length = segment_vector.magnitude();
+        if segment_length == 0.0 {
+            return (point - start).magnitude() <= EPSILON;
+        }
+
+        let t = point_vector.dot(&segment_vector) / segment_length.powi(2);
+        if t < 0.0 || t > 1.0 {
+            return false;
+        }
+
+        let projection = *start + segment_vector * t;
+        (point - projection).magnitude() <= EPSILON
+    }
 }

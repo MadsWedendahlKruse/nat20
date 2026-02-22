@@ -12,7 +12,7 @@ use crate::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
             effect::EffectInstanceDefinition,
-            reaction::ReactionTrigger,
+            reaction::{ReactionBody, ReactionTrigger},
             targeting::TargetingDefinition,
         },
     },
@@ -59,22 +59,15 @@ pub enum ActionKindDefinition {
         condition: Option<ActionConditionDefinition>,
         payload: ActionPayloadDefinition,
     },
-
-    // Utility {
-    //     // most likely non-data / hand-written only,
-    //     // you can keep this variant out of the serializable enum if you want
-    // },
     Composite {
         actions: Vec<ActionKindDefinition>,
     },
     Variants {
         variants: Vec<ActionId>,
     },
-    // Same story here: you probably will not serialize these directly
-    // for now, so they can live only on the runtime enum.
     Reaction {
-        script: ScriptId,
-    }, // Custom(...)
+        reaction: ReactionBody,
+    },
 }
 
 impl From<ActionKindDefinition> for ActionKind {
@@ -131,7 +124,9 @@ impl From<ActionKindDefinition> for ActionKind {
 
             ActionKindDefinition::Variants { variants } => ActionKind::Variant { variants },
 
-            ActionKindDefinition::Reaction { script } => ActionKind::Reaction { reaction: script },
+            ActionKindDefinition::Reaction { reaction } => ActionKind::Reaction {
+                reaction: reaction.function,
+            },
         }
     }
 }
@@ -155,11 +150,13 @@ impl RegistryReferenceCollector for ActionKindDefinition {
                 // would not be present in the action registry directly. So how do
                 // we validate that?
             }
-            ActionKindDefinition::Reaction { script } => {
-                collector.add(RegistryReference::Script(
-                    script.clone(),
-                    ScriptFunction::ReactionBody,
-                ));
+            ActionKindDefinition::Reaction { reaction } => {
+                if let Some(script_id) = &reaction.script {
+                    collector.add(RegistryReference::Script(
+                        script_id.clone(),
+                        ScriptFunction::ReactionBody,
+                    ));
+                }
             }
         }
     }

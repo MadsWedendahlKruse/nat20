@@ -3,7 +3,7 @@
     "description": "If you fail a saving throw, you can reroll it with a bonus equal to your Fighter level. You must use the new roll, and you can’t use this feature again until you finish a Long Rest.",
     "kind": {
         "reaction": {
-            "script": "nat20_core::script.action.fighter.indomitable"
+            "reaction": "nat20_core::script.action.fighter.indomitable"
         }
     },
     "resource_cost": {

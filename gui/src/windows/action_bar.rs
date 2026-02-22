@@ -69,10 +69,26 @@ pub enum ActionBarState {
     },
 }
 
+pub struct MovementPreview {
+    pub prev_target_point: Option<Point3<f32>>,
+    pub path_result: Option<PathResult>,
+    pub opportunity_attacks: Vec<(Entity, Point3<f32>)>,
+}
+
+impl MovementPreview {
+    pub fn new() -> Self {
+        Self {
+            prev_target_point: None,
+            path_result: None,
+            opportunity_attacks: Vec::new(),
+        }
+    }
+}
+
 pub struct ActionBarWindow {
     pub state: ActionBarState,
     pub entity: Entity,
-    pub prev_target_point: Option<Point3<f32>>,
+    pub movement_preview: MovementPreview,
 }
 
 impl ActionBarWindow {
@@ -82,7 +98,7 @@ impl ActionBarWindow {
                 actions: systems::actions::all_actions(&game_state.world, entity),
             },
             entity,
-            prev_target_point: None,
+            movement_preview: MovementPreview::new(),
         }
     }
 
@@ -111,7 +127,7 @@ impl ActionBarWindow {
         if let Some(cursor_ray_result) = &gui_state.cursor_ray_result.take()
             && let Some(closest) = cursor_ray_result.closest()
         {
-            if let Some(prev_target_point) = self.prev_target_point {
+            if let Some(prev_target_point) = self.movement_preview.prev_target_point {
                 if closest.poi != prev_target_point {
                     let in_combat = game_state.in_combat.contains_key(&self.entity);
                     if let Ok(path_result) = systems::movement::path(
@@ -123,12 +139,43 @@ impl ActionBarWindow {
                         in_combat,
                         false,
                     ) {
-                        self.prev_target_point = Some(closest.poi);
+                        self.movement_preview.prev_target_point = Some(closest.poi);
+                        self.movement_preview.path_result = Some(path_result.clone());
+                        self.movement_preview.opportunity_attacks =
+                            systems::movement::potential_opportunity_attacks(
+                                &game_state.world,
+                                &path_result.taken_path,
+                                self.entity,
+                                // TODO: Find a proper way to find the "attackers"
+                                &systems::geometry::entities_in_range_of_entity(
+                                    &game_state.world,
+                                    self.entity,
+                                    &path_result.taken_path.length,
+                                ),
+                            );
                         gui_state.path_cache.insert(self.entity, path_result);
                     }
                 }
             } else {
-                self.prev_target_point = Some(closest.poi);
+                self.movement_preview.prev_target_point = Some(closest.poi);
+            }
+
+            for (entity, point) in &self.movement_preview.opportunity_attacks {
+                if let Some(position) =
+                    systems::geometry::get_foot_position(&game_state.world, *entity)
+                {
+                    let reach = (position - point).magnitude();
+                    let mut reach_center: [f32; 3] = position.into();
+                    reach_center[1] += 0.1;
+                    gui_state
+                        .line_renderer
+                        .add_circle(reach_center, reach, [0.85, 0.85, 0.85]);
+                    gui_state.line_renderer.add_line(
+                        position.into(),
+                        point.clone().into(),
+                        [1.0, 0.0, 0.0],
+                    );
+                }
             }
 
             if ui.is_mouse_clicked(MouseButton::Left) {

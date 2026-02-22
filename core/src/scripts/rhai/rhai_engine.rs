@@ -14,9 +14,10 @@ use crate::{
             ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result,
             ScriptDamageMitigationResult, ScriptDamageOutcomeView, ScriptDamageResolutionKindView,
             ScriptDamageRollResult, ScriptEffectView, ScriptEntity, ScriptEntityView,
-            ScriptEventView, ScriptLoadoutView, ScriptOptionalEntityView,
-            ScriptReactionBodyContext, ScriptReactionPlan, ScriptReactionTriggerContext,
-            ScriptResourceCost, ScriptResourceView, ScriptSavingThrow,
+            ScriptEventView, ScriptLoadoutView, ScriptMovingOutOfReachView,
+            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionPlan,
+            ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView,
+            ScriptSavingThrow,
         },
         script_engine::ScriptEngine,
     },
@@ -50,6 +51,7 @@ impl RhaiScriptEngine {
             .build_type::<ScriptEntityView>()
             .build_type::<ScriptEventView>()
             .build_type::<ScriptLoadoutView>()
+            .build_type::<ScriptMovingOutOfReachView>()
             .build_type::<ScriptOptionalEntityView>()
             .build_type::<ScriptReactionBodyContext>()
             .build_type::<ScriptReactionPlan>()

@@ -5,15 +5,18 @@ use hecs::{Entity, World};
 use parry3d::{
     na::{Isometry3, Point3, Translation3, Vector3},
     query::{PointQuery, Ray, RayCast},
-    shape::{Capsule, Shape},
+    shape::{Ball, Capsule, Shape},
 };
 use polyanya::Coords;
 use tracing::trace;
-use uom::si::{f32::Length, length::meter};
+use uom::si::{f32::Length, f64::V, length::meter};
 
 use crate::{
     components::species::CreatureSize,
-    engine::geometry::{WorldGeometry, WorldPath},
+    engine::{
+        encounter::EncounterId,
+        geometry::{WorldGeometry, WorldPath},
+    },
 };
 
 pub static EPSILON: f32 = 1e-4;
@@ -434,7 +437,13 @@ pub fn distance_between_entities(
     let pos_a = get_foot_position(world, entity_a)?;
     let pos_b = get_foot_position(world, entity_b)?;
     let distance = (pos_b - pos_a).magnitude();
-    Some(Length::new::<uom::si::length::meter>(distance))
+    Some(Length::new::<meter>(distance))
+}
+
+pub fn distance_entity_point(world: &World, entity: Entity, point: Point3<f32>) -> Option<Length> {
+    let pos = get_foot_position(world, entity)?;
+    let distance = (point - pos).magnitude();
+    Some(Length::new::<meter>(distance))
 }
 
 pub fn teleport_to(world: &mut World, entity: Entity, new_position: &Point3<f32>) {
@@ -530,16 +539,34 @@ pub fn entities_in_shape(
     entities
 }
 
+pub fn entities_in_range_of_entity(world: &World, entity: Entity, range: &Length) -> Vec<Entity> {
+    if let Some((_, shape_pose)) = get_shape(world, entity) {
+        entities_in_shape(
+            world,
+            Box::new(Ball {
+                radius: range.get::<meter>(),
+            }),
+            &shape_pose,
+        )
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn line_sphere_intersections(
-    line_origin: Point3<f32>,
-    line_dir: Vector3<f32>,
+    line_start: Point3<f32>,
+    line_end: Point3<f32>,
     sphere_center: Point3<f32>,
     sphere_radius: f32,
 ) -> Vec<Point3<f32>> {
     let mut intersections = vec![];
 
+    let line_dir = line_end - line_start;
+    let line_length = line_dir.magnitude();
+    let line_dir = line_dir.normalize();
+
     let a = line_dir.dot(&line_dir);
-    let oc = line_origin - sphere_center;
+    let oc = line_start - sphere_center;
     let b = 2.0 * oc.dot(&line_dir);
     let c = oc.dot(&oc) - sphere_radius * sphere_radius;
 
@@ -550,17 +577,23 @@ pub fn line_sphere_intersections(
         return intersections;
     }
 
-    if discriminant.abs() < EPSILON {
+    if discriminant.abs() == 0.0 {
         // One intersection (tangent)
         let t = -b / (2.0 * a);
-        intersections.push(line_origin + line_dir * t);
+        if t >= 0.0 && t <= line_length {
+            intersections.push(line_start + line_dir * t);
+        }
     } else {
-        // Two intersections
+        // Two possible intersections
         let sqrt_disc = discriminant.sqrt();
         let t1 = (-b - sqrt_disc) / (2.0 * a);
+        if t1 >= 0.0 && t1 <= line_length {
+            intersections.push(line_start + line_dir * t1);
+        }
         let t2 = (-b + sqrt_disc) / (2.0 * a);
-        intersections.push(line_origin + line_dir * t1);
-        intersections.push(line_origin + line_dir * t2);
+        if t2 >= 0.0 && t2 <= line_length {
+            intersections.push(line_start + line_dir * t2);
+        }
     }
 
     intersections
@@ -574,22 +607,12 @@ pub fn path_intersections_within_radius(
     let mut intersections = vec![];
 
     for (start, end) in path.points.windows(2).map(|window| (window[0], window[1])) {
-        let possible_intersections =
-            line_sphere_intersections(start, end - start, point, radius.get::<meter>());
-        trace!(
-            "Possible intersections between line segment {:?}-{:?} and sphere at {:?} with radius {:?}: {:?}",
-            start, end, point, radius, possible_intersections
-        );
-        for intersection in possible_intersections {
-            // Check if the intersection is actually within the line segment
-            let to_intersection = intersection - start;
-            let segment = end - start;
-            if to_intersection.dot(&segment) >= 0.0
-                && to_intersection.dot(&to_intersection) <= segment.dot(&segment)
-            {
-                intersections.push(intersection);
-            }
-        }
+        intersections.extend(line_sphere_intersections(
+            start,
+            end,
+            point,
+            radius.get::<meter>(),
+        ));
     }
 
     intersections

@@ -2,8 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use hecs::{Entity, World};
 use parry3d::{na::Point3, shape::Ball};
-use tracing::{info, warn};
-use uom::si::f32::Length;
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     components::{
@@ -11,7 +10,6 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
-        speed::Speed,
         time::{TimeMode, TimeStep},
     },
     engine::{
@@ -27,12 +25,7 @@ use crate::{
         geometry::WorldGeometry,
         interaction::{InteractionEngine, InteractionScopeId, InteractionSession},
     },
-    systems::{
-        self,
-        d20::D20CheckDCKind,
-        movement::{MovementError, PathResult},
-        time::RestKind,
-    },
+    systems::{self, d20::D20CheckDCKind, movement::MovementError, time::RestKind},
 };
 
 // TODO: WorldState instead?
@@ -160,18 +153,90 @@ impl GameState {
             }
         }
 
-        let in_combat = self.in_combat.contains_key(&entity);
-        let path = systems::movement::path(self, entity, &goal, true, false, in_combat, false)?;
-        let event = {
-            let speed = systems::helpers::get_component::<Speed>(&self.world, entity);
-            Event::new(EventKind::MovementRequested {
+        info!("Submitting movement for {:?} to goal {:?}", entity, goal);
+
+        let path = systems::movement::path(
+            self,
+            entity,
+            &goal,
+            true,
+            false,
+            self.in_combat.contains_key(&entity),
+            false,
+        )?;
+
+        let potential_reactors = self.get_potential_reactors(entity);
+
+        debug!("Potential reactors to movement: {:?}", potential_reactors);
+
+        let mut potential_attacks = systems::movement::potential_opportunity_attacks(
+            &self.world,
+            &path.taken_path,
+            entity,
+            &potential_reactors,
+        );
+        // Make sure the opportunity attacks are triggered in the order they are
+        // encountered along the path
+        potential_attacks.sort_by(|(_, point_a), (_, point_b)| {
+            let a_distance = path.taken_path.distance_along_path(point_a);
+            let b_distance = path.taken_path.distance_along_path(point_b);
+            a_distance.partial_cmp(&b_distance).unwrap()
+        });
+
+        debug!("Potential opportunity attacks: {:?}", potential_attacks);
+
+        let (attackers, attack_points): (Vec<_>, Vec<_>) = potential_attacks
+            .iter()
+            .map(|(attacker, attack_point)| (*attacker, attack_point.clone()))
+            .unzip();
+
+        // Split the path into segments at the points where opportunity attacks
+        // would be triggered.
+        //
+        // Each step along the path consists of:
+        // 1. Move along the current path segment
+        // 2. If there are more segments, trigger an opportunity attack and wait
+        //    for it to resolve before moving on to the next segment
+        let paths = path.taken_path.split_at_points(attack_points);
+        for (i, path_segment) in paths.iter().enumerate() {
+            let is_final_segment = i == paths.len() - 1;
+
+            // Step 1: Move
+            let mut events = vec![Event::new(EventKind::MovementRequested {
                 entity,
-                path: path.taken_path,
-                free_movement_distance: speed.free_movement_remaining(),
-            })
-        };
-        self.process_event(event);
+                path: path_segment.clone(),
+            })];
+
+            // Step 2: Trigger opportunity attack if there is another segment
+            if !is_final_segment {
+                events.push(Event::new(EventKind::MovingOutOfReach {
+                    mover: entity,
+                    entity: attackers[i],
+                    continue_movement: true,
+                }));
+            }
+
+            // Make sure all events are present in the queue before processing
+            // the first movement event, otherwise it won't trigger the rest of
+            // the queue, since it's not populated yet
+            for event in events {
+                self.session_for_entity_mut(entity)
+                    .queue_movement_event(event, false);
+            }
+        }
+
+        self.process_next_movement_event(entity);
+
         Ok(())
+    }
+
+    fn process_next_movement_event(&mut self, entity: Entity) {
+        if let Some(movement_event) = self
+            .session_for_entity_mut(entity)
+            .pop_movement_event(entity)
+        {
+            self.process_event(movement_event);
+        }
     }
 
     fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
@@ -185,6 +250,11 @@ impl GameState {
     pub fn session_for_entity(&self, entity: Entity) -> Option<&InteractionSession> {
         let scope = self.scope_for_entity(entity);
         self.interaction_engine.session(scope)
+    }
+
+    pub fn session_for_entity_mut(&mut self, entity: Entity) -> &mut InteractionSession {
+        let scope = self.scope_for_entity(entity);
+        self.interaction_engine.session_mut(scope)
     }
 
     pub fn next_prompt(&self, scope: InteractionScopeId) -> Option<&ActionPrompt> {
@@ -430,22 +500,9 @@ impl GameState {
     fn resume_pending_events_if_ready(&mut self, scope: InteractionScopeId) {
         let session = self.interaction_engine.session_mut(scope);
 
-        let ready_to_resume = {
-            if session.pending_prompts().is_empty() {
-                // Not sure this ever actually happens
-                info!("No pending prompts; ready to resume pending events.");
-                true
-            } else if let Some(front) = session.next_prompt()
-                && !matches!(front.kind, ActionPromptKind::Reactions { .. })
-            {
-                info!("Next prompt is not a reaction; ready to resume pending events.");
-                true
-            } else {
-                false
-            }
-        };
-
-        if ready_to_resume && let Some(event) = session.pending_events_mut().pop_front() {
+        if session.ready_to_resume()
+            && let Some(event) = session.pending_events_mut().pop_front()
+        {
             self.advance_event(event, true);
         }
     }
@@ -455,22 +512,7 @@ impl GameState {
         actor: Entity,
         event: &Event,
     ) -> Option<HashMap<Entity, Vec<ReactionData>>> {
-        // If in combat, only consider participants. Otherwise, consider all entities
-        // that are nearby
-        let reactors = if let Some(encounter_id) = self.in_combat.get(&actor)
-            && let Some(encounter) = self.encounters.get(encounter_id)
-        {
-            encounter.participants(&self.world, &[EntityFilter::not_dead()])
-        } else if let Some((_, shape_pose)) = systems::geometry::get_shape(&self.world, actor) {
-            systems::geometry::entities_in_shape(
-                &self.world,
-                // TODO: Not entirely sure what the right shape is here
-                Box::new(Ball { radius: 100.0 }),
-                &shape_pose,
-            )
-        } else {
-            return None;
-        };
+        let reactors = self.get_potential_reactors(actor);
 
         info!(
             "Collecting reactions to event {:?} from reactors: {:?}",
@@ -509,6 +551,24 @@ impl GameState {
         }
     }
 
+    fn get_potential_reactors(&self, actor: Entity) -> Vec<Entity> {
+        // If in combat, only consider participants. Otherwise, consider all entities
+        // that are nearby
+        if let Some(encounter_id) = self.in_combat.get(&actor)
+            && let Some(encounter) = self.encounters.get(encounter_id)
+        {
+            return encounter.participants(&self.world, &[EntityFilter::not_dead()]);
+        } else if let Some((_, shape_pose)) = systems::geometry::get_shape(&self.world, actor) {
+            return systems::geometry::entities_in_shape(
+                &self.world,
+                // TODO: Not entirely sure what the right shape is here
+                Box::new(Ball { radius: 100.0 }),
+                &shape_pose,
+            );
+        }
+        return Vec::new();
+    }
+
     pub fn validate_action(
         &mut self,
         action: &ActionData,
@@ -544,6 +604,7 @@ impl GameState {
     }
 
     // TODO: I guess this is where the event actually "does" something? New name?
+    // TODO: Maybe this function should live in the events
     fn advance_event(&mut self, event: Event, process_pending_events: bool) {
         match &event.kind {
             EventKind::MovementRequested { entity, path, .. } => {
@@ -554,13 +615,27 @@ impl GameState {
                     );
                 }
 
-                let _ = self.process_event_scoped(
-                    self.scope_for_entity(*entity),
-                    Event::new(EventKind::MovementPerformed {
-                        entity: *entity,
-                        path: path.clone(),
-                    }),
-                );
+                self.process_event(Event::new(EventKind::MovementPerformed {
+                    entity: *entity,
+                    path: path.clone(),
+                }));
+            }
+
+            EventKind::MovementPerformed { entity, .. } => {
+                self.process_next_movement_event(*entity);
+            }
+
+            EventKind::MovingOutOfReach {
+                mover,
+                continue_movement,
+                ..
+            } => {
+                if *continue_movement {
+                    self.process_next_movement_event(*mover);
+                } else {
+                    self.session_for_entity_mut(*mover)
+                        .clear_movement_events(*mover);
+                }
             }
 
             EventKind::ActionRequested { action } => {

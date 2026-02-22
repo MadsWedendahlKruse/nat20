@@ -22,7 +22,11 @@ use crate::{
         saving_throw::{SavingThrowDC, SavingThrowKind},
         spells::spellbook::SpellSource,
     },
-    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
+    engine::{
+        action_prompt::{ActionData, ReactionData},
+        event::Event,
+        game_state::GameState,
+    },
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{self},
 };
@@ -36,6 +40,7 @@ pub type HealFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + 
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
 pub type ReactionTriggerFunction = dyn Fn(&World, &Entity, &Event) -> bool + Send + Sync;
+pub type ReactionBodyFunction = dyn Fn(&mut GameState, &ReactionData) + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -273,7 +278,7 @@ pub enum ActionKind {
         variants: Vec<ActionId>,
     },
     Reaction {
-        reaction: ScriptId,
+        reaction: Arc<ReactionBodyFunction>,
     },
     Custom(Arc<dyn Fn(&World, Entity, &ActionContext) + Send + Sync>),
 }

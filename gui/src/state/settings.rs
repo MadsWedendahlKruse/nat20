@@ -286,6 +286,10 @@ impl Default for GuiSettings {
                 state::parameters::RENDER_LINE_OF_SIGHT_DEBUG.to_string(),
                 Setting::Bool(false),
             ),
+            (
+                state::parameters::RENDER_GAME_STATE_DEBUG.to_string(),
+                Setting::Bool(false),
+            ),
         ]))
     }
 }

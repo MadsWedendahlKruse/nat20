@@ -8,8 +8,9 @@ use crate::{
         ScriptD20CheckView, ScriptD20Result, ScriptDamageMitigationResult, ScriptDamageOutcomeView,
         ScriptDamageResolutionKindView, ScriptDamageRollResult, ScriptEffectView, ScriptEntity,
         ScriptEntityView, ScriptEventRef, ScriptEventView, ScriptLoadoutView,
-        ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionPlan,
-        ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView, ScriptSavingThrow,
+        ScriptMovingOutOfReachView, ScriptOptionalEntityView, ScriptReactionBodyContext,
+        ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView,
+        ScriptSavingThrow,
     },
 };
 
@@ -102,6 +103,16 @@ impl CustomType for ScriptD20CheckView {
             .with_name("D20CheckPerformedView")
             .with_get("performer", |s: &mut Self| s.performer.clone())
             .with_get("result", |s: &mut Self| s.result.clone());
+    }
+}
+
+impl CustomType for ScriptMovingOutOfReachView {
+    fn build(mut builder: TypeBuilder<Self>) {
+        builder
+            .with_name("MovingOutOfReachView")
+            .with_get("mover", |s: &mut Self| s.mover.id)
+            .with_get("entity", |s: &mut Self| s.entity.id)
+            .with_get("continue_movement", |s: &mut Self| s.continue_movement);
     }
 }
 
@@ -267,6 +278,12 @@ impl CustomType for ScriptEventView {
             })
             .with_fn("as_action_performed", |s: &mut Self| {
                 s.as_action_performed().clone()
+            })
+            .with_fn("is_moving_out_of_reach", |s: &mut Self| {
+                s.is_moving_out_of_reach()
+            })
+            .with_fn("as_moving_out_of_reach", |s: &mut Self| {
+                s.as_moving_out_of_reach().clone()
             });
     }
 }

@@ -60,7 +60,7 @@ pub struct GuiState {
     /// it lives here in the GUI state :^)
     pub selected_entity: Option<Entity>,
 
-    /// The render mode for each creature entity. Mopstly used for highlighting
+    /// The render mode for each creature entity. Mostly used for highlighting
     /// creatures within an AoE, etc.
     pub creature_render_mode: HashMap<Entity, MeshRenderMode>,
 }

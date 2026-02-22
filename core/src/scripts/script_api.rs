@@ -413,12 +413,20 @@ impl ScriptD20Result {
     }
 }
 
+#[derive(Clone)]
+pub struct ScriptMovingOutOfReachView {
+    pub mover: ScriptEntity,
+    pub entity: ScriptEntity,
+    pub continue_movement: bool,
+}
+
 /// High-level event view that scripts can work with.
 #[derive(Clone)]
 pub enum ScriptEventView {
     ActionRequested(ScriptActionView),
     ActionPerformed(ScriptActionPerformedView),
     D20CheckPerformed(ScriptD20CheckView),
+    MovingOutOfReach(ScriptMovingOutOfReachView),
 }
 
 impl ScriptEventView {
@@ -460,6 +468,18 @@ impl ScriptEventView {
                 ))
             }
 
+            EventKind::MovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            } => Some(ScriptEventView::MovingOutOfReach(
+                ScriptMovingOutOfReachView {
+                    mover: ScriptEntity::from(*mover),
+                    entity: ScriptEntity::from(*entity),
+                    continue_movement: *continue_movement,
+                },
+            )),
+
             _ => None,
         }
     }
@@ -493,6 +513,7 @@ impl_event_accessors!(ScriptEventView {
     is_d20_check_performed => as_d20_check_performed: D20CheckPerformed(ScriptD20CheckView),
     is_action_requested    => as_action_requested:    ActionRequested(ScriptActionView),
     is_action_performed    => as_action_performed:    ActionPerformed(ScriptActionPerformedView),
+    is_moving_out_of_reach => as_moving_out_of_reach: MovingOutOfReach(ScriptMovingOutOfReachView),
 });
 
 /// View of a "D20CheckPerformed" event.

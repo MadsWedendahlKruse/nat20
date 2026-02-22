@@ -337,3 +337,102 @@ pub fn path_to_target(
 
     Ok(TargetPathFindingResult::AlreadyInRange)
 }
+
+pub fn potential_opportunity_attacks(
+    world: &World,
+    path: &WorldPath,
+    mover: Entity,
+    attackers: &[Entity],
+) -> Vec<(Entity, Point3<f32>)> {
+    let free_movement_distance =
+        systems::helpers::get_component::<Speed>(world, mover).free_movement_remaining();
+
+    attackers
+        .iter()
+        .filter_map(|attacker| {
+            if let Some(intersection_point) =
+                opportunity_attack_point(world, path, mover, *attacker, &free_movement_distance)
+            {
+                Some((*attacker, intersection_point))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn opportunity_attack_point(
+    world: &World,
+    path: &WorldPath,
+    mover: Entity,
+    attacker: Entity,
+    free_movement_distance: &Length,
+) -> Option<Point3<f32>> {
+    if mover == attacker {
+        return None;
+    }
+
+    let attacker_loadout = systems::loadout::loadout(world, attacker);
+    let attacker_reach = attacker_loadout.melee_range();
+    let attacker_position = systems::geometry::get_foot_position(world, attacker)?;
+
+    let path_intersections = systems::geometry::path_intersections_within_radius(
+        path,
+        attacker_position,
+        attacker_reach.max(),
+    );
+
+    // Scenario 1: No intersections
+    // Entity either doesn't come within reach or doesn't leave reach, so no opportunity attack.
+    if path_intersections.is_empty() {
+        return None;
+    }
+
+    // Scenario 2: One intersection
+    // 2a: Entity starts outside of reach and enters reach: no opportunity attack
+    // 2b: Entity starts inside of reach and leaves reach: opportunity attack
+    if path_intersections.len() == 1 {
+        let Some(distance_to_mover_start_position) =
+            systems::geometry::distance_between_entities(world, mover, attacker)
+        else {
+            return None;
+        };
+
+        if distance_to_mover_start_position > attacker_reach.max() {
+            // Scenario 2a
+            return None;
+        } else {
+            // Scenario 2b
+            if let Some(distance_along_path) = path.distance_along_path(&path_intersections[0])
+                && distance_along_path > *free_movement_distance
+            {
+                return Some(path_intersections[0]);
+            };
+
+            return None;
+        }
+    }
+
+    // Scenario 3: More than one intersection
+    // Entity enters and leaves reach at least once, so opportunity attack.
+    let mut distances_along_path: Vec<(Option<Length>, Point3<f32>)> = path_intersections
+        .iter()
+        .map(|intersection| (path.distance_along_path(intersection), *intersection))
+        .collect();
+    distances_along_path.sort_by(|(distance_a, _), (distance_b, _)| {
+        distance_a
+            .partial_cmp(distance_b)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    distances_along_path.reverse();
+
+    for (distance_along_path, intersection) in distances_along_path {
+        if let Some(distance) = distance_along_path {
+            if distance > *free_movement_distance {
+                return Some(intersection);
+            }
+        }
+    }
+
+    None
+}

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use hecs::{Entity, World};
 use tracing::debug;
 
@@ -7,41 +5,25 @@ use crate::{
     components::{
         actions::{
             action::{
-                Action, ActionCondition, ActionConditionResolution, ActionContext,
-                ActionCooldownMap, ActionKind, ActionKindResult, ActionMap, ActionOutcomeBundle,
-                ActionPayload, ActionProvider, AttackRollFunction, DamageOnFailure, DamageOutcome,
-                EffectOutcome, HealingOutcome, SavingThrowFunction,
+                Action, ActionContext, ActionCooldownMap, ActionKind, ActionMap, ActionProvider,
             },
             targeting::{
                 AreaShape, TargetInstance, TargetingContext, TargetingError, TargetingKind,
             },
         },
-        d20::D20CheckOutcome,
-        damage::DamageRollResult,
-        id::{ActionId, ResourceId, ScriptId},
+        id::{ActionId, ResourceId},
         items::equipment::loadout::Loadout,
-        modifier::{Modifiable, ModifierSource},
         resource::{RechargeRule, ResourceAmountMap, ResourceMap},
-        spells::{
-            spell::{ConcentrationInstance, SpellFlag},
-            spellbook::Spellbook,
-        },
+        spells::spellbook::Spellbook,
     },
     engine::{
         action_prompt::{ActionData, ReactionData},
-        event::{CallbackResult, Event, EventCallback, EventKind},
+        event::Event,
         game_state::GameState,
         geometry::WorldGeometry,
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
-    scripts::script_api::{
-        ScriptEventView, ScriptReactionBodyContext, ScriptReactionTriggerContext,
-    },
-    systems::{
-        self,
-        d20::{D20CheckDCKind, D20ResultKind},
-        geometry::RaycastFilter,
-    },
+    systems::{self, geometry::RaycastFilter},
 };
 
 pub fn get_action(action_id: &ActionId) -> Option<&Action> {
@@ -371,14 +353,14 @@ pub fn perform_reaction(game_state: &mut GameState, reaction_data: &ReactionData
 
     match &action.kind {
         ActionKind::Reaction { reaction } => {
-            evaluate_and_apply_reaction(game_state, reaction, reaction_data);
+            reaction(game_state, reaction_data);
         }
 
         ActionKind::Composite { actions } => {
             for action in actions {
                 match action {
                     ActionKind::Reaction { reaction } => {
-                        evaluate_and_apply_reaction(game_state, reaction, reaction_data);
+                        reaction(game_state, reaction_data);
                     }
 
                     _ => {
@@ -392,16 +374,4 @@ pub fn perform_reaction(game_state: &mut GameState, reaction_data: &ReactionData
             perform_action(game_state, &ActionData::from(reaction_data));
         }
     }
-}
-
-fn evaluate_and_apply_reaction(
-    game_state: &mut GameState,
-    reaction: &ScriptId,
-    reaction_data: &ReactionData,
-) {
-    let plan = systems::scripts::evaluate_reaction_body(
-        reaction,
-        &ScriptReactionBodyContext::from(reaction_data),
-    );
-    systems::scripts::apply_reaction_plan(game_state, reaction_data, plan);
 }

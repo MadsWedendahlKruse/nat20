@@ -3,6 +3,7 @@ pub mod anchor;
 pub mod creature_debug;
 pub mod creature_right_click;
 pub mod encounter;
+pub mod game_state_debug;
 pub mod level_up;
 pub mod line_of_sight_debug;
 pub mod main_menu;

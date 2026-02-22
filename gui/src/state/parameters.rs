@@ -1,4 +1,5 @@
 pub static RENDER_CAMERA_DEBUG: &str = "render.ui.camera.debug_window";
+pub static RENDER_GAME_STATE_DEBUG: &str = "render.ui.game_state.debug_window";
 pub static RENDER_GRID: &str = "render.ui.world.render_grid";
 pub static RENDER_IMGUI_ABOUT: &str = "render.ui.imgui.show_about_window";
 pub static RENDER_IMGUI_DEMO: &str = "render.ui.imgui.show_demo_window";

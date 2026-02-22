@@ -1,11 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
 use hecs::Entity;
+use tracing::info;
 
 use crate::engine::{
-    action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
+    action_prompt::{ActionDecision, ActionPrompt, ActionPromptId, ActionPromptKind},
     encounter::EncounterId,
-    event::Event,
+    event::{Event, EventQueue},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,7 +20,8 @@ pub enum InteractionScopeId {
 pub struct InteractionSession {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
-    pending_events: VecDeque<Event>, // paused due to reactions
+    pending_events: EventQueue, // paused due to reactions
+    pending_movement_events: HashMap<Entity, EventQueue>, // paused due to movement reactions
 }
 
 impl InteractionSession {
@@ -99,6 +101,47 @@ impl InteractionSession {
     pub fn clear_prompts(&mut self) {
         self.pending_prompts.clear();
         self.decisions_by_prompt.clear();
+    }
+
+    pub fn ready_to_resume(&self) -> bool {
+        if self.pending_prompts().is_empty() {
+            // Not sure this ever actually happens
+            info!("No pending prompts; ready to resume pending events.");
+            true
+        } else if let Some(front) = self.next_prompt()
+            && !matches!(front.kind, ActionPromptKind::Reactions { .. })
+        {
+            info!("Next prompt is not a reaction; ready to resume pending events.");
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn queue_movement_event(&mut self, event: Event, front: bool) {
+        if let Some(actor) = event.actor() {
+            let queue = self
+                .pending_movement_events
+                .entry(actor)
+                .or_insert_with(VecDeque::new);
+            if front {
+                queue.push_front(event);
+            } else {
+                queue.push_back(event);
+            }
+        }
+    }
+
+    pub fn pop_movement_event(&mut self, actor: Entity) -> Option<Event> {
+        if let Some(queue) = self.pending_movement_events.get_mut(&actor) {
+            queue.pop_front()
+        } else {
+            None
+        }
+    }
+
+    pub fn clear_movement_events(&mut self, actor: Entity) {
+        self.pending_movement_events.remove(&actor);
     }
 }
 
