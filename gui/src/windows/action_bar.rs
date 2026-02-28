@@ -124,9 +124,12 @@ impl ActionBarWindow {
         gui_state: &mut GuiState,
         game_state: &mut GameState,
     ) {
-        if let Some(cursor_ray_result) = &gui_state.cursor_ray_result.take()
+        let mut take_cursor_ray = false;
+        if let Some(cursor_ray_result) = &gui_state.cursor_ray_result
             && let Some(closest) = cursor_ray_result.closest()
+            && matches!(closest.kind, RaycastHitKind::World)
         {
+            take_cursor_ray = true;
             if let Some(prev_target_point) = self.movement_preview.prev_target_point {
                 if closest.poi != prev_target_point {
                     let in_combat = game_state.in_combat.contains_key(&self.entity);
@@ -188,6 +191,10 @@ impl ActionBarWindow {
                     }
                 }
             }
+        }
+
+        if take_cursor_ray {
+            gui_state.cursor_ray_result.take();
         }
     }
 }
