@@ -2,11 +2,10 @@
     "id": "nat20_core::effect.fighting_style.archery",
     "kind": "buff",
     "description": "You gain a +2 bonus to attack rolls you make with Ranged weapons.",
-    "pre_attack_roll": [
+    "modifiers": [
         {
-            "source": "weapon",
-            "range": "ranged",
-            "modifier": "+2"
+            "attack_roll_source": "ranged_weapon",
+            "attack_roll_modifier": "+2"
         }
     ]
 }

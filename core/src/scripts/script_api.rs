@@ -778,11 +778,27 @@ pub struct ScriptActionContext {
 
 impl ScriptActionContext {
     pub fn is_spell(&self) -> bool {
-        matches!(self.inner, ActionContext::Spell { .. })
+        self.inner.is_spell()
+    }
+
+    pub fn is_attack_action(&self) -> bool {
+        self.inner.is_attack_action()
     }
 
     pub fn is_weapon_attack(&self) -> bool {
-        matches!(self.inner, ActionContext::Weapon { .. })
+        self.inner.is_weapon_attack()
+    }
+
+    pub fn is_unarmed_attack(&self) -> bool {
+        self.inner.is_unarmed_attack()
+    }
+
+    pub fn is_melee_attack(&self) -> bool {
+        self.inner.is_melee_attack()
+    }
+
+    pub fn is_ranged_attack(&self) -> bool {
+        self.inner.is_ranged_attack()
     }
 }
 

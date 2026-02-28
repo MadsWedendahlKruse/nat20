@@ -2,6 +2,7 @@ use hecs::{Entity, Ref, World};
 
 use crate::{
     components::{
+        actions::action::{ActionAttackKind, ActionContext},
         actions::targeting::TargetingRange,
         damage::DamageRoll,
         items::{
@@ -9,6 +10,7 @@ use crate::{
                 armor::ArmorClass,
                 loadout::{EquipmentInstance, Loadout, TryEquipError},
                 slots::EquipmentSlot,
+                weapon::MELEE_RANGE_DEFAULT,
             },
             inventory::ItemContainer,
         },
@@ -122,5 +124,35 @@ pub fn can_equip(world: &World, entity: Entity, equipment: &EquipmentInstance) -
 }
 
 pub fn weapon_damage_roll(world: &World, entity: Entity, slot: &EquipmentSlot) -> DamageRoll {
-    loadout(world, entity).damage_roll(world, entity, slot)
+    loadout(world, entity).weapon_damage_roll(world, entity, slot)
+}
+
+pub fn attack_damage_roll(world: &World, entity: Entity, context: &ActionContext) -> DamageRoll {
+    loadout(world, entity).damage_roll_from_context(world, entity, context)
+}
+
+pub fn attack_targeting_range(
+    world: &World,
+    entity: Entity,
+    context: &ActionContext,
+) -> TargetingRange {
+    let loadout = loadout(world, entity);
+    let attack = context
+        .attack
+        .as_ref()
+        .expect("Attack targeting requires an attack context");
+
+    match attack.kind {
+        ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => loadout
+            .weapon_in_hand(
+                attack
+                    .slot
+                    .as_ref()
+                    .expect("Weapon attacks require an equipment slot"),
+            )
+            .expect("No weapon equipped in the specified slot")
+            .range()
+            .clone(),
+        ActionAttackKind::Unarmed => MELEE_RANGE_DEFAULT.clone(),
+    }
 }

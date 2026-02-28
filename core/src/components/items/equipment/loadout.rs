@@ -2,18 +2,24 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use hecs::{Entity, World};
 use serde::Deserialize;
-use uom::si::f32::Length;
 
 use crate::{
     components::{
-        ability::AbilityScoreMap,
+        ability::{Ability, AbilityScoreMap},
         actions::{
-            action::{ActionContext, ActionMap, ActionProvider, AttackRollProvider},
+            action::{
+                ActionAttackKind, ActionContext, ActionMap, ActionProvider, AttackRollProvider,
+                SavingThrowProvider,
+            },
             targeting::TargetingRange,
         },
-        d20::AdvantageType,
-        damage::{AttackRoll, AttackRollResult, DamageRoll},
-        id::{EffectId, ItemId},
+        d20::{AdvantageType, D20Check},
+        damage::{
+            AttackRange, AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageSource,
+            DamageType,
+        },
+        dice::{DiceSet, DieSize},
+        id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus},
@@ -27,6 +33,8 @@ use crate::{
             item::Item,
         },
         modifier::{Modifiable, ModifierSet, ModifierSource},
+        proficiency::{Proficiency, ProficiencyLevel},
+        saving_throw::{SavingThrowDC, SavingThrowKind},
     },
     registry::registry::ItemsRegistry,
     systems::{self},
@@ -121,13 +129,43 @@ impl Into<EquipmentInstance> for &LazyLock<ItemId> {
 #[derive(Debug, Clone, Default)]
 pub struct Loadout {
     equipment: HashMap<EquipmentSlot, EquipmentInstance>,
+    attack_roll_templates: HashMap<WeaponKind, AttackRollTemplate>,
+    saving_throw_modifiers: HashMap<WeaponKind, ModifierSet>,
 }
 
 impl Loadout {
     pub fn new() -> Self {
         Self {
             equipment: HashMap::new(),
+            attack_roll_templates: HashMap::new(),
+            saving_throw_modifiers: HashMap::new(),
         }
+    }
+
+    pub fn attack_roll_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierSet {
+        self.attack_roll_template_mut(weapon_kind)
+            .d20_check
+            .modifiers_mut()
+    }
+
+    pub fn attack_roll_template_mut(
+        &mut self,
+        weapon_kind: &WeaponKind,
+    ) -> &mut AttackRollTemplate {
+        self.attack_roll_templates
+            .entry(weapon_kind.clone())
+            .or_insert_with(|| {
+                AttackRollTemplate::new(D20Check::new(Proficiency::new(
+                    ProficiencyLevel::None,
+                    ModifierSource::None,
+                )))
+            })
+    }
+
+    pub fn saving_throw_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierSet {
+        self.saving_throw_modifiers
+            .entry(weapon_kind.clone())
+            .or_insert_with(ModifierSet::new)
     }
 
     pub fn item_in_slot(&self, slot: &EquipmentSlot) -> Option<&EquipmentInstance> {
@@ -292,6 +330,7 @@ impl Loadout {
         let (main_hand_slot, off_hand_slot) = match weapon_kind {
             WeaponKind::Melee => (EquipmentSlot::MeleeMainHand, EquipmentSlot::MeleeOffHand),
             WeaponKind::Ranged => (EquipmentSlot::RangedMainHand, EquipmentSlot::RangedOffHand),
+            WeaponKind::Unarmed => return false,
         };
         if let Some(main_hand_weapon) = self.weapon_in_hand(&main_hand_slot) {
             // Check that:
@@ -307,7 +346,12 @@ impl Loadout {
         false
     }
 
-    pub fn damage_roll(&self, world: &World, entity: Entity, slot: &EquipmentSlot) -> DamageRoll {
+    pub fn weapon_damage_roll(
+        &self,
+        world: &World,
+        entity: Entity,
+        slot: &EquipmentSlot,
+    ) -> DamageRoll {
         let weapon = self
             .weapon_in_hand(slot)
             .expect("No weapon equipped in the specified slot");
@@ -317,14 +361,63 @@ impl Loadout {
         )
     }
 
-    pub fn melee_range(&self) -> &TargetingRange {
-        if self.has_weapon_in_hand(&EquipmentSlot::MeleeMainHand) {
-            self.weapon_in_hand(&EquipmentSlot::MeleeMainHand)
-                .unwrap()
-                .range()
-        } else {
-            &MELEE_RANGE_DEFAULT
+    pub fn unarmed_damage_roll(&self, world: &World, entity: Entity) -> DamageRoll {
+        let mut damage_roll = DamageRoll::new(
+            DiceSet::new(0, DieSize::D4),
+            DamageType::Bludgeoning,
+            DamageSource::Weapon(WeaponKind::Unarmed),
+        );
+
+        let strength_modifier = systems::helpers::get_component::<AbilityScoreMap>(world, entity)
+            .ability_modifier(&Ability::Strength)
+            .total();
+
+        damage_roll
+            .primary
+            .dice_roll
+            .add_modifier(ModifierSource::Base, 1);
+        damage_roll.primary.dice_roll.add_modifier(
+            ModifierSource::Ability(Ability::Strength),
+            strength_modifier,
+        );
+
+        damage_roll
+    }
+
+    pub fn damage_roll_from_context(
+        &self,
+        world: &World,
+        entity: Entity,
+        context: &ActionContext,
+    ) -> DamageRoll {
+        let attack = context
+            .attack
+            .as_ref()
+            .expect("Action context must contain attack metadata");
+
+        match attack.kind {
+            ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => self
+                .weapon_damage_roll(
+                    world,
+                    entity,
+                    &attack
+                        .slot
+                        .expect("Weapon attacks require an equipment slot"),
+                ),
+            ActionAttackKind::Unarmed => self.unarmed_damage_roll(world, entity),
         }
+    }
+
+    pub fn melee_range(&self) -> TargetingRange {
+        let mut melee_range = MELEE_RANGE_DEFAULT.clone();
+        for slot in [EquipmentSlot::MeleeMainHand, EquipmentSlot::MeleeOffHand] {
+            if let Some(weapon) = self.weapon_in_hand(&slot)
+                && weapon.range().max() > melee_range.max()
+            {
+                melee_range = weapon.range().clone();
+            }
+        }
+        melee_range
     }
 }
 
@@ -336,55 +429,156 @@ impl AttackRollProvider for Loadout {
         target: Entity,
         context: &ActionContext,
     ) -> AttackRoll {
-        let slot = match context {
-            ActionContext::Weapon { slot } => slot,
-            _ => panic!("Action context must be Weapon"),
-        };
+        let attack_context = context
+            .attack
+            .as_ref()
+            .expect("Action context must contain attack metadata");
 
-        // TODO: Unarmed attacks
-        let weapon = self
-            .weapon_in_hand(slot)
-            .expect("No weapon equipped in the specified slot");
-        let mut attack_roll = weapon.attack_roll(
-            &systems::helpers::get_component::<AbilityScoreMap>(world, performer),
-            &systems::helpers::get_component::<WeaponProficiencyMap>(world, performer)
-                .proficiency(&weapon.category()),
-        );
+        match attack_context.kind {
+            ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => {
+                let slot = attack_context
+                    .slot
+                    .as_ref()
+                    .expect("Weapon attacks require an equipment slot");
 
-        let range = weapon.range();
-        if range.normal() < range.max() {
-            let distance =
-                systems::geometry::distance_between_entities(world, performer, target).unwrap();
-            if distance > range.normal() {
-                attack_roll.d20_check.advantage_tracker_mut().add(
-                    AdvantageType::Disadvantage,
-                    ModifierSource::Custom("Target is outside normal range".to_string()),
+                let weapon = self
+                    .weapon_in_hand(slot)
+                    .expect("No weapon equipped in the specified slot");
+                let mut attack_roll = weapon.attack_roll(
+                    &systems::helpers::get_component::<AbilityScoreMap>(world, performer),
+                    &systems::helpers::get_component::<WeaponProficiencyMap>(world, performer)
+                        .proficiency(&weapon.category()),
                 );
+
+                let range = weapon.range();
+                if range.normal() < range.max() {
+                    let distance =
+                        systems::geometry::distance_between_entities(world, performer, target)
+                            .unwrap();
+                    if distance > range.normal() {
+                        attack_roll.d20_check.advantage_tracker_mut().add(
+                            AdvantageType::Disadvantage,
+                            ModifierSource::Custom("Target is outside normal range".to_string()),
+                        );
+                    }
+                }
+
+                if let Some(template) = self.attack_roll_templates.get(weapon.kind()) {
+                    template.apply_to_roll(&mut attack_roll);
+                }
+
+                attack_roll
+            }
+
+            ActionAttackKind::Unarmed => {
+                let mut d20_check = D20Check::new(Proficiency::new(
+                    ProficiencyLevel::Proficient,
+                    ModifierSource::Base,
+                ));
+                let strength_modifier =
+                    systems::helpers::get_component::<AbilityScoreMap>(world, performer)
+                        .ability_modifier(&Ability::Strength)
+                        .total();
+                d20_check.add_modifier(
+                    ModifierSource::Ability(Ability::Strength),
+                    strength_modifier,
+                );
+                let mut attack_roll = AttackRoll::new(
+                    d20_check,
+                    AttackSource::Weapon(WeaponKind::Unarmed),
+                    AttackRange::Melee,
+                );
+                if let Some(template) = self.attack_roll_templates.get(&WeaponKind::Unarmed) {
+                    template.apply_to_roll(&mut attack_roll);
+                }
+
+                attack_roll
             }
         }
+    }
+}
 
-        attack_roll
+impl SavingThrowProvider for Loadout {
+    fn saving_throw(
+        &self,
+        world: &World,
+        performer: Entity,
+        context: &ActionContext,
+        kind: SavingThrowKind,
+    ) -> SavingThrowDC {
+        let attack_context = context
+            .attack
+            .as_ref()
+            .expect("Action context must contain attack metadata");
+        let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, performer);
+
+        let (weapon_kind, ability) = match attack_context.kind {
+            ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => {
+                let slot = attack_context
+                    .slot
+                    .as_ref()
+                    .expect("Weapon attacks require an equipment slot");
+                let weapon = self
+                    .weapon_in_hand(slot)
+                    .expect("No weapon equipped in the specified slot");
+                (
+                    weapon.kind().clone(),
+                    weapon.determine_ability(&ability_scores),
+                )
+            }
+            ActionAttackKind::Unarmed => (WeaponKind::Unarmed, Ability::Strength),
+        };
+
+        let proficiency_bonus = systems::helpers::level(world, performer)
+            .unwrap()
+            .proficiency_bonus() as i32;
+        let ability_modifier = ability_scores.ability_modifier(&ability).total();
+
+        let mut dc = ModifierSet::from(ModifierSource::Base, 8);
+        dc.add_modifier(
+            ModifierSource::Proficiency(ProficiencyLevel::Proficient),
+            proficiency_bonus,
+        );
+        dc.add_modifier(ModifierSource::Ability(ability), ability_modifier);
+
+        if let Some(modifiers) = self.saving_throw_modifiers.get(&weapon_kind) {
+            dc.add_modifier_set(modifiers);
+        }
+
+        SavingThrowDC { key: kind, dc }
     }
 }
 
 impl ActionProvider for Loadout {
-    fn actions(&self, world: &World, entity: Entity) -> ActionMap {
+    fn actions(&self, _world: &World, _entity: Entity) -> ActionMap {
         let mut actions = ActionMap::new();
 
-        // TODO: There has to be a nicer way to do this
         for slot in EquipmentSlot::weapon_slots() {
             if let Some(weapon) = self.weapon_in_hand(slot) {
-                let weapon_actions = weapon.weapon_actions();
-                for action_id in weapon_actions {
-                    if let Some(action) = systems::actions::get_action(&action_id) {
-                        let context = ActionContext::Weapon { slot: slot.clone() };
-                        let resource_cost = &action.resource_cost().clone();
+                let context = match weapon.kind() {
+                    WeaponKind::Melee => ActionContext::melee_weapon(*slot),
+                    WeaponKind::Ranged => ActionContext::ranged_weapon(*slot),
+                    WeaponKind::Unarmed => continue,
+                };
+
+                let core_actions = match weapon.kind() {
+                    WeaponKind::Melee => vec![
+                        ActionId::new("nat20_core", "action.melee_attack"),
+                        ActionId::new("nat20_core", "action.opportunity_attack"),
+                    ],
+                    WeaponKind::Ranged => vec![ActionId::new("nat20_core", "action.ranged_attack")],
+                    WeaponKind::Unarmed => continue,
+                };
+
+                for action_id in core_actions.iter().chain(weapon.extra_actions().iter()) {
+                    if let Some(action) = systems::actions::get_action(action_id) {
+                        let resource_cost = action.resource_cost().clone();
                         actions
                             .entry(action_id.clone())
                             .and_modify(|entry| {
                                 entry.push((context.clone(), resource_cost.clone()));
                             })
-                            .or_insert(vec![(context, resource_cost.clone())]);
+                            .or_insert(vec![(context.clone(), resource_cost)]);
                     }
                 }
             }
@@ -599,7 +793,6 @@ mod tests {
         let mut world = World::new();
         let entity = world.spawn(());
 
-        // TODO: Should return unarmed attack
         let loadout = Loadout::new();
         let actions = loadout.actions(&world, entity);
         assert_eq!(actions.len(), 0);
@@ -627,19 +820,22 @@ mod tests {
             println!("{:?}", action);
         }
 
-        // Both melee and ranged attacks use the same ActionId, but their
-        // contexts are different
-        assert_eq!(actions.len(), 1);
+        assert_eq!(actions.len(), 3);
         assert_eq!(
-            actions[&ActionId::new("nat20_core", "action.weapon_attack")].len(),
-            2
+            actions[&ActionId::new("nat20_core", "action.melee_attack")].len(),
+            1
+        );
+        assert_eq!(
+            actions[&ActionId::new("nat20_core", "action.ranged_attack")].len(),
+            1
+        );
+        assert_eq!(
+            actions[&ActionId::new("nat20_core", "action.opportunity_attack")].len(),
+            1
         );
         for (_, data) in actions {
             for (context, ..) in data {
-                match context {
-                    ActionContext::Weapon { .. } => {}
-                    _ => panic!("Unexpected action context: {:?}", context),
-                }
+                assert!(context.is_attack_action());
             }
         }
     }

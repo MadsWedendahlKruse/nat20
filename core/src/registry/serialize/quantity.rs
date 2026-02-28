@@ -177,14 +177,14 @@ mod tests {
         let mut world = World::new();
         let entity = world.spawn(());
 
-        let action_context = ActionContext::Spell {
-            source: SpellSource::Class(ClassAndSubclass {
+        let action_context = ActionContext::spell(
+            SpellId::new("nat20_core", "spell.test"),
+            SpellSource::Class(ClassAndSubclass {
                 class: ClassId::new("nat20_core", "class.wizard"),
                 subclass: None,
             }),
-            level: 5,
-            id: SpellId::new("nat20_core", "spell.test"),
-        };
+            5,
+        );
 
         let length = expr
             .evaluate(&world, entity, &action_context, &PARSER_VARIABLES)
@@ -210,14 +210,14 @@ mod tests {
         let mut world = World::new();
         let entity = world.spawn(());
 
-        let action_context = ActionContext::Spell {
-            source: SpellSource::Class(ClassAndSubclass {
+        let action_context = ActionContext::spell(
+            SpellId::new("nat20_core", "spell.test"),
+            SpellSource::Class(ClassAndSubclass {
                 class: ClassId::new("nat20_core", "class.wizard"),
                 subclass: None,
             }),
-            level: 3,
-            id: SpellId::new("nat20_core", "spell.test"),
-        };
+            3,
+        );
 
         let time = expr
             .evaluate(&world, entity, &action_context, &PARSER_VARIABLES)

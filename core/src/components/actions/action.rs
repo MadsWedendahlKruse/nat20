@@ -16,7 +16,7 @@ use crate::{
         dice::{DiceSetRoll, DiceSetRollResult},
         effects::effect::EffectInstanceTemplate,
         health::life_state::LifeState,
-        id::{ActionId, EffectId, EntityIdentifier, IdProvider, ScriptId, SpellId},
+        id::{ActionId, EffectId, EntityIdentifier, IdProvider, SpellId},
         items::equipment::{armor::ArmorClass, slots::EquipmentSlot},
         resource::{RechargeRule, ResourceAmountMap},
         saving_throw::{SavingThrowDC, SavingThrowKind},
@@ -131,27 +131,126 @@ impl PartialEq for Action {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActionAttackKind {
+    MeleeWeapon,
+    RangedWeapon,
+    Unarmed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ActionAttackContext {
+    pub kind: ActionAttackKind,
+    pub slot: Option<EquipmentSlot>,
+}
+
+impl ActionAttackContext {
+    pub fn melee_weapon(slot: EquipmentSlot) -> Self {
+        Self {
+            kind: ActionAttackKind::MeleeWeapon,
+            slot: Some(slot),
+        }
+    }
+
+    pub fn ranged_weapon(slot: EquipmentSlot) -> Self {
+        Self {
+            kind: ActionAttackKind::RangedWeapon,
+            slot: Some(slot),
+        }
+    }
+
+    pub fn unarmed() -> Self {
+        Self {
+            kind: ActionAttackKind::Unarmed,
+            slot: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ActionSpellContext {
+    pub id: SpellId,
+    pub source: SpellSource,
+    pub level: u8,
+}
+
 /// Represents the context in which an action is performed.
-/// This can be used to determine the type of action (e.g. weapon, spell, etc.)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ActionContext {
-    // TODO: Not sure if Weapon needs more info?
-    Weapon {
-        slot: EquipmentSlot,
-    },
-    Spell {
-        id: SpellId,
-        /// Having the source here allows us to track whether the spell is coming
-        /// from a class, subclass, item, feat, etc., which is useful for determining
-        /// e.g. spellcasting ability for spell save DCs and spell attack rolls.
-        source: SpellSource,
-        /// When casting a spell it is important to know the spell level, since
-        /// most spells have different effects based on the level at which they are cast.
-        /// For example, Fireball deals more damage when cast at a higher level.
-        level: u8,
-    },
-    // TODO: Not sure if Other is needed
-    Other,
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
+pub struct ActionContext {
+    pub attack: Option<ActionAttackContext>,
+    pub spell: Option<ActionSpellContext>,
+}
+
+impl ActionContext {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    pub fn melee_weapon(slot: EquipmentSlot) -> Self {
+        Self {
+            attack: Some(ActionAttackContext::melee_weapon(slot)),
+            spell: None,
+        }
+    }
+
+    pub fn ranged_weapon(slot: EquipmentSlot) -> Self {
+        Self {
+            attack: Some(ActionAttackContext::ranged_weapon(slot)),
+            spell: None,
+        }
+    }
+
+    pub fn unarmed_attack() -> Self {
+        Self {
+            attack: Some(ActionAttackContext::unarmed()),
+            spell: None,
+        }
+    }
+
+    pub fn spell(id: SpellId, source: SpellSource, level: u8) -> Self {
+        Self {
+            attack: None,
+            spell: Some(ActionSpellContext { id, source, level }),
+        }
+    }
+
+    pub fn is_spell(&self) -> bool {
+        self.spell.is_some()
+    }
+
+    pub fn is_attack_action(&self) -> bool {
+        self.attack.is_some()
+    }
+
+    pub fn is_weapon_attack(&self) -> bool {
+        self.attack.as_ref().is_some_and(|attack| {
+            matches!(
+                attack.kind,
+                ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon
+            )
+        })
+    }
+
+    pub fn is_unarmed_attack(&self) -> bool {
+        self.attack
+            .as_ref()
+            .is_some_and(|attack| matches!(attack.kind, ActionAttackKind::Unarmed))
+    }
+
+    pub fn is_melee_attack(&self) -> bool {
+        self.attack.as_ref().is_some_and(|attack| {
+            matches!(
+                attack.kind,
+                ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
+            )
+        })
+    }
+
+    pub fn is_ranged_attack(&self) -> bool {
+        self.attack
+            .as_ref()
+            .is_some_and(|attack| matches!(attack.kind, ActionAttackKind::RangedWeapon))
+    }
 }
 
 pub trait AttackRollProvider {
@@ -540,12 +639,26 @@ pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
 // TODO: Not sure if this is the best solution
 pub fn default_actions() -> ActionMap {
     let mut actions = ActionMap::new();
-    for action in [
-        ActionId::new("nat20_core", "action.dash"),
-        ActionId::new("nat20_core", "action.disengage"),
+    for (action, context) in [
+        (
+            ActionId::new("nat20_core", "action.dash"),
+            ActionContext::default(),
+        ),
+        (
+            ActionId::new("nat20_core", "action.disengage"),
+            ActionContext::default(),
+        ),
+        (
+            ActionId::new("nat20_core", "action.unarmed_attack"),
+            ActionContext::unarmed_attack(),
+        ),
+        (
+            ActionId::new("nat20_core", "action.opportunity_attack"),
+            ActionContext::unarmed_attack(),
+        ),
     ] {
         let resource_cost = ActionsRegistry::get(&action).unwrap().resource_cost.clone();
-        actions.insert(action.clone(), vec![(ActionContext::Other, resource_cost)]);
+        actions.insert(action.clone(), vec![(context, resource_cost)]);
     }
     actions
 }

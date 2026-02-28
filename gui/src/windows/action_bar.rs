@@ -556,19 +556,23 @@ fn render_context_selection(
         let disabled_token =
             ui.begin_disabled(!systems::resources::can_afford(&game_state.world, actor, cost).0);
 
-        let clicked = match context {
-            ActionContext::Weapon { slot } => {
-                render_button_with_padding(ui, format!("{}", slot).as_str(), [10.0, 10.0])
-            }
-
-            ActionContext::Spell { level, .. } => {
+        let clicked = if let Some(spell) = &context.spell {
+            let level = spell.level;
+            {
                 let style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([0.5, 0.5]));
-                let clicked = ui.button_with_size(roman_numeral(*level), [30.0, 30.0]);
+                let clicked = ui.button_with_size(roman_numeral(level), [30.0, 30.0]);
                 style.pop();
                 clicked
             }
-
-            ActionContext::Other => render_button_with_padding(ui, "Other", [10.0, 10.0]),
+        } else if let Some(attack) = &context.attack {
+            let label = if let Some(slot) = attack.slot {
+                format!("{}", slot)
+            } else {
+                "Unarmed".to_string()
+            };
+            render_button_with_padding(ui, label.as_str(), [10.0, 10.0])
+        } else {
+            render_button_with_padding(ui, "Default", [10.0, 10.0])
         };
 
         if clicked {

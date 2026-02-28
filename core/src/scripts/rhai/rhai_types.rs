@@ -174,7 +174,11 @@ impl CustomType for ScriptActionContext {
         builder
             .with_name("ActionContext")
             .with_fn("is_spell", |s: &mut Self| s.is_spell())
-            .with_fn("is_weapon_attack", |s: &mut Self| s.is_weapon_attack());
+            .with_fn("is_attack_action", |s: &mut Self| s.is_attack_action())
+            .with_fn("is_weapon_attack", |s: &mut Self| s.is_weapon_attack())
+            .with_fn("is_unarmed_attack", |s: &mut Self| s.is_unarmed_attack())
+            .with_fn("is_melee_attack", |s: &mut Self| s.is_melee_attack())
+            .with_fn("is_ranged_attack", |s: &mut Self| s.is_ranged_attack());
     }
 }
 

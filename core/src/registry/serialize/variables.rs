@@ -20,10 +20,7 @@ pub static PARSER_VARIABLES: LazyLock<VariableMap> = LazyLock::new(|| {
         (
             "spell_level".to_string(),
             Arc::new(|_world: &World, _entity: Entity, context: &ActionContext| {
-                if let ActionContext::Spell { level, .. } = context {
-                    return *level as i32;
-                }
-                0
+                context.spell.as_ref().map_or(0, |spell| spell.level as i32)
             }) as Arc<VariableFunction>,
         ),
         (

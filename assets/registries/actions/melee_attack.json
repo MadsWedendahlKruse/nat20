@@ -1,0 +1,18 @@
+{
+    "id": "nat20_core::action.melee_attack",
+    "description": "Make a melee weapon attack with a weapon you are wielding.",
+    "kind": {
+        "standard": {
+            "condition": {
+                "attack_roll": "melee_weapon_attack_roll"
+            },
+            "payload": {
+                "damage": "melee_weapon_damage_roll"
+            }
+        }
+    },
+    "targeting": "melee_weapon_targeting",
+    "resource_cost": {
+        "nat20_core::resource.action": 1
+    }
+}

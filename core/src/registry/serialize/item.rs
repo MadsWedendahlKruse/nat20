@@ -57,7 +57,7 @@ impl RegistryReferenceCollector for Armor {
 
 impl RegistryReferenceCollector for Weapon {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for action in self.weapon_actions() {
+        for action in self.extra_actions() {
             collector.add(RegistryReference::Action(action.clone()));
         }
         for effect in self.effects() {

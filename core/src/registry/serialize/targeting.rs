@@ -12,11 +12,10 @@ use uom::si::length::meter;
 use crate::{
     components::{
         actions::{
-            action::{ActionContext, TargetingFunction},
+            action::{ActionAttackKind, ActionContext, TargetingFunction},
             targeting::{AreaShape, EntityFilter, TargetingContext, TargetingKind, TargetingRange},
         },
         health::life_state::LifeState,
-        items::equipment::loadout::Loadout,
         species::CreatureType,
     },
     registry::serialize::{
@@ -27,29 +26,66 @@ use crate::{
     systems,
 };
 
+#[derive(Clone, Copy)]
+enum TargetingScope {
+    MeleeWeapon,
+    RangedWeapon,
+    Unarmed,
+    Melee,
+}
+
+impl TargetingScope {
+    fn is_allowed(&self, kind: ActionAttackKind) -> bool {
+        match self {
+            TargetingScope::MeleeWeapon => matches!(kind, ActionAttackKind::MeleeWeapon),
+            TargetingScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
+            TargetingScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
+            TargetingScope::Melee => {
+                matches!(kind, ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed)
+            }
+        }
+    }
+}
+
+fn scoped_attack_targeting(scope: TargetingScope, provider_name: &'static str) -> Arc<TargetingFunction> {
+    Arc::new(
+        move |world: &World, entity: Entity, action_context: &ActionContext| {
+            let attack = action_context
+                .attack
+                .as_ref()
+                .unwrap_or_else(|| panic!("{provider_name} requires an attack context"));
+            if !scope.is_allowed(attack.kind) {
+                panic!("{provider_name} does not support this attack context");
+            }
+
+            TargetingContext {
+                kind: TargetingKind::Single,
+                range: systems::loadout::attack_targeting_range(world, entity, action_context),
+                require_line_of_sight: true,
+                allowed_targets: vec![EntityFilter::not_dead()],
+            }
+        },
+    ) as Arc<TargetingFunction>
+}
+
 static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
     LazyLock::new(|| {
         HashMap::from([
             (
-                "weapon_targeting".to_string(),
-                Arc::new(
-                    |world: &World, entity: Entity, action_context: &ActionContext| {
-                        if let ActionContext::Weapon { slot } = action_context {
-                            TargetingContext {
-                                kind: TargetingKind::Single,
-                                range: systems::helpers::get_component::<Loadout>(world, entity)
-                                    .weapon_in_hand(slot)
-                                    .unwrap()
-                                    .range()
-                                    .clone(),
-                                require_line_of_sight: true,
-                                allowed_targets: vec![EntityFilter::not_dead()],
-                            }
-                        } else {
-                            panic!("Action context must be Weapon");
-                        }
-                    },
-                ) as Arc<TargetingFunction>,
+                "melee_weapon_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::MeleeWeapon, "melee_weapon_targeting"),
+            ),
+            (
+                "melee_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::Melee, "melee_targeting"),
+            ),
+            (
+                "ranged_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::RangedWeapon, "ranged_targeting"),
+            ),
+            (
+                "unarmed_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::Unarmed, "unarmed_targeting"),
             ),
             (
                 "self".to_string(),

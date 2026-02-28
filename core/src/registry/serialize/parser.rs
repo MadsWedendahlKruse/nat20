@@ -572,7 +572,7 @@ mod tests {
         let variables = variables();
         let mut world = World::new();
         let entity = world.spawn(());
-        let action_context = ActionContext::Other;
+        let action_context = ActionContext::default();
 
         let (count, size, modifier) = dice_expression
             .evaluate(&world, entity, &action_context, &variables)

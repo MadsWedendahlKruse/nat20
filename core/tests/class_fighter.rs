@@ -219,10 +219,10 @@ mod tests {
             "Available actions before attacking: {:#?}",
             available_actions
         );
-        let action_id = ActionId::new("nat20_core", "action.weapon_attack");
+        let action_id = ActionId::new("nat20_core", "action.melee_attack");
         assert!(
             available_actions.contains_key(&action_id),
-            "Fighter should have Weapon Attack action"
+            "Fighter should have Melee Attack action"
         );
         let contexts_and_costs = available_actions.get(&action_id).unwrap();
         let result = game_state.submit_decision(ActionDecision::without_response_to(
@@ -238,7 +238,7 @@ mod tests {
         ));
         assert!(
             result.is_ok(),
-            "Performing weapon attack action should succeed. Error: {:?}",
+            "Performing melee attack action should succeed. Error: {:?}",
             result.err()
         );
 
@@ -263,7 +263,7 @@ mod tests {
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
         assert!(
             available_actions.contains_key(&action_id),
-            "Fighter should have Weapon Attack action available for second attack"
+            "Fighter should have Melee Attack action available for second attack"
         );
         let contexts_and_costs = available_actions.get(&action_id).unwrap();
         let result = game_state.submit_decision(ActionDecision::without_response_to(
@@ -279,7 +279,7 @@ mod tests {
         ));
         assert!(
             result.is_ok(),
-            "Performing second weapon attack action should succeed. Error: {:?}",
+            "Performing second melee attack action should succeed. Error: {:?}",
             result.err()
         );
 

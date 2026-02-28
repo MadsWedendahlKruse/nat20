@@ -7,7 +7,8 @@ use crate::{
     components::{
         ability::Ability,
         d20::{AdvantageType, D20CheckOutcome},
-        damage::{DamageSource, DamageType, MitigationOperation},
+        damage::{AttackSource, DamageType, MitigationOperation},
+        items::equipment::weapon::WeaponKind,
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
@@ -275,6 +276,36 @@ impl FromStr for AttackRollModifier {
 }
 
 impl_display_roundtrip_spec!(AttackRollModifier);
+
+// TODO: Not sure if this is the correct place
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct AttackSourceDefinition {
+    pub source: AttackSource,
+    pub raw: String,
+}
+
+impl FromStr for AttackSourceDefinition {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let normalized = normalize_spec_string(input);
+        let source = match normalized.as_str() {
+            "melee_weapon" => AttackSource::Weapon(WeaponKind::Melee),
+            "ranged_weapon" => AttackSource::Weapon(WeaponKind::Ranged),
+            "unarmed" => AttackSource::Weapon(WeaponKind::Unarmed),
+            "spell" => AttackSource::Spell,
+            _ => return Err(format!("Unknown attack source in '{}'", input)),
+        };
+
+        Ok(AttackSourceDefinition {
+            raw: input.to_string(),
+            source,
+        })
+    }
+}
+
+impl_string_backed_spec!(AttackSourceDefinition);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

@@ -9,15 +9,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::ActionContext,
+        actions::action::{ActionAttackKind, ActionContext},
         d20::{D20Check, D20CheckOutcome, D20CheckResult},
         dice::{DiceSet, DiceSetRoll, DiceSetRollResult},
         id::{ActionId, SpellId},
-        items::equipment::{
-            slots::EquipmentSlot,
-            weapon::{Weapon, WeaponKind},
-        },
-        modifier::{ModifierSet, ModifierSource},
+        items::equipment::weapon::{Weapon, WeaponKind},
+        modifier::{Modifiable, ModifierSet, ModifierSource},
     },
     systems::{self},
 };
@@ -118,17 +115,19 @@ impl From<&Weapon> for DamageSource {
 
 impl From<&ActionContext> for DamageSource {
     fn from(action_context: &ActionContext) -> Self {
-        match action_context {
-            ActionContext::Spell { id, .. } => DamageSource::Spell(id.clone()),
-            ActionContext::Weapon { slot } => match slot {
-                EquipmentSlot::MeleeMainHand => DamageSource::Weapon(WeaponKind::Melee),
-                EquipmentSlot::MeleeOffHand => DamageSource::Weapon(WeaponKind::Melee),
-                EquipmentSlot::RangedMainHand => DamageSource::Weapon(WeaponKind::Ranged),
-                EquipmentSlot::RangedOffHand => DamageSource::Weapon(WeaponKind::Ranged),
-                _ => panic!("Unsupported equipment slot for DamageSource"),
-            },
-            _ => panic!("Unsupported ActionContext for DamageSource"),
+        if let Some(spell) = &action_context.spell {
+            return DamageSource::Spell(spell.id.clone());
         }
+
+        if let Some(attack) = &action_context.attack {
+            return match attack.kind {
+                ActionAttackKind::MeleeWeapon => DamageSource::Weapon(WeaponKind::Melee),
+                ActionAttackKind::Unarmed => DamageSource::Weapon(WeaponKind::Unarmed),
+                ActionAttackKind::RangedWeapon => DamageSource::Weapon(WeaponKind::Ranged),
+            };
+        }
+
+        panic!("Unsupported ActionContext for DamageSource");
     }
 }
 
@@ -142,6 +141,7 @@ impl TryFrom<String> for DamageSource {
         match value.to_ascii_lowercase().as_str() {
             "melee" => Ok(DamageSource::Weapon(WeaponKind::Melee)),
             "ranged" => Ok(DamageSource::Weapon(WeaponKind::Ranged)),
+            "unarmed" => Ok(DamageSource::Weapon(WeaponKind::Unarmed)),
             _ => Err(format!("Unknown DamageSource: {}", value)),
         }
     }
@@ -591,7 +591,7 @@ impl Default for DamageMitigationResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AttackSource {
-    Weapon,
+    Weapon(WeaponKind),
     Spell,
 }
 
@@ -600,6 +600,57 @@ pub enum AttackSource {
 pub enum AttackRange {
     Melee,
     Ranged,
+}
+
+#[derive(Debug, Clone)]
+pub struct AttackRollTemplate {
+    pub d20_check: D20Check,
+    crit_threshold_reduction: ModifierSet,
+}
+
+impl AttackRollTemplate {
+    pub fn new(d20_check: D20Check) -> Self {
+        Self {
+            d20_check,
+            crit_threshold_reduction: ModifierSet::new(),
+        }
+    }
+
+    pub fn apply_to_roll(&self, attack_roll: &mut AttackRoll) {
+        attack_roll
+            .d20_check
+            .modifiers_mut()
+            .add_modifier_set(self.d20_check.modifiers());
+
+        for (source, advantage) in self.d20_check.advantage_tracker().summary() {
+            attack_roll
+                .d20_check
+                .advantage_tracker_mut()
+                .add(advantage, source.clone());
+        }
+
+        attack_roll.set_crit_threshold(self.crit_threshold());
+    }
+
+    pub fn instantiate(&self, source: AttackSource, range: AttackRange) -> AttackRoll {
+        let mut roll = AttackRoll::new(self.d20_check.clone(), source, range);
+        roll.set_crit_threshold(self.crit_threshold());
+        roll
+    }
+
+    pub fn add_crit_threshold_reduction(&mut self, source: ModifierSource, amount: u8) {
+        self.crit_threshold_reduction
+            .add_modifier(source, amount as i32);
+    }
+
+    pub fn remove_crit_threshold_reduction(&mut self, source: &ModifierSource) {
+        self.crit_threshold_reduction.remove_modifier(source);
+    }
+
+    pub fn crit_threshold(&self) -> u8 {
+        let reduction = self.crit_threshold_reduction.total().max(0) as u8;
+        20u8.saturating_sub(reduction).max(1)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -632,6 +683,14 @@ impl AttackRoll {
             range,
             crit_threshold: 20,
         }
+    }
+
+    pub fn set_crit_threshold(&mut self, threshold: u8) {
+        self.crit_threshold = threshold.clamp(1, 20);
+    }
+
+    pub fn crit_threshold(&self) -> u8 {
+        self.crit_threshold
     }
 
     // TODO: Track the source of the crit threshold reduction?
@@ -942,7 +1001,7 @@ mod tests {
     //         .iter()
     //         .find(|(action, context)| {
     //             **context
-    //                 == ActionContext::Weapon {
+    //                 == ActionContext::melee_weapon(...)
     //                     weapon_type: WeaponType::Melee,
     //                     hand: HandSlot::Main,
     //                 }

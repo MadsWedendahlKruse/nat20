@@ -5,7 +5,7 @@ private fn should_apply_extra_attack(action_view) {
     // 1. Only apply to weapon attacks
     // 2. Only apply if the action costs an action resource, i.e. don't proc extra
     //    attack if the action is a bonus action or reaction
-    action_view.action_context.is_weapon_attack()
+    action_view.action_context.is_attack_action()
         && action_view.resource_cost.costs_resource(global::ACTION_RESOURCE_ID)
 }
 

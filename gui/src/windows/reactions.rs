@@ -129,8 +129,11 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                             if render_button_selectable(
                                 ui,
                                 format!(
-                                    "{}##{:?}{:?}",
-                                    option.reaction_id, option.resource_cost, reactor
+                                    "{}##{:?}{:?}{:?}",
+                                    option.reaction_id,
+                                    option.resource_cost,
+                                    option.context,
+                                    reactor
                                 ),
                                 [0., 0.],
                                 option_selected,

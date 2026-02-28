@@ -213,9 +213,7 @@ mod tests {
             &game_state.world,
             entity,
             entity,
-            &ActionContext::Weapon {
-                slot: EquipmentSlot::MeleeMainHand,
-            },
+            &ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
         );
 
         println!("{:?}", roll);

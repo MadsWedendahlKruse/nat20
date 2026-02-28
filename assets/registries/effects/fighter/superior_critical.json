@@ -3,9 +3,9 @@
     "kind": "buff",
     "description": "Your attack rolls with weapons and Unarmed Strikes can now score a Critical Hit on a roll of 18–20 on the d20",
     "replaces": "nat20_core::effect.fighter.champion.improved_critical",
-    "pre_attack_roll": [
+    "modifiers": [
         {
-            "modifier": "crit(-2)"
+            "attack_roll_modifier": "crit(-2)"
         }
     ]
 }

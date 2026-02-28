@@ -28,7 +28,7 @@ use crate::{
         },
         class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel, SpellcastingRules},
         d20::{D20Check, D20CheckDC},
-        damage::{AttackRange, AttackRoll, AttackSource},
+        damage::{AttackRange, AttackRoll, AttackRollTemplate, AttackSource},
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
         modifier::{Modifiable, ModifierSet, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
@@ -239,7 +239,7 @@ pub struct Spellbook {
     concentration: ConcentrationTracker,
 
     saving_throw: ModifierSet,
-    attack_roll: D20Check,
+    attack_roll: AttackRollTemplate,
 }
 
 impl Spellbook {
@@ -249,10 +249,10 @@ impl Spellbook {
             granted: HashMap::new(),
             concentration: ConcentrationTracker::default(),
             saving_throw: ModifierSet::from(ModifierSource::Base, BASE_SPELL_SAVE_DC),
-            attack_roll: D20Check::new(Proficiency::new(
+            attack_roll: AttackRollTemplate::new(D20Check::new(Proficiency::new(
                 ProficiencyLevel::Proficient,
                 ModifierSource::Base,
-            )),
+            ))),
         }
     }
 
@@ -763,6 +763,10 @@ impl Spellbook {
     }
 
     pub fn attack_roll_modifiers_mut(&mut self) -> &mut D20Check {
+        &mut self.attack_roll.d20_check
+    }
+
+    pub fn attack_roll_template_mut(&mut self) -> &mut AttackRollTemplate {
         &mut self.attack_roll
     }
 }
@@ -775,35 +779,31 @@ impl AttackRollProvider for Spellbook {
         target: Entity,
         context: &ActionContext,
     ) -> AttackRoll {
-        if let ActionContext::Spell {
-            id: spell_id,
-            source,
-            ..
-        } = context
-        {
-            let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
-            let spellcasting_ability = self.spellcasting_ability(world, entity, source);
+        let spell_context = context
+            .spell
+            .as_ref()
+            .expect("Action context must contain spell metadata");
 
-            let mut roll = self.attack_roll.clone();
-            let spellcasting_modifier = ability_scores
-                .ability_modifier(&spellcasting_ability)
-                .total();
-            roll.add_modifier(
-                ModifierSource::Ability(spellcasting_ability),
-                spellcasting_modifier,
-            );
+        let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
+        let spellcasting_ability = self.spellcasting_ability(world, entity, &spell_context.source);
 
-            let spell = SpellsRegistry::get(spell_id).expect("Spell must exist in registry");
+        let mut attack_roll = self.attack_roll.instantiate(AttackSource::Spell, {
+            let spell = SpellsRegistry::get(&spell_context.id).expect("Spell must exist in registry");
             let spell_range = (spell.action().targeting)(world, entity, context).range;
-            let attack_range = if spell_range.is_melee() {
+            if spell_range.is_melee() {
                 AttackRange::Melee
             } else {
                 AttackRange::Ranged
-            };
-
-            return AttackRoll::new(roll, AttackSource::Spell, attack_range);
-        }
-        panic!("Action context must be Spell");
+            }
+        });
+        let spellcasting_modifier = ability_scores
+            .ability_modifier(&spellcasting_ability)
+            .total();
+        attack_roll.d20_check.add_modifier(
+            ModifierSource::Ability(spellcasting_ability),
+            spellcasting_modifier,
+        );
+        attack_roll
     }
 }
 
@@ -815,11 +815,11 @@ impl SavingThrowProvider for Spellbook {
         context: &ActionContext,
         kind: SavingThrowKind,
     ) -> SavingThrowDC {
-        let source = if let ActionContext::Spell { source, .. } = context {
-            source
-        } else {
-            panic!("Action context must be Spell");
-        };
+        let source = &context
+            .spell
+            .as_ref()
+            .expect("Action context must contain spell metadata")
+            .source;
 
         let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
         let spellcasting_ability = self.spellcasting_ability(world, entity, source);
@@ -864,11 +864,7 @@ impl ActionProvider for Spellbook {
 
             // Cantrips: single context, level 0.
             if spell.is_cantrip() {
-                let context = ActionContext::Spell {
-                    id: spell_id.clone(),
-                    source: source.clone(),
-                    level: 0,
-                };
+                let context = ActionContext::spell(spell_id.clone(), source.clone(), 0);
 
                 actions.insert(
                     spell.action().id().clone(),
@@ -879,11 +875,7 @@ impl ActionProvider for Spellbook {
 
             match source {
                 SpellSource::Granted { level, .. } => {
-                    let context = ActionContext::Spell {
-                        id: spell_id.clone(),
-                        source: source.clone(),
-                        level: *level,
-                    };
+                    let context = ActionContext::spell(spell_id.clone(), source.clone(), *level);
 
                     actions.insert(
                         spell.action().id().clone(),
@@ -918,11 +910,8 @@ impl ActionProvider for Spellbook {
                     let max_spell_level = available_spell_levels.iter().max().unwrap_or(&0);
 
                     for cast_level in min_spell_level..=*max_spell_level {
-                        let context = ActionContext::Spell {
-                            id: spell_id.clone(),
-                            source: source.clone(),
-                            level: cast_level,
-                        };
+                        let context =
+                            ActionContext::spell(spell_id.clone(), source.clone(), cast_level);
 
                         let mut resource_cost: ResourceAmountMap =
                             spell.action().resource_cost().clone();

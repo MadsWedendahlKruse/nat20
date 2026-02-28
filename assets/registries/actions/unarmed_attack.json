@@ -1,0 +1,18 @@
+{
+    "id": "nat20_core::action.unarmed_attack",
+    "description": "Make an unarmed strike.",
+    "kind": {
+        "standard": {
+            "condition": {
+                "attack_roll": "unarmed_attack_roll"
+            },
+            "payload": {
+                "damage": "unarmed_damage_roll"
+            }
+        }
+    },
+    "targeting": "unarmed_targeting",
+    "resource_cost": {
+        "nat20_core::resource.action": 1
+    }
+}

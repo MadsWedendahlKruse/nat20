@@ -12,17 +12,17 @@
                 {
                     "standard": {
                         "condition": {
-                            "attack_roll": "weapon_attack_roll"
+                            "attack_roll": "melee_attack_roll"
                         },
                         "payload": {
-                            "damage": "weapon_damage_roll"
+                            "damage": "melee_damage_roll"
                         }
                     }
                 }
             ]
         }
     },
-    "targeting": "weapon_targeting",
+    "targeting": "melee_targeting",
     "resource_cost": {
         "nat20_core::resource.reaction": 1
     },

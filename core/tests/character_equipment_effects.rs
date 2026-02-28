@@ -57,9 +57,7 @@ mod tests {
         );
 
         // Before equipping the ring
-        let context = &ActionContext::Weapon {
-            slot: EquipmentSlot::MeleeMainHand,
-        };
+        let context = &ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand);
 
         let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,

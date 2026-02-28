@@ -274,7 +274,7 @@
 //         let spell_level = 2;
 
 //         let action_id = ActionId::new("nat20_core","spell.magic_missile");
-//         let context = ActionContext::Spell { level: spell_level };
+//         let context = ActionContext::spell(...);
 //         println!("=== Action ===");
 //         println!("{:?}", (&action_id, &context));
 

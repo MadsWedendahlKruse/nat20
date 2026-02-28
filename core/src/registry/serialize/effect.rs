@@ -12,8 +12,8 @@ use crate::{
         },
         d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
-            AttackRange, AttackSource, DamageMitigationEffect, DamageMitigationResult,
-            DamageResistances, DamageRollResult,
+            AttackRange, AttackRollTemplate, AttackSource, DamageMitigationEffect,
+            DamageMitigationResult, DamageResistances, DamageRollResult,
         },
         effects::{
             effect::{
@@ -28,12 +28,13 @@ use crate::{
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
         id::{ActionId, EffectId, ResourceId, ScriptId},
-        items::equipment::armor::ArmorClass,
+        items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
         modifier::{KeyedModifiable, Modifiable, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         saving_throw::SavingThrowSet,
         skill::SkillSet,
         speed::Speed,
+        spells::spellbook::Spellbook,
         time::{TimeDuration, TurnBoundary},
     },
     engine::{
@@ -47,9 +48,9 @@ use crate::{
             dice::HealEquation,
             modifier::{
                 AbilityModifierProvider, ArmorClassModifierProvider, AttackRollModifier,
-                D20CheckModifierProvider, D20Modifier, DamageResistanceProvider,
-                SavingThrowModifierProvider, SkillModifierProvider, SpeedModifier,
-                SpeedModifierProvider,
+                AttackSourceDefinition, D20CheckModifierProvider, D20Modifier,
+                DamageResistanceProvider, SavingThrowModifierProvider, SkillModifierProvider,
+                SpeedModifier, SpeedModifierProvider,
             },
             quantity::{LengthExpressionDefinition, TimeExpressionDefinition},
         },
@@ -329,6 +330,11 @@ pub enum EffectModifier {
     SavingThrow {
         saving_throw: SavingThrowModifierProvider,
     },
+    AttackRoll {
+        #[serde(default)]
+        attack_roll_source: Option<AttackSourceDefinition>,
+        attack_roll_modifier: AttackRollModifier,
+    },
     DamageResistance {
         resistance: DamageResistanceProvider,
     },
@@ -399,6 +405,75 @@ impl EffectModifier {
                     entity,
                 );
                 Self::apply_d20_check_modifier(&mut *saves, modifier, source, phase);
+            }
+
+            EffectModifier::AttackRoll {
+                attack_roll_source: attack_source,
+                attack_roll_modifier: modifier,
+            } => {
+                // TODO: Not the prettiest solution, but needed to avoid double mutable borrows
+                match attack_source {
+                    Some(attack_source) => {
+                        // Specific source means only apply to that source's attack rolls
+                        match attack_source.source {
+                            AttackSource::Weapon(weapon_kind) => {
+                                let mut loadout = systems::helpers::get_component_mut::<Loadout>(
+                                    &mut game_state.world,
+                                    entity,
+                                );
+                                Self::apply_attack_roll_modifier(
+                                    loadout.attack_roll_template_mut(&weapon_kind),
+                                    modifier,
+                                    &source,
+                                    phase,
+                                );
+                            }
+
+                            AttackSource::Spell => {
+                                let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
+                                    &mut game_state.world,
+                                    entity,
+                                );
+                                Self::apply_attack_roll_modifier(
+                                    spellbook.attack_roll_template_mut(),
+                                    modifier,
+                                    &source,
+                                    phase,
+                                );
+                            }
+                        }
+                    }
+
+                    None => {
+                        // No source means all attack rolls
+                        {
+                            let mut loadout = systems::helpers::get_component_mut::<Loadout>(
+                                &mut game_state.world,
+                                entity,
+                            );
+                            for weapon_kind in
+                                &[WeaponKind::Melee, WeaponKind::Ranged, WeaponKind::Unarmed]
+                            {
+                                Self::apply_attack_roll_modifier(
+                                    loadout.attack_roll_template_mut(weapon_kind),
+                                    modifier,
+                                    &source,
+                                    phase,
+                                );
+                            }
+                        }
+                        let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
+                            &mut game_state.world,
+                            entity,
+                        );
+                        Self::apply_attack_roll_modifier(
+                            spellbook.attack_roll_template_mut(),
+                            modifier,
+                            &source,
+                            phase,
+                        );
+                    }
+                }
             }
 
             EffectModifier::DamageResistance {
@@ -556,6 +631,39 @@ impl EffectModifier {
                     modifiable.remove_advantage(kind, &source);
                     modifiable.clear_forced_outcome(kind);
                 }
+            }
+        }
+    }
+
+    fn apply_attack_roll_modifier(
+        template: &mut AttackRollTemplate,
+        modifier: &AttackRollModifier,
+        source: &ModifierSource,
+        phase: EffectPhase,
+    ) {
+        match (modifier, phase) {
+            (AttackRollModifier::FlatBonus(bonus), EffectPhase::Apply) => {
+                template.d20_check.add_modifier(source.clone(), *bonus);
+            }
+            (AttackRollModifier::FlatBonus(_), EffectPhase::Unapply) => {
+                template.d20_check.remove_modifier(source);
+            }
+
+            (AttackRollModifier::Advantage(advantage), EffectPhase::Apply) => {
+                template
+                    .d20_check
+                    .advantage_tracker_mut()
+                    .add(*advantage, source.clone());
+            }
+            (AttackRollModifier::Advantage(_), EffectPhase::Unapply) => {
+                template.d20_check.advantage_tracker_mut().remove(source);
+            }
+
+            (AttackRollModifier::CritThreshold(threshold), EffectPhase::Apply) => {
+                template.add_crit_threshold_reduction(source.clone(), *threshold);
+            }
+            (AttackRollModifier::CritThreshold(_), EffectPhase::Unapply) => {
+                template.remove_crit_threshold_reduction(source);
             }
         }
     }

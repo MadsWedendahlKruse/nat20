@@ -34,11 +34,12 @@ pub enum WeaponCategory {
     Martial,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WeaponKind {
     Melee,
     Ranged,
+    Unarmed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -200,7 +201,7 @@ pub struct Weapon {
     properties: HashSet<WeaponProperties>,
     damage_roll: DamageRoll,
     ability: Ability,
-    weapon_actions: Vec<ActionId>,
+    extra_actions: Vec<ActionId>,
     effects: Vec<EffectId>,
 }
 
@@ -211,9 +212,13 @@ impl Weapon {
         category: WeaponCategory,
         properties: HashSet<WeaponProperties>,
         damage: Vec<(DiceSet, DamageType)>,
-        extra_weapon_actions: Vec<ActionId>,
+        extra_actions: Vec<ActionId>,
         effects: Vec<EffectId>,
     ) -> Self {
+        if matches!(kind, WeaponKind::Unarmed) {
+            panic!("Unarmed is not an equippable weapon kind");
+        }
+
         if matches!(kind, WeaponKind::Ranged)
             && !properties
                 .iter()
@@ -225,13 +230,8 @@ impl Weapon {
         let ability = match kind {
             WeaponKind::Melee => Ability::Strength,
             WeaponKind::Ranged => Ability::Dexterity,
+            WeaponKind::Unarmed => Ability::Strength,
         };
-
-        let mut weapon_actions = vec![
-            ActionId::new("nat20_core", "action.weapon_attack"),
-            // TODO: Don't know where to put this
-            ActionId::new("nat20_core", "action.opportunity_attack"),
-        ];
 
         if damage.is_empty() {
             panic!("Weapon must have at least one damage type");
@@ -244,8 +244,6 @@ impl Weapon {
             damage_roll.add_bonus(dice, damage_type);
         }
 
-        weapon_actions.extend(extra_weapon_actions);
-
         Self {
             item,
             category,
@@ -253,7 +251,7 @@ impl Weapon {
             properties,
             damage_roll,
             ability,
-            weapon_actions,
+            extra_actions,
             effects,
         }
     }
@@ -296,9 +294,10 @@ impl Weapon {
         let range = match self.kind {
             WeaponKind::Melee => AttackRange::Melee,
             WeaponKind::Ranged => AttackRange::Ranged,
+            WeaponKind::Unarmed => AttackRange::Melee,
         };
 
-        AttackRoll::new(attack_roll, AttackSource::Weapon, range)
+        AttackRoll::new(attack_roll, AttackSource::Weapon(*self.kind()), range)
     }
 
     pub fn damage_roll(
@@ -393,8 +392,8 @@ impl Weapon {
         &self.effects
     }
 
-    pub fn weapon_actions(&self) -> &Vec<ActionId> {
-        &self.weapon_actions
+    pub fn extra_actions(&self) -> &Vec<ActionId> {
+        &self.extra_actions
     }
 }
 
@@ -403,6 +402,7 @@ impl SlotProvider for Weapon {
         match self.kind {
             WeaponKind::Melee => &[EquipmentSlot::MeleeMainHand, EquipmentSlot::MeleeOffHand],
             WeaponKind::Ranged => &[EquipmentSlot::RangedMainHand, EquipmentSlot::RangedOffHand],
+            WeaponKind::Unarmed => &[],
         }
     }
 
@@ -413,6 +413,7 @@ impl SlotProvider for Weapon {
                 WeaponKind::Ranged => {
                     &[EquipmentSlot::RangedMainHand, EquipmentSlot::RangedOffHand]
                 }
+                WeaponKind::Unarmed => &[],
             }
         } else {
             &[]
@@ -591,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn weapon_actions_exist() {
+    fn no_extra_weapon_actions() {
         let item = Item {
             id: ItemId::new("nat20_core", "item.shortbow"),
             name: "Shortbow".to_string(),
@@ -611,7 +612,7 @@ mod tests {
             vec![],
             vec![],
         );
-        assert!(!weapon.weapon_actions().is_empty());
+        assert!(weapon.extra_actions().is_empty());
     }
 
     #[test]

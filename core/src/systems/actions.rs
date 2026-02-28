@@ -44,8 +44,8 @@ pub fn add_actions(world: &mut World, entity: Entity, actions: &[ActionId]) {
     let mut action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
     for action_id in actions {
         if let Some(action) = systems::actions::get_action(action_id) {
-            // TODO: Just assume the context is Other for now
-            add_action_to_map(&mut action_map, action_id, action, ActionContext::Other);
+            // TODO: Figure out the actual context to add here
+            add_action_to_map(&mut action_map, action_id, action, ActionContext::default());
         } else {
             panic!("Action {} not found in registry", action_id);
         }
@@ -87,11 +87,24 @@ pub fn set_cooldown(
 
 pub fn all_actions(world: &World, entity: Entity) -> ActionMap {
     let mut actions = systems::helpers::get_component_clone::<ActionMap>(world, entity);
+    merge_action_maps(
+        &mut actions,
+        systems::helpers::get_component::<Spellbook>(world, entity).actions(world, entity),
+    );
+    merge_action_maps(
+        &mut actions,
+        systems::helpers::get_component::<Loadout>(world, entity).actions(world, entity),
+    );
     actions
-        .extend(systems::helpers::get_component::<Spellbook>(world, entity).actions(world, entity));
-    actions
-        .extend(systems::helpers::get_component::<Loadout>(world, entity).actions(world, entity));
-    actions
+}
+
+fn merge_action_maps(destination: &mut ActionMap, source: ActionMap) {
+    for (action_id, contexts) in source {
+        destination
+            .entry(action_id)
+            .and_modify(|existing| existing.extend(contexts.clone()))
+            .or_insert(contexts);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
