@@ -55,7 +55,8 @@ use crate::{
 ///        we use a single `ScriptShared<T>` type with a flag indicating mutability.
 ///        This simplifies the API and reduces code duplication.
 /// The `mutable` flag indicates whether the data can be mutated via `write()`.
-/// Only data that has been taken with `take_from()` is intended to be mutable.
+/// Only data created for mutable script flows (e.g. via `take_from()` or `new_mut()`)
+/// is intended to be mutable.
 #[derive(Debug, Clone)]
 pub struct ScriptShared<T> {
     inner: Arc<RwLock<T>>,
@@ -67,6 +68,13 @@ impl<T> ScriptShared<T> {
         Self {
             inner: Arc::new(RwLock::new(value)),
             mutable: false,
+        }
+    }
+
+    pub fn new_mut(value: T) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(value)),
+            mutable: true,
         }
     }
 
@@ -414,10 +422,56 @@ impl ScriptD20Result {
 }
 
 #[derive(Clone)]
-pub struct ScriptMovingOutOfReachView {
+pub(crate) struct ScriptMovingOutOfReach {
     pub mover: ScriptEntity,
     pub entity: ScriptEntity,
     pub continue_movement: bool,
+}
+
+#[derive(Clone)]
+pub struct ScriptMovingOutOfReachView {
+    pub(crate) inner: ScriptShared<ScriptMovingOutOfReach>,
+}
+
+impl ScriptMovingOutOfReachView {
+    pub fn new(mover: ScriptEntity, entity: ScriptEntity, continue_movement: bool) -> Self {
+        Self {
+            inner: ScriptShared::new(ScriptMovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            }),
+        }
+    }
+
+    pub fn new_mut(mover: ScriptEntity, entity: ScriptEntity, continue_movement: bool) -> Self {
+        Self {
+            inner: ScriptShared::new_mut(ScriptMovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            }),
+        }
+    }
+
+    pub fn apply_to_event(&self, event: &mut Event) {
+        if let EventKind::MovingOutOfReach {
+            mover,
+            entity,
+            continue_movement,
+        } = &mut event.kind
+        {
+            let inner = self.inner.read();
+            *mover = inner.mover.clone().into();
+            *entity = inner.entity.clone().into();
+            *continue_movement = inner.continue_movement;
+        } else {
+            panic!(
+                "ScriptMovingOutOfReachView applied to wrong event type: {:?}",
+                event
+            );
+        }
+    }
 }
 
 /// High-level event view that scripts can work with.
@@ -431,6 +485,14 @@ pub enum ScriptEventView {
 
 impl ScriptEventView {
     pub fn from_event(event: &Event) -> Option<Self> {
+        Self::from_event_with_mutability(event, false)
+    }
+
+    pub fn from_event_mut(event: &Event) -> Option<Self> {
+        Self::from_event_with_mutability(event, true)
+    }
+
+    fn from_event_with_mutability(event: &Event, mutable: bool) -> Option<Self> {
         match &event.kind {
             EventKind::D20CheckPerformed(performer, result_kind, dc_kind) => {
                 Some(ScriptEventView::D20CheckPerformed(
@@ -472,15 +534,29 @@ impl ScriptEventView {
                 mover,
                 entity,
                 continue_movement,
-            } => Some(ScriptEventView::MovingOutOfReach(
-                ScriptMovingOutOfReachView {
-                    mover: ScriptEntity::from(*mover),
-                    entity: ScriptEntity::from(*entity),
-                    continue_movement: *continue_movement,
-                },
-            )),
+            } => Some(ScriptEventView::MovingOutOfReach(if mutable {
+                ScriptMovingOutOfReachView::new_mut(
+                    ScriptEntity::from(*mover),
+                    ScriptEntity::from(*entity),
+                    *continue_movement,
+                )
+            } else {
+                ScriptMovingOutOfReachView::new(
+                    ScriptEntity::from(*mover),
+                    ScriptEntity::from(*entity),
+                    *continue_movement,
+                )
+            })),
 
             _ => None,
+        }
+    }
+
+    pub fn apply_to_event(&self, event: &mut Event) {
+        match self {
+            ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(event),
+            // Other event view variants are currently read-only.
+            _ => {}
         }
     }
 }
@@ -977,6 +1053,20 @@ pub enum ScriptReactionPlan {
     },
 }
 
+/// Result of a reaction body. Scripts can either return the traditional
+/// `ScriptReactionPlan` or provide a modified trigger event view.
+#[derive(Clone)]
+pub enum ScriptReactionBodyResult {
+    Plan(ScriptReactionPlan),
+    TriggerEvent(ScriptEventView),
+}
+
+impl ScriptReactionBodyResult {
+    pub fn none() -> Self {
+        Self::Plan(ScriptReactionPlan::None)
+    }
+}
+
 /// Snapshot of a loadout for scripts to inspect.
 #[derive(Debug, Clone)]
 pub struct ScriptLoadoutView {
@@ -1130,7 +1220,7 @@ impl From<&ReactionData> for ScriptReactionBodyContext {
     fn from(data: &ReactionData) -> Self {
         ScriptReactionBodyContext {
             reactor: ScriptEntity::from(data.reactor),
-            event: ScriptEventView::from_event(&data.event).unwrap(),
+            event: ScriptEventView::from_event_mut(&data.event).unwrap(),
             reaction_id: data.reaction_id.to_string(),
             context: ScriptActionContext::from(&data.context),
             resource_cost: ScriptResourceCost::new(data.resource_cost.clone()),

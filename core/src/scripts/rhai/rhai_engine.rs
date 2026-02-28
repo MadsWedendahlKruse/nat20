@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rhai::{AST, Engine, Scope, exported_module, module_resolvers::FileModuleResolver};
+use rhai::{AST, Dynamic, Engine, Scope, exported_module, module_resolvers::FileModuleResolver};
 
 use crate::{
     components::id::ScriptId,
@@ -15,9 +15,9 @@ use crate::{
             ScriptDamageMitigationResult, ScriptDamageOutcomeView, ScriptDamageResolutionKindView,
             ScriptDamageRollResult, ScriptEffectView, ScriptEntity, ScriptEntityView,
             ScriptEventView, ScriptLoadoutView, ScriptMovingOutOfReachView,
-            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionPlan,
-            ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView,
-            ScriptSavingThrow,
+            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
+            ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost,
+            ScriptResourceView, ScriptSavingThrow,
         },
         script_engine::ScriptEngine,
     },
@@ -54,6 +54,7 @@ impl RhaiScriptEngine {
             .build_type::<ScriptMovingOutOfReachView>()
             .build_type::<ScriptOptionalEntityView>()
             .build_type::<ScriptReactionBodyContext>()
+            .build_type::<ScriptReactionBodyResult>()
             .build_type::<ScriptReactionPlan>()
             .build_type::<ScriptReactionTriggerContext>()
             .build_type::<ScriptResourceCost>()
@@ -126,14 +127,14 @@ impl ScriptEngine for RhaiScriptEngine {
         &mut self,
         script: &Script,
         context: &ScriptReactionBodyContext,
-    ) -> Result<ScriptReactionPlan, ScriptError> {
+    ) -> Result<ScriptReactionBodyResult, ScriptError> {
         // TODO: Don't clone AST every time (if it's actually a performance issue)
         let ast = self.get_ast(script).cloned()?;
 
         let mut scope = Scope::new();
-        let plan = self
+        let result = self
             .engine
-            .call_fn::<ScriptReactionPlan>(
+            .call_fn::<Dynamic>(
                 &mut scope,
                 &ast,
                 ScriptFunction::ReactionBody.fn_name(),
@@ -141,7 +142,24 @@ impl ScriptEngine for RhaiScriptEngine {
             )
             .map_err(|e| ScriptError::RuntimeError(format!("Rhai error: {}", e)))?;
 
-        Ok(plan)
+        if result.is::<ScriptReactionBodyResult>() {
+            Ok(result.cast::<ScriptReactionBodyResult>())
+        } else if result.is::<ScriptReactionPlan>() {
+            Ok(ScriptReactionBodyResult::Plan(
+                result.cast::<ScriptReactionPlan>(),
+            ))
+        } else if result.is::<ScriptEventView>() {
+            Ok(ScriptReactionBodyResult::TriggerEvent(
+                result.cast::<ScriptEventView>(),
+            ))
+        } else if result.is::<()>() {
+            Ok(ScriptReactionBodyResult::none())
+        } else {
+            Err(ScriptError::RuntimeError(format!(
+                "Unexpected return type from reaction_body: {}",
+                result.type_name()
+            )))
+        }
     }
 
     fn evaluate_resource_cost_hook(

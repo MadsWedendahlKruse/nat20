@@ -9,3 +9,15 @@ fn reaction_trigger(context) {
 
     moving_out_of_reach.entity == context.reactor
 }
+
+fn reaction_body(context) {
+    let event = context.event;
+
+    if !event.is_moving_out_of_reach() {
+        return ReactionPlan::none();
+    }
+
+    let moving_out_of_reach = event.as_moving_out_of_reach();
+    moving_out_of_reach.continue_movement = false;
+    event
+}

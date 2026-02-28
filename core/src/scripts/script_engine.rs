@@ -10,8 +10,8 @@ use crate::scripts::{
     script::{Script, ScriptError, ScriptLanguage},
     script_api::{
         ScriptActionView, ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
-        ScriptEntityView, ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionPlan,
-        ScriptReactionTriggerContext,
+        ScriptEntityView, ScriptOptionalEntityView, ScriptReactionBodyContext,
+        ScriptReactionBodyResult, ScriptReactionTriggerContext,
     },
 };
 
@@ -43,12 +43,12 @@ pub trait ScriptEngine {
         context: &ScriptReactionTriggerContext,
     ) -> Result<bool, ScriptError>;
 
-    /// Compute the reaction plan to execute.
+    /// Compute the reaction body result to execute.
     fn evaluate_reaction_body(
         &mut self,
         script: &Script,
         context: &ScriptReactionBodyContext,
-    ) -> Result<ScriptReactionPlan, ScriptError>;
+    ) -> Result<ScriptReactionBodyResult, ScriptError>;
 
     /// Compute the resource cost for an action.
     fn evaluate_resource_cost_hook(

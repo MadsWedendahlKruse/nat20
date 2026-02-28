@@ -113,11 +113,11 @@ impl FromStr for ReactionBody {
         Ok(ReactionBody {
             raw: s.to_string(),
             function: Arc::new(move |game_state, reaction_data| {
-                let plan = systems::scripts::evaluate_reaction_body(
+                let result = systems::scripts::evaluate_reaction_body(
                     &script_id,
                     &ScriptReactionBodyContext::from(reaction_data),
                 );
-                systems::scripts::apply_reaction_plan(game_state, reaction_data, plan);
+                systems::scripts::apply_reaction_body_result(game_state, reaction_data, result);
             }),
             script,
         })

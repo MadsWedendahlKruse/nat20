@@ -2,13 +2,24 @@
     "id": "nat20_core::action.opportunity_attack",
     "description": "Make an attack against a creature moving out of your reach.",
     "kind": {
-        "standard": {
-            "condition": {
-                "attack_roll": "weapon_attack_roll"
-            },
-            "payload": {
-                "damage": "weapon_damage_roll"
-            }
+        "composite": {
+            "actions": [
+                {
+                    "reaction": {
+                        "reaction": "nat20_core::script.action.opportunity_attack"
+                    }
+                },
+                {
+                    "standard": {
+                        "condition": {
+                            "attack_roll": "weapon_attack_roll"
+                        },
+                        "payload": {
+                            "damage": "weapon_damage_roll"
+                        }
+                    }
+                }
+            ]
         }
     },
     "targeting": "weapon_targeting",

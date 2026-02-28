@@ -20,8 +20,8 @@ use crate::{
         script_api::{
             ScriptActionView, ScriptDamageMitigationResult, ScriptDamageRollResult,
             ScriptEffectView, ScriptEntityRole, ScriptEntityView, ScriptEventRef,
-            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionPlan,
-            ScriptReactionTriggerContext,
+            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
+            ScriptReactionPlan, ScriptReactionTriggerContext,
         },
         script_engine::SCRIPT_ENGINES,
     },
@@ -61,7 +61,7 @@ pub fn evaluate_reaction_trigger(
 pub fn evaluate_reaction_body(
     reaction_body: &ScriptId,
     context: &ScriptReactionBodyContext,
-) -> ScriptReactionPlan {
+) -> ScriptReactionBodyResult {
     let script = ScriptsRegistry::get(reaction_body)
         .expect(format!("Reaction script not found in registry: {:?}", reaction_body).as_str());
     let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
@@ -69,13 +69,13 @@ pub fn evaluate_reaction_body(
         .get_mut(&script.language)
         .expect(format!("No script engine found for language: {:?}", script.language).as_str());
     match engine.evaluate_reaction_body(script, &context) {
-        Ok(plan) => plan,
+        Ok(result) => result,
         Err(err) => {
             error!(
                 "Error evaluating reaction body script {:?} for reactor {:?}: {:?}",
                 reaction_body, context.reactor, err
             );
-            ScriptReactionPlan::None
+            ScriptReactionBodyResult::none()
         }
     }
 }
@@ -273,6 +273,36 @@ pub fn evaluate_death_hook(
                 "Error evaluating death hook script {:?} for entity {:?}: {:?}",
                 death_hook, victim_entity_view.entity, err
             );
+        }
+    }
+}
+
+pub fn apply_reaction_body_result(
+    game_state: &mut GameState,
+    reaction_data: &ReactionData,
+    result: ScriptReactionBodyResult,
+) {
+    match result {
+        ScriptReactionBodyResult::Plan(plan) => {
+            apply_reaction_plan(game_state, reaction_data, plan);
+        }
+        ScriptReactionBodyResult::TriggerEvent(event_view) => {
+            let reaction_result = ReactionResult::ModifyEvent {
+                modification: Arc::new(move |_world: &World, event: &mut Event| {
+                    event_view.apply_to_event(event);
+                }),
+            };
+
+            game_state.process_event(Event::action_performed_event(
+                game_state,
+                &ActionData::from(reaction_data),
+                vec![(
+                    reaction_data.reactor,
+                    ActionKindResult::Reaction {
+                        result: reaction_result,
+                    },
+                )],
+            ));
         }
     }
 }

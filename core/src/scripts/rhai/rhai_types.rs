@@ -9,8 +9,8 @@ use crate::{
         ScriptDamageResolutionKindView, ScriptDamageRollResult, ScriptEffectView, ScriptEntity,
         ScriptEntityView, ScriptEventRef, ScriptEventView, ScriptLoadoutView,
         ScriptMovingOutOfReachView, ScriptOptionalEntityView, ScriptReactionBodyContext,
-        ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView,
-        ScriptSavingThrow,
+        ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
+        ScriptResourceCost, ScriptResourceView, ScriptSavingThrow,
     },
 };
 
@@ -110,9 +110,13 @@ impl CustomType for ScriptMovingOutOfReachView {
     fn build(mut builder: TypeBuilder<Self>) {
         builder
             .with_name("MovingOutOfReachView")
-            .with_get("mover", |s: &mut Self| s.mover.id)
-            .with_get("entity", |s: &mut Self| s.entity.id)
-            .with_get("continue_movement", |s: &mut Self| s.continue_movement);
+            .with_get("mover", |s: &mut Self| s.inner.read().mover.id)
+            .with_get("entity", |s: &mut Self| s.inner.read().entity.id)
+            .with_get_set(
+                "continue_movement",
+                |s: &mut Self| s.inner.read().continue_movement,
+                |s: &mut Self, v: bool| s.inner.write().continue_movement = v,
+            );
     }
 }
 
@@ -291,6 +295,12 @@ impl CustomType for ScriptEventView {
 impl CustomType for ScriptReactionPlan {
     fn build(mut builder: TypeBuilder<Self>) {
         builder.with_name("ReactionPlan");
+    }
+}
+
+impl CustomType for ScriptReactionBodyResult {
+    fn build(mut builder: TypeBuilder<Self>) {
+        builder.with_name("ReactionBodyResult");
     }
 }
 
