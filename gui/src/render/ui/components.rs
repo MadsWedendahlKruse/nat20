@@ -1140,11 +1140,7 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
                 }
             }
 
-            ActionKindResult::Utility => todo!(),
-
             ActionKindResult::Composite { actions } => todo!(),
-
-            ActionKindResult::Custom {} => todo!(),
 
             ActionKindResult::Reaction { result } => match result {
                 ReactionResult::ModifyEvent { modification } => {

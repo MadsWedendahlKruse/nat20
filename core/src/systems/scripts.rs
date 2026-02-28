@@ -17,10 +17,10 @@ use crate::{
     registry::registry::ScriptsRegistry,
     scripts::{
         script_api::{
-            ScriptActionView, ScriptDamageMitigationResult, ScriptDamageRollResult,
-            ScriptEffectView, ScriptEntityRole, ScriptEntityView, ScriptEventRef,
-            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
-            ScriptReactionPlan, ScriptReactionTriggerContext,
+            ScriptActionPerformedView, ScriptActionView, ScriptDamageMitigationResult,
+            ScriptDamageRollResult, ScriptEffectView, ScriptEntityRole, ScriptEntityView,
+            ScriptEventRef, ScriptOptionalEntityView, ScriptReactionBodyContext,
+            ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
         },
         script_engine::SCRIPT_ENGINES,
     },
@@ -128,6 +128,33 @@ pub fn evalute_action_hook(
             error!(
                 "Error evaluating action hook script {:?} for entity {:?}: {:?}",
                 action_hook, entity_view.entity, err
+            );
+        }
+    }
+}
+
+pub fn evalute_action_result_hook(
+    action_result_hook: &ScriptId,
+    action_performed_view: &ScriptActionPerformedView,
+    entity_view: &ScriptEntityView,
+) {
+    let script = ScriptsRegistry::get(action_result_hook).expect(
+        format!(
+            "Action result hook script not found in registry: {:?}",
+            action_result_hook
+        )
+        .as_str(),
+    );
+    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
+    let engine = engine_lock
+        .get_mut(&script.language)
+        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
+    match engine.evaluate_action_result_hook(script, action_performed_view, entity_view) {
+        Ok(()) => {}
+        Err(err) => {
+            error!(
+                "Error evaluating action result hook script {:?} for entity {:?}: {:?}",
+                action_result_hook, entity_view.entity, err
             );
         }
     }

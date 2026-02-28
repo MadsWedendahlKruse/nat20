@@ -9,9 +9,9 @@ use crate::scripts::{
     rhai::rhai_engine::RhaiScriptEngine,
     script::{Script, ScriptError, ScriptLanguage},
     script_api::{
-        ScriptActionView, ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
-        ScriptEntityView, ScriptOptionalEntityView, ScriptReactionBodyContext,
-        ScriptReactionBodyResult, ScriptReactionTriggerContext,
+        ScriptActionPerformedView, ScriptActionView, ScriptDamageMitigationResult,
+        ScriptDamageRollResult, ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView,
+        ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionTriggerContext,
     },
 };
 
@@ -63,6 +63,14 @@ pub trait ScriptEngine {
         &mut self,
         script: &Script,
         action: &ScriptActionView,
+        entity: &ScriptEntityView,
+    ) -> Result<(), ScriptError>;
+
+    /// Execute an action result hook after action resolution.
+    fn evaluate_action_result_hook(
+        &mut self,
+        script: &Script,
+        action: &ScriptActionPerformedView,
         entity: &ScriptEntityView,
     ) -> Result<(), ScriptError>;
 

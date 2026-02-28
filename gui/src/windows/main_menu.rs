@@ -238,6 +238,11 @@ impl MainMenuWindow {
                     encounters.retain(|encounter| encounter.id() != &id);
                 }
 
+                if let Some(action_bar) = action_bar {
+                    action_bar.render_mut_with_context(ui, gui_state, game_state);
+                }
+                reactions.render_mut_with_context(ui, gui_state, game_state);
+
                 let mut take_ray_result = false;
                 if let Some(raycast) = &gui_state.cursor_ray_result
                     && let Some(closest) = raycast.closest()
@@ -288,11 +293,6 @@ impl MainMenuWindow {
                         creature_right_click.render_mut_with_context(ui, game_state);
                     });
                 }
-
-                if let Some(action_bar) = action_bar {
-                    action_bar.render_mut_with_context(ui, gui_state, game_state);
-                }
-                reactions.render_mut_with_context(ui, gui_state, game_state);
 
                 Self::render_world(ui, gui_state, game_state);
             }

@@ -219,7 +219,14 @@ impl CustomType for ScriptDamageResolutionKindView {
             .with_name("DamageResolutionKindView")
             .with_fn("is_unconditional", |s: &mut Self| s.is_unconditional())
             .with_fn("is_attack_roll", |s: &mut Self| s.is_attack_roll())
-            .with_fn("is_saving_throw", |s: &mut Self| s.is_saving_throw());
+            .with_fn("is_saving_throw", |s: &mut Self| s.is_saving_throw())
+            .with_fn("is_attack_roll_hit", |s: &mut Self| s.is_attack_roll_hit())
+            .with_fn("is_attack_roll_critical_hit", |s: &mut Self| {
+                s.is_attack_roll_critical_hit()
+            })
+            .with_fn("is_saving_throw_success", |s: &mut Self| {
+                s.is_saving_throw_success()
+            });
     }
 }
 
@@ -249,6 +256,7 @@ impl CustomType for ScriptActionOutcomeBundleView {
         builder
             .with_name("ActionOutcomeBundleView")
             .with_fn("has_damage", |s: &mut Self| s.has_damage())
+            .with_fn("has_critical_hit", |s: &mut Self| s.has_critical_hit())
             .with_fn("get_damage", |s: &mut Self| s.get_damage().clone());
     }
 }
@@ -441,6 +449,21 @@ impl CustomType for ScriptEntityView {
                 "resources",
                 |s: &mut Self| s.resources.clone(),
                 |s: &mut Self, v: ScriptResourceView| s.resources = v,
+            )
+            .with_fn("apply_effect", |s: &mut Self, effect_id: String| {
+                s.apply_effect(&effect_id.parse().expect("Failed to parse EffectId"))
+            })
+            .with_fn(
+                "apply_effect_for_turns",
+                |s: &mut Self, effect_id: String, turns: i64| {
+                    if turns <= 0 {
+                        panic!("turns must be greater than 0");
+                    }
+                    s.apply_effect_for_turns(
+                        &effect_id.parse().expect("Failed to parse EffectId"),
+                        turns as u32,
+                    );
+                },
             );
     }
 }

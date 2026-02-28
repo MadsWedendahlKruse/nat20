@@ -4,7 +4,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::action::ActionContext,
+        actions::action::{ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
@@ -30,6 +30,8 @@ pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + 
 pub type DamageRollHook = Arc<dyn Fn(&World, Entity, &mut DamageRoll) + Send + Sync>;
 pub type DamageRollResultHook = Arc<dyn Fn(&World, Entity, &mut DamageRollResult) + Send + Sync>;
 pub type ActionHook = Arc<dyn Fn(&mut World, &ActionData) + Send + Sync>;
+pub type ActionResultHook =
+    Arc<dyn Fn(&mut GameState, &ActionData, &[ActionResult]) + Send + Sync>;
 pub type ResourceCostHook =
     Arc<dyn Fn(&World, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync>;
 pub type PreDamageMitigationHook =

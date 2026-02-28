@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.fighter.champion.remarkable_athlete_disengage",
+    "kind": "buff",
+    "description": "You can move up to half your Speed without provoking Opportunity Attacks.",
+    "modifiers": [
+        {
+            "free_movement": 0.5
+        }
+    ]
+}

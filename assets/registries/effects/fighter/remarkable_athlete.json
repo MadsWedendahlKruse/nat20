@@ -10,5 +10,9 @@
             "skill": "athletics advantage"
         }
     ],
-    "_comment": "Missing implementation for 'immediately after you score a Critical Hit, you can move up to half your Speed without provoking Opportunity Attacks'"
+    "on_action_result": [
+        {
+            "script": "nat20_core::script.effect.fighter.remarkable_athlete"
+        }
+    ]
 }

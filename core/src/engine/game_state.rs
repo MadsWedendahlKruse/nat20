@@ -646,7 +646,16 @@ impl GameState {
                 systems::actions::perform_reaction(self, reaction);
             }
 
-            EventKind::ActionPerformed { results, .. } => {
+            EventKind::ActionPerformed { action, results } => {
+                let hooks: Vec<_> = systems::effects::effects(&self.world, action.actor)
+                    .values()
+                    .map(|effect| effect.effect().on_action_result.clone())
+                    .collect();
+
+                for hook in hooks {
+                    hook(self, action, results);
+                }
+
                 for action_result in results {
                     match &action_result.kind {
                         ActionKindResult::Reaction {

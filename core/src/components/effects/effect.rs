@@ -12,14 +12,15 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::action::{ActionConditionResolution, ActionContext},
+        actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
         },
         effects::hooks::{
-            ActionHook, ApplyEffectHook, ArmorClassHook, AttackRollHook, AttackRollResultHook,
-            AttackedHook, D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
-            PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, UnapplyEffectHook,
+            ActionHook, ActionResultHook, ApplyEffectHook, ArmorClassHook, AttackRollHook,
+            AttackRollResultHook, AttackedHook, D20CheckHooks, DamageRollHook, DamageRollResultHook,
+            DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
+            UnapplyEffectHook,
         },
         id::{ActionId, EffectId, IdProvider},
         items::equipment::armor::ArmorClass,
@@ -133,6 +134,7 @@ pub struct Effect {
     pub pre_damage_roll: DamageRollHook,
     pub post_damage_roll: DamageRollResultHook,
     pub on_action: ActionHook,
+    pub on_action_result: ActionResultHook,
     pub on_resource_cost: ResourceCostHook,
     pub pre_damage_mitigation: PreDamageMitigationHook,
     pub post_damage_mitigation: PostDamageMitigationHook,
@@ -167,6 +169,9 @@ impl Effect {
             post_damage_roll: Arc::new(|_: &World, _: Entity, _: &mut DamageRollResult| {})
                 as DamageRollResultHook,
             on_action: Arc::new(|_: &mut World, _: &ActionData| {}) as ActionHook,
+            on_action_result: Arc::new(
+                |_: &mut GameState, _: &ActionData, _: &[ActionResult]| {},
+            ) as ActionResultHook,
             on_resource_cost: Arc::new(
                 |_: &World,
                  _: Entity,

@@ -6,7 +6,10 @@ use tracing::debug;
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionConditionResolution, ActionContext},
+        actions::{
+            action::{ActionConditionResolution, ActionContext, ActionKindResult, ActionResult},
+            targeting::TargetInstance,
+        },
         d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
             AttackRange, AttackSource, DamageMitigationEffect, DamageMitigationResult,
@@ -18,8 +21,9 @@ use crate::{
                 EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
             },
             hooks::{
-                ActionHook, ArmorClassHook, AttackRollHook, AttackedHook, DamageRollResultHook,
-                DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
+                ActionHook, ActionResultHook, ArmorClassHook, AttackRollHook, AttackedHook,
+                DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
+                ResourceCostHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -53,8 +57,9 @@ use crate::{
     scripts::{
         script::ScriptFunction,
         script_api::{
-            ScriptActionView, ScriptDamageMitigationResult, ScriptDamageRollResult,
-            ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
+            ScriptActionPerformedView, ScriptActionResultView, ScriptActionView,
+            ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
+            ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
         },
     },
     systems::{self, d20::D20CheckDCKind},
@@ -121,6 +126,8 @@ pub struct EffectDefinition {
     pub post_damage_mitigation: Vec<PostDamageMitigationHookDefinition>,
     #[serde(default)]
     pub on_action: Vec<ActionHookDefinition>,
+    #[serde(default)]
+    pub on_action_result: Vec<ActionResultHookDefinition>,
     #[serde(default)]
     pub on_resource_cost: Vec<ResourceCostHookDefinition>,
     #[serde(default)]
@@ -216,6 +223,12 @@ impl From<EffectDefinition> for Effect {
             effect.on_action = ActionHookDefinition::combine_hooks(hooks);
         }
 
+        // Build on_action_result hooks
+        {
+            let hooks = collect_effect_hooks(&definition.on_action_result, &effect_id);
+            effect.on_action_result = ActionResultHookDefinition::combine_hooks(hooks);
+        }
+
         // Build on_death hooks
         {
             let hooks = collect_effect_hooks(&definition.on_death, &effect_id);
@@ -277,6 +290,16 @@ impl RegistryReferenceCollector for EffectDefinition {
                     collector.add(RegistryReference::Script(
                         script.clone(),
                         ScriptFunction::ActionHook,
+                    ));
+                }
+            }
+        }
+        for hook in &self.on_action_result {
+            match hook {
+                ActionResultHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::ActionResultHook,
                     ));
                 }
             }
@@ -831,6 +854,124 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
                 hook(world, action_data);
             }
         })
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ActionResultHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl std::fmt::Debug for ActionResultHookDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActionResultHookDefinition::Script { script } => {
+                f.debug_struct("Script").field("script", script).finish()
+            }
+        }
+    }
+}
+
+impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> ActionResultHook {
+        match self {
+            ActionResultHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &mut GameState,
+                          action_data: &ActionData,
+                          results: &[ActionResult]| {
+                        let script_results: Vec<ScriptActionResultView> = results
+                            .iter()
+                            .filter_map(|result| {
+                                if let TargetInstance::Entity(target_entity) = &result.target {
+                                    Some(ScriptActionResultView::from_action_result(
+                                        action_data.actor,
+                                        *target_entity,
+                                        &result.kind,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if script_results.is_empty() {
+                            // If there are no results, don't run the script
+                            return;
+                        }
+
+                        let action_performed_view = ScriptActionPerformedView::new(
+                            ScriptActionView::from(action_data),
+                            script_results,
+                        );
+
+                        let mut entity_view = ScriptEntityView::take_from_world(
+                            &mut game_state.world,
+                            action_data.actor,
+                        );
+
+                        systems::scripts::evalute_action_result_hook(
+                            &script_id,
+                            &action_performed_view,
+                            &entity_view,
+                        );
+
+                        let effect_applications = entity_view.take_effect_applications();
+
+                        let action_resolution = if let Some(result) = results.first()
+                            && let ActionKindResult::Standard(outcome) = &result.kind
+                            && let Some(resolution) = outcome.resolution()
+                        {
+                            resolution.clone()
+                        } else {
+                            ActionConditionResolution::Unconditional
+                        };
+
+                        for application in effect_applications {
+                            // TODO: Do we need to check this?
+                            // let already_has_effect =
+                            //     systems::effects::effects(&game_state.world, action_data.actor)
+                            //         .values()
+                            //         .any(|instance| instance.effect_id == application.effect_id);
+
+                            // if already_has_effect {
+                            //     continue;
+                            // }
+
+                            systems::effects::add_effect_template(
+                                game_state,
+                                action_data.actor,
+                                action_data.actor,
+                                ModifierSource::Action(action_data.action_id.clone()),
+                                &EffectInstanceTemplate {
+                                    effect_id: application.effect_id,
+                                    lifetime: application.lifetime,
+                                    end_condition: None,
+                                },
+                                Some(&action_data.context),
+                                action_resolution.clone(),
+                            );
+                        }
+
+                        entity_view.replace_in_world(&mut game_state.world);
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<ActionResultHook>) -> ActionResultHook {
+        Arc::new(
+            move |game_state: &mut GameState,
+                  action_data: &ActionData,
+                  results: &[ActionResult]| {
+                for hook in &hooks {
+                    hook(game_state, action_data, results);
+                }
+            },
+        )
     }
 }
 

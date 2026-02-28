@@ -158,6 +158,7 @@ impl IdProvider for Script {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
 pub enum ScriptFunction {
     ActionHook,
+    ActionResultHook,
     ArmorClassHook,
     AttackRollHook,
     DamageRollResultHook,
@@ -173,6 +174,7 @@ impl ScriptFunction {
     pub fn fn_name(&self) -> &str {
         match self {
             ScriptFunction::ActionHook => "action_hook",
+            ScriptFunction::ActionResultHook => "action_result_hook",
             ScriptFunction::ArmorClassHook => "armor_class_hook",
             ScriptFunction::AttackRollHook => "attack_roll_hook",
             ScriptFunction::DamageRollResultHook => "damage_roll_result_hook",

@@ -202,6 +202,26 @@ impl ScriptEngine for RhaiScriptEngine {
         Ok(())
     }
 
+    fn evaluate_action_result_hook(
+        &mut self,
+        script: &Script,
+        action: &ScriptActionPerformedView,
+        entity: &ScriptEntityView,
+    ) -> Result<(), ScriptError> {
+        let ast = self.get_ast(script).cloned()?;
+        let mut scope = Scope::new();
+        self.engine
+            .call_fn::<()>(
+                &mut scope,
+                &ast,
+                ScriptFunction::ActionResultHook.fn_name(),
+                (action.clone(), entity.clone()),
+            )
+            .map_err(|e| ScriptError::RuntimeError(format!("Rhai error: {}", e)))?;
+
+        Ok(())
+    }
+
     fn evaluate_armor_class_hook(
         &mut self,
         script: &Script,

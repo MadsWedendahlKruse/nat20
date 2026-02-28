@@ -15,16 +15,18 @@ use crate::{
             },
             targeting::TargetInstance,
         },
+        d20::D20CheckOutcome,
         damage::{
             DamageComponentResult, DamageMitigationEffect, DamageMitigationResult,
             DamageRollResult, DamageType, MitigationOperation,
         },
         dice::{DiceSet, DiceSetRoll},
-        effects::effect::EffectInstance,
-        id::{ActionId, ResourceId},
+        effects::effect::{EffectEntiyReference, EffectInstance, EffectLifetimeTemplate},
+        id::{ActionId, EffectId, ResourceId},
         items::equipment::loadout::Loadout,
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
+        time::{TimeDuration, TurnBoundary},
     },
     engine::{
         action_prompt::{ActionData, ReactionData},
@@ -423,8 +425,12 @@ impl ScriptD20Result {
 
 #[derive(Clone)]
 pub(crate) enum ScriptD20CheckModification {
-    ModifyResult { bonus: ScriptDiceRollBonus },
-    ModifyDC { modifier: ScriptDiceRollBonus },
+    ModifyResult {
+        bonus: ScriptDiceRollBonus,
+    },
+    ModifyDC {
+        modifier: ScriptDiceRollBonus,
+    },
     RerollResult {
         bonus: Option<ScriptDiceRollBonus>,
         force_use_new: bool,
@@ -678,7 +684,10 @@ impl ScriptD20CheckView {
     pub fn apply_to_event(&self, world: &World, reaction_data: &ReactionData, event: &mut Event) {
         let EventKind::D20CheckPerformed(performer, existing_result, dc_kind) = &mut event.kind
         else {
-            panic!("ScriptD20CheckView applied to wrong event type: {:?}", event);
+            panic!(
+                "ScriptD20CheckView applied to wrong event type: {:?}",
+                event
+            );
         };
 
         let inner = self.inner.read();
@@ -911,12 +920,10 @@ impl ScriptActionResultView {
 #[derive(Clone)]
 pub enum ScriptActionKindResultView {
     Standard(ScriptActionOutcomeBundleView),
-    Utility,
     Composite {
         actions: Vec<ScriptActionKindResultView>,
     },
-    Reaction, // You can extend later if you want more details here.
-    Custom,
+    Reaction,
 }
 
 impl ScriptActionKindResultView {
@@ -925,7 +932,6 @@ impl ScriptActionKindResultView {
             ActionKindResult::Standard(bundle) => {
                 ScriptActionKindResultView::Standard(ScriptActionOutcomeBundleView::from(bundle))
             }
-            ActionKindResult::Utility => ScriptActionKindResultView::Utility,
             ActionKindResult::Composite { actions } => ScriptActionKindResultView::Composite {
                 actions: actions
                     .iter()
@@ -933,7 +939,16 @@ impl ScriptActionKindResultView {
                     .collect(),
             },
             ActionKindResult::Reaction { .. } => ScriptActionKindResultView::Reaction,
-            ActionKindResult::Custom { .. } => ScriptActionKindResultView::Custom,
+        }
+    }
+
+    pub fn has_critical_hit(&self) -> bool {
+        match self {
+            ScriptActionKindResultView::Standard(bundle) => bundle.has_critical_hit(),
+            ScriptActionKindResultView::Composite { actions } => {
+                actions.iter().any(|action| action.has_critical_hit())
+            }
+            ScriptActionKindResultView::Reaction => false,
         }
     }
 }
@@ -986,6 +1001,12 @@ impl ScriptActionOutcomeBundleView {
 
     pub fn get_damage(&self) -> &ScriptDamageOutcomeView {
         self.damage.as_ref().expect("No damage outcome")
+    }
+
+    pub fn has_critical_hit(&self) -> bool {
+        self.damage
+            .as_ref()
+            .is_some_and(|damage| damage.kind.is_attack_roll_critical_hit())
     }
 }
 
@@ -1049,16 +1070,44 @@ impl ScriptDamageOutcomeView {
 #[derive(Clone)]
 pub enum ScriptDamageResolutionKindView {
     Unconditional,
-    AttackRoll,
-    SavingThrow,
+    AttackRoll {
+        is_hit: bool,
+        is_critical_hit: bool,
+    },
+    SavingThrow {
+        is_success: bool,
+    },
 }
 
 impl ScriptDamageResolutionKindView {
     pub fn from(kind: &ActionConditionResolution) -> Self {
         match kind {
             ActionConditionResolution::Unconditional => Self::Unconditional,
-            ActionConditionResolution::AttackRoll { .. } => Self::AttackRoll,
-            ActionConditionResolution::SavingThrow { .. } => Self::SavingThrow,
+            ActionConditionResolution::AttackRoll {
+                attack_roll,
+                armor_class,
+            } => {
+                let is_critical_hit = matches!(
+                    attack_roll.roll_result.outcome,
+                    Some(D20CheckOutcome::CriticalSuccess)
+                );
+                let is_hit = match attack_roll.roll_result.outcome {
+                    Some(D20CheckOutcome::CriticalSuccess) => true,
+                    Some(D20CheckOutcome::CriticalFailure) => false,
+                    _ => attack_roll.roll_result.total() >= armor_class.total() as u32,
+                };
+
+                Self::AttackRoll {
+                    is_hit,
+                    is_critical_hit,
+                }
+            }
+            ActionConditionResolution::SavingThrow {
+                saving_throw_dc,
+                saving_throw_result,
+            } => Self::SavingThrow {
+                is_success: saving_throw_result.is_success(saving_throw_dc),
+            },
         }
     }
 
@@ -1067,11 +1116,34 @@ impl ScriptDamageResolutionKindView {
     }
 
     pub fn is_attack_roll(&self) -> bool {
-        matches!(self, Self::AttackRoll)
+        matches!(self, Self::AttackRoll { .. })
     }
 
     pub fn is_saving_throw(&self) -> bool {
-        matches!(self, Self::SavingThrow)
+        matches!(self, Self::SavingThrow { .. })
+    }
+
+    pub fn is_attack_roll_hit(&self) -> bool {
+        match self {
+            Self::AttackRoll { is_hit, .. } => *is_hit,
+            _ => false,
+        }
+    }
+
+    pub fn is_attack_roll_critical_hit(&self) -> bool {
+        match self {
+            Self::AttackRoll {
+                is_critical_hit, ..
+            } => *is_critical_hit,
+            _ => false,
+        }
+    }
+
+    pub fn is_saving_throw_success(&self) -> bool {
+        match self {
+            Self::SavingThrow { is_success } => *is_success,
+            _ => false,
+        }
     }
 }
 
@@ -1242,11 +1314,17 @@ impl_take_replace_world!(ScriptResourceView, ResourceMap);
 
 /// Snapshot of an entity for scripts to inspect.
 #[derive(Debug, Clone)]
+pub struct ScriptEffectApplication {
+    pub effect_id: EffectId,
+    pub lifetime: EffectLifetimeTemplate,
+}
+
+#[derive(Debug, Clone)]
 pub struct ScriptEntityView {
     pub entity: ScriptEntity,
     pub resources: ScriptResourceView,
     pub loadout: ScriptLoadoutView,
-    // Add more fields as needed
+    effect_applications: ScriptShared<Vec<ScriptEffectApplication>>,
 }
 
 impl ScriptEntityView {
@@ -1255,6 +1333,7 @@ impl ScriptEntityView {
             entity: ScriptEntity::from(entity),
             resources: ScriptResourceView::new_from_world(world, entity),
             loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
+            effect_applications: ScriptShared::new(Vec::new()),
         }
     }
 
@@ -1263,12 +1342,35 @@ impl ScriptEntityView {
             entity: ScriptEntity::from(entity),
             resources: ScriptResourceView::take_from_world(world, entity),
             loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
+            effect_applications: ScriptShared::new_mut(Vec::new()),
         }
     }
 
     pub fn replace_in_world(self, world: &mut World) {
         let entity: Entity = self.entity.clone().into();
         self.resources.replace_in_world(world, entity);
+    }
+
+    pub fn apply_effect(&mut self, effect_id: &EffectId) {
+        self.effect_applications.write().push(ScriptEffectApplication {
+            effect_id: effect_id.clone(),
+            lifetime: EffectLifetimeTemplate::Permanent,
+        });
+    }
+
+    pub fn apply_effect_for_turns(&mut self, effect_id: &EffectId, turns: u32) {
+        self.effect_applications.write().push(ScriptEffectApplication {
+            effect_id: effect_id.clone(),
+            lifetime: EffectLifetimeTemplate::TurnBoundary {
+                entity: EffectEntiyReference::Applier,
+                boundary: TurnBoundary::Start,
+                duration: TimeDuration::from_turns(turns),
+            },
+        });
+    }
+
+    pub fn take_effect_applications(&mut self) -> Vec<ScriptEffectApplication> {
+        std::mem::take(&mut *self.effect_applications.write())
     }
 }
 

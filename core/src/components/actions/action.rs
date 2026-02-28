@@ -379,15 +379,23 @@ impl ActionOutcomeBundle {
     pub fn is_empty(&self) -> bool {
         self.damage.is_none() && self.effect.is_none() && self.healing.is_none()
     }
+
+    pub fn resolution(&self) -> Option<&ActionConditionResolution> {
+        if let Some(damage) = &self.damage {
+            Some(&damage.resolution)
+        } else if let Some(effect) = &self.effect {
+            Some(&effect.resolution)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionKindResult {
     Standard(ActionOutcomeBundle),
-    Utility,
     Composite { actions: Vec<ActionKindResult> },
     Reaction { result: ReactionResult },
-    Custom {/* ... */},
 }
 
 #[derive(Clone)]
