@@ -422,6 +422,24 @@ impl ScriptD20Result {
 }
 
 #[derive(Clone)]
+pub(crate) enum ScriptD20CheckModification {
+    ModifyResult { bonus: ScriptDiceRollBonus },
+    ModifyDC { modifier: ScriptDiceRollBonus },
+    RerollResult {
+        bonus: Option<ScriptDiceRollBonus>,
+        force_use_new: bool,
+    },
+}
+
+#[derive(Clone)]
+pub(crate) struct ScriptD20Check {
+    pub performer: ScriptEntity,
+    pub result_kind: D20ResultKind,
+    pub dc_kind: D20CheckDCKind,
+    pub modifications: Vec<ScriptD20CheckModification>,
+}
+
+#[derive(Clone)]
 pub(crate) struct ScriptMovingOutOfReach {
     pub mover: ScriptEntity,
     pub entity: ScriptEntity,
@@ -496,7 +514,7 @@ impl ScriptEventView {
         match &event.kind {
             EventKind::D20CheckPerformed(performer, result_kind, dc_kind) => {
                 Some(ScriptEventView::D20CheckPerformed(
-                    ScriptD20CheckView::from_parts(*performer, result_kind, dc_kind),
+                    ScriptD20CheckView::from_parts(*performer, result_kind, dc_kind, mutable),
                 ))
             }
 
@@ -552,8 +570,11 @@ impl ScriptEventView {
         }
     }
 
-    pub fn apply_to_event(&self, event: &mut Event) {
+    pub fn apply_to_event(&self, world: &World, reaction_data: &ReactionData, event: &mut Event) {
         match self {
+            ScriptEventView::D20CheckPerformed(view) => {
+                view.apply_to_event(world, reaction_data, event)
+            }
             ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(event),
             // Other event view variants are currently read-only.
             _ => {}
@@ -595,8 +616,7 @@ impl_event_accessors!(ScriptEventView {
 /// View of a "D20CheckPerformed" event.
 #[derive(Clone)]
 pub struct ScriptD20CheckView {
-    pub performer: ScriptEntity,
-    pub result: ScriptD20Result,
+    pub(crate) inner: ScriptShared<ScriptD20Check>,
 }
 
 impl ScriptD20CheckView {
@@ -604,10 +624,140 @@ impl ScriptD20CheckView {
         performer: Entity,
         result_kind: &D20ResultKind,
         dc_kind: &D20CheckDCKind,
+        mutable: bool,
     ) -> Self {
-        ScriptD20CheckView {
+        let inner = ScriptD20Check {
             performer: ScriptEntity::from(performer),
-            result: ScriptD20Result::from(result_kind, dc_kind),
+            result_kind: result_kind.clone(),
+            dc_kind: dc_kind.clone(),
+            modifications: Vec::new(),
+        };
+
+        ScriptD20CheckView {
+            inner: if mutable {
+                ScriptShared::new_mut(inner)
+            } else {
+                ScriptShared::new(inner)
+            },
+        }
+    }
+
+    pub fn performer(&self) -> ScriptEntity {
+        self.inner.read().performer.clone()
+    }
+
+    pub fn result(&self) -> ScriptD20Result {
+        let inner = self.inner.read();
+        ScriptD20Result::from(&inner.result_kind, &inner.dc_kind)
+    }
+
+    pub fn modify_result(&mut self, bonus: ScriptDiceRollBonus) {
+        self.inner
+            .write()
+            .modifications
+            .push(ScriptD20CheckModification::ModifyResult { bonus });
+    }
+
+    pub fn modify_dc(&mut self, modifier: ScriptDiceRollBonus) {
+        self.inner
+            .write()
+            .modifications
+            .push(ScriptD20CheckModification::ModifyDC { modifier });
+    }
+
+    pub fn reroll_result(&mut self, bonus: Option<ScriptDiceRollBonus>, force_use_new: bool) {
+        self.inner
+            .write()
+            .modifications
+            .push(ScriptD20CheckModification::RerollResult {
+                bonus,
+                force_use_new,
+            });
+    }
+
+    pub fn apply_to_event(&self, world: &World, reaction_data: &ReactionData, event: &mut Event) {
+        let EventKind::D20CheckPerformed(performer, existing_result, dc_kind) = &mut event.kind
+        else {
+            panic!("ScriptD20CheckView applied to wrong event type: {:?}", event);
+        };
+
+        let inner = self.inner.read();
+        for modification in &inner.modifications {
+            match modification {
+                ScriptD20CheckModification::ModifyResult { bonus } => {
+                    let bonus_value =
+                        bonus.evaluate(world, reaction_data.reactor, &reaction_data.context);
+
+                    match existing_result {
+                        D20ResultKind::Skill { result, .. }
+                        | D20ResultKind::SavingThrow { result, .. } => {
+                            result.add_bonus(
+                                ModifierSource::Action(reaction_data.reaction_id.clone()),
+                                bonus_value,
+                            );
+                        }
+                        D20ResultKind::AttackRoll { result } => {
+                            result.roll_result.add_bonus(
+                                ModifierSource::Action(reaction_data.reaction_id.clone()),
+                                bonus_value,
+                            );
+                        }
+                    }
+                }
+
+                ScriptD20CheckModification::ModifyDC { modifier } => {
+                    let modifier_value =
+                        modifier.evaluate(world, reaction_data.reactor, &reaction_data.context);
+
+                    match dc_kind {
+                        D20CheckDCKind::SavingThrow(d20_check_dc) => {
+                            d20_check_dc.dc.add_modifier(
+                                ModifierSource::Action(reaction_data.reaction_id.clone()),
+                                modifier_value,
+                            );
+                        }
+                        D20CheckDCKind::Skill(d20_check_dc) => {
+                            d20_check_dc.dc.add_modifier(
+                                ModifierSource::Action(reaction_data.reaction_id.clone()),
+                                modifier_value,
+                            );
+                        }
+                        D20CheckDCKind::AttackRoll(_, armor_class) => {
+                            armor_class.add_modifier(
+                                ModifierSource::Action(reaction_data.reaction_id.clone()),
+                                modifier_value,
+                            );
+                        }
+                    }
+                }
+
+                ScriptD20CheckModification::RerollResult {
+                    bonus,
+                    force_use_new,
+                } => {
+                    let bonus_value = if let Some(bonus_expr) = bonus {
+                        bonus_expr.evaluate(world, reaction_data.reactor, &reaction_data.context)
+                    } else {
+                        0
+                    };
+
+                    let mut new_roll = systems::d20::check_no_event(world, *performer, dc_kind);
+                    new_roll.d20_result_mut().add_bonus(
+                        ModifierSource::Action(reaction_data.reaction_id.clone()),
+                        bonus_value,
+                    );
+
+                    if *force_use_new {
+                        *existing_result = new_roll;
+                    } else {
+                        let existing_total = existing_result.d20_result().total();
+                        let new_total = new_roll.d20_result().total();
+                        if new_total > existing_total {
+                            *existing_result = new_roll;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1023,19 +1173,6 @@ pub enum ScriptReactionPlan {
 
     /// Execute multiple steps in order.
     Sequence(Vec<ScriptReactionPlan>),
-
-    /// Add a flat modifier to the most recent D20 roll for this event.
-    ModifyD20Result { bonus: ScriptDiceRollBonus },
-
-    /// Add a flat modifier to the DC for this event.
-    ModifyD20DC { modifier: ScriptDiceRollBonus },
-
-    /// Reroll the most recent D20 roll for this event with an optional modifier.
-    /// Can also be set to force using the new roll.
-    RerollD20Result {
-        bonus: Option<ScriptDiceRollBonus>,
-        force_use_new: bool,
-    },
 
     /// Ask an entity to make a saving throw against a DC.
     /// Then branch into `on_success` or `on_failure`.

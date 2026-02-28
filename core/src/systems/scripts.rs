@@ -7,7 +7,6 @@ use crate::{
     components::{
         actions::action::{ActionKindResult, ReactionResult},
         id::ScriptId,
-        modifier::{Modifiable, ModifierSource},
         resource::ResourceAmountMap,
     },
     engine::{
@@ -287,15 +286,17 @@ pub fn apply_reaction_body_result(
             apply_reaction_plan(game_state, reaction_data, plan);
         }
         ScriptReactionBodyResult::TriggerEvent(event_view) => {
+            let reaction_data = reaction_data.clone();
+            let reaction_data_for_modification = reaction_data.clone();
             let reaction_result = ReactionResult::ModifyEvent {
-                modification: Arc::new(move |_world: &World, event: &mut Event| {
-                    event_view.apply_to_event(event);
+                modification: Arc::new(move |world: &World, event: &mut Event| {
+                    event_view.apply_to_event(world, &reaction_data_for_modification, event);
                 }),
             };
 
             game_state.process_event(Event::action_performed_event(
                 game_state,
-                &ActionData::from(reaction_data),
+                &ActionData::from(&reaction_data),
                 vec![(
                     reaction_data.reactor,
                     ActionKindResult::Reaction {
@@ -319,149 +320,6 @@ pub fn apply_reaction_plan(
             for p in plans {
                 apply_reaction_plan(game_state, reaction_data, p);
             }
-        }
-
-        ScriptReactionPlan::ModifyD20Result { bonus } => {
-            let bonus_value = bonus.evaluate(
-                &game_state.world,
-                reaction_data.reactor,
-                &reaction_data.context,
-            );
-
-            let result = ReactionResult::ModifyEvent {
-                modification: Arc::new({
-                    let action_id = reaction_data.reaction_id.clone();
-                    move |_world: &World, event: &mut Event| {
-                        if let EventKind::D20CheckPerformed(_, ref mut existing_result, _) =
-                            event.kind
-                        {
-                            match existing_result {
-                                D20ResultKind::Skill { result, .. }
-                                | D20ResultKind::SavingThrow { result, .. } => {
-                                    result.add_bonus(
-                                        ModifierSource::Action(action_id.clone()),
-                                        bonus_value,
-                                    );
-                                }
-                                D20ResultKind::AttackRoll { result } => {
-                                    result.roll_result.add_bonus(
-                                        ModifierSource::Action(action_id.clone()),
-                                        bonus_value,
-                                    );
-                                }
-                            }
-                        } else {
-                            panic!("ModifyD20Result applied to wrong event type: {:?}", event);
-                        }
-                    }
-                }),
-            };
-
-            game_state.process_event(Event::action_performed_event(
-                game_state,
-                &ActionData::from(reaction_data),
-                vec![(reaction_data.reactor, ActionKindResult::Reaction { result })],
-            ));
-        }
-
-        ScriptReactionPlan::ModifyD20DC { modifier } => {
-            let modifier_value = modifier.evaluate(
-                &game_state.world,
-                reaction_data.reactor,
-                &reaction_data.context,
-            );
-
-            let result = ReactionResult::ModifyEvent {
-                modification: Arc::new({
-                    let action = reaction_data.reaction_id.clone();
-                    move |_world: &World, event: &mut Event| {
-                        if let EventKind::D20CheckPerformed(_, _, ref mut dc_kind) = event.kind {
-                            match dc_kind {
-                                D20CheckDCKind::SavingThrow(d20_check_dc) => {
-                                    d20_check_dc.dc.add_modifier(
-                                        ModifierSource::Action(action.clone()),
-                                        modifier_value,
-                                    );
-                                }
-                                D20CheckDCKind::Skill(d20_check_dc) => {
-                                    d20_check_dc.dc.add_modifier(
-                                        ModifierSource::Action(action.clone()),
-                                        modifier_value,
-                                    );
-                                }
-                                D20CheckDCKind::AttackRoll(_, armor_class) => {
-                                    armor_class.add_modifier(
-                                        ModifierSource::Action(action.clone()),
-                                        modifier_value,
-                                    );
-                                }
-                            }
-                        } else {
-                            panic!("ModifyD20DC applied to wrong event type: {:?}", event);
-                        }
-                    }
-                }),
-            };
-
-            game_state.process_event(Event::action_performed_event(
-                game_state,
-                &ActionData::from(reaction_data),
-                vec![(reaction_data.reactor, ActionKindResult::Reaction { result })],
-            ));
-        }
-
-        ScriptReactionPlan::RerollD20Result {
-            bonus,
-            force_use_new,
-        } => {
-            let bonus_value = if let Some(bonus_expr) = bonus {
-                bonus_expr.evaluate(
-                    &game_state.world,
-                    reaction_data.reactor,
-                    &reaction_data.context,
-                )
-            } else {
-                0
-            };
-
-            let result = ReactionResult::ModifyEvent {
-                modification: Arc::new({
-                    let actor = reaction_data.event.actor().unwrap();
-                    let action_id = reaction_data.reaction_id.clone();
-                    move |world: &World, event: &mut Event| {
-                        if let EventKind::D20CheckPerformed(
-                            _,
-                            ref mut existing_result,
-                            ref dc_kind,
-                        ) = event.kind
-                        {
-                            let mut new_roll = systems::d20::check_no_event(world, actor, dc_kind);
-                            new_roll
-                                .d20_result_mut()
-                                .add_bonus(ModifierSource::Action(action_id.clone()), bonus_value);
-
-                            if force_use_new {
-                                *existing_result = new_roll;
-                            } else {
-                                // Choose the better of the two rolls
-                                let existing_total = existing_result.d20_result().total();
-                                let new_total = new_roll.d20_result().total();
-                                if new_total > existing_total {
-                                    *existing_result = new_roll;
-                                }
-                            }
-                        } else {
-                            panic!("RerollD20Result applied to wrong event type: {:?}", event);
-                        }
-                    }
-                }),
-            };
-
-            game_state.process_event(Event::action_performed_event(
-                game_state,
-                &ActionData::from(reaction_data),
-                vec![(reaction_data.reactor, ActionKindResult::Reaction { result })],
-            ));
         }
 
         ScriptReactionPlan::CancelEvent {

@@ -101,8 +101,33 @@ impl CustomType for ScriptD20CheckView {
     fn build(mut builder: TypeBuilder<Self>) {
         builder
             .with_name("D20CheckPerformedView")
-            .with_get("performer", |s: &mut Self| s.performer.clone())
-            .with_get("result", |s: &mut Self| s.result.clone());
+            .with_get("performer", |s: &mut Self| s.performer())
+            .with_get("result", |s: &mut Self| s.result())
+            .with_fn("modify_result", |s: &mut Self, bonus: String| {
+                s.modify_result(bonus.parse().expect("Failed to parse ScriptDiceRollBonus"));
+            })
+            .with_fn("modify_dc", |s: &mut Self, modifier: String| {
+                s.modify_dc(
+                    modifier
+                        .parse()
+                        .expect("Failed to parse ScriptDiceRollBonus"),
+                );
+            })
+            .with_fn(
+                "reroll_result",
+                |s: &mut Self, bonus: String, force_use_new: bool| {
+                    let bonus = if bonus.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            bonus
+                                .parse()
+                                .expect("Failed to parse ScriptDiceRollBonus"),
+                        )
+                    };
+                    s.reroll_result(bonus, force_use_new);
+                },
+            );
     }
 }
 
@@ -320,30 +345,6 @@ pub mod reaction_plan_module {
         ScriptReactionPlan::Sequence(inner_plans)
     }
 
-    pub fn modify_d20_result(bonus: String) -> ScriptReactionPlan {
-        ScriptReactionPlan::ModifyD20Result {
-            bonus: bonus.parse().unwrap(),
-        }
-    }
-
-    pub fn modify_d20_dc(modifier: String) -> ScriptReactionPlan {
-        ScriptReactionPlan::ModifyD20DC {
-            modifier: modifier.parse().unwrap(),
-        }
-    }
-
-    pub fn reroll_d20_result(bonus: String, force_use_new: bool) -> ScriptReactionPlan {
-        let bonus = if bonus.is_empty() {
-            None
-        } else {
-            bonus.parse().ok()
-        };
-        ScriptReactionPlan::RerollD20Result {
-            bonus,
-            force_use_new,
-        }
-    }
-
     pub fn require_saving_throw(
         target_role: ImmutableString,
         dc: ScriptSavingThrow,
@@ -466,9 +467,10 @@ impl CustomType for ScriptReactionTriggerContext {
                         return false;
                     }
                     let d20_check = s.event.as_d20_check_performed();
-                    return d20_check.performer == s.reactor
-                        && !d20_check.result.is_success
-                        && d20_check.result.dc_kind.label == dc_kind;
+                    let result = d20_check.result();
+                    return d20_check.performer() == s.reactor
+                        && !result.is_success
+                        && result.dc_kind.label == dc_kind;
                 },
             );
     }
