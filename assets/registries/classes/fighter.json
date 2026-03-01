@@ -52,7 +52,8 @@
     ],
     "effects_by_level": {
         "5": [
-            "nat20_core::effect.extra_attack"
+            "nat20_core::effect.extra_attack",
+            "nat20_core::effect.fighter.tactical_shift"
         ],
         "11": [
             "nat20_core::effect.fighter.two_extra_attacks"

@@ -4,7 +4,6 @@ use std::{
 };
 
 use hecs::Entity;
-use uom::si::f32::Length;
 use uuid::Uuid;
 
 use crate::{
@@ -86,6 +85,7 @@ impl Event {
             EventKind::RestStarted { participants, .. } => Some(*participants.first()?),
             EventKind::RestFinished { participants, .. } => Some(*participants.first()?),
             EventKind::LostConcentration { entity, .. } => Some(*entity),
+            EventKind::GainedEffect { entity, .. } => Some(*entity),
             EventKind::LostEffect { entity, .. } => Some(*entity),
         }
     }
@@ -198,6 +198,11 @@ pub enum EventKind {
     LostConcentration {
         entity: Entity,
         instances: Vec<ConcentrationInstance>,
+    },
+
+    GainedEffect {
+        entity: Entity,
+        effect: EffectId,
     },
     LostEffect {
         entity: Entity,

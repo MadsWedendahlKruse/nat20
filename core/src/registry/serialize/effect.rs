@@ -39,7 +39,7 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{CallbackResult, EventCallback, EventKind, ListenerSource},
+        event::{CallbackResult, Event, EventCallback, EventKind, ListenerSource},
         game_state::GameState,
     },
     registry::{
@@ -1047,6 +1047,12 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                             // if already_has_effect {
                             //     continue;
                             // }
+
+                            // TODO: Consider if there's a way to include this in the action result?
+                            game_state.process_event(Event::new(EventKind::GainedEffect {
+                                entity: action_data.actor,
+                                effect: application.effect_id.clone(),
+                            }));
 
                             systems::effects::add_effect_template(
                                 game_state,
