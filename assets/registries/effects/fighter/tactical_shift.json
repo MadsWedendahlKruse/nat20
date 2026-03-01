@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.fighter.tactical_shift",
+    "kind": "buff",
+    "description": "Whenever you activate your Second Wind with a Bonus Action, you can move up to half your Speed without provoking Opportunity Attacks.",
+    "on_action_result": [
+        {
+            "script": "nat20_core::script.effect.fighter.tactical_shift"
+        }
+    ]
+}

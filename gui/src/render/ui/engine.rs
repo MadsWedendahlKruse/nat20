@@ -60,6 +60,7 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::RestStarted { .. } => LogLevel::Info,
         EventKind::RestFinished { .. } => LogLevel::Info,
         EventKind::LostConcentration { .. } => LogLevel::Info,
+        EventKind::GainedEffect { .. } => LogLevel::Info,
         EventKind::LostEffect { .. } => LogLevel::Info,
     }
 }
@@ -457,6 +458,17 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 //         .with_indent(1)
                 //         .render(ui);
                 // }
+            }
+            EventKind::GainedEffect { entity, effect } => {
+                let entity_name =
+                    systems::helpers::get_component::<Name>(world, *entity).to_string();
+
+                TextSegments::new(vec![
+                    (entity_name, TextKind::Actor),
+                    ("gained effect".to_string(), TextKind::Normal),
+                    (effect.to_string(), TextKind::Effect),
+                ])
+                .render(ui);
             }
             EventKind::LostEffect { entity, effect } => {
                 let entity_name =
