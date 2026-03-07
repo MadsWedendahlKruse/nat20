@@ -621,6 +621,11 @@ pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &Effe
     
     if effect.children.is_empty() {
         ui.text(effect.effect_id.to_string());
+        if ui.is_item_hovered() {
+            ui.tooltip(|| {
+                render_effect_tooltip(ui, effect);
+            });
+        }
         return;
     }
 
@@ -631,6 +636,19 @@ pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &Effe
             }
         }
     });
+
+    if ui.is_item_hovered() {
+        ui.tooltip(|| {
+            render_effect_tooltip(ui, effect);
+        });
+    }
+}
+
+fn render_effect_tooltip(ui: &imgui::Ui, effect: &EffectInstance) {
+    ui.separator_with_text(effect.effect_id.to_string());
+    TextSegment::new(effect.effect().description.as_str(),TextKind::Details)
+        .wrap_text(true)
+        .render(ui);
 }
 
 impl ImguiRenderableWithContext<&TimeMode> for EffectsMap {
@@ -684,7 +702,10 @@ impl ImguiRenderable for Vec<FeatId> {
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
                         let feat = FeatsRegistry::get(feat).unwrap();
-                        ui.text(feat.description());
+                        ui.separator_with_text(&feat.id().to_string());
+                        TextSegment::new(feat.description(), TextKind::Details)
+                            .wrap_text(true)
+                            .render(ui);
                     });
                 }
             }
