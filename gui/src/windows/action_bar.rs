@@ -888,19 +888,7 @@ fn render_attack_hit_chance_tooltip(
             .size([0.0, 0.0])
             .build(|| {
                 ui.separator_with_text("Attack Roll");
-                TextSegments::new([
-                    ("Total:", TextKind::Details),
-                    (
-                        &signed_value(&attack_roll.d20_check.modifiers().total()),
-                        TextKind::Normal,
-                    ),
-                ])
-                .render(ui);
-
-                attack_roll
-                    .d20_check
-                    .modifiers()
-                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+                render_d20_modifiers(ui, attack_roll.d20_check);
             });
 
         ui.child_window("Armor Class")
@@ -932,6 +920,100 @@ fn render_attack_hit_chance_tooltip(
                     .render_with_context(ui, ModifierSetRenderMode::List(1));
             });
     });
+}
+
+fn render_save_success_chance_tooltip(
+    ui: &imgui::Ui,
+    game_state: &mut GameState,
+    action: &ActionData,
+    target: Entity,
+    saving_throw_fn: &Arc<SavingThrowFunction>,
+) {
+    let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor, &action.context);
+    let saving_throws =
+        systems::helpers::get_component::<SavingThrowSet>(&game_state.world, target);
+    let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
+
+    for effect in systems::effects::effects(&game_state.world, target).values() {
+        if let Some(on_saving_throw) = effect.effect().on_saving_throw.get(&saving_throw_dc.key) {
+            (on_saving_throw.check_hook)(&game_state.world, target, &mut d20_check);
+        }
+    }
+    if let Some(ability) = saving_throws.ability(&saving_throw_dc.key) {
+        let ability_scores =
+            systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, target);
+        d20_check.add_modifier(
+            ModifierSource::Ability(ability),
+            ability_scores.ability_modifier(&ability).total(),
+        );
+    }
+
+    let save_chance = d20_check.success_probability(
+        saving_throw_dc.dc.total() as u32,
+        systems::helpers::level(&game_state.world, target)
+            .unwrap()
+            .proficiency_bonus(),
+    );
+
+    let success_chance = (1.0 - save_chance) * 100.0;
+
+    ui.tooltip(|| {
+        ui.separator_with_text("Hit chance");
+
+        render_forced_outcome_or_advantage(ui, &d20_check, success_chance, true);
+
+        ui.separator();
+
+        ui.child_window("Difficulty Class")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y
+                    | ChildFlags::BORDERS,
+            )
+            .size([0.0, 0.0])
+            .build(|| {
+                ui.separator_with_text("Difficulty Class");
+
+                TextSegments::new([
+                    ("Total:", TextKind::Details),
+                    (&format!("{}", saving_throw_dc.dc.total()), TextKind::Normal),
+                ])
+                .render(ui);
+
+                saving_throw_dc
+                    .dc
+                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+            });
+
+        ui.child_window("Saving Throw")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y
+                    | ChildFlags::BORDERS,
+            )
+            .size([0.0, 0.0])
+            .build(|| {
+                ui.separator_with_text("Saving Throw");
+                render_d20_modifiers(ui, d20_check);
+            });
+    });
+}
+
+fn render_d20_modifiers(ui: &imgui::Ui, d20_check: D20Check) {
+    TextSegments::new([
+        ("Total:", TextKind::Details),
+        (
+            &signed_value(&d20_check.modifiers().total()),
+            TextKind::Normal,
+        ),
+    ])
+    .render(ui);
+
+    d20_check
+        .modifiers()
+        .render_with_context(ui, ModifierSetRenderMode::List(1));
 }
 
 fn render_forced_outcome_or_advantage(
@@ -1029,97 +1111,6 @@ fn reverse_text_kind(text_kind: TextKind) -> TextKind {
         TextKind::Red => TextKind::Green,
         other => other,
     }
-}
-
-fn render_save_success_chance_tooltip(
-    ui: &imgui::Ui,
-    game_state: &mut GameState,
-    action: &ActionData,
-    target: Entity,
-    saving_throw_fn: &Arc<SavingThrowFunction>,
-) {
-    let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor, &action.context);
-    let saving_throws =
-        systems::helpers::get_component::<SavingThrowSet>(&game_state.world, target);
-    let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
-
-    for effect in systems::effects::effects(&game_state.world, target).values() {
-        if let Some(on_saving_throw) = effect.effect().on_saving_throw.get(&saving_throw_dc.key) {
-            (on_saving_throw.check_hook)(&game_state.world, target, &mut d20_check);
-        }
-    }
-    if let Some(ability) = saving_throws.ability(&saving_throw_dc.key) {
-        let ability_scores =
-            systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, target);
-        d20_check.add_modifier(
-            ModifierSource::Ability(ability),
-            ability_scores.ability_modifier(&ability).total(),
-        );
-    }
-
-    let save_chance = d20_check.success_probability(
-        saving_throw_dc.dc.total() as u32,
-        systems::helpers::level(&game_state.world, target)
-            .unwrap()
-            .proficiency_bonus(),
-    );
-
-    let success_chance = (1.0 - save_chance) * 100.0;
-
-    ui.tooltip(|| {
-        ui.separator_with_text("Hit chance");
-
-        render_forced_outcome_or_advantage(ui, &d20_check, success_chance, true);
-
-        ui.separator();
-
-        ui.child_window("Difficulty Class")
-            .child_flags(
-                ChildFlags::ALWAYS_AUTO_RESIZE
-                    | ChildFlags::AUTO_RESIZE_X
-                    | ChildFlags::AUTO_RESIZE_Y
-                    | ChildFlags::BORDERS,
-            )
-            .size([0.0, 0.0])
-            .build(|| {
-                ui.separator_with_text("Difficulty Class");
-
-                TextSegments::new([
-                    ("Total:", TextKind::Details),
-                    (&format!("{}", saving_throw_dc.dc.total()), TextKind::Normal),
-                ])
-                .render(ui);
-
-                saving_throw_dc
-                    .dc
-                    .render_with_context(ui, ModifierSetRenderMode::List(1));
-            });
-
-        ui.child_window("Saving Throw")
-            .child_flags(
-                ChildFlags::ALWAYS_AUTO_RESIZE
-                    | ChildFlags::AUTO_RESIZE_X
-                    | ChildFlags::AUTO_RESIZE_Y
-                    | ChildFlags::BORDERS,
-            )
-            .size([0.0, 0.0])
-            .build(|| {
-                ui.separator_with_text("Saving Throw");
-
-                TextSegments::new([
-                    ("Total:", TextKind::Details),
-                    (
-                        &signed_value(&d20_check.modifiers().total()),
-                        TextKind::Normal,
-                    ),
-                ])
-                .render(ui);
-
-                d20_check
-                    .modifiers()
-                    .render_with_context(ui, ModifierSetRenderMode::List(1));
-            });
-    });
 }
 
 /// Applies click logic per TargetingKind. Mutates `action.targets`.
