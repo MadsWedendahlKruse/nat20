@@ -55,6 +55,14 @@ use crate::{
     windows::anchor::{AUTO_RESIZE, BOTTOM_CENTER, WindowManager},
 };
 
+/// Max number of actions (including variants) to show in the action bar before
+/// it starts scrolling. This is mostly just to prevent the action bar from
+/// getting too big and blocking the screen
+const MAX_ACTIONS: usize = 8;
+/// TODO: Just guessing the height here
+const ACTION_HEIGHT: f32 = 25.0;
+const ACTION_LIST_HEIGHT: f32 = MAX_ACTIONS as f32 * ACTION_HEIGHT;
+
 #[derive(Debug, Clone)]
 pub enum ActionBarState {
     Action {
@@ -307,6 +315,23 @@ fn render_actions(
         .build(|| {
             ui.separator_with_text("Actions");
 
+            render_actions_list(ui, game_state, entity, new_state, actions);
+        });
+}
+
+fn render_actions_list(
+    ui: &imgui::Ui,
+    game_state: &mut GameState,
+    entity: Entity,
+    new_state: &mut Option<ActionBarState>,
+    actions: &mut ActionMap,
+) {
+    ui.child_window("Actions")
+        .child_flags(
+            ChildFlags::ALWAYS_AUTO_RESIZE | ChildFlags::AUTO_RESIZE_X | ChildFlags::BORDERS,
+        )
+        .size([0.0, ACTION_LIST_HEIGHT])
+        .build(|| {
             for (action_id, contexts_and_costs) in actions {
                 // Don't render reactions
                 if matches!(

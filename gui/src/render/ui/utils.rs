@@ -61,7 +61,7 @@ pub fn roman_numeral(level: u8) -> &'static str {
 }
 
 // TODO: Look into using imgui::Selectable instead
-pub static SELECTED_BUTTON_COLOR: [f32; 4] = [0.25, 0.6, 1.0, 1.0];
+pub const SELECTED_BUTTON_COLOR: [f32; 4] = [0.25, 0.6, 1.0, 1.0];
 
 pub fn render_button_selectable(
     ui: &imgui::Ui,
@@ -96,7 +96,7 @@ where
         .fold(0.0, f32::max)
 }
 
-static DEFAULT_PADDING: [f32; 2] = [20.0, 5.0];
+const DEFAULT_PADDING: [f32; 2] = [20.0, 5.0];
 
 pub fn render_button_with_padding(ui: &imgui::Ui, label: &str, padding: [f32; 2]) -> bool {
     let text_size = ui.calc_text_size(label);
@@ -282,8 +282,8 @@ pub fn render_progress_bar<T: Display>(
     }
 }
 
-static COLOR_EMPTY: [f32; 4] = [0.4, 0.4, 0.4, 1.0];
-static COLOR_FULL: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+const COLOR_EMPTY: [f32; 4] = [0.4, 0.4, 0.4, 1.0];
+const COLOR_FULL: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 // TODO: Call this something else
 pub fn render_capacity_meter(ui: &imgui::Ui, label: &str, current: usize, max: usize) {
