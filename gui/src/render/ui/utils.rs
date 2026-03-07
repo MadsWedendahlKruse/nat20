@@ -303,3 +303,11 @@ pub fn render_capacity_meter(ui: &imgui::Ui, label: &str, current: usize, max: u
         color_token.pop();
     }
 }
+
+pub fn sign(value: &i32) -> &'static str {
+    if *value >= 0 { "+" } else { "-" }
+}
+
+pub fn signed_value(value: &i32) -> String {
+    format!("{}{}", sign(value), value.abs())
+}

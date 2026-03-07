@@ -3,7 +3,7 @@ use std::{cmp::max, collections::HashMap, fmt, hash::Hash};
 use hecs::{Entity, World};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
+use strum::{Display, IntoEnumIterator};
 
 use crate::{
     components::{
@@ -22,7 +22,7 @@ pub enum RollMode {
     Disadvantage,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdvantageType {
     Advantage,
@@ -76,7 +76,7 @@ impl AdvantageTracker {
 pub static D20_CRITICAL_SUCCESS: u8 = 20;
 pub static D20_CRITICAL_FAILURE: u8 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum D20CheckOutcome {
     Success,
@@ -125,6 +125,10 @@ impl D20Check {
 
     pub fn clear_forced_outcome(&mut self) {
         self.forced_outcome = None;
+    }
+
+    pub fn forced_outcome(&self) -> Option<&(ModifierSource, D20CheckOutcome)> {
+        self.forced_outcome.as_ref()
     }
 
     pub fn proficiency(&self) -> &Proficiency {
@@ -414,9 +418,13 @@ where
         self.get_mut(key).clear_forced_outcome();
     }
 
+    pub fn ability(&self, key: &K) -> Option<Ability> {
+        (self.ability_mapper)(key)
+    }
+
     pub fn check(&self, key: &K, world: &World, entity: Entity) -> D20CheckResult {
         let mut d20 = self.get(key).clone();
-        if let Some(ability) = (self.ability_mapper)(key) {
+        if let Some(ability) = self.ability(key) {
             let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
             d20.add_modifier(
                 ModifierSource::Ability(ability),

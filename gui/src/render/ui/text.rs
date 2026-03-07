@@ -55,6 +55,7 @@ pub enum TextKind {
     // General purpose text colors
     Green,
     Red,
+    Yellow,
 }
 
 impl TextKind {
@@ -73,6 +74,7 @@ impl TextKind {
             TextKind::Item(item_rarity) => item_rarity_color(item_rarity),
             TextKind::Green => [0.0, 1.0, 0.0, 1.0],
             TextKind::Red => [1.0, 0.0, 0.0, 1.0],
+            TextKind::Yellow => [1.0, 1.0, 0.0, 1.0],
         }
     }
 }

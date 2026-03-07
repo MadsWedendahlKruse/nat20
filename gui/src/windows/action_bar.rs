@@ -4,6 +4,7 @@ use hecs::Entity;
 use imgui::{ChildFlags, MouseButton};
 use nat20_core::{
     components::{
+        ability::AbilityScoreMap,
         actions::{
             action::{
                 ActionCondition, ActionContext, ActionKind, ActionMap, AttackRollFunction,
@@ -11,9 +12,9 @@ use nat20_core::{
             },
             targeting::{AreaShape, TargetInstance, TargetingContext, TargetingKind},
         },
-        d20::RollMode,
+        d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
         id::{ActionId, Name, ResourceId},
-        modifier::Modifiable,
+        modifier::{Modifiable, ModifierSource},
         resource::{RechargeRule, ResourceAmount, ResourceAmountMap, ResourceMap},
         saving_throw::SavingThrowSet,
         speed::Speed,
@@ -37,12 +38,15 @@ use crate::{
     render::{
         common::utils::RenderableMutWithContext,
         ui::{
-            components::{LOW_HEALTH_BG_COLOR, LOW_HEALTH_COLOR, SPEED_COLOR, SPEED_COLOR_BG},
+            components::{
+                LOW_HEALTH_BG_COLOR, LOW_HEALTH_COLOR, ModifierSetRenderMode, SPEED_COLOR,
+                SPEED_COLOR_BG,
+            },
             text::{TextKind, TextSegment, TextSegments},
             utils::{
                 ImguiRenderable, ImguiRenderableWithContext, ProgressBarColor,
                 render_button_disabled_conditionally, render_button_with_padding,
-                render_capacity_meter, render_progress_bar, roman_numeral,
+                render_capacity_meter, render_progress_bar, roman_numeral, signed_value,
             },
         },
         world::mesh::MeshRenderMode,
@@ -632,7 +636,9 @@ fn render_target_selection(
     action: &mut ActionData,
     potential_target: &mut Option<(TargetInstance, TargetPathFindingResult)>,
 ) {
-    ui.tooltip_text(action.action_id.to_string().as_str());
+    ui.tooltip(|| {
+        ui.separator_with_text(action.action_id.to_string());
+    });
 
     let targeting_context = systems::actions::targeting_context(
         &game_state.world,
@@ -674,8 +680,6 @@ fn render_target_selection(
         &hovered_target_instance,
     );
 
-    render_target_chance_tooltips(ui, game_state, action, &preview.potential_target_instance);
-
     let mut submit_action = apply_targeting_click_logic(
         ui,
         gui_state,
@@ -684,6 +688,8 @@ fn render_target_selection(
         &targeting_context,
         &preview.potential_target_instance,
     );
+
+    render_target_chance_tooltips(ui, game_state, action, &preview.potential_target_instance);
 
     // Confirm button can also trigger submit.
     let confirm_clicked = render_button_disabled_conditionally(
@@ -861,25 +867,168 @@ fn render_attack_hit_chance_tooltip(
     }
 
     let target_ac = systems::loadout::armor_class(&game_state.world, target);
+
+    let hit_chance =
+        attack_roll.hit_chance(&game_state.world, action.actor, target_ac.total() as u32) * 100.0;
+
     ui.tooltip(|| {
+        ui.separator_with_text("Hit chance");
+
+        render_forced_outcome_or_advantage(ui, &attack_roll.d20_check, hit_chance, false);
+
         ui.separator();
 
-        let hit_chance =
-            attack_roll.hit_chance(&game_state.world, action.actor, target_ac.total() as u32)
-                * 100.0;
+        ui.child_window("Attack Roll")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y
+                    | ChildFlags::BORDERS,
+            )
+            .size([0.0, 0.0])
+            .build(|| {
+                ui.separator_with_text("Attack Roll");
+                TextSegments::new([
+                    ("Total:", TextKind::Details),
+                    (
+                        &signed_value(&attack_roll.d20_check.modifiers().total()),
+                        TextKind::Normal,
+                    ),
+                ])
+                .render(ui);
 
-        let text_kind = match attack_roll.d20_check.advantage_tracker().roll_mode() {
-            RollMode::Normal => TextKind::Normal,
-            RollMode::Advantage => TextKind::Green,
-            RollMode::Disadvantage => TextKind::Red,
-        };
+                attack_roll
+                    .d20_check
+                    .modifiers()
+                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+            });
 
-        TextSegments::new(vec![
-            ("Hit chance:", TextKind::Normal),
-            (&format!("{:.0}%", hit_chance.floor()), text_kind),
-        ])
-        .render(ui);
+        ui.child_window("Armor Class")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y
+                    | ChildFlags::BORDERS,
+            )
+            .size([0.0, 0.0])
+            .build(|| {
+                ui.separator_with_text("Armor Class");
+
+                TextSegments::new([
+                    ("Total:", TextKind::Details),
+                    (&format!("{}", target_ac.total()), TextKind::Normal),
+                ])
+                .render(ui);
+
+                TextSegments::new(vec![
+                    (format!("{}", target_ac.base.0), TextKind::Normal),
+                    (format!("({})", target_ac.base.1), TextKind::Details),
+                ])
+                .with_indent(1)
+                .render(ui);
+
+                target_ac
+                    .modifiers
+                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+            });
     });
+}
+
+fn render_forced_outcome_or_advantage(
+    ui: &imgui::Ui,
+    d20_check: &D20Check,
+    hit_chance: f64,
+    reverse_text_color: bool,
+) {
+    if let Some((source, outcome)) = d20_check.forced_outcome() {
+        render_forced_outcome(ui, hit_chance, source, outcome, reverse_text_color);
+    } else {
+        render_advantage(ui, &d20_check, hit_chance, reverse_text_color);
+    }
+}
+
+fn render_advantage(
+    ui: &imgui::Ui,
+    d20_check: &D20Check,
+    hit_chance: f64,
+    reverse_text_color: bool,
+) {
+    TextSegment::new(
+        &format!("{:.0}%", hit_chance.floor()),
+        d20_roll_mode_text_kind(&d20_check, reverse_text_color),
+    )
+    .render(ui);
+
+    let mut advantage_text = Vec::new();
+    for (source, advantage_type) in d20_check.advantage_tracker().summary() {
+        let advantage_text_kind = match advantage_type {
+            AdvantageType::Advantage => TextKind::Green,
+            AdvantageType::Disadvantage => TextKind::Red,
+        };
+        if reverse_text_color {
+            advantage_text.push((
+                advantage_type.to_string(),
+                reverse_text_kind(advantage_text_kind),
+            ));
+        } else {
+            advantage_text.push((advantage_type.to_string(), advantage_text_kind));
+        }
+        advantage_text.push((source.to_string(), TextKind::Details))
+    }
+    TextSegments::new(advantage_text).render(ui);
+}
+
+fn d20_roll_mode_text_kind(d20_check: &D20Check, reverse_text_color: bool) -> TextKind {
+    let text_kind = match d20_check.advantage_tracker().roll_mode() {
+        RollMode::Normal => TextKind::Normal,
+        RollMode::Advantage => TextKind::Green,
+        RollMode::Disadvantage => TextKind::Red,
+    };
+
+    if reverse_text_color {
+        reverse_text_kind(text_kind)
+    } else {
+        text_kind
+    }
+}
+
+fn render_forced_outcome(
+    ui: &imgui::Ui,
+    hit_chance: f64,
+    source: &ModifierSource,
+    outcome: &D20CheckOutcome,
+    reverse_text_color: bool,
+) {
+    let text_kind = d20_outcome_text_kind(outcome, reverse_text_color);
+
+    TextSegment::new(&format!("{:.0}%", hit_chance.floor()), text_kind.clone()).render(ui);
+
+    TextSegments::new(vec![
+        (outcome.to_string(), text_kind),
+        (source.to_string(), TextKind::Details),
+    ])
+    .render(ui);
+}
+
+fn d20_outcome_text_kind(outcome: &D20CheckOutcome, reverse_text_color: bool) -> TextKind {
+    let text_kind = match outcome {
+        D20CheckOutcome::Success | D20CheckOutcome::CriticalSuccess => TextKind::Green,
+        D20CheckOutcome::Failure | D20CheckOutcome::CriticalFailure => TextKind::Red,
+    };
+
+    if reverse_text_color {
+        reverse_text_kind(text_kind)
+    } else {
+        text_kind
+    }
+}
+
+fn reverse_text_kind(text_kind: TextKind) -> TextKind {
+    match text_kind {
+        TextKind::Green => TextKind::Red,
+        TextKind::Red => TextKind::Green,
+        other => other,
+    }
 }
 
 fn render_save_success_chance_tooltip(
@@ -889,36 +1038,87 @@ fn render_save_success_chance_tooltip(
     target: Entity,
     saving_throw_fn: &Arc<SavingThrowFunction>,
 ) {
-    let dc = saving_throw_fn(&game_state.world, action.actor, &action.context);
+    let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor, &action.context);
     let saving_throws =
         systems::helpers::get_component::<SavingThrowSet>(&game_state.world, target);
-    let d20_check = saving_throws.get(&dc.key);
+    let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
+
+    for effect in systems::effects::effects(&game_state.world, target).values() {
+        if let Some(on_saving_throw) = effect.effect().on_saving_throw.get(&saving_throw_dc.key) {
+            (on_saving_throw.check_hook)(&game_state.world, target, &mut d20_check);
+        }
+    }
+    if let Some(ability) = saving_throws.ability(&saving_throw_dc.key) {
+        let ability_scores =
+            systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, target);
+        d20_check.add_modifier(
+            ModifierSource::Ability(ability),
+            ability_scores.ability_modifier(&ability).total(),
+        );
+    }
 
     let save_chance = d20_check.success_probability(
-        dc.dc.total() as u32,
+        saving_throw_dc.dc.total() as u32,
         systems::helpers::level(&game_state.world, target)
             .unwrap()
             .proficiency_bonus(),
     );
 
-    // Your variable name was success_chance but computed (1 - save_chance).
-    // Keeping behavior identical:
     let success_chance = (1.0 - save_chance) * 100.0;
 
     ui.tooltip(|| {
+        ui.separator_with_text("Hit chance");
+
+        render_forced_outcome_or_advantage(ui, &d20_check, success_chance, true);
+
         ui.separator();
 
-        let text_kind = match d20_check.advantage_tracker().roll_mode() {
-            RollMode::Normal => TextKind::Normal,
-            RollMode::Disadvantage => TextKind::Green, // good for us if target has disadvantage
-            RollMode::Advantage => TextKind::Red,
-        };
+        ui.child_window("Difficulty Class")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y
+                    | ChildFlags::BORDERS,
+            )
+            .size([0.0, 0.0])
+            .build(|| {
+                ui.separator_with_text("Difficulty Class");
 
-        TextSegment::new(
-            &format!("Success chance: {:.0}%", success_chance),
-            text_kind,
-        )
-        .render(ui);
+                TextSegments::new([
+                    ("Total:", TextKind::Details),
+                    (&format!("{}", saving_throw_dc.dc.total()), TextKind::Normal),
+                ])
+                .render(ui);
+
+                saving_throw_dc
+                    .dc
+                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+            });
+
+        ui.child_window("Saving Throw")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y
+                    | ChildFlags::BORDERS,
+            )
+            .size([0.0, 0.0])
+            .build(|| {
+                ui.separator_with_text("Saving Throw");
+
+                TextSegments::new([
+                    ("Total:", TextKind::Details),
+                    (
+                        &signed_value(&d20_check.modifiers().total()),
+                        TextKind::Normal,
+                    ),
+                ])
+                .render(ui);
+
+                d20_check
+                    .modifiers()
+                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+            });
     });
 }
 
@@ -987,7 +1187,6 @@ fn apply_targeting_click_logic(
 
             // Status tooltip
             ui.tooltip(|| {
-                ui.separator();
                 ui.text("Targets:");
                 ui.same_line();
                 render_capacity_meter(

@@ -57,7 +57,7 @@ use crate::{
         utils::{
             ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext,
             ProgressBarColor, render_progress_bar,
-            roman_numeral,
+            roman_numeral, signed_value,
         },
     },
     table_with_columns,
@@ -69,9 +69,7 @@ pub enum ModifierSetRenderMode {
     Hoverable,
 }
 
-fn sign(value: i32) -> &'static str {
-    if value >= 0 { "+" } else { "-" }
-}
+
 
 impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
     fn render_with_context(&self, ui: &imgui::Ui, mode: ModifierSetRenderMode) {
@@ -86,7 +84,7 @@ impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
                         continue;
                     }
                     segments.push((
-                        format!("{} {}", sign(*value), value.abs()),
+                        signed_value(value),
                         TextKind::Normal,
                     ));
                     segments.push((format!("({})", source), TextKind::Details));
@@ -100,7 +98,7 @@ impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
                         continue;
                     }
                     TextSegments::new(vec![
-                        (format!("{}{}", sign(*value), value.abs()), TextKind::Normal),
+                        (signed_value(value), TextKind::Normal),
                         (source.to_string(), TextKind::Details),
                     ])
                     .with_indent(indent_level)
@@ -109,8 +107,7 @@ impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
             }
 
             ModifierSetRenderMode::Hoverable => {
-                let total = format!("{}{}", sign(self.total()), self.total().abs());
-                ui.text(total);
+                ui.text(signed_value(&self.total()));
                 if self.is_empty() {
                     return;
                 }
@@ -255,7 +252,7 @@ impl ImguiRenderable for AbilityScore {
         TextSegments::new(vec![
             (format!("Total: {}", self.total()), TextKind::Normal),
             (
-                format!("(Modifier: {}{})", sign(modifier), modifier),
+                format!("(Modifier: {})", signed_value(&modifier)),
                 TextKind::Details,
             ),
         ])
@@ -314,7 +311,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for AbilityScoreMap {
                     let result = saving_throws.check(&saving_throw_kind, world, entity);
                     let modifiers = &result.modifier_breakdown;
                     let total = modifiers.total();
-                    ui.text(format!("Bonus: {}{}", sign(total), total.abs()));
+                    ui.text(format!("Bonus: {}", signed_value(&total)));
                     modifiers.render_with_context(ui, ModifierSetRenderMode::List(1));
                 });
             }
@@ -816,10 +813,8 @@ impl ImguiRenderable for ArmorClass {
                 ])
                 .render(ui);
                 self.dexterity_bonus.render(ui);
-                if !self.modifiers.is_empty() {
-                    self.modifiers
-                        .render_with_context(ui, ModifierSetRenderMode::List(1));
-                }
+                self.modifiers
+                    .render_with_context(ui, ModifierSetRenderMode::List(1));
             });
         }
     }
