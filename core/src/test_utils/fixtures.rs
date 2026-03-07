@@ -87,7 +87,7 @@ pub mod creatures {
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
-                9,
+                13,
                 vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
@@ -211,6 +211,34 @@ pub mod creatures {
                         2,
                     )])),
                     // Level 9
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    // Level 10
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    // Level 11
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    // Level 12
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Dexterity,
+                        2,
+                    )])),
+                    // Level 13
                     LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
                         "nat20_core",
                         "class.fighter",

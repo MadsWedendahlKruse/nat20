@@ -958,11 +958,31 @@ impl ScriptActionKindResultView {
         }
     }
 
-    pub fn has_critical_hit(&self) -> bool {
+    pub fn has_attack_hit(&self) -> bool {
         match self {
-            ScriptActionKindResultView::Standard(bundle) => bundle.has_critical_hit(),
+            ScriptActionKindResultView::Standard(bundle) => bundle.has_attack_hit(),
             ScriptActionKindResultView::Composite { actions } => {
-                actions.iter().any(|action| action.has_critical_hit())
+                actions.iter().any(|action| action.has_attack_hit())
+            }
+            ScriptActionKindResultView::Reaction => false,
+        }
+    }
+
+    pub fn has_attack_critical_hit(&self) -> bool {
+        match self {
+            ScriptActionKindResultView::Standard(bundle) => bundle.has_attack_critical_hit(),
+            ScriptActionKindResultView::Composite { actions } => actions
+                .iter()
+                .any(|action| action.has_attack_critical_hit()),
+            ScriptActionKindResultView::Reaction => false,
+        }
+    }
+
+    pub fn has_attack_miss(&self) -> bool {
+        match self {
+            ScriptActionKindResultView::Standard(bundle) => bundle.has_attack_miss(),
+            ScriptActionKindResultView::Composite { actions } => {
+                actions.iter().any(|action| action.has_attack_miss())
             }
             ScriptActionKindResultView::Reaction => false,
         }
@@ -1019,10 +1039,22 @@ impl ScriptActionOutcomeBundleView {
         self.damage.as_ref().expect("No damage outcome")
     }
 
-    pub fn has_critical_hit(&self) -> bool {
+    pub fn has_attack_hit(&self) -> bool {
+        self.damage
+            .as_ref()
+            .is_some_and(|damage| damage.kind.is_attack_roll_hit())
+    }
+
+    pub fn has_attack_critical_hit(&self) -> bool {
         self.damage
             .as_ref()
             .is_some_and(|damage| damage.kind.is_attack_roll_critical_hit())
+    }
+
+    pub fn has_attack_miss(&self) -> bool {
+        self.damage
+            .as_ref()
+            .is_some_and(|damage| damage.kind.is_attack_roll() && !damage.kind.is_attack_roll_hit())
     }
 }
 
@@ -1086,13 +1118,8 @@ impl ScriptDamageOutcomeView {
 #[derive(Clone)]
 pub enum ScriptDamageResolutionKindView {
     Unconditional,
-    AttackRoll {
-        is_hit: bool,
-        is_critical_hit: bool,
-    },
-    SavingThrow {
-        is_success: bool,
-    },
+    AttackRoll { is_hit: bool, is_critical_hit: bool },
+    SavingThrow { is_success: bool },
 }
 
 impl ScriptDamageResolutionKindView {
@@ -1328,54 +1355,62 @@ impl ScriptResourceView {
 impl_script_shared_methods!(ScriptResourceView, ResourceMap);
 impl_take_replace_world!(ScriptResourceView, ResourceMap);
 
-/// Snapshot of an entity for scripts to inspect.
 #[derive(Debug, Clone)]
-pub struct ScriptEffectApplication {
-    pub effect_id: EffectId,
-    pub lifetime: EffectLifetimeTemplate,
+pub enum ScriptGameCommand {
+    ApplyEffect {
+        applier: ScriptEntity,
+        target: ScriptEntity,
+        effect_id: EffectId,
+        lifetime: EffectLifetimeTemplate,
+    },
+    RemoveEffect {
+        target: ScriptEntity,
+        effect_id: EffectId,
+    },
 }
 
-#[derive(Debug, Clone)]
-pub struct ScriptEntityView {
-    pub entity: ScriptEntity,
-    pub resources: ScriptResourceView,
-    pub loadout: ScriptLoadoutView,
-    effect_applications: ScriptShared<Vec<ScriptEffectApplication>>,
+#[derive(Clone)]
+pub struct ScriptCommandBuffer {
+    pub inner: ScriptShared<Vec<ScriptGameCommand>>,
 }
 
-impl ScriptEntityView {
-    pub fn new_from_world(world: &World, entity: Entity) -> Self {
-        ScriptEntityView {
-            entity: ScriptEntity::from(entity),
-            resources: ScriptResourceView::new_from_world(world, entity),
-            loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
-            effect_applications: ScriptShared::new(Vec::new()),
+impl ScriptCommandBuffer {
+    pub fn new() -> Self {
+        Self {
+            inner: ScriptShared::new(Vec::new()),
         }
     }
 
-    pub fn take_from_world(world: &mut World, entity: Entity) -> Self {
-        ScriptEntityView {
-            entity: ScriptEntity::from(entity),
-            resources: ScriptResourceView::take_from_world(world, entity),
-            loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
-            effect_applications: ScriptShared::new_mut(Vec::new()),
+    pub fn new_mut() -> Self {
+        Self {
+            inner: ScriptShared::new_mut(Vec::new()),
         }
     }
 
-    pub fn replace_in_world(self, world: &mut World) {
-        let entity: Entity = self.entity.clone().into();
-        self.resources.replace_in_world(world, entity);
-    }
-
-    pub fn apply_effect(&mut self, effect_id: &EffectId) {
-        self.effect_applications.write().push(ScriptEffectApplication {
+    pub fn apply_effect(
+        &mut self,
+        applier: ScriptEntity,
+        target: ScriptEntity,
+        effect_id: &EffectId,
+    ) {
+        self.inner.write().push(ScriptGameCommand::ApplyEffect {
+            applier,
+            target,
             effect_id: effect_id.clone(),
             lifetime: EffectLifetimeTemplate::Permanent,
         });
     }
 
-    pub fn apply_effect_for_turns(&mut self, effect_id: &EffectId, turns: u32) {
-        self.effect_applications.write().push(ScriptEffectApplication {
+    pub fn apply_effect_for_turns(
+        &mut self,
+        applier: ScriptEntity,
+        target: ScriptEntity,
+        effect_id: &EffectId,
+        turns: u32,
+    ) {
+        self.inner.write().push(ScriptGameCommand::ApplyEffect {
+            applier,
+            target,
             effect_id: effect_id.clone(),
             lifetime: EffectLifetimeTemplate::TurnBoundary {
                 entity: EffectEntiyReference::Applier,
@@ -1385,8 +1420,45 @@ impl ScriptEntityView {
         });
     }
 
-    pub fn take_effect_applications(&mut self) -> Vec<ScriptEffectApplication> {
-        std::mem::take(&mut *self.effect_applications.write())
+    pub fn remove_effect(&mut self, target: ScriptEntity, effect_id: &EffectId) {
+        self.inner.write().push(ScriptGameCommand::RemoveEffect {
+            target,
+            effect_id: effect_id.clone(),
+        });
+    }
+
+    pub fn take_commands(&mut self) -> Vec<ScriptGameCommand> {
+        std::mem::take(&mut *self.inner.write())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScriptEntityView {
+    pub entity: ScriptEntity,
+    pub resources: ScriptResourceView,
+    pub loadout: ScriptLoadoutView,
+}
+
+impl ScriptEntityView {
+    pub fn new_from_world(world: &World, entity: Entity) -> Self {
+        ScriptEntityView {
+            entity: ScriptEntity::from(entity),
+            resources: ScriptResourceView::new_from_world(world, entity),
+            loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
+        }
+    }
+
+    pub fn take_from_world(world: &mut World, entity: Entity) -> Self {
+        ScriptEntityView {
+            entity: ScriptEntity::from(entity),
+            resources: ScriptResourceView::take_from_world(world, entity),
+            loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
+        }
+    }
+
+    pub fn replace_in_world(self, world: &mut World) {
+        let entity: Entity = self.entity.clone().into();
+        self.resources.replace_in_world(world, entity);
     }
 }
 

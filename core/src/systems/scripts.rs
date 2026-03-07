@@ -17,10 +17,11 @@ use crate::{
     registry::registry::ScriptsRegistry,
     scripts::{
         script_api::{
-            ScriptActionPerformedView, ScriptActionView, ScriptDamageMitigationResult,
-            ScriptDamageRollResult, ScriptEffectView, ScriptEntityRole, ScriptEntityView,
-            ScriptEventRef, ScriptOptionalEntityView, ScriptReactionBodyContext,
-            ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
+            ScriptActionPerformedView, ScriptActionView, ScriptCommandBuffer,
+            ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
+            ScriptEntityRole, ScriptEntityView, ScriptEventRef, ScriptOptionalEntityView,
+            ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
+            ScriptReactionTriggerContext,
         },
         script_engine::SCRIPT_ENGINES,
     },
@@ -137,6 +138,7 @@ pub fn evalute_action_result_hook(
     action_result_hook: &ScriptId,
     action_performed_view: &ScriptActionPerformedView,
     entity_view: &ScriptEntityView,
+    commands: &ScriptCommandBuffer,
 ) {
     let script = ScriptsRegistry::get(action_result_hook).expect(
         format!(
@@ -149,7 +151,7 @@ pub fn evalute_action_result_hook(
     let engine = engine_lock
         .get_mut(&script.language)
         .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_action_result_hook(script, action_performed_view, entity_view) {
+    match engine.evaluate_action_result_hook(script, action_performed_view, entity_view, commands) {
         Ok(()) => {}
         Err(err) => {
             error!(

@@ -49,7 +49,7 @@ pub fn attack_roll(
     }
 
     for effect in systems::effects::effects(world, target).values() {
-        (effect.effect().on_attacked)(world, target, attacker, &mut attack_roll);
+        (effect.effect().on_attacked)(world, target, attacker, effect, &mut attack_roll);
     }
 
     let mut result = {

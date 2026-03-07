@@ -849,9 +849,15 @@ fn render_attack_hit_chance_tooltip(
     for effect in systems::effects::effects(&game_state.world, action.actor).values() {
         (effect.effect().pre_attack_roll)(&game_state.world, action.actor, &mut attack_roll);
     }
-    // Effects on defender (your code used on_attacked)
+    // Effects on target
     for effect in systems::effects::effects(&game_state.world, target).values() {
-        (effect.effect().on_attacked)(&game_state.world, target, action.actor, &mut attack_roll);
+        (effect.effect().on_attacked)(
+            &game_state.world,
+            target,
+            action.actor,
+            effect,
+            &mut attack_roll,
+        );
     }
 
     let target_ac = systems::loadout::armor_class(&game_state.world, target);

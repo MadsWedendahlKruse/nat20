@@ -4,13 +4,13 @@ use crate::{
     components::id::ResourceId,
     scripts::script_api::{
         ScriptActionContext, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
-        ScriptActionPerformedView, ScriptActionResultView, ScriptActionView, ScriptD20CheckDCKind,
-        ScriptD20CheckView, ScriptD20Result, ScriptDamageMitigationResult, ScriptDamageOutcomeView,
-        ScriptDamageResolutionKindView, ScriptDamageRollResult, ScriptEffectView, ScriptEntity,
-        ScriptEntityView, ScriptEventRef, ScriptEventView, ScriptLoadoutView,
-        ScriptMovingOutOfReachView, ScriptOptionalEntityView, ScriptReactionBodyContext,
-        ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
-        ScriptResourceCost, ScriptResourceView, ScriptSavingThrow,
+        ScriptActionPerformedView, ScriptActionResultView, ScriptActionView, ScriptCommandBuffer,
+        ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result, ScriptDamageMitigationResult,
+        ScriptDamageOutcomeView, ScriptDamageResolutionKindView, ScriptDamageRollResult,
+        ScriptEffectView, ScriptEntity, ScriptEntityView, ScriptEventRef, ScriptEventView,
+        ScriptLoadoutView, ScriptMovingOutOfReachView, ScriptOptionalEntityView,
+        ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
+        ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView, ScriptSavingThrow,
     },
 };
 
@@ -119,11 +119,7 @@ impl CustomType for ScriptD20CheckView {
                     let bonus = if bonus.is_empty() {
                         None
                     } else {
-                        Some(
-                            bonus
-                                .parse()
-                                .expect("Failed to parse ScriptDiceRollBonus"),
-                        )
+                        Some(bonus.parse().expect("Failed to parse ScriptDiceRollBonus"))
                     };
                     s.reroll_result(bonus, force_use_new);
                 },
@@ -213,6 +209,12 @@ impl CustomType for ScriptActionView {
             .with_get("resource_cost", |s: &mut Self| s.resource_cost.clone())
             .with_fn("is_targetting_entity", |s: &mut Self, entity_id: u64| {
                 s.targets.iter().any(|t| t.id == entity_id)
+            })
+            .with_fn("targets", |s: &mut Self| {
+                s.targets
+                    .iter()
+                    .map(|t| Dynamic::from(t.id))
+                    .collect::<Vec<_>>()
             });
     }
 }
@@ -260,8 +262,12 @@ impl CustomType for ScriptActionOutcomeBundleView {
         builder
             .with_name("ActionOutcomeBundleView")
             .with_fn("has_damage", |s: &mut Self| s.has_damage())
-            .with_fn("has_critical_hit", |s: &mut Self| s.has_critical_hit())
-            .with_fn("get_damage", |s: &mut Self| s.get_damage().clone());
+            .with_fn("get_damage", |s: &mut Self| s.get_damage().clone())
+            .with_fn("has_attack_hit", |s: &mut Self| s.has_attack_hit())
+            .with_fn("has_attack_critical_hit", |s: &mut Self| {
+                s.has_attack_critical_hit()
+            })
+            .with_fn("has_attack_miss", |s: &mut Self| s.has_attack_miss());
     }
 }
 
@@ -295,6 +301,46 @@ impl CustomType for ScriptActionPerformedView {
                     .map(|value| Dynamic::from(value.clone()))
                     .collect::<Vec<_>>()
             });
+    }
+}
+
+impl CustomType for ScriptCommandBuffer {
+    fn build(mut builder: TypeBuilder<Self>) {
+        builder
+            .with_name("CommandBuffer")
+            .with_fn(
+                "apply_effect",
+                |s: &mut Self, applier_id: u64, target_id: u64, effect_id: String| {
+                    s.apply_effect(
+                        ScriptEntity { id: applier_id },
+                        ScriptEntity { id: target_id },
+                        &effect_id.parse().expect("Failed to parse EffectId"),
+                    );
+                },
+            )
+            .with_fn(
+                "apply_effect_for_turns",
+                |s: &mut Self, applier_id: u64, target_id: u64, effect_id: String, turns: i64| {
+                    if turns <= 0 {
+                        panic!("turns must be greater than 0");
+                    }
+                    s.apply_effect_for_turns(
+                        ScriptEntity { id: applier_id },
+                        ScriptEntity { id: target_id },
+                        &effect_id.parse().expect("Failed to parse EffectId"),
+                        turns as u32,
+                    );
+                },
+            )
+            .with_fn(
+                "remove_effect",
+                |s: &mut Self, target_id: u64, effect_id: String| {
+                    s.remove_effect(
+                        ScriptEntity { id: target_id },
+                        &effect_id.parse().expect("Failed to parse EffectId"),
+                    );
+                },
+            );
     }
 }
 
@@ -453,21 +499,6 @@ impl CustomType for ScriptEntityView {
                 "resources",
                 |s: &mut Self| s.resources.clone(),
                 |s: &mut Self, v: ScriptResourceView| s.resources = v,
-            )
-            .with_fn("apply_effect", |s: &mut Self, effect_id: String| {
-                s.apply_effect(&effect_id.parse().expect("Failed to parse EffectId"))
-            })
-            .with_fn(
-                "apply_effect_for_turns",
-                |s: &mut Self, effect_id: String, turns: i64| {
-                    if turns <= 0 {
-                        panic!("turns must be greater than 0");
-                    }
-                    s.apply_effect_for_turns(
-                        &effect_id.parse().expect("Failed to parse EffectId"),
-                        turns as u32,
-                    );
-                },
             );
     }
 }

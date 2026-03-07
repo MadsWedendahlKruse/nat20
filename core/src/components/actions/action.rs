@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Debug,
+    sync::Arc,
+};
 
 use hecs::{Entity, World};
 use serde::Deserialize;
@@ -632,7 +636,7 @@ impl ActionResult {
 }
 
 // TODO: Combine these two?
-pub type ActionMap = HashMap<ActionId, Vec<(ActionContext, ResourceAmountMap)>>;
+pub type ActionMap = BTreeMap<ActionId, Vec<(ActionContext, ResourceAmountMap)>>;
 
 pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
 

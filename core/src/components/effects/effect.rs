@@ -18,9 +18,9 @@ use crate::{
         },
         effects::hooks::{
             ActionHook, ActionResultHook, ApplyEffectHook, ArmorClassHook, AttackRollHook,
-            AttackRollResultHook, AttackedHook, D20CheckHooks, DamageRollHook, DamageRollResultHook,
-            DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
-            UnapplyEffectHook,
+            AttackRollResultHook, AttackedHook, D20CheckHooks, DamageRollHook,
+            DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
+            ResourceCostHook, UnapplyEffectHook,
         },
         id::{ActionId, EffectId, IdProvider},
         items::equipment::armor::ArmorClass,
@@ -160,7 +160,11 @@ impl Effect {
             post_attack_roll: Arc::new(|_: &World, _: Entity, _: &mut AttackRollResult| {})
                 as AttackRollResultHook,
             on_attacked: Arc::new(
-                |_: &World, _victim: Entity, _attacker: Entity, _: &mut AttackRoll| {},
+                |_: &World,
+                 _victim: Entity,
+                 _attacker: Entity,
+                 _: &EffectInstance,
+                 _: &mut AttackRoll| {},
             ) as AttackedHook,
             on_armor_class: Arc::new(|_: &World, _: Entity, _: &mut ArmorClass| {})
                 as ArmorClassHook,
@@ -169,9 +173,8 @@ impl Effect {
             post_damage_roll: Arc::new(|_: &World, _: Entity, _: &mut DamageRollResult| {})
                 as DamageRollResultHook,
             on_action: Arc::new(|_: &mut World, _: &ActionData| {}) as ActionHook,
-            on_action_result: Arc::new(
-                |_: &mut GameState, _: &ActionData, _: &[ActionResult]| {},
-            ) as ActionResultHook,
+            on_action_result: Arc::new(|_: &mut GameState, _: &ActionData, _: &[ActionResult]| {})
+                as ActionResultHook,
             on_resource_cost: Arc::new(
                 |_: &World,
                  _: Entity,

@@ -58,6 +58,9 @@
         "11": [
             "nat20_core::effect.fighter.two_extra_attacks"
         ],
+        "13": [
+            "nat20_core::effect.fighter.studied_attacks"
+        ],
         "20": [
             "nat20_core::effect.fighter.three_extra_attacks"
         ]

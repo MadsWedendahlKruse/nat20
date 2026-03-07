@@ -11,13 +11,13 @@ use crate::{
         script_api::{
             ScriptActionContext, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
             ScriptActionPerformedView, ScriptActionResultView, ScriptActionView,
-            ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result,
+            ScriptCommandBuffer, ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result,
             ScriptDamageMitigationResult, ScriptDamageOutcomeView, ScriptDamageResolutionKindView,
             ScriptDamageRollResult, ScriptEffectView, ScriptEntity, ScriptEntityView,
             ScriptEventView, ScriptLoadoutView, ScriptMovingOutOfReachView,
             ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
-            ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost,
-            ScriptResourceView, ScriptSavingThrow,
+            ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView,
+            ScriptSavingThrow,
         },
         script_engine::ScriptEngine,
     },
@@ -39,6 +39,7 @@ impl RhaiScriptEngine {
             .build_type::<ScriptActionKindResultView>()
             .build_type::<ScriptActionOutcomeBundleView>()
             .build_type::<ScriptActionPerformedView>()
+            .build_type::<ScriptCommandBuffer>()
             .build_type::<ScriptD20CheckDCKind>()
             .build_type::<ScriptD20CheckView>()
             .build_type::<ScriptD20Result>()
@@ -207,6 +208,7 @@ impl ScriptEngine for RhaiScriptEngine {
         script: &Script,
         action: &ScriptActionPerformedView,
         entity: &ScriptEntityView,
+        commands: &ScriptCommandBuffer,
     ) -> Result<(), ScriptError> {
         let ast = self.get_ast(script).cloned()?;
         let mut scope = Scope::new();
@@ -215,7 +217,7 @@ impl ScriptEngine for RhaiScriptEngine {
                 &mut scope,
                 &ast,
                 ScriptFunction::ActionResultHook.fn_name(),
-                (action.clone(), entity.clone()),
+                (action.clone(), entity.clone(), commands.clone()),
             )
             .map_err(|e| ScriptError::RuntimeError(format!("Rhai error: {}", e)))?;
 

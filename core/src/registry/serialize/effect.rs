@@ -12,13 +12,14 @@ use crate::{
         },
         d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
         damage::{
-            AttackRange, AttackRollTemplate, AttackSource, DamageMitigationEffect,
+            AttackRange, AttackRoll, AttackRollTemplate, AttackSource, DamageMitigationEffect,
             DamageMitigationResult, DamageResistances, DamageRollResult,
         },
         effects::{
             effect::{
                 Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
-                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
+                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetime,
+                EffectLifetimeTemplate,
             },
             hooks::{
                 ActionHook, ActionResultHook, ArmorClassHook, AttackRollHook, AttackedHook,
@@ -59,8 +60,9 @@ use crate::{
         script::ScriptFunction,
         script_api::{
             ScriptActionPerformedView, ScriptActionResultView, ScriptActionView,
-            ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
-            ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
+            ScriptCommandBuffer, ScriptDamageMitigationResult, ScriptDamageRollResult,
+            ScriptEffectView, ScriptEntityView, ScriptGameCommand, ScriptOptionalEntityView,
+            ScriptResourceCost,
         },
     },
     systems::{self, d20::D20CheckDCKind},
@@ -771,6 +773,8 @@ impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
 pub enum AttackedHookDefinition {
     Modifier {
         modifier: AttackRollModifier,
+        #[serde(default)]
+        attacked_by: Option<EffectEntiyReference>,
     },
     AutoCrit {
         auto_crit_distance: LengthExpressionDefinition,
@@ -780,24 +784,46 @@ pub enum AttackedHookDefinition {
 impl HookEffect<AttackedHook> for AttackedHookDefinition {
     fn build_hook(&self, effect: &EffectId) -> AttackedHook {
         match self {
-            AttackedHookDefinition::Modifier { modifier } => {
+            AttackedHookDefinition::Modifier {
+                modifier,
+                attacked_by,
+            } => {
                 let modifier_source = ModifierSource::Effect(effect.clone());
                 Arc::new({
                     let modifier = modifier.clone();
-                    move |_world, _victim, _attacker, attack_roll| match modifier {
-                        AttackRollModifier::FlatBonus(bonus) => {
-                            attack_roll
-                                .d20_check
-                                .add_modifier(modifier_source.clone(), bonus);
+                    let attacked_by = attacked_by.clone();
+                    move |_world: &World,
+                          _victim: Entity,
+                          attacker: Entity,
+                          effect: &EffectInstance,
+                          attack_roll: &mut AttackRoll| {
+                        if let Some(attacked_by) = attacked_by {
+                            // Only apply if the attacker matches the reference
+                            let attacker_matches = match attacked_by {
+                                EffectEntiyReference::Applier => effect.applier == Some(attacker),
+                                // Target reference doesn't make sense here?
+                                EffectEntiyReference::Target => false,
+                            };
+                            if !attacker_matches {
+                                return;
+                            }
                         }
-                        AttackRollModifier::Advantage(advantage) => {
-                            attack_roll
-                                .d20_check
-                                .advantage_tracker_mut()
-                                .add(advantage, modifier_source.clone());
-                        }
-                        AttackRollModifier::CritThreshold(threshold) => {
-                            attack_roll.reduce_crit_threshold(threshold);
+
+                        match modifier {
+                            AttackRollModifier::FlatBonus(bonus) => {
+                                attack_roll
+                                    .d20_check
+                                    .add_modifier(modifier_source.clone(), bonus);
+                            }
+                            AttackRollModifier::Advantage(advantage) => {
+                                attack_roll
+                                    .d20_check
+                                    .advantage_tracker_mut()
+                                    .add(advantage, modifier_source.clone());
+                            }
+                            AttackRollModifier::CritThreshold(threshold) => {
+                                attack_roll.reduce_crit_threshold(threshold);
+                            }
                         }
                     }
                 })
@@ -810,14 +836,19 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                     move |world: &World,
                           victim: Entity,
                           attacker: Entity,
-                          attack_roll: &mut crate::components::damage::AttackRoll| {
-                        let distance = distance_expression
-                            .evaluate_without_variables().unwrap();
+                          effect: &EffectInstance,
+                          attack_roll: &mut AttackRoll| {
+                        let distance = distance_expression.evaluate_without_variables().unwrap();
 
-                        let distance_between = systems::geometry::distance_between_entities(world, victim, attacker).unwrap();
+                        let distance_between =
+                            systems::geometry::distance_between_entities(world, victim, attacker)
+                                .unwrap();
 
                         if distance_between <= distance {
-                            attack_roll.d20_check.set_forced_outcome(ModifierSource::Effect(effect_id.clone()), D20CheckOutcome::CriticalSuccess);
+                            attack_roll.d20_check.set_forced_outcome(
+                                ModifierSource::Effect(effect_id.clone()),
+                                D20CheckOutcome::CriticalSuccess,
+                            );
                         }
                     },
                 )
@@ -826,9 +857,9 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
     }
 
     fn combine_hooks(hooks: Vec<AttackedHook>) -> AttackedHook {
-        Arc::new(move |world, victim, attacker, attack_roll| {
+        Arc::new(move |world, victim, attacker, effect, attack_roll| {
             for hook in &hooks {
-                hook(world, victim, attacker, attack_roll);
+                hook(world, victim, attacker, effect, attack_roll);
             }
         })
     }
@@ -1015,18 +1046,18 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                             script_results,
                         );
 
-                        let mut entity_view = ScriptEntityView::take_from_world(
+                        let entity_view = ScriptEntityView::take_from_world(
                             &mut game_state.world,
                             action_data.actor,
                         );
+                        let mut commands = ScriptCommandBuffer::new_mut();
 
                         systems::scripts::evalute_action_result_hook(
                             &script_id,
                             &action_performed_view,
                             &entity_view,
+                            &commands,
                         );
-
-                        let effect_applications = entity_view.take_effect_applications();
 
                         let action_resolution = if let Some(result) = results.first()
                             && let ActionKindResult::Standard(outcome) = &result.kind
@@ -1037,36 +1068,48 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                             ActionConditionResolution::Unconditional
                         };
 
-                        for application in effect_applications {
-                            // TODO: Do we need to check this?
-                            // let already_has_effect =
-                            //     systems::effects::effects(&game_state.world, action_data.actor)
-                            //         .values()
-                            //         .any(|instance| instance.effect_id == application.effect_id);
+                        // TODO: Feels like this code should live somewhere else
+                        for command in commands.take_commands() {
+                            match command {
+                                ScriptGameCommand::ApplyEffect {
+                                    applier,
+                                    target,
+                                    effect_id,
+                                    lifetime,
+                                } => {
+                                    let applier_entity: Entity = applier.into();
+                                    let target_entity: Entity = target.into();
 
-                            // if already_has_effect {
-                            //     continue;
-                            // }
+                                    game_state.process_event(Event::new(EventKind::GainedEffect {
+                                        entity: target_entity,
+                                        effect: effect_id.clone(),
+                                    }));
 
-                            // TODO: Consider if there's a way to include this in the action result?
-                            game_state.process_event(Event::new(EventKind::GainedEffect {
-                                entity: action_data.actor,
-                                effect: application.effect_id.clone(),
-                            }));
+                                    systems::effects::add_effect_template(
+                                        game_state,
+                                        applier_entity,
+                                        target_entity,
+                                        ModifierSource::Action(action_data.action_id.clone()),
+                                        &EffectInstanceTemplate {
+                                            effect_id,
+                                            lifetime,
+                                            end_condition: None,
+                                        },
+                                        Some(&action_data.context),
+                                        action_resolution.clone(),
+                                    );
+                                }
 
-                            systems::effects::add_effect_template(
-                                game_state,
-                                action_data.actor,
-                                action_data.actor,
-                                ModifierSource::Action(action_data.action_id.clone()),
-                                &EffectInstanceTemplate {
-                                    effect_id: application.effect_id,
-                                    lifetime: application.lifetime,
-                                    end_condition: None,
-                                },
-                                Some(&action_data.context),
-                                action_resolution.clone(),
-                            );
+                                ScriptGameCommand::RemoveEffect { target, effect_id } => {
+                                    let target_entity: Entity = target.into();
+
+                                    systems::effects::remove_effects_by_id(
+                                        game_state,
+                                        target_entity,
+                                        &effect_id,
+                                    );
+                                }
+                            }
                         }
 
                         entity_view.replace_in_world(&mut game_state.world);

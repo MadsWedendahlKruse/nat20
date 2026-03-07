@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.fighter.studied_attacks",
+    "kind": "buff",
+    "description": "You study your opponents and learn from each attack you make. If you make an attack roll against a creature and miss, you have Advantage on your next attack roll against that creature before the end of your next turn.",
+    "on_action_result": [
+        {
+            "script": "nat20_core::script.effect.fighter.studied_attacks"
+        }
+    ]
+}

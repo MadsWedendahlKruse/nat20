@@ -9,9 +9,10 @@ use crate::scripts::{
     rhai::rhai_engine::RhaiScriptEngine,
     script::{Script, ScriptError, ScriptLanguage},
     script_api::{
-        ScriptActionPerformedView, ScriptActionView, ScriptDamageMitigationResult,
-        ScriptDamageRollResult, ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView,
-        ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionTriggerContext,
+        ScriptActionPerformedView, ScriptActionView, ScriptCommandBuffer,
+        ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView, ScriptEntityView,
+        ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
+        ScriptReactionTriggerContext,
     },
 };
 
@@ -72,6 +73,7 @@ pub trait ScriptEngine {
         script: &Script,
         action: &ScriptActionPerformedView,
         entity: &ScriptEntityView,
+        commands: &ScriptCommandBuffer,
     ) -> Result<(), ScriptError>;
 
     /// Execute an armor class hook, returning the modifier to apply.

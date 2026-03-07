@@ -23,15 +23,15 @@ pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 pub type AttackRollHook = Arc<dyn Fn(&World, Entity, &mut AttackRoll) + Send + Sync>;
 pub type AttackRollResultHook = Arc<dyn Fn(&World, Entity, &mut AttackRollResult) + Send + Sync>;
 /// Hook for when an entity is attacked. Parameters are: world, victim, attacker, attack roll result.
-pub type AttackedHook = Arc<dyn Fn(&World, Entity, Entity, &mut AttackRoll) + Send + Sync>;
+pub type AttackedHook =
+    Arc<dyn Fn(&World, Entity, Entity, &EffectInstance, &mut AttackRoll) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&World, Entity, &mut ArmorClass) + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&World, Entity, &mut D20Check) + Send + Sync>;
 pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + Send + Sync>;
 pub type DamageRollHook = Arc<dyn Fn(&World, Entity, &mut DamageRoll) + Send + Sync>;
 pub type DamageRollResultHook = Arc<dyn Fn(&World, Entity, &mut DamageRollResult) + Send + Sync>;
 pub type ActionHook = Arc<dyn Fn(&mut World, &ActionData) + Send + Sync>;
-pub type ActionResultHook =
-    Arc<dyn Fn(&mut GameState, &ActionData, &[ActionResult]) + Send + Sync>;
+pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &[ActionResult]) + Send + Sync>;
 pub type ResourceCostHook =
     Arc<dyn Fn(&World, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync>;
 pub type PreDamageMitigationHook =

@@ -1,0 +1,12 @@
+{
+    "id": "nat20_core::effect.fighter.studied_attacks_advantage",
+    "kind": "debuff",
+    "description": "Your oppoenent has advantage on their next attack roll against you before the end of their next turn.",
+    "_todo": "Make it only apply for one attack",
+    "on_attacked": [
+        {
+            "modifier": "advantage",
+            "attacked_by": "applier"
+        }
+    ]
+}
