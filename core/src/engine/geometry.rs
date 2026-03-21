@@ -337,6 +337,41 @@ impl WorldPath {
         self.points.last().cloned()
     }
 
+    /// Insert the given points into the path and return a new path along with the
+    /// indices of the inserted points in the new path. The inserted points must lie
+    /// on the path and must be in the order they appear on the path.
+    pub fn insert_points(&self, new_points: &[Point3<f32>]) -> (Self, Vec<usize>) {
+        if new_points.is_empty() {
+            return (self.clone(), Vec::new());
+        }
+
+        let mut updated_points = Vec::new();
+        let mut new_point_indices = Vec::new();
+        let mut new_point_iter = new_points.iter().peekable();
+
+        for i in 0..(self.points.len() - 1) {
+            let segment_start = self.points[i];
+            let segment_end = self.points[i + 1];
+            updated_points.push(segment_start);
+
+            while let Some(new_point) = new_point_iter.peek() {
+                if Self::is_point_on_segment(new_point, &segment_start, &segment_end) {
+                    updated_points.push(**new_point);
+                    new_point_indices.push(updated_points.len() - 1);
+                    new_point_iter.next();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if let Some(last_point) = self.points.last() {
+            updated_points.push(*last_point);
+        }
+
+        (Self::new(updated_points), new_point_indices)
+    }
+
     /// Splits the path into multiple paths at the specified split points.
     /// The split points must lie on the path and must be sorted in the order
     /// they appear on the path.

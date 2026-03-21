@@ -8,15 +8,13 @@ use parry3d::{
     shape::{Ball, Capsule, Shape},
 };
 use polyanya::Coords;
-use tracing::trace;
-use uom::si::{f32::Length, f64::V, length::meter};
+use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::species::CreatureSize,
-    engine::{
-        encounter::EncounterId,
-        geometry::{WorldGeometry, WorldPath},
-    },
+    engine::
+        geometry::{WorldGeometry, WorldPath}
+    ,
 };
 
 pub static EPSILON: f32 = 1e-4;

@@ -6,6 +6,7 @@ use tracing::{debug, error, info};
 
 use crate::{
     components::{
+        activity_state::ActivityState,
         health::hit_points::HitPoints,
         resource::RechargeRule,
         time::{EntityClock, TimeMode, TimeStep},

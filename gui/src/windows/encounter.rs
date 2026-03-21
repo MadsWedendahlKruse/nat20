@@ -194,8 +194,11 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
         {
             let ai_decision = systems::ai::decide_action(game_state, prompt, self.current_entity());
             if let Some(path) = ai_decision.path {
-                let result = game_state
-                    .submit_movement(self.current_entity(), *path.taken_path.end().unwrap());
+                let result = game_state.submit_movement(
+                    self.current_entity(),
+                    *path.taken_path.end().unwrap(),
+                    None,
+                );
                 info!("AI movement submitted: {:?}", result);
                 if let Ok(()) = result {
                     gui_state.path_cache.insert(ai_decision.actor, path);

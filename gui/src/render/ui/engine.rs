@@ -41,9 +41,7 @@ impl From<usize> for LogLevel {
 pub fn event_log_level(event: &Event) -> LogLevel {
     match &event.kind {
         EventKind::Encounter(encounter_event) => LogLevel::Info,
-        EventKind::MovementRequested { .. }
-        | EventKind::MovingOutOfReach { .. }
-        | EventKind::MovementPerformed { .. } => LogLevel::Debug,
+        EventKind::MovingOutOfReach { .. } => LogLevel::Debug,
         EventKind::ActionRequested { .. } => LogLevel::Info,
         EventKind::ReactionRequested { .. } => LogLevel::Info,
         EventKind::ActionPerformed { .. } => LogLevel::Info,
@@ -81,14 +79,6 @@ pub fn render_action_description(ui: &imgui::Ui, action: &ActionData, world: &Wo
 
 pub fn render_event_description(ui: &imgui::Ui, event: &Event, world: &World) {
     match &event.kind {
-        EventKind::MovementRequested { entity, .. } => {
-            let entity_name = systems::helpers::get_component::<Name>(world, *entity).to_string();
-            TextSegments::new(vec![
-                (entity_name, TextKind::Actor),
-                ("moving".to_string(), TextKind::Normal),
-            ])
-            .render(ui);
-        }
         EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
             render_action_description(ui, action, world);
         }
@@ -177,33 +167,6 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     ui.separator_with_text(format!("Round {}", round));
                 }
             },
-            EventKind::MovementRequested { entity, path } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
-                TextSegments::new(vec![
-                    (entity_name, TextKind::Actor),
-                    ("is moving to".to_string(), TextKind::Normal),
-                    (
-                        format!(
-                            "({:.1}, {:.1}, {:.1})",
-                            path.end().unwrap().x,
-                            path.end().unwrap().y,
-                            path.end().unwrap().z
-                        ),
-                        TextKind::Target,
-                    ),
-                ])
-                .render(ui);
-
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        ui.text("Movement Path:");
-                        for point in &path.points {
-                            ui.text(format!("({:.1}, {:.1}, {:.1})", point.x, point.y, point.z));
-                        }
-                    });
-                }
-            }
             EventKind::MovingOutOfReach {
                 mover,
                 entity,
@@ -216,24 +179,6 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     (mover_name, TextKind::Actor),
                     ("is moving out of reach of".to_string(), TextKind::Normal),
                     (entity_name, TextKind::Target),
-                ])
-                .render(ui);
-            }
-            EventKind::MovementPerformed { entity, path, .. } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
-                TextSegments::new(vec![
-                    (entity_name, TextKind::Actor),
-                    ("moved to".to_string(), TextKind::Normal),
-                    (
-                        format!(
-                            "({:.1}, {:.1}, {:.1})",
-                            path.end().unwrap().x,
-                            path.end().unwrap().y,
-                            path.end().unwrap().z
-                        ),
-                        TextKind::Target,
-                    ),
                 ])
                 .render(ui);
             }

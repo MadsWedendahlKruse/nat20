@@ -21,7 +21,6 @@ pub struct InteractionSession {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
     pending_events: EventQueue, // paused due to reactions
-    pending_movement_events: HashMap<Entity, EventQueue>, // paused due to movement reactions
 }
 
 impl InteractionSession {
@@ -116,32 +115,6 @@ impl InteractionSession {
         } else {
             false
         }
-    }
-
-    pub fn queue_movement_event(&mut self, event: Event, front: bool) {
-        if let Some(actor) = event.actor() {
-            let queue = self
-                .pending_movement_events
-                .entry(actor)
-                .or_insert_with(VecDeque::new);
-            if front {
-                queue.push_front(event);
-            } else {
-                queue.push_back(event);
-            }
-        }
-    }
-
-    pub fn pop_movement_event(&mut self, actor: Entity) -> Option<Event> {
-        if let Some(queue) = self.pending_movement_events.get_mut(&actor) {
-            queue.pop_front()
-        } else {
-            None
-        }
-    }
-
-    pub fn clear_movement_events(&mut self, actor: Entity) {
-        self.pending_movement_events.remove(&actor);
     }
 }
 

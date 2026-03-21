@@ -1,8 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 use hecs::{Entity, World};
 use parry3d::{na::Point3, shape::Ball};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, warn};
+use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
@@ -10,6 +14,8 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
+        activity_state::ActivityState,
+        speed::Speed,
         time::{TimeMode, TimeStep},
     },
     engine::{
@@ -142,6 +148,7 @@ impl GameState {
         &mut self,
         entity: Entity,
         goal: Point3<f32>,
+        action: Option<ActionDecision>,
     ) -> Result<(), MovementError> {
         if let Some(encounter_id) = self.in_combat.get(&entity) {
             if let Some(encounter) = self.encounters.get_mut(encounter_id) {
@@ -164,6 +171,12 @@ impl GameState {
             self.in_combat.contains_key(&entity),
             false,
         )?;
+
+        if systems::helpers::get_component::<Speed>(&self.world, entity).remaining_movement()
+            <= Length::new::<meter>(0.0)
+        {
+            return Err(MovementError::InsufficientSpeed);
+        }
 
         let potential_reactors = self.get_potential_reactors(entity);
 
@@ -190,53 +203,19 @@ impl GameState {
             .map(|(attacker, attack_point)| (*attacker, attack_point.clone()))
             .unzip();
 
-        // Split the path into segments at the points where opportunity attacks
-        // would be triggered.
-        //
-        // Each step along the path consists of:
-        // 1. Move along the current path segment
-        // 2. If there are more segments, trigger an opportunity attack and wait
-        //    for it to resolve before moving on to the next segment
-        let paths = path.taken_path.split_at_points(attack_points);
-        for (i, path_segment) in paths.iter().enumerate() {
-            let is_final_segment = i == paths.len() - 1;
+        let (final_path, attack_indices) = path.taken_path.insert_points(&attack_points);
+        let opportunity_attacks: HashMap<usize, Entity> = attack_indices
+            .into_iter()
+            .zip(attackers.into_iter())
+            .collect();
 
-            // Step 1: Move
-            let mut events = vec![Event::new(EventKind::MovementRequested {
-                entity,
-                path: path_segment.clone(),
-            })];
-
-            // Step 2: Trigger opportunity attack if there is another segment
-            if !is_final_segment {
-                events.push(Event::new(EventKind::MovingOutOfReach {
-                    mover: entity,
-                    entity: attackers[i],
-                    continue_movement: true,
-                }));
-            }
-
-            // Make sure all events are present in the queue before processing
-            // the first movement event, otherwise it won't trigger the rest of
-            // the queue, since it's not populated yet
-            for event in events {
-                self.session_for_entity_mut(entity)
-                    .queue_movement_event(event, false);
-            }
-        }
-
-        self.process_next_movement_event(entity);
+        systems::helpers::get_component_mut::<ActivityState>(&mut self.world, entity).set_moving(
+            final_path,
+            opportunity_attacks,
+            action,
+        );
 
         Ok(())
-    }
-
-    fn process_next_movement_event(&mut self, entity: Entity) {
-        if let Some(movement_event) = self
-            .session_for_entity_mut(entity)
-            .pop_movement_event(entity)
-        {
-            self.process_event(movement_event);
-        }
     }
 
     fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
@@ -607,34 +586,17 @@ impl GameState {
     // TODO: Maybe this function should live in the events
     fn advance_event(&mut self, event: Event, process_pending_events: bool) {
         match &event.kind {
-            EventKind::MovementRequested { entity, path, .. } => {
-                if let Some(end) = path.end() {
-                    let in_combat = self.in_combat.contains_key(entity);
-                    let _ = systems::movement::path(
-                        self, *entity, end, false, true, in_combat, in_combat,
-                    );
-                }
-
-                self.process_event(Event::new(EventKind::MovementPerformed {
-                    entity: *entity,
-                    path: path.clone(),
-                }));
-            }
-
-            EventKind::MovementPerformed { entity, .. } => {
-                self.process_next_movement_event(*entity);
-            }
-
             EventKind::MovingOutOfReach {
                 mover,
                 continue_movement,
                 ..
             } => {
+                let mut state =
+                    systems::helpers::get_component_mut::<ActivityState>(&mut self.world, *mover);
                 if *continue_movement {
-                    self.process_next_movement_event(*mover);
+                    state.resume();
                 } else {
-                    self.session_for_entity_mut(*mover)
-                        .clear_movement_events(*mover);
+                    state.set_idle();
                 }
             }
 
@@ -798,6 +760,14 @@ impl GameState {
         let entities = self.world.iter().map(|e| e.entity()).collect::<Vec<_>>();
         for entity in entities {
             systems::time::advance_time(self, entity, time_step);
+            // TODO: Not entirely sure where to place this
+            // TODO: Very hacky
+            let world = unsafe { &mut *(&mut self.world as *mut World) };
+            let events = systems::helpers::get_component_mut::<ActivityState>(world, entity)
+                .update(self, entity, delta_time);
+            for event in events {
+                self.process_event(event);
+            }
         }
     }
 }

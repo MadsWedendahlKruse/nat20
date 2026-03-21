@@ -6,6 +6,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionCooldownMap, ActionMap, default_actions},
+        activity_state::ActivityState,
         ai::PlayerControlledTag,
         damage::DamageResistances,
         effects::effect::EffectsMap,
@@ -44,6 +45,7 @@ from_world!(
         pub brain: AIControllerId,
         pub pose: CreaturePose,
         pub time: EntityClock,
+        pub activity_state: ActivityState,
         pub name: Name,
         pub species: SpeciesId,
         pub subspecies: Option<SubspeciesId>,
@@ -81,6 +83,7 @@ impl Character {
             brain: registry::ai::RANDOM_CONTROLLER_ID.clone(),
             pose: CreaturePose::identity(),
             time: EntityClock::new(),
+            activity_state: ActivityState::default(),
             name,
             species: SpeciesId::new("nat20_core", ""),
             subspecies: None,

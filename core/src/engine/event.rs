@@ -60,9 +60,7 @@ impl Event {
 
     pub fn actor(&self) -> Option<Entity> {
         match &self.kind {
-            EventKind::MovementRequested { entity, .. } => Some(*entity),
             EventKind::MovingOutOfReach { mover, .. } => Some(*mover),
-            EventKind::MovementPerformed { entity, .. } => Some(*entity),
             EventKind::ActionRequested { action } => Some(action.actor),
             EventKind::ActionPerformed { action, .. } => Some(action.actor),
             // TODO: What to do here? Multiple reactors?
@@ -132,14 +130,6 @@ impl Event {
 pub enum EventKind {
     Encounter(EncounterEvent),
 
-    MovementRequested {
-        entity: Entity,
-        path: WorldPath,
-    },
-    MovementPerformed {
-        entity: Entity,
-        path: WorldPath,
-    },
     MovingOutOfReach {
         mover: Entity,
         entity: Entity,

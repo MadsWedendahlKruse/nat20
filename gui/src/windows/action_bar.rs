@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path, sync::Arc};
 
 use hecs::Entity;
 use imgui::{ChildFlags, MouseButton};
@@ -83,6 +83,7 @@ pub enum ActionBarState {
 
 pub struct MovementPreview {
     pub prev_target_point: Option<Point3<f32>>,
+    pub prev_entity_position: Option<Point3<f32>>,
     pub path_result: Option<PathResult>,
     pub opportunity_attacks: Vec<(Entity, Point3<f32>)>,
 }
@@ -91,6 +92,7 @@ impl MovementPreview {
     pub fn new() -> Self {
         Self {
             prev_target_point: None,
+            prev_entity_position: None,
             path_result: None,
             opportunity_attacks: Vec::new(),
         }
@@ -146,7 +148,11 @@ impl ActionBarWindow {
 
         if matches!(closest.kind, RaycastHitKind::World) {
             if let Some(prev_target_point) = self.movement_preview.prev_target_point {
-                if closest.poi != prev_target_point {
+                let entity_position =
+                    systems::geometry::get_foot_position(&game_state.world, self.entity).unwrap();
+                if closest.poi != prev_target_point
+                    || self.movement_preview.prev_entity_position != Some(entity_position)
+                {
                     let in_combat = game_state.in_combat.contains_key(&self.entity);
                     if let Ok(path_result) = systems::movement::path(
                         game_state,
@@ -197,7 +203,7 @@ impl ActionBarWindow {
             }
 
             if ui.is_mouse_clicked(MouseButton::Left) {
-                let movement_result = game_state.submit_movement(self.entity, closest.poi);
+                let movement_result = game_state.submit_movement(self.entity, closest.poi, None);
 
                 match movement_result {
                     Ok(_) => {}
@@ -704,6 +710,9 @@ fn render_target_selection(
         potential_target,
         &hovered_target_instance,
     );
+    let potential_target = &preview
+        .as_ref()
+        .map(|preview| preview.target_instance.clone());
 
     let mut submit_action = apply_targeting_click_logic(
         ui,
@@ -711,10 +720,10 @@ fn render_target_selection(
         game_state,
         action,
         &targeting_context,
-        &preview.potential_target_instance,
+        potential_target,
     );
 
-    render_target_chance_tooltips(ui, game_state, action, &preview.potential_target_instance);
+    render_target_chance_tooltips(ui, game_state, action, potential_target);
 
     // Confirm button can also trigger submit.
     let confirm_clicked = render_button_disabled_conditionally(
@@ -729,7 +738,11 @@ fn render_target_selection(
     }
 
     if submit_action {
-        submit_action_decision(game_state, action);
+        submit_action_decision(
+            game_state,
+            action,
+            &preview.map(|preview| preview.path_to_target).flatten(),
+        );
     }
 
     // Footer handles cancel / right-click cancel etc.
@@ -763,11 +776,12 @@ fn clear_targeting_path_preview(gui_state: &mut GuiState, actor: Entity) {
 
 /// Result of preview computation for the current frame.
 struct TargetPreviewResult {
-    potential_target_instance: Option<TargetInstance>,
+    target_instance: TargetInstance,
+    path_to_target: Option<PathResult>,
 }
 
 /// Computes + renders the targeting preview. Also includes the “move-into-range on click” behavior
-/// you currently have (left click while path reaches goal triggers submit_movement).
+/// (left click while path reaches goal triggers submit_movement).
 fn compute_and_render_target_preview(
     ui: &imgui::Ui,
     gui_state: &mut GuiState,
@@ -776,29 +790,23 @@ fn compute_and_render_target_preview(
     targeting_context: &TargetingContext,
     potential_target: &mut Option<(TargetInstance, TargetPathFindingResult)>,
     hovered_target_instance: &TargetInstance,
-) -> TargetPreviewResult {
+) -> Option<TargetPreviewResult> {
     // If we don't render target preview for this targeting kind, then don't treat hover as selectable.
     if !should_render_target_preview(targeting_context) {
         clear_targeting_path_preview(gui_state, action.actor);
-        return TargetPreviewResult {
-            potential_target_instance: None,
-        };
+        return None;
     }
 
     // Require potential_target cache to exist and match the current hovered instance.
     let Some((cached_target, path_result)) = potential_target.as_mut() else {
         clear_targeting_path_preview(gui_state, action.actor);
-        return TargetPreviewResult {
-            potential_target_instance: None,
-        };
+        return None;
     };
 
     if cached_target != hovered_target_instance {
         // Stale cache; wait for update_potential_target to recompute next frame.
         clear_targeting_path_preview(gui_state, action.actor);
-        return TargetPreviewResult {
-            potential_target_instance: None,
-        };
+        return None;
     }
 
     let (preview_position, path_to_target) =
@@ -814,20 +822,10 @@ fn compute_and_render_target_preview(
         cached_target,
     );
 
-    // Preserve your behavior: if out of range, clicking can move into range.
-    if ui.is_mouse_clicked(MouseButton::Left) {
-        if let Some(path_to_target) = &path_to_target {
-            if path_to_target.reaches_goal() {
-                if let Some(end) = path_to_target.taken_path.end() {
-                    let _ = game_state.submit_movement(action.actor, *end);
-                }
-            }
-        }
-    }
-
-    TargetPreviewResult {
-        potential_target_instance: Some(cached_target.clone()),
-    }
+    Some(TargetPreviewResult {
+        target_instance: cached_target.clone(),
+        path_to_target,
+    })
 }
 
 /// Renders “hit chance” or “success chance” tooltips depending on action condition.
@@ -1290,7 +1288,11 @@ fn highlight_entities_in_area(
     }
 }
 
-fn submit_action_decision(game_state: &mut GameState, action: &ActionData) {
+fn submit_action_decision(
+    game_state: &mut GameState,
+    action: &ActionData,
+    path_to_target: &Option<PathResult>,
+) {
     let response_to = if let Some(prompt) = game_state.next_prompt_entity(action.actor)
         && prompt.actors().contains(&action.actor)
     {
@@ -1304,16 +1306,26 @@ fn submit_action_decision(game_state: &mut GameState, action: &ActionData) {
         action: action.clone(),
     };
 
-    let result = if let Some(response_to) = response_to {
-        game_state.submit_decision(ActionDecision {
+    let decision = if let Some(response_to) = response_to {
+        ActionDecision {
             response_to,
             kind: action_kind,
-        })
+        }
     } else {
-        game_state.submit_decision(ActionDecision::without_response_to(action_kind))
+        ActionDecision::without_response_to(action_kind)
     };
 
-    info!("Submitted action decision: {:#?}", result);
+    if let Some(path_to_target) = path_to_target {
+        let result = game_state.submit_movement(
+            action.actor,
+            *path_to_target.taken_path.end().unwrap(),
+            Some(decision),
+        );
+        info!("Submitted movement with action decision: {:#?}", result);
+    } else {
+        let result = game_state.submit_decision(decision);
+        info!("Submitted action decision: {:#?}", result);
+    }
 }
 
 /// Handles Cancel button + right-click cancel rules and state transition back to Actions.

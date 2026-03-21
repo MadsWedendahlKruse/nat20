@@ -227,7 +227,7 @@ pub fn render_progress_bar<T: Display>(
     units: Option<&str>,
     progress_bar_color: Option<ProgressBarColor>,
 ) {
-    let mut text = format!("{} / {}", current, max);
+    let mut text = format!("{:.2} / {:.2}", current, max);
     if let Some(temp) = temp_bonus {
         text = format!("{} (+{})", text, temp);
     }

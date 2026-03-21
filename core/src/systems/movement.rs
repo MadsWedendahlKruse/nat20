@@ -5,12 +5,14 @@ use parry3d::{
     query::{Ray, RayCast},
     shape::Ball,
 };
-use tracing::trace;
+use tracing::{debug, trace};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
         actions::targeting::{TargetInstance, TargetingError},
+        id::ResourceId,
+        resource::{ResourceAmount, ResourceAmountMap},
         speed::Speed,
     },
     engine::{

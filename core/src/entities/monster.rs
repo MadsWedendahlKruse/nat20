@@ -4,6 +4,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionCooldownMap, ActionMap, default_actions},
+        activity_state::ActivityState,
         damage::DamageResistances,
         effects::effect::EffectsMap,
         faction::FactionSet,
@@ -37,6 +38,7 @@ from_world!(
         pub brain: AIControllerId,
         pub pose: CreaturePose,
         pub time: EntityClock,
+        pub activity_state: ActivityState,
         pub challenge_rating: ChallengeRating,
         pub hit_points: HitPoints,
         pub life_state: LifeState,
@@ -79,6 +81,7 @@ impl Monster {
             brain,
             pose: CreaturePose::default(),
             time: EntityClock::new(),
+            activity_state: ActivityState::default(),
             challenge_rating,
             hit_points,
             life_state: LifeState::Normal,
