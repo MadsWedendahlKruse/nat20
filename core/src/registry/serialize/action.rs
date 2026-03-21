@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{Action, ActionCondition, ActionKind, ActionPayload, DamageOnFailure},
-        id::{ActionId, ScriptId},
+        id::ActionId,
         resource::{RechargeRule, ResourceAmountMap},
     },
     registry::{
@@ -14,10 +14,60 @@ use crate::{
             effect::EffectInstanceDefinition,
             reaction::{ReactionBody, ReactionTrigger},
             targeting::TargetingDefinition,
+            timeline::ActionTimelineDefinition,
         },
     },
     scripts::script::ScriptFunction,
 };
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ActionDefinition {
+    pub id: ActionId,
+    pub description: String,
+    pub kind: ActionKindDefinition,
+    pub targeting: TargetingDefinition,
+    /// e.g. Action, Bonus Action, Reaction
+    pub resource_cost: ResourceAmountMap,
+    /// Optional cooldown for the action
+    #[serde(default)]
+    pub cooldown: Option<RechargeRule>,
+    #[serde(default)]
+    pub reaction_trigger: Option<ReactionTrigger>,
+    #[serde(default)]
+    pub timeline: Option<ActionTimelineDefinition>,
+}
+
+impl RegistryReferenceCollector for ActionDefinition {
+    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
+        self.kind.collect_registry_references(collector);
+        for resource in self.resource_cost.keys() {
+            collector.add(RegistryReference::Resource(resource.clone()));
+        }
+        if let Some(reaction_trigger) = &self.reaction_trigger
+            && let Some(script_id) = &reaction_trigger.script
+        {
+            collector.add(RegistryReference::Script(
+                script_id.clone(),
+                ScriptFunction::ReactionTrigger,
+            ));
+        }
+    }
+}
+
+impl From<ActionDefinition> for Action {
+    fn from(value: ActionDefinition) -> Self {
+        Action {
+            id: value.id,
+            description: value.description,
+            kind: value.kind.into(),
+            resource_cost: value.resource_cost,
+            targeting: value.targeting.function(),
+            cooldown: value.cooldown,
+            reaction_trigger: value.reaction_trigger.map(|trigger| trigger.function),
+            timeline: value.timeline.map(|timeline_def| timeline_def.into()),
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -158,53 +208,6 @@ impl RegistryReferenceCollector for ActionKindDefinition {
                     ));
                 }
             }
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ActionDefinition {
-    pub id: ActionId,
-    pub description: String,
-    pub kind: ActionKindDefinition,
-    pub targeting: TargetingDefinition,
-    /// e.g. Action, Bonus Action, Reaction
-    pub resource_cost: ResourceAmountMap,
-    /// Optional cooldown for the action
-    #[serde(default)]
-    pub cooldown: Option<RechargeRule>,
-    // TODO: How to handle reaction triggers in serialization?
-    #[serde(default)]
-    pub reaction_trigger: Option<ReactionTrigger>,
-}
-
-impl RegistryReferenceCollector for ActionDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        self.kind.collect_registry_references(collector);
-        for resource in self.resource_cost.keys() {
-            collector.add(RegistryReference::Resource(resource.clone()));
-        }
-        if let Some(reaction_trigger) = &self.reaction_trigger
-            && let Some(script_id) = &reaction_trigger.script
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::ReactionTrigger,
-            ));
-        }
-    }
-}
-
-impl From<ActionDefinition> for Action {
-    fn from(value: ActionDefinition) -> Self {
-        Action {
-            id: value.id,
-            description: value.description,
-            kind: value.kind.into(),
-            resource_cost: value.resource_cost,
-            targeting: value.targeting.function(),
-            cooldown: value.cooldown,
-            reaction_trigger: value.reaction_trigger.map(|trigger| trigger.function),
         }
     }
 }

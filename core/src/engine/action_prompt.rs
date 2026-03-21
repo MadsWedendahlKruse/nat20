@@ -226,6 +226,15 @@ impl ActionDecision {
     pub fn actor(&self) -> Entity {
         self.kind.actor()
     }
+
+    pub fn action_id(&self) -> Option<ActionId> {
+        match &self.kind {
+            ActionDecisionKind::Action { action } => Some(action.action_id.clone()),
+            ActionDecisionKind::Reaction { choice, .. } => {
+                choice.as_ref().map(|c| c.reaction_id.clone())
+            }
+        }
+    }
 }
 
 pub type ActionExecutionInstanceId = Uuid;

@@ -42,15 +42,17 @@ impl SpawnPredefinedWindow {
             &ConfigBuilder::default().build(),
         ));
 
+        // TODO: For some reason not allowed to store the levels alongside the spawners
         let spawners = vec![
             fixtures::creatures::heroes::fighter,
             fixtures::creatures::heroes::wizard,
             fixtures::creatures::heroes::warlock,
             fixtures::creatures::monsters::goblin_warrior,
         ];
+        let levels = vec![13, 5, 5, 1];
 
-        for spawner in spawners {
-            let entity = spawner(&mut game_state).id();
+        for (spawner, levels) in spawners.iter().zip(levels) {
+            let entity = spawner(&mut game_state, levels).id();
             info!("Spawned predefined entity: {:?}", entity);
             // Ensure all resources are fully recharged
             systems::time::on_rest_end(&mut game_state.world, &[entity], &RestKind::Long);

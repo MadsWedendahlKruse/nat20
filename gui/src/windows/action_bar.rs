@@ -12,6 +12,7 @@ use nat20_core::{
             },
             targeting::{AreaShape, TargetInstance, TargetingContext, TargetingKind},
         },
+        activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
         id::{ActionId, Name, ResourceId},
         modifier::{Modifiable, ModifierSource},
@@ -203,7 +204,10 @@ impl ActionBarWindow {
             }
 
             if ui.is_mouse_clicked(MouseButton::Left) {
-                let movement_result = game_state.submit_movement(self.entity, closest.poi, None);
+                let movement_result = game_state.submit_activity(Activity::Move {
+                    entity: self.entity,
+                    goal: closest.poi,
+                });
 
                 match movement_result {
                     Ok(_) => {}
@@ -1315,17 +1319,16 @@ fn submit_action_decision(
         ActionDecision::without_response_to(action_kind)
     };
 
-    if let Some(path_to_target) = path_to_target {
-        let result = game_state.submit_movement(
-            action.actor,
-            *path_to_target.taken_path.end().unwrap(),
-            Some(decision),
-        );
-        info!("Submitted movement with action decision: {:#?}", result);
+    let activity = if let Some(path_to_target) = path_to_target {
+        Activity::MoveAndAct {
+            goal: *path_to_target.taken_path.end().unwrap(),
+            action: decision,
+        }
     } else {
-        let result = game_state.submit_decision(decision);
-        info!("Submitted action decision: {:#?}", result);
-    }
+        Activity::Act { action: decision }
+    };
+    let result = game_state.submit_activity(activity);
+    info!("Submitted activity with result: {:#?}", result);
 }
 
 /// Handles Cancel button + right-click cancel rules and state transition back to Actions.

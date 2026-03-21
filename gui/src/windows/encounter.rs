@@ -192,25 +192,11 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
             && let Some(prompt) = &game_state.next_promt_encounter(self.id()).cloned()
             && prompt.kind.actors().contains(&self.current_entity())
         {
-            let ai_decision = systems::ai::decide_action(game_state, prompt, self.current_entity());
-            if let Some(path) = ai_decision.path {
-                let result = game_state.submit_movement(
-                    self.current_entity(),
-                    *path.taken_path.end().unwrap(),
-                    None,
-                );
-                info!("AI movement submitted: {:?}", result);
-                if let Ok(()) = result {
-                    gui_state.path_cache.insert(ai_decision.actor, path);
-                }
-            }
-            if let Some(action_decision) = ai_decision.decision {
-                let result = game_state.submit_decision(action_decision);
-                info!("AI decision submitted: {:?}", result);
-                if result.is_err() {
-                    warn!("Failed to submit AI decision, skipping turn.");
-                    self.end_turn(game_state, ai_decision.actor);
-                }
+            let ai_decision =
+                systems::ai::decide_activity(game_state, prompt, self.current_entity());
+            if let Some(activity) = ai_decision {
+                let result = game_state.submit_activity(activity);
+                info!("AI submitted activity: {:?}", result);
             } else {
                 self.end_turn(game_state, self.current_entity());
             }

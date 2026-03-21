@@ -1,6 +1,6 @@
 pub mod ability;
 pub mod actions;
-pub mod activity_state;
+pub mod activity;
 pub mod ai;
 pub mod background;
 pub mod class;

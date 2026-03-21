@@ -2,14 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        id::{ScriptId, SpellId},
+        id::SpellId,
         resource::ResourceAmountMap,
         spells::spell::{MagicSchool, Spell, SpellFlag},
     },
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
-            action::ActionKindDefinition, reaction::ReactionTrigger, targeting::TargetingDefinition,
+            action::ActionKindDefinition, reaction::ReactionTrigger,
+            targeting::TargetingDefinition, timeline::ActionTimelineDefinition,
         },
     },
     scripts::script::ScriptFunction,
@@ -37,6 +38,8 @@ pub struct SpellDefinition {
     /// an enemy marked by the original spell.
     #[serde(default)]
     pub granted_spells: Vec<(SpellId, u8)>,
+    #[serde(default)]
+    pub timeline: Option<ActionTimelineDefinition>,
 }
 
 impl From<SpellDefinition> for Spell {
@@ -52,6 +55,7 @@ impl From<SpellDefinition> for Spell {
             value.targeting.function(),
             value.reaction_trigger.map(|trigger| trigger.function),
             value.granted_spells,
+            value.timeline.map(|timeline_def| timeline_def.into()),
         )
     }
 }

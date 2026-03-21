@@ -80,14 +80,14 @@ pub mod creatures {
             );
         }
 
-        pub fn fighter(game_state: &mut GameState) -> EntityIdentifier {
+        pub fn fighter(game_state: &mut GameState, levels: u8) -> EntityIdentifier {
             let name = Name::new("Johnny Fighter");
             let character = Character::new(name.clone());
             let entity = game_state.world.spawn(character);
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
-                13,
+                levels,
                 vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
@@ -264,14 +264,14 @@ pub mod creatures {
             EntityIdentifier::new(entity, name)
         }
 
-        pub fn wizard(game_state: &mut GameState) -> EntityIdentifier {
+        pub fn wizard(game_state: &mut GameState, levels: u8) -> EntityIdentifier {
             let name = Name::new("Jimmy Wizard");
             let character = Character::new(name.clone());
             let entity = game_state.world.spawn(character);
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
-                5,
+                levels,
                 vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
@@ -403,14 +403,14 @@ pub mod creatures {
             EntityIdentifier::new(entity, name)
         }
 
-        pub fn warlock(game_state: &mut GameState) -> EntityIdentifier {
+        pub fn warlock(game_state: &mut GameState, levels: u8) -> EntityIdentifier {
             let name = Name::new("Bobby Warlock");
             let character = Character::new(name.clone());
             let entity = game_state.world.spawn(character);
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
-                5,
+                levels,
                 vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
@@ -550,12 +550,15 @@ pub mod creatures {
 
         use super::*;
 
-        pub fn goblin_warrior(game_state: &mut GameState) -> EntityIdentifier {
+        pub fn goblin_warrior(
+            game_state: &mut GameState,
+            challenge_rating: u8,
+        ) -> EntityIdentifier {
             let name = Name::new("Goblin Warrior");
             let monster = Monster::new(
                 name.clone(),
                 registry::ai::RANDOM_CONTROLLER_ID.clone(),
-                ChallengeRating::new(1),
+                ChallengeRating::new(challenge_rating),
                 HitPoints::new(10),
                 CreatureSize::Small,
                 CreatureType::Fey,

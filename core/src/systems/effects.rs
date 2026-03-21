@@ -38,7 +38,7 @@ pub fn add_effect_template(
         template.instantiate(applier, target, source, action_resolution);
 
     debug!(
-        "Instantiated effect instances from template\n{:#?} ->\n{:#?}",
+        "Instantiated effect instances from template {:?} -> {:?}",
         template, effect_instances
     );
 

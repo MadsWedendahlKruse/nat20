@@ -2,11 +2,8 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::action::ActionKind,
-        ai::{AIDecision, PlayerControlledTag},
-        effects::effect::EffectKind,
-        faction::Attitude,
-        id::AIControllerId,
+        actions::action::ActionKind, activity::Activity, ai::PlayerControlledTag,
+        effects::effect::EffectKind, faction::Attitude, id::AIControllerId,
     },
     engine::{action_prompt::ActionPrompt, game_state::GameState},
     registry::{self},
@@ -17,11 +14,11 @@ pub fn is_player_controlled(world: &World, entity: Entity) -> bool {
     world.get::<&PlayerControlledTag>(entity).is_ok()
 }
 
-pub fn decide_action(
+pub fn decide_activity(
     game_state: &mut GameState,
     prompt: &ActionPrompt,
     actor: Entity,
-) -> AIDecision {
+) -> Option<Activity> {
     let controller_id =
         systems::helpers::get_component_clone::<AIControllerId>(&game_state.world, actor);
 

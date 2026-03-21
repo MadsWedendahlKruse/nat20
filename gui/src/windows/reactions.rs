@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use hecs::Entity;
 use nat20_core::{
-    components::id::Name,
+    components::{activity::Activity, id::Name},
     engine::{
         action_prompt::{ActionDecision, ActionDecisionKind, ActionPromptId, ReactionData},
         event::Event,
@@ -165,12 +165,15 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
 
                     if button_clicked && let Some(reactor) = entity {
                         info!("Submitting reaction decision for reactor {:?}...", reactor);
-                        let result = game_state.submit_decision(ActionDecision {
-                            response_to: *prompt_id,
-                            kind: ActionDecisionKind::Reaction {
-                                event: event.clone(),
-                                reactor: *reactor,
-                                choice,
+
+                        let result = game_state.submit_activity(Activity::Act {
+                            action: ActionDecision {
+                                response_to: *prompt_id,
+                                kind: ActionDecisionKind::Reaction {
+                                    event: event.clone(),
+                                    reactor: *reactor,
+                                    choice,
+                                },
                             },
                         });
                         match result {

@@ -6,7 +6,8 @@ use rand::seq::{IndexedRandom, IteratorRandom};
 use crate::{
     components::{
         actions::targeting::{TargetInstance, TargetingKind},
-        ai::{AIController, AIDecision},
+        activity::Activity,
+        ai::AIController,
         id::AIControllerId,
     },
     engine::{
@@ -37,7 +38,7 @@ impl AIController for RandomController {
         game_state: &mut GameState,
         prompt: &ActionPrompt,
         actor: Entity,
-    ) -> AIDecision {
+    ) -> Option<Activity> {
         let rng = &mut rand::rng();
 
         // TODO: Validation that it's the actor's turn?
@@ -49,7 +50,7 @@ impl AIController for RandomController {
                 // Pick a random action
                 if actions.is_empty() {
                     // TODO: End turn?
-                    return AIDecision::empty(*actor);
+                    return None;
                 }
 
                 if let Some(action_id) = actions.keys().choose(rng)
@@ -87,7 +88,7 @@ impl AIController for RandomController {
                             })
                             .collect::<Vec<Entity>>()
                     } else {
-                        return AIDecision::empty(*actor);
+                        return None;
                     };
 
                     match targeting.kind {
@@ -132,57 +133,59 @@ impl AIController for RandomController {
                             .collect(),
                     );
 
-                    let path = match systems::movement::path_to_target(game_state, &action, true) {
+                    match systems::movement::path_to_target(game_state, &action, true) {
                         Ok(result) => match result {
                             TargetPathFindingResult::AlreadyInRange => {
-                                // Nothing to do
-                                None
+                                return Some(Activity::Act {
+                                    action: ActionDecision {
+                                        response_to: prompt.id,
+                                        kind: ActionDecisionKind::Action { action },
+                                    },
+                                });
                             }
-                            TargetPathFindingResult::PathFound(path_result) => Some(path_result),
+
+                            TargetPathFindingResult::PathFound(path_result) => {
+                                return Some(Activity::MoveAndAct {
+                                    goal: path_result.taken_path.end().unwrap().clone(),
+                                    action: ActionDecision {
+                                        response_to: prompt.id,
+                                        kind: ActionDecisionKind::Action { action },
+                                    },
+                                });
+                            }
                         },
                         Err(error) => {
                             // TODO: Not sure what to do here for AI
-                            return AIDecision::empty(*actor);
+                            return None;
                         }
                     };
-
-                    return AIDecision {
-                        actor: *actor,
-                        decision: Some(ActionDecision {
-                            response_to: prompt.id,
-                            kind: ActionDecisionKind::Action { action },
-                        }),
-                        path,
-                    };
                 } else {
-                    AIDecision::empty(*actor)
+                    None
                 }
             }
 
             ActionPromptKind::Reactions { event, options } => {
                 if let Some(options_for_actor) = options.get(&actor) {
                     if options_for_actor.is_empty() {
-                        return AIDecision::empty(actor);
+                        return None;
                     }
 
                     if let Some(choice) = options_for_actor.iter().choose(rng) {
-                        return AIDecision {
-                            actor,
-                            decision: Some(ActionDecision {
+                        return Some(Activity::Act {
+                            action: ActionDecision {
                                 response_to: prompt.id,
                                 kind: ActionDecisionKind::Reaction {
                                     reactor: actor,
                                     event: event.clone(),
                                     choice: Some(choice.clone()),
                                 },
-                            }),
-                            path: None,
-                        };
+                            },
+                        });
                     } else {
-                        return AIDecision::empty(actor);
+                        return None;
                     }
                 } else {
-                    return AIDecision::empty(actor);
+                    return None;
                 }
             }
         }

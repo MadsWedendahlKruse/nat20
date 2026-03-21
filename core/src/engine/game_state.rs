@@ -14,7 +14,7 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
-        activity_state::ActivityState,
+        activity::{Activity, ActivityError, ActivityState},
         speed::Speed,
         time::{TimeMode, TimeStep},
     },
@@ -144,7 +144,28 @@ impl GameState {
         }
     }
 
-    pub fn submit_movement(
+    pub fn submit_activity(&mut self, activity: Activity) -> Result<(), ActivityError> {
+        match activity {
+            Activity::Move { entity, goal } => {
+                self.submit_movement(entity, goal, None)
+                    .map_err(|e| ActivityError::MovementError(e))?;
+            }
+            Activity::Act { action } => {
+                systems::helpers::get_component_mut::<ActivityState>(
+                    &mut self.world,
+                    action.actor(),
+                )
+                .set_acting(action);
+            }
+            Activity::MoveAndAct { goal, action } => {
+                self.submit_movement(action.actor(), goal, Some(action))
+                    .map_err(|e| ActivityError::MovementError(e))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn submit_movement(
         &mut self,
         entity: Entity,
         goal: Point3<f32>,
@@ -250,7 +271,10 @@ impl GameState {
         self.next_prompt(self.scope_for_entity(entity))
     }
 
-    pub fn submit_decision(&mut self, mut decision: ActionDecision) -> Result<(), ActionError> {
+    pub(crate) fn submit_decision(
+        &mut self,
+        mut decision: ActionDecision,
+    ) -> Result<(), ActionError> {
         let scope = self.scope_for_entity(decision.actor());
 
         // Avoid double mutable borrow

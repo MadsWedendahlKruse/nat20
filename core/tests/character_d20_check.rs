@@ -52,7 +52,7 @@ mod tests {
         // Default character is level 0, meaning it has no proficieny bonus, so
         // if we want to test that we need a character with at least one level.
         // Easiest way is to use one of the fixtures.
-        let entity = fixtures::creatures::heroes::wizard(&mut game_state).id();
+        let entity = fixtures::creatures::heroes::wizard(&mut game_state, 5).id();
 
         systems::helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity)
             .set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));
@@ -78,7 +78,7 @@ mod tests {
         // Default character is level 0, meaning it has no proficieny bonus, so
         // if we want to test that we need a character with at least one level.
         // Easiest way is to use one of the fixtures.
-        let entity = fixtures::creatures::heroes::wizard(&mut game_state).id();
+        let entity = fixtures::creatures::heroes::wizard(&mut game_state, 5).id();
 
         systems::helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity)
             .set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));

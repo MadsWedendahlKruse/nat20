@@ -14,5 +14,14 @@
     "targeting": "melee_weapon_targeting",
     "resource_cost": {
         "nat20_core::resource.action": 1
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "events": [
+            [
+                0.5,
+                "submit_action"
+            ]
+        ]
     }
 }

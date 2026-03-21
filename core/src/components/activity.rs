@@ -1,21 +1,44 @@
 use std::collections::HashMap;
 
 use hecs::Entity;
+use parry3d::na::Point3;
 use tracing::{debug, warn};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
-    components::speed::Speed,
+    components::{actions::action::ActionTimelineEvent, speed::Speed},
     engine::{
-        action_prompt::ActionDecision,
+        action_prompt::{ActionDecision, ActionError},
         event::{Event, EventKind},
         game_state::GameState,
         geometry::WorldPath,
     },
-    systems::{self},
+    systems::{self, movement::MovementError},
 };
 
 const MOVEMENT_SPEED: f32 = 5.0; // [m/s]
+
+// TODO: Should these two enums live here?
+#[derive(Debug, Clone)]
+pub enum Activity {
+    Move {
+        entity: Entity,
+        goal: Point3<f32>,
+    },
+    Act {
+        action: ActionDecision,
+    },
+    MoveAndAct {
+        goal: Point3<f32>,
+        action: ActionDecision,
+    },
+}
+
+#[derive(Debug)]
+pub enum ActivityError {
+    MovementError(MovementError),
+    ActionError(ActionError),
+}
 
 #[derive(Debug, Clone)]
 pub enum ActivityState {
@@ -32,7 +55,11 @@ pub enum ActivityState {
         paused: bool,
     },
     Acting {
-        action: ActionDecision,
+        action: Option<ActionDecision>,
+        total_duration: f32,
+        elapsed_time: f32,
+        events: Vec<(f32, ActionTimelineEvent)>,
+        paused: bool,
     },
 }
 
@@ -98,9 +125,7 @@ impl ActivityState {
                         debug!("Entity {:?} reached destination {:?}", entity, target_point);
 
                         if let Some(action_decision) = action.take() {
-                            *self = Self::Acting {
-                                action: action_decision,
-                            };
+                            self.set_acting(action_decision);
                         } else {
                             *self = Self::Idle;
                         }
@@ -108,9 +133,49 @@ impl ActivityState {
                 }
             }
 
-            Self::Acting { action } => {
-                game_state.submit_decision(action.clone());
-                *self = Self::Idle;
+            Self::Acting {
+                action,
+                total_duration,
+                elapsed_time,
+                events: timeline_events,
+                paused,
+            } => {
+                if *paused {
+                    return events;
+                }
+
+                if *total_duration == 0.0 {
+                    // Instant action, execute immediately
+                    if let Some(action) = action.take() {
+                        game_state.submit_decision(action);
+                    }
+                    *self = Self::Idle;
+                    return events;
+                }
+
+                *elapsed_time += delta_time;
+
+                timeline_events.retain(|(event_time, event)| {
+                    if *event_time <= *elapsed_time {
+                        match event {
+                            ActionTimelineEvent::SubmitAction => {
+                                if let Some(action) = action.take() {
+                                    game_state.submit_decision(action);
+                                } else {
+                                    warn!("Timeline event triggered {:?} but no action decision found", event);
+                                }
+                            }
+                            ActionTimelineEvent::SpawnProjectile {} => todo!(),
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
+
+                if *elapsed_time >= *total_duration {
+                    *self = Self::Idle;
+                }
             }
         }
 
@@ -118,6 +183,7 @@ impl ActivityState {
     }
 
     pub fn set_idle(&mut self) {
+        debug!("Setting entity to idle");
         *self = Self::Idle;
     }
 
@@ -138,11 +204,30 @@ impl ActivityState {
         };
     }
 
-    pub fn resume(&mut self) {
-        if let Self::Moving { paused, .. } = self {
-            *paused = false;
+    pub fn set_acting(&mut self, action: ActionDecision) {
+        debug!("Setting entity to perform action {:?}", action);
+
+        let (total_duration, events) = if let Some(action_id) = action.action_id()
+            && let Some(action) = systems::actions::get_action(&action_id)
+            && let Some(timeline) = &action.timeline
+        {
+            (timeline.total_duration, timeline.events.clone())
         } else {
-            warn!("Attempted to resume movement for an entity that is not moving");
+            (0.0, Vec::new())
+        };
+
+        *self = Self::Acting {
+            action: Some(action),
+            total_duration,
+            elapsed_time: 0.0,
+            events,
+            paused: false,
+        };
+    }
+
+    pub fn resume(&mut self) {
+        if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
+            *paused = false;
         }
     }
 }

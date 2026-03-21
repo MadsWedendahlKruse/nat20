@@ -6,7 +6,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionCooldownMap, ActionMap, default_actions},
-        activity_state::ActivityState,
+        activity::ActivityState,
         ai::PlayerControlledTag,
         damage::DamageResistances,
         effects::effect::EffectsMap,

@@ -59,6 +59,9 @@ pub struct Action {
     pub cooldown: Option<RechargeRule>,
     /// If the action is a reaction, this will describe what triggers the reaction.
     pub reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
+    /// Timeline describing the sequence of events that occur when performing the
+    /// action, which can be used to synchronize animations and other visual effects.
+    pub timeline: Option<ActionTimeline>,
 }
 
 impl Action {
@@ -633,6 +636,20 @@ impl ActionResult {
             kind,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ActionTimeline {
+    pub total_duration: f32,
+    pub events: Vec<(f32, ActionTimelineEvent)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ActionTimelineEvent {
+    SubmitAction,
+    SpawnProjectile {
+        // TODO: Populate
+    },
 }
 
 // TODO: Combine these two?
