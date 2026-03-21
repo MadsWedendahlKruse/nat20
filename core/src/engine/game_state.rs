@@ -781,9 +781,25 @@ impl GameState {
         let time_step = TimeStep::RealTime {
             delta_seconds: delta_time,
         };
+
         let entities = self.world.iter().map(|e| e.entity()).collect::<Vec<_>>();
+
         for entity in entities {
             systems::time::advance_time(self, entity, time_step);
+
+            // TODO: No idea where to put this
+            if !systems::ai::is_player_controlled(&self.world, entity)
+                && let Some(prompt) = self.next_prompt_entity(entity).cloned()
+                && prompt.kind.actors().contains(&entity)
+            {
+                if let Some(activity) = systems::ai::decide_activity(self, &prompt, entity) {
+                    let result = self.submit_activity(activity);
+                    info!("AI submitted activity: {:?}", result);
+                } else {
+                    self.end_turn(entity);
+                }
+            }
+
             // TODO: Not entirely sure where to place this
             // TODO: Very hacky
             let world = unsafe { &mut *(&mut self.world as *mut World) };

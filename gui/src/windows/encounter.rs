@@ -186,20 +186,5 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
 
         ui.separator();
         ui.text(format!("Round: {}", self.round()));
-
-        // TODO: No idea where to put this
-        if !systems::ai::is_player_controlled(&game_state.world, self.current_entity())
-            && let Some(prompt) = &game_state.next_promt_encounter(self.id()).cloned()
-            && prompt.kind.actors().contains(&self.current_entity())
-        {
-            let ai_decision =
-                systems::ai::decide_activity(game_state, prompt, self.current_entity());
-            if let Some(activity) = ai_decision {
-                let result = game_state.submit_activity(activity);
-                info!("AI submitted activity: {:?}", result);
-            } else {
-                self.end_turn(game_state, self.current_entity());
-            }
-        }
     }
 }
