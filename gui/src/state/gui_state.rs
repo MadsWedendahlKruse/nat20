@@ -37,10 +37,6 @@ pub struct GuiState {
     /// Manages the positioning of anchored windows.
     pub window_manager: WindowManager,
 
-    /// Store the latest computed path for each entity. This is mostly used for
-    /// visualization/debugging purposes.
-    pub path_cache: HashMap<Entity, PathResult>,
-
     // TODO: Everything involving the mesh cache seems like a mess right now.
     pub mesh_cache: BTreeMap<String, Mesh>,
 
@@ -105,7 +101,6 @@ impl GuiState {
             camera: OrbitCamera::new(),
             settings: GuiSettings::default(),
             window_manager: WindowManager::new(),
-            path_cache: HashMap::new(),
             mesh_cache: BTreeMap::new(),
             cursor_ray_result: None,
             selected_entity: None,

@@ -3,7 +3,8 @@ use crate::state::gui_state::GuiState;
 /// A trait for things that can render themselves.
 ///
 /// As opposed to `ImguiRenderable`, which is only for rendering ImGui widgets
-/// in the UI, this can be used for rendering anything, including 3D objects.
+/// in the UI, this can be used for rendering anything, including 3D objects in
+/// the world.
 pub trait Renderable {
     fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState);
 }

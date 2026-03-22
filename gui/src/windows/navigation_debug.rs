@@ -8,7 +8,10 @@ use nat20_core::{
 use rerecast::ConfigBuilder;
 
 use crate::{
-    render::{common::utils::RenderableMutWithContext, ui::utils::ImguiRenderableMut},
+    render::{
+        common::{colors::Color, utils::RenderableMutWithContext},
+        ui::utils::ImguiRenderableMut,
+    },
     state::{self, gui_state::GuiState},
     windows::anchor::{self},
 };
@@ -119,14 +122,7 @@ impl RenderableMutWithContext<&mut GameState> for NavigationDebugWindow {
 
                     if self.render_path {
                         if let Some(path) = &self.path {
-                            let points = path
-                                .points
-                                .iter()
-                                .map(|p| [p.x, p.y, p.z])
-                                .collect::<Vec<[f32; 3]>>();
-                            gui_state
-                                .line_renderer
-                                .add_polyline(&points, [1.0, 1.0, 1.0]);
+                            gui_state.line_renderer.add_path(path, Color::White);
 
                             if ui.collapsing_header("Path Points", TreeNodeFlags::empty()) {
                                 ui.text(format!("{:#?}", path));

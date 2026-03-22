@@ -6,7 +6,7 @@ use nat20_core::{
 use parry3d::query::Ray;
 
 use crate::{
-    render::common::utils::RenderableMutWithContext,
+    render::common::{colors::Color, utils::RenderableMutWithContext},
     state::{self, gui_state::GuiState},
     windows::anchor::{self, AUTO_RESIZE},
 };
@@ -140,7 +140,7 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                         gui_state.line_renderer.add_line(
                             ray.origin.into(),
                             end_point.into(),
-                            [1.0, 1.0, 1.0],
+                            Color::White,
                         );
                     }
                 }

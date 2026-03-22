@@ -37,7 +37,7 @@ use uom::si::length::meter;
 
 use crate::{
     render::{
-        common::utils::RenderableMutWithContext,
+        common::{colors::Color, utils::RenderableMutWithContext},
         ui::{
             components::{
                 LOW_HEALTH_BG_COLOR, LOW_HEALTH_COLOR, ModifierSetRenderMode, SPEED_COLOR,
@@ -178,7 +178,6 @@ impl ActionBarWindow {
                                     &path_result.taken_path.length,
                                 ),
                             );
-                        gui_state.path_cache.insert(self.entity, path_result);
                     }
                 }
             } else {
@@ -201,6 +200,12 @@ impl ActionBarWindow {
                         [1.0, 0.0, 0.0],
                     );
                 }
+            }
+
+            if let Some(path) = &self.movement_preview.path_result {
+                gui_state
+                    .line_renderer
+                    .add_path_result(&path, Color::White, Color::Red);
             }
 
             if ui.is_mouse_clicked(MouseButton::Left) {
@@ -688,7 +693,6 @@ fn render_target_selection(
     let hovered = match hovered_target_from_cursor(gui_state) {
         Some(hovered) => hovered,
         None => {
-            clear_targeting_path_preview(gui_state, action.actor);
             // Still allow cancel button even if not hovering world
             handle_target_selection_footer(ui, gui_state, game_state, new_state, action, false);
             return;
@@ -774,10 +778,6 @@ fn target_instance_from_raycast(raycast_hit: &RaycastHit) -> TargetInstance {
     }
 }
 
-fn clear_targeting_path_preview(gui_state: &mut GuiState, actor: Entity) {
-    gui_state.path_cache.remove(&actor);
-}
-
 /// Result of preview computation for the current frame.
 struct TargetPreviewResult {
     target_instance: TargetInstance,
@@ -797,19 +797,16 @@ fn compute_and_render_target_preview(
 ) -> Option<TargetPreviewResult> {
     // If we don't render target preview for this targeting kind, then don't treat hover as selectable.
     if !should_render_target_preview(targeting_context) {
-        clear_targeting_path_preview(gui_state, action.actor);
         return None;
     }
 
     // Require potential_target cache to exist and match the current hovered instance.
     let Some((cached_target, path_result)) = potential_target.as_mut() else {
-        clear_targeting_path_preview(gui_state, action.actor);
         return None;
     };
 
     if cached_target != hovered_target_instance {
         // Stale cache; wait for update_potential_target to recompute next frame.
-        clear_targeting_path_preview(gui_state, action.actor);
         return None;
     }
 
@@ -1260,7 +1257,7 @@ fn render_area_shape_preview(gui_state: &mut GuiState, shape: &AreaShape, center
             gui_state.line_renderer.add_circle(
                 [center.x, center.y, center.z],
                 radius.get::<meter>(),
-                [1.0, 1.0, 1.0],
+                Color::White,
             );
         }
         _ => { /* TODO other shapes */ }
@@ -1412,17 +1409,15 @@ fn render_target_path_preview(
     {
         if let Some(path_to_target) = path_to_target {
             gui_state
-                .path_cache
-                .insert(action.actor, path_to_target.clone());
+                .line_renderer
+                .add_path_result(path_to_target, Color::White, Color::Red);
+            let color = Color::White.with_alpha(0.75);
             mesh.draw(
                 gui_state.ig_renderer.gl_context(),
                 &gui_state.program,
                 &shape_pose_at_preview.to_homogeneous(),
-                [1.0, 1.0, 1.0, 0.75],
-                &MeshRenderMode::WireFrameOnly {
-                    color: [1.0, 1.0, 1.0, 0.75],
-                    width: 2.0,
-                },
+                color,
+                &MeshRenderMode::WireFrameOnly { color, width: 2.0 },
             );
         }
 
@@ -1436,7 +1431,7 @@ fn render_target_path_preview(
         };
         gui_state
             .line_renderer
-            .add_line(preview_position.into(), line_end.into(), [1.0, 1.0, 1.0]);
+            .add_line(preview_position.into(), line_end.into(), Color::White);
     }
 }
 
@@ -1453,11 +1448,11 @@ fn render_range_preview(
         .unwrap();
     gui_state
         .line_renderer
-        .add_circle(actor_position, normal_range, [1.0, 1.0, 1.0]);
+        .add_circle(actor_position, normal_range, Color::White);
     if normal_range < max_range {
         gui_state
             .line_renderer
-            .add_circle(actor_position, max_range, [0.5, 0.5, 0.5]);
+            .add_circle(actor_position, max_range, Color::Gray);
     }
 }
 

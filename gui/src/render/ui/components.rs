@@ -4,24 +4,16 @@ use hecs::{Entity, World};
 use imgui::{TreeNodeFlags};
 use nat20_core::{
     components::{
-        ability::{Ability, AbilityScore, AbilityScoreMap},
-        actions::{
+        ability::{Ability, AbilityScore, AbilityScoreMap}, actions::{
             action::{
-                ActionCondition, ActionContext, ActionKind, ActionKindResult, ActionResult,
-                ActionConditionResolution, ReactionResult,
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionResult, ReactionResult
             },
             targeting::{AreaShape, TargetInstance, TargetingKind, TargetingRange},
-        },
-        d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode},
-        damage::{
+        }, activity::ActivityState, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
             AttackRollResult, DamageComponentMitigation, DamageComponentResult,
             DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
             DamageRollResult, MitigationOperation,
-        },
-        effects::effect::{EffectInstance, EffectLifetime, EffectsMap},
-        health::{hit_points::HitPoints, life_state::LifeState},
-        id::{ActionId, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId},
-        items::{
+        }, effects::effect::{EffectInstance, EffectLifetime, EffectsMap}, health::{hit_points::HitPoints, life_state::LifeState}, id::{ActionId, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId}, items::{
             equipment::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus, ArmorType},
                 loadout::Loadout,
@@ -29,16 +21,7 @@ use nat20_core::{
             },
             item::{Item, ItemRarity},
             money::MonetaryValue,
-        },
-        level::{ChallengeRating, CharacterLevels, Level},
-        modifier::{Modifiable, ModifierSet},
-        proficiency::{Proficiency, ProficiencyLevel},
-        resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
-        saving_throw::{SavingThrowKind, SavingThrowSet},
-        skill::{Skill, SkillSet, skill_ability},
-        species::{CreatureSize, CreatureType},
-        speed::Speed,
-        spells::spellbook::Spellbook, time::{TimeDuration, TimeMode},
+        }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{Modifiable, ModifierSet}, proficiency::{Proficiency, ProficiencyLevel}, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
     },
     registry::registry::{FeatsRegistry, SpellsRegistry},
     systems::{
@@ -51,7 +34,7 @@ use strum::IntoEnumIterator;
 use uom::si::{angle::degree, length::meter, mass::kilogram};
 
 use crate::{
-    render::ui::{
+    render::{common::{colors::Color, utils::Renderable}, ui::{
         engine::render_event_description,
         text::{TextKind, TextSegment, TextSegments, indent_text, item_rarity_color},
         utils::{
@@ -59,8 +42,7 @@ use crate::{
             ProgressBarColor, render_progress_bar,
             roman_numeral, signed_value,
         },
-    },
-    table_with_columns,
+    }}, state::gui_state::GuiState, table_with_columns
 };
 
 pub enum ModifierSetRenderMode {
@@ -1807,5 +1789,18 @@ impl ImguiRenderable for TargetingKind {
             },
         };
         TextSegment::new(text, TextKind::Details).render(ui);
+    }
+}
+
+impl Renderable for ActivityState {
+    fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
+        match self {
+            ActivityState::Moving { path, .. } => {
+                let points = path.points.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<[f32; 3]>>();
+                gui_state.line_renderer.add_path(path, Color::White);
+                gui_state.line_renderer.add_circle(*points.last().unwrap(), 0.5, Color::White);
+            },
+            _ => {}
+        }
     }
 }

@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Display};
 
 use nat20_core::components::{damage::DamageType, items::item::ItemRarity};
 
-use crate::render::ui::utils::ImguiRenderable;
+use crate::render::{common::colors::Color, ui::utils::ImguiRenderable};
 
 pub fn damage_type_color(damage_type: &DamageType) -> [f32; 4] {
     match damage_type {
@@ -24,7 +24,7 @@ pub fn damage_type_color(damage_type: &DamageType) -> [f32; 4] {
 
 pub fn item_rarity_color(rarity: &ItemRarity) -> [f32; 4] {
     match rarity {
-        ItemRarity::Common => [1.0, 1.0, 1.0, 1.0],
+        ItemRarity::Common => Color::White.into(),
         ItemRarity::Uncommon => [0.12, 1.0, 0.0, 1.0],
         ItemRarity::Rare => [0.2, 0.4, 1.0, 1.0],
         ItemRarity::VeryRare => [0.64, 0.21, 0.93, 1.0],
@@ -55,7 +55,6 @@ pub enum TextKind {
     // General purpose text colors
     Green,
     Red,
-    Yellow,
 }
 
 impl TextKind {
@@ -64,7 +63,7 @@ impl TextKind {
             TextKind::Actor => [0.8, 1.0, 0.8, 1.0],
             TextKind::Target => [1.0, 0.8, 0.8, 1.0],
             TextKind::Action => [1.0, 1.0, 0.8, 1.0],
-            TextKind::Normal => [1.0, 1.0, 1.0, 1.0],
+            TextKind::Normal => Color::White.into(),
             TextKind::Damage(damage_type) => damage_type_color(damage_type),
             TextKind::Healing => [0.5, 1.0, 0.5, 1.0],
             TextKind::Effect => [1.0, 0.8, 0.5, 1.0],
@@ -72,9 +71,8 @@ impl TextKind {
             TextKind::Ability => [0.75, 0.5, 1.0, 1.0],
             TextKind::Skill => [0.5, 0.75, 1.0, 1.0],
             TextKind::Item(item_rarity) => item_rarity_color(item_rarity),
-            TextKind::Green => [0.0, 1.0, 0.0, 1.0],
-            TextKind::Red => [1.0, 0.0, 0.0, 1.0],
-            TextKind::Yellow => [1.0, 1.0, 0.0, 1.0],
+            TextKind::Green => Color::Green.into(),
+            TextKind::Red => Color::Red.into(),
         }
     }
 }

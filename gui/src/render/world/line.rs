@@ -1,5 +1,6 @@
 // render/line_renderer.rs
 use glow::HasContext;
+use nat20_core::{engine::geometry::WorldPath, systems::movement::PathResult};
 use parry3d::na;
 
 #[repr(C)]
@@ -146,18 +147,20 @@ impl LineRenderer {
         }
     }
 
-    pub fn add_line(&mut self, a: [f32; 3], b: [f32; 3], col: [f32; 3]) {
+    pub fn add_line<T: Into<[f32; 3]>>(&mut self, a: [f32; 3], b: [f32; 3], col: T) {
         let first = self.verts.len() as i32;
+        let col = col.into();
         self.verts.push(LineVertex { pos: a, col });
         self.verts.push(LineVertex { pos: b, col });
         self.push_range(LineMode::Lines, first, 2);
     }
 
-    pub fn add_polyline(&mut self, points: &[[f32; 3]], col: [f32; 3]) {
+    pub fn add_polyline<T: Into<[f32; 3]>>(&mut self, points: &[[f32; 3]], col: T) {
         if points.len() < 2 {
             return;
         }
         let first = self.verts.len() as i32;
+        let col = col.into();
         for &p in points {
             self.verts.push(LineVertex { pos: p, col });
         }
@@ -175,18 +178,40 @@ impl LineRenderer {
         self.push_range(LineMode::LineStrip, first, points.len() as i32);
     }
 
-    pub fn add_loop(&mut self, points: &[[f32; 3]], col: [f32; 3]) {
+    pub fn add_path<T: Into<[f32; 3]>>(&mut self, path: &WorldPath, col: T) {
+        self.add_polyline(
+            &path
+                .points
+                .iter()
+                .map(|p| [p.x, p.y, p.z])
+                .collect::<Vec<_>>(),
+            col.into(),
+        );
+    }
+
+    pub fn add_path_result<T: Into<[f32; 3]>>(
+        &mut self,
+        path_result: &PathResult,
+        col_taken: T,
+        col_full: T,
+    ) {
+        self.add_path(&path_result.taken_path, col_taken);
+        self.add_path(&path_result.full_path, col_full);
+    }
+
+    pub fn add_loop<T: Into<[f32; 3]>>(&mut self, points: &[[f32; 3]], col: T) {
         if points.len() < 2 {
             return;
         }
         let first = self.verts.len() as i32;
+        let col = col.into();
         for &p in points {
             self.verts.push(LineVertex { pos: p, col });
         }
         self.push_range(LineMode::LineLoop, first, points.len() as i32);
     }
 
-    pub fn add_circle(&mut self, center: [f32; 3], radius: f32, col: [f32; 3]) {
+    pub fn add_circle<T: Into<[f32; 3]>>(&mut self, center: [f32; 3], radius: f32, col: T) {
         let segments = 32;
         let mut points = Vec::with_capacity(segments);
         for i in 0..segments {
@@ -198,7 +223,7 @@ impl LineRenderer {
         self.add_loop(&points, col);
     }
 
-    pub fn add_ray(&mut self, origin: [f32; 3], dir: [f32; 3], t: f32, col: [f32; 3]) {
+    pub fn add_ray<T: Into<[f32; 3]>>(&mut self, origin: [f32; 3], dir: [f32; 3], t: f32, col: T) {
         let b = [
             origin[0] + dir[0] * t,
             origin[1] + dir[1] * t,

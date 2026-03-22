@@ -12,9 +12,7 @@ use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::species::CreatureSize,
-    engine::
-        geometry::{WorldGeometry, WorldPath}
-    ,
+    engine::geometry::{WorldGeometry, WorldPath},
 };
 
 pub static EPSILON: f32 = 1e-4;
@@ -23,8 +21,8 @@ pub type CreaturePose = Isometry3<f32>;
 
 pub static CREATURE_HEIGHTS: LazyLock<HashMap<CreatureSize, f32>> = LazyLock::new(|| {
     HashMap::from([
-        (CreatureSize::Tiny, 0.5),
-        (CreatureSize::Small, 1.0),
+        (CreatureSize::Tiny, 0.6),
+        (CreatureSize::Small, 1.2),
         (CreatureSize::Medium, 1.8),
         (CreatureSize::Large, 2.5),
         (CreatureSize::Huge, 4.0),

@@ -3,6 +3,7 @@ use std::{fs::File, io::BufReader};
 use imgui::{ChildFlags, MouseButton};
 use nat20_core::{
     components::{
+        activity::ActivityState,
         health::{hit_points::HitPoints, life_state::LifeState},
         id::Name,
     },
@@ -17,7 +18,10 @@ use strum::IntoEnumIterator;
 
 use crate::{
     render::{
-        common::utils::{RenderableMutWithContext, RenderableWithContext},
+        common::{
+            colors::Color,
+            utils::{Renderable, RenderableMutWithContext, RenderableWithContext},
+        },
         ui::{
             engine::LogLevel,
             entities::render_if_present,
@@ -254,7 +258,7 @@ impl MainMenuWindow {
                             gui_state.creature_render_mode.insert(
                                 *entity,
                                 MeshRenderMode::MeshWithWireFrame {
-                                    color: [1.0, 1.0, 1.0, 1.0],
+                                    color: Color::White.into(),
                                     width: 2.0,
                                 },
                             );
@@ -497,9 +501,8 @@ impl MainMenuWindow {
                 .draw(gui_state.ig_renderer.gl_context());
         }
 
-        let mesh_cache = &mut gui_state.mesh_cache;
         // TODO: Do something less "hardcoded" with the mesh cache
-        if let Some(mesh) = mesh_cache.get("world") {
+        if let Some(mesh) = gui_state.mesh_cache.get("world") {
             mesh.draw(
                 gui_state.ig_renderer.gl_context(),
                 &gui_state.program,
@@ -512,10 +515,10 @@ impl MainMenuWindow {
                 gui_state.ig_renderer.gl_context(),
                 &game_state.geometry.trimesh,
             );
-            mesh_cache.insert("world".to_string(), mesh);
+            gui_state.mesh_cache.insert("world".to_string(), mesh);
         }
 
-        if let Some(mesh) = mesh_cache.get("navmesh") {
+        if let Some(mesh) = gui_state.mesh_cache.get("navmesh") {
             if *gui_state
                 .settings
                 .get_mut::<bool>(state::parameters::RENDER_NAVIGATION_NAVMESH)
@@ -536,14 +539,14 @@ impl MainMenuWindow {
                 gui_state.ig_renderer.gl_context(),
                 &game_state.geometry.poly_navmesh,
             );
-            mesh_cache.insert("navmesh".to_string(), mesh);
+            gui_state.mesh_cache.insert("navmesh".to_string(), mesh);
         }
 
         // TODO: I feel like this should be somewhere else
         for (entity, pose) in game_state.world.query::<&CreaturePose>().iter() {
             systems::geometry::get_shape(&game_state.world, entity).map(|(shape, shape_pose)| {
                 let key = format!("{:#?}", shape);
-                if let Some(mesh) = mesh_cache.get(&key) {
+                if let Some(mesh) = gui_state.mesh_cache.get(&key) {
                     if let Some(current_entity) = gui_state.selected_entity
                         && current_entity == entity
                     {
@@ -555,7 +558,7 @@ impl MainMenuWindow {
                                 pose.translation.vector.z,
                             ],
                             shape.radius + 0.1,
-                            [1.0, 1.0, 1.0],
+                            Color::White,
                         );
                     }
 
@@ -563,31 +566,15 @@ impl MainMenuWindow {
                         gui_state.ig_renderer.gl_context(),
                         &gui_state.program,
                         &shape_pose.to_homogeneous(),
-                        [0.8, 0.8, 0.8, 1.0],
+                        Color::LightGray.into(),
                         gui_state
                             .creature_render_mode
                             .get(&entity)
                             .unwrap_or(&MeshRenderMode::MeshOnly),
                     );
 
-                    // TEMP
-                    gui_state.path_cache.get(&entity).map(|path| {
-                        [
-                            (&path.taken_path, [1.0, 1.0, 1.0]),
-                            (&path.full_path, [1.0, 0.0, 0.0]),
-                        ]
-                        .iter()
-                        .for_each(|(path, color)| {
-                            gui_state.line_renderer.add_polyline(
-                                &path
-                                    .points
-                                    .iter()
-                                    .map(|p| [p.x, p.y, p.z])
-                                    .collect::<Vec<[f32; 3]>>(),
-                                *color,
-                            );
-                        });
-                    });
+                    systems::helpers::get_component::<ActivityState>(&game_state.world, entity)
+                        .render(ui, gui_state);
                 } else {
                     let mesh = shapes::build_capsule_mesh(
                         gui_state.ig_renderer.gl_context(),
@@ -596,7 +583,7 @@ impl MainMenuWindow {
                         shape.radius,
                         shape.half_height(),
                     );
-                    mesh_cache.insert(key, mesh);
+                    gui_state.mesh_cache.insert(key, mesh);
                 }
             });
         }
