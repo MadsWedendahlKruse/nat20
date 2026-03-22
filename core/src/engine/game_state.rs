@@ -14,7 +14,7 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
-        activity::{Activity, ActivityError, ActivityState},
+        activity::{Activity, ActivityError, ActivityGameStateCommand, ActivityState},
         speed::Speed,
         time::{TimeMode, TimeStep},
     },
@@ -789,6 +789,7 @@ impl GameState {
 
             // TODO: No idea where to put this
             if !systems::ai::is_player_controlled(&self.world, entity)
+                && systems::helpers::get_component::<ActivityState>(&self.world, entity).is_idle()
                 && let Some(prompt) = self.next_prompt_entity(entity).cloned()
                 && prompt.kind.actors().contains(&entity)
             {
@@ -803,10 +804,18 @@ impl GameState {
             // TODO: Not entirely sure where to place this
             // TODO: Very hacky
             let world = unsafe { &mut *(&mut self.world as *mut World) };
-            let events = systems::helpers::get_component_mut::<ActivityState>(world, entity)
+            let commands = systems::helpers::get_component_mut::<ActivityState>(world, entity)
                 .update(self, entity, delta_time);
-            for event in events {
-                self.process_event(event);
+            for command in commands {
+                match command {
+                    ActivityGameStateCommand::ProcessEvent(event) => {
+                        self.process_event(event);
+                    }
+                    ActivityGameStateCommand::SubmitAction(action) => {
+                        self.submit_decision(action)
+                            .expect("Activity-submitted action should be valid");
+                    }
+                }
             }
         }
     }

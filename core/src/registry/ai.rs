@@ -5,7 +5,10 @@ use rand::seq::{IndexedRandom, IteratorRandom};
 
 use crate::{
     components::{
-        actions::targeting::{TargetInstance, TargetingKind},
+        actions::{
+            action::ActionKind,
+            targeting::{TargetInstance, TargetingKind},
+        },
         activity::Activity,
         ai::AIController,
         id::AIControllerId,
@@ -16,6 +19,7 @@ use crate::{
         },
         game_state::GameState,
     },
+    registry::registry::ActionsRegistry,
     systems::{self, movement::TargetPathFindingResult},
 };
 
@@ -45,13 +49,21 @@ impl AIController for RandomController {
 
         match &prompt.kind {
             ActionPromptKind::Action { actor } => {
-                let actions = systems::actions::available_actions(&game_state.world, *actor);
+                let mut actions = systems::actions::available_actions(&game_state.world, *actor);
 
                 // Pick a random action
                 if actions.is_empty() {
                     // TODO: End turn?
                     return None;
                 }
+
+                actions.retain(|action_id, _| {
+                    if let Some(action) = ActionsRegistry::get(action_id) {
+                        !action.kind().is_reaction()
+                    } else {
+                        false
+                    }
+                });
 
                 if let Some(action_id) = actions.keys().choose(rng)
                     && let Some(contexts_and_costs) = actions.get(action_id)

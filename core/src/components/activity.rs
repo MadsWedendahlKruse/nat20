@@ -63,14 +63,16 @@ pub enum ActivityState {
     },
 }
 
+/// In order to avoid a double borrow of the ActivityState it needs to return commands
+/// to be executed in the game state after the update at which point the borrow is dropped
 impl ActivityState {
     pub fn update(
         &mut self,
         game_state: &mut GameState,
         entity: Entity,
         delta_time: f32,
-    ) -> Vec<Event> {
-        let mut events = Vec::new();
+    ) -> Vec<ActivityGameStateCommand> {
+        let mut commands = Vec::new();
 
         match self {
             Self::Idle => {
@@ -85,7 +87,7 @@ impl ActivityState {
                 paused,
             } => {
                 if *paused {
-                    return events;
+                    return commands;
                 }
 
                 let target_point = path.points[*current_target];
@@ -110,11 +112,13 @@ impl ActivityState {
                     // Reached the target point
 
                     if let Some(attacker) = opportunity_attacks.remove(current_target) {
-                        events.push(Event::new(EventKind::MovingOutOfReach {
-                            mover: entity,
-                            entity: attacker,
-                            continue_movement: true,
-                        }));
+                        commands.push(ActivityGameStateCommand::ProcessEvent(Event::new(
+                            EventKind::MovingOutOfReach {
+                                mover: entity,
+                                entity: attacker,
+                                continue_movement: true,
+                            },
+                        )));
                         *paused = true;
                     }
 
@@ -141,16 +145,16 @@ impl ActivityState {
                 paused,
             } => {
                 if *paused {
-                    return events;
+                    return commands;
                 }
 
                 if *total_duration == 0.0 {
                     // Instant action, execute immediately
                     if let Some(action) = action.take() {
-                        game_state.submit_decision(action);
+                        commands.push(ActivityGameStateCommand::SubmitAction(action));
                     }
                     *self = Self::Idle;
-                    return events;
+                    return commands;
                 }
 
                 *elapsed_time += delta_time;
@@ -160,7 +164,7 @@ impl ActivityState {
                         match event {
                             ActionTimelineEvent::SubmitAction => {
                                 if let Some(action) = action.take() {
-                                    game_state.submit_decision(action);
+                                    commands.push(ActivityGameStateCommand::SubmitAction(action));
                                 } else {
                                     warn!("Timeline event triggered {:?} but no action decision found", event);
                                 }
@@ -179,12 +183,16 @@ impl ActivityState {
             }
         }
 
-        return events;
+        return commands;
     }
 
     pub fn set_idle(&mut self) {
         debug!("Setting entity to idle");
         *self = Self::Idle;
+    }
+
+    pub fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle)
     }
 
     pub fn set_moving(
@@ -236,4 +244,11 @@ impl Default for ActivityState {
     fn default() -> Self {
         Self::Idle
     }
+}
+
+// TODO: Name?
+#[derive(Debug)]
+pub enum ActivityGameStateCommand {
+    ProcessEvent(Event),
+    SubmitAction(ActionDecision),
 }

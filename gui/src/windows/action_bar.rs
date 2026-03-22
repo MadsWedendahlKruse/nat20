@@ -348,33 +348,30 @@ fn render_actions_list(
         .size([0.0, ACTION_LIST_HEIGHT])
         .build(|| {
             for (action_id, contexts_and_costs) in actions {
-                // Don't render reactions
-                if matches!(
-                    systems::actions::get_action(action_id).unwrap().kind(),
-                    ActionKind::Reaction { .. }
-                ) {
-                    continue;
-                }
                 // Don't render actions that either:
                 // 1. Can only be used as reactions
                 // 2. Cost a resource which never recharges and which is the entity
                 //    currently doesn't have any of. This probably means the action
                 //    is only usable under certain conditions which aren't currently
                 //    met.
+                if let Some(action) = systems::actions::get_action(action_id)
+                    && action.kind().is_reaction()
+                {
+                    continue;
+                }
 
                 // TODO: This works for now to hide stuff like Reapply Hex, but it's
                 // definitely not ideal. Probably better to "mark" these actions somehow
                 if contexts_and_costs.iter().all(|(_, cost)| {
-                    cost.contains_key(&ResourceId::new("nat20_core", "resource.reaction"))
-                        || cost.iter().any(|(res_id, amount)| {
-                            let resources = systems::helpers::get_component::<ResourceMap>(
-                                &game_state.world,
-                                entity,
-                            );
-                            !resources.can_afford(res_id, amount)
-                                && ResourcesRegistry::get(res_id).unwrap().recharge
-                                    == RechargeRule::Never
-                        })
+                    cost.iter().any(|(res_id, amount)| {
+                        let resources = systems::helpers::get_component::<ResourceMap>(
+                            &game_state.world,
+                            entity,
+                        );
+                        !resources.can_afford(res_id, amount)
+                            && ResourcesRegistry::get(res_id).unwrap().recharge
+                                == RechargeRule::Never
+                    })
                 }) {
                     continue;
                 }

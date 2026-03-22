@@ -614,6 +614,14 @@ impl ActionKind {
             }
         }
     }
+
+    pub fn is_reaction(&self) -> bool {
+        match self {
+            ActionKind::Reaction { .. } => true,
+            ActionKind::Composite { actions } => actions.iter().any(|action| action.is_reaction()),
+            _ => false,
+        }
+    }
 }
 
 impl Debug for ActionKind {
