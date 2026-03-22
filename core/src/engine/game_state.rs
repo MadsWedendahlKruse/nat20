@@ -427,20 +427,23 @@ impl GameState {
         }
 
         // Reaction window
-        if let Some(actor) = event.actor() {
-            if let Some(reaction_options) = self.collect_reactions(actor, &event) {
-                // Announce and prompt
-                let session = self.interaction_engine.session_mut(scope);
-                session.queue_prompt(
-                    ActionPrompt::new(ActionPromptKind::Reactions {
-                        event: event.clone(),
-                        options: reaction_options,
-                    }),
-                    true,
-                );
-                session.queue_event(event, true);
-                return;
-            }
+        if let Some(actor) = event.actor()
+            && let Some(reaction_options) = self.collect_reactions(actor, &event)
+        {
+            // Announce and prompt
+            let session = self.interaction_engine.session_mut(scope);
+            session.queue_prompt(
+                ActionPrompt::new(ActionPromptKind::Reactions {
+                    event: event.clone(),
+                    options: reaction_options,
+                }),
+                true,
+            );
+            session.queue_event(event, true);
+
+            systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor).pause();
+
+            return;
         }
 
         // No reaction window → advance now
@@ -506,6 +509,10 @@ impl GameState {
         if session.ready_to_resume()
             && let Some(event) = session.pending_events_mut().pop_front()
         {
+            if let Some(actor) = event.actor() {
+                systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor)
+                    .resume();
+            }
             self.advance_event(event, true);
         }
     }

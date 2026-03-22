@@ -131,6 +131,10 @@ impl ActivityState {
                         if let Some(action_decision) = action.take() {
                             self.set_acting(action_decision);
                         } else {
+                            debug!(
+                                "Entity {:?} has no follow-up action, setting to idle",
+                                entity
+                            );
                             *self = Self::Idle;
                         }
                     }
@@ -178,6 +182,10 @@ impl ActivityState {
                 });
 
                 if *elapsed_time >= *total_duration {
+                    debug!(
+                        "Entity {:?} finished action after {:?} seconds",
+                        entity, total_duration
+                    );
                     *self = Self::Idle;
                 }
             }
@@ -236,6 +244,12 @@ impl ActivityState {
     pub fn resume(&mut self) {
         if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
             *paused = false;
+        }
+    }
+
+    pub fn pause(&mut self) {
+        if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
+            *paused = true;
         }
     }
 }
