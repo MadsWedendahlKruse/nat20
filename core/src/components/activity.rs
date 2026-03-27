@@ -40,6 +40,18 @@ pub enum ActivityError {
     ActionError(ActionError),
 }
 
+impl From<MovementError> for ActivityError {
+    fn from(error: MovementError) -> Self {
+        Self::MovementError(error)
+    }
+}
+
+impl From<ActionError> for ActivityError {
+    fn from(error: ActionError) -> Self {
+        Self::ActionError(error)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ActivityState {
     Idle,

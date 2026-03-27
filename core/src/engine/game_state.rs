@@ -147,8 +147,7 @@ impl GameState {
     pub fn submit_activity(&mut self, activity: Activity) -> Result<(), ActivityError> {
         match activity {
             Activity::Move { entity, goal } => {
-                self.submit_movement(entity, goal, None)
-                    .map_err(|e| ActivityError::MovementError(e))?;
+                self.submit_movement(entity, goal, None)?;
             }
             Activity::Act { action } => {
                 systems::helpers::get_component_mut::<ActivityState>(
@@ -158,8 +157,7 @@ impl GameState {
                 .set_acting(action);
             }
             Activity::MoveAndAct { goal, action } => {
-                self.submit_movement(action.actor(), goal, Some(action))
-                    .map_err(|e| ActivityError::MovementError(e))?;
+                self.submit_movement(action.actor(), goal, Some(action))?;
             }
         }
         Ok(())
