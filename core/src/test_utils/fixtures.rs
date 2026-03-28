@@ -45,12 +45,26 @@ pub mod equipment {
 
 pub mod creatures {
 
-    use hecs::{Entity, World};
+    use hecs::{DynamicBundle, Entity, World};
 
     use crate::{
         components::{ability::Ability, modifier::ModifierSource, skill::Skill},
+        engine::game_state::GameState,
         systems::{self, level_up::LevelUpDecision},
     };
+
+    fn spawn_entity(
+        game_state: &mut GameState,
+        components: impl DynamicBundle,
+        id: Option<Entity>,
+    ) -> Entity {
+        if let Some(id) = id {
+            game_state.world.spawn_at(id, components);
+            id
+        } else {
+            game_state.world.spawn(components)
+        }
+    }
 
     pub mod heroes {
         use std::collections::{HashMap, HashSet};
@@ -80,10 +94,14 @@ pub mod creatures {
             );
         }
 
-        pub fn fighter(game_state: &mut GameState, levels: u8) -> EntityIdentifier {
+        pub fn fighter(
+            game_state: &mut GameState,
+            levels: u8,
+            id: Option<Entity>,
+        ) -> EntityIdentifier {
             let name = Name::new("Johnny Fighter");
             let character = Character::new(name.clone());
-            let entity = game_state.world.spawn(character);
+            let entity = spawn_entity(game_state, character, id);
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
@@ -264,10 +282,14 @@ pub mod creatures {
             EntityIdentifier::new(entity, name)
         }
 
-        pub fn wizard(game_state: &mut GameState, levels: u8) -> EntityIdentifier {
+        pub fn wizard(
+            game_state: &mut GameState,
+            levels: u8,
+            id: Option<Entity>,
+        ) -> EntityIdentifier {
             let name = Name::new("Jimmy Wizard");
             let character = Character::new(name.clone());
-            let entity = game_state.world.spawn(character);
+            let entity = spawn_entity(game_state, character, id);
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
@@ -403,10 +425,14 @@ pub mod creatures {
             EntityIdentifier::new(entity, name)
         }
 
-        pub fn warlock(game_state: &mut GameState, levels: u8) -> EntityIdentifier {
+        pub fn warlock(
+            game_state: &mut GameState,
+            levels: u8,
+            id: Option<Entity>,
+        ) -> EntityIdentifier {
             let name = Name::new("Bobby Warlock");
             let character = Character::new(name.clone());
-            let entity = game_state.world.spawn(character);
+            let entity = spawn_entity(game_state, character, id);
             systems::level_up::apply_level_up_decision(
                 game_state,
                 entity,
@@ -553,6 +579,7 @@ pub mod creatures {
         pub fn goblin_warrior(
             game_state: &mut GameState,
             challenge_rating: u8,
+            id: Option<Entity>,
         ) -> EntityIdentifier {
             let name = Name::new("Goblin Warrior");
             let monster = Monster::new(
@@ -573,7 +600,7 @@ pub mod creatures {
                 ]),
                 FactionSet::from([FactionId::new("nat20_core", "faction.goblins")]),
             );
-            let entity = game_state.world.spawn(monster);
+            let entity = spawn_entity(game_state, monster, id);
             let _ = monster_equipment(
                 game_state,
                 entity,

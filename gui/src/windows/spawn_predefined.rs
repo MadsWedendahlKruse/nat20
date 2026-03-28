@@ -3,7 +3,7 @@ use core::f32;
 use hecs::{Entity, World};
 use imgui::MouseButton;
 use nat20_core::{
-    components::id::Name,
+    components::id::{EntityIdentifier, Name},
     engine::{game_state::GameState, geometry::WorldGeometry},
     entities::{
         character::{Character, CharacterTag},
@@ -14,7 +14,7 @@ use nat20_core::{
 };
 use parry3d::na::Point3;
 use rerecast::ConfigBuilder;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     render::{
@@ -25,13 +25,43 @@ use crate::{
     windows::anchor::{AUTO_RESIZE, TOP_LEFT},
 };
 
+struct Spawner {
+    spawn_fn: Box<dyn Fn(&mut GameState, u8, Option<Entity>) -> EntityIdentifier>,
+    max_level: u8,
+    current_level: u8,
+    spawned_entity: Option<Entity>,
+}
+
+impl Spawner {
+    fn new<F>(spawn_fn: F, max_level: u8) -> Self
+    where
+        F: Fn(&mut GameState, u8, Option<Entity>) -> EntityIdentifier + 'static,
+    {
+        Self {
+            spawn_fn: Box::new(spawn_fn),
+            max_level,
+            current_level: max_level,
+            spawned_entity: None,
+        }
+    }
+
+    fn spawn(&mut self, game_state: &mut GameState, id: Option<Entity>) -> EntityIdentifier {
+        let entity = (self.spawn_fn)(game_state, self.current_level, id);
+        self.spawned_entity = Some(entity.id());
+        // Ensure all resources are fully recharged
+        systems::time::on_rest_end(&mut game_state.world, &[entity.id()], &RestKind::Long);
+        entity
+    }
+}
+
 pub struct SpawnPredefinedWindow {
     /// Dummy World used to store the predefined entities. Once an entity has been
     /// selected from this window, it will be spawned into the actual game world.
-    world: World,
+    game_state: GameState,
     entity_to_spawn: Option<Entity>,
     current_entity: Option<Entity>,
     spawning_completed: bool,
+    spawners: Vec<Spawner>,
 }
 
 impl SpawnPredefinedWindow {
@@ -42,27 +72,24 @@ impl SpawnPredefinedWindow {
             &ConfigBuilder::default().build(),
         ));
 
-        // TODO: For some reason not allowed to store the levels alongside the spawners
-        let spawners = vec![
-            fixtures::creatures::heroes::fighter,
-            fixtures::creatures::heroes::wizard,
-            fixtures::creatures::heroes::warlock,
-            fixtures::creatures::monsters::goblin_warrior,
+        let mut spawners = vec![
+            Spawner::new(fixtures::creatures::heroes::fighter, 13),
+            Spawner::new(fixtures::creatures::heroes::wizard, 5),
+            Spawner::new(fixtures::creatures::heroes::warlock, 5),
+            Spawner::new(fixtures::creatures::monsters::goblin_warrior, 1),
         ];
-        let levels = vec![13, 5, 5, 1];
 
-        for (spawner, levels) in spawners.iter().zip(levels) {
-            let entity = spawner(&mut game_state, levels).id();
+        for spawner in &mut spawners {
+            let entity = spawner.spawn(&mut game_state, None);
             info!("Spawned predefined entity: {:?}", entity);
-            // Ensure all resources are fully recharged
-            systems::time::on_rest_end(&mut game_state.world, &[entity], &RestKind::Long);
         }
 
         Self {
-            world: game_state.world,
+            game_state,
             entity_to_spawn: None,
             current_entity: None,
             spawning_completed: false,
+            spawners,
         }
     }
 
@@ -91,12 +118,18 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
             AUTO_RESIZE,
             &mut opened,
             || {
-                self.world
-                    .query::<&Name>()
-                    .into_iter()
-                    .for_each(|(entity, name)| {
+                for spawner in &mut self.spawners {
+                    if let Some(entity) = spawner.spawned_entity {
                         if ui.collapsing_header(
-                            format!("{}##{:?}", name.as_str(), entity),
+                            format!(
+                                "{}##{:?}",
+                                systems::helpers::get_component::<Name>(
+                                    &self.game_state.world,
+                                    entity
+                                )
+                                .as_str(),
+                                entity
+                            ),
                             imgui::TreeNodeFlags::FRAMED,
                         ) {
                             if ui.button(format!("Spawn##{:?}", entity)) {
@@ -106,26 +139,53 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                                     self.current_entity = None;
                                 }
                             }
+
                             ui.separator();
-                            entity
-                                .render_with_context(ui, (&self.world, &CreatureRenderMode::Full));
+
+                            let mut updated_level = false;
+
+                            // TODO: Level slider probably doesn't make sense for monsters?
+                            if let Ok(_) = self.game_state.world.get::<&CharacterTag>(entity) {
+                                ui.set_next_item_width(150.0);
+                                if ui.slider(
+                                    format!("Level##{:?}", entity),
+                                    1,
+                                    spawner.max_level,
+                                    &mut spawner.current_level,
+                                ) {
+                                    updated_level = true;
+                                }
+
+                                ui.separator();
+                            }
+
+                            entity.render_with_context(
+                                ui,
+                                (&self.game_state.world, &CreatureRenderMode::Full),
+                            );
+
+                            if updated_level {
+                                self.game_state.world.despawn(entity).unwrap();
+                                spawner.spawn(&mut self.game_state, Some(entity));
+                            }
                         }
-                    });
+                    }
+                }
 
                 if let Some(entity) = self.entity_to_spawn {
                     if self.current_entity.is_none() {
-                        let spawned_entity = if let Ok(_) = self.world.get::<&CharacterTag>(entity)
-                        {
-                            game_state
-                                .world
-                                .spawn(Character::from_world(&self.world, entity))
-                        } else if let Ok(_) = self.world.get::<&MonsterTag>(entity) {
-                            game_state
-                                .world
-                                .spawn(Monster::from_world(&self.world, entity))
-                        } else {
-                            panic!("Entity to spawn is neither a Character nor a Monster");
-                        };
+                        let spawned_entity =
+                            if let Ok(_) = self.game_state.world.get::<&CharacterTag>(entity) {
+                                game_state
+                                    .world
+                                    .spawn(Character::from_world(&self.game_state.world, entity))
+                            } else if let Ok(_) = self.game_state.world.get::<&MonsterTag>(entity) {
+                                game_state
+                                    .world
+                                    .spawn(Monster::from_world(&self.game_state.world, entity))
+                            } else {
+                                panic!("Failed to take entity from spawner");
+                            };
 
                         // Spawn it somewhere we can't see it, we'll move it later
                         systems::geometry::teleport_to(
