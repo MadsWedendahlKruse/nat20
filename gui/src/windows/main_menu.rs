@@ -10,7 +10,7 @@ use nat20_core::{
     engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
     systems::{
         self,
-        geometry::{CreaturePose, RaycastFilter, RaycastHitKind},
+        geometry::{Pose, RaycastFilter, RaycastHitKind},
     },
 };
 use parry3d::na::{Matrix4, Point3};
@@ -551,7 +551,7 @@ impl MainMenuWindow {
         }
 
         // TODO: I feel like this should be somewhere else
-        for (entity, pose) in game_state.world.query::<&CreaturePose>().iter() {
+        for (entity, pose) in game_state.world.query::<&Pose>().iter() {
             systems::geometry::get_shape(&game_state.world, entity).map(|(shape, shape_pose)| {
                 let key = format!("{:#?}", shape);
                 if let Some(mesh) = gui_state.mesh_cache.get(&key) {
@@ -608,7 +608,7 @@ impl MainMenuWindow {
 
     fn render_creature_labels(ui: &imgui::Ui, game_state: &GameState, camera: &OrbitCamera) {
         for (entity, name) in game_state.world.query::<&Name>().iter() {
-            if let Some(pose) = game_state.world.get::<&CreaturePose>(entity).ok() {
+            if let Some(pose) = game_state.world.get::<&Pose>(entity).ok() {
                 let translation = pose.translation.vector;
                 let pos = camera.world_to_screen(&Point3::new(
                     translation.x,

@@ -23,7 +23,7 @@ use crate::{
         time::EntityClock,
     },
     from_world,
-    systems::geometry::CreaturePose,
+    systems::geometry::Pose,
 };
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ from_world!(
         pub name: Name,
         // TODO: Can monsters be player controlled?
         pub brain: AIControllerId,
-        pub pose: CreaturePose,
+        pub pose: Pose,
         pub time: EntityClock,
         pub activity_state: ActivityState,
         pub challenge_rating: ChallengeRating,
@@ -79,7 +79,7 @@ impl Monster {
             tag: MonsterTag,
             name,
             brain,
-            pose: CreaturePose::default(),
+            pose: Pose::default(),
             time: EntityClock::new(),
             activity_state: ActivityState::default(),
             challenge_rating,

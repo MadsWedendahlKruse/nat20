@@ -17,7 +17,7 @@ use crate::{
 
 pub static EPSILON: f32 = 1e-4;
 
-pub type CreaturePose = Isometry3<f32>;
+pub type Pose = Isometry3<f32>;
 
 pub static CREATURE_HEIGHTS: LazyLock<HashMap<CreatureSize, f32>> = LazyLock::new(|| {
     HashMap::from([
@@ -39,7 +39,7 @@ pub fn get_height(world: &World, entity: Entity) -> Option<f32> {
 }
 
 pub fn get_foot_position(world: &World, entity: Entity) -> Option<Point3<f32>> {
-    let pose = world.get::<&CreaturePose>(entity).ok()?;
+    let pose = world.get::<&Pose>(entity).ok()?;
     Some(Point3::from(pose.translation.vector))
 }
 
@@ -48,7 +48,7 @@ pub fn get_eye_height(world: &World, entity: Entity) -> Option<f32> {
 }
 
 pub fn get_eye_position(world: &World, entity: Entity) -> Option<Point3<f32>> {
-    let pose = world.get::<&CreaturePose>(entity).ok()?;
+    let pose = world.get::<&Pose>(entity).ok()?;
     let eye_height = get_eye_height(world, entity)?;
     Some((pose.translation.vector + Vector3::y() * eye_height).into())
 }
@@ -63,7 +63,7 @@ pub fn get_eye_position_at_point(
 }
 
 pub fn get_entity_at_point(world: &World, point: Point3<f32>) -> Option<Entity> {
-    for (entity, _) in world.query::<&CreaturePose>().iter() {
+    for (entity, _) in world.query::<&Pose>().iter() {
         if let Some((shape, shape_pose)) = get_shape(world, entity) {
             if shape.contains_point(&shape_pose, &point) {
                 return Some(entity);
@@ -78,9 +78,9 @@ pub fn get_entity_at_point(world: &World, point: Point3<f32>) -> Option<Entity> 
 
 /// Get the collision shape for a creature entity and the pose of the shape, i.e
 /// the pose is the center of the shape.
-pub fn get_shape(world: &World, entity: Entity) -> Option<(Capsule, CreaturePose)> {
+pub fn get_shape(world: &World, entity: Entity) -> Option<(Capsule, Pose)> {
     if let Some(height) = get_height(world, entity)
-        && let Some(pose) = world.get::<&CreaturePose>(entity).ok()
+        && let Some(pose) = world.get::<&Pose>(entity).ok()
     {
         // Approximate radius as 1/4 of height
         let radius = height / 4.0;
@@ -100,7 +100,7 @@ pub fn get_shape_at_point(
     world_geometry: &WorldGeometry,
     entity: Entity,
     point: &Point3<f32>,
-) -> Option<(Capsule, CreaturePose)> {
+) -> Option<(Capsule, Pose)> {
     if let Some((shape, shape_pose)) = get_shape(world, entity)
         && let Some(foot_pos) = get_foot_position(world, entity)
     {
@@ -204,7 +204,7 @@ pub fn raycast_with_toi(
                            excluded_creatures: &Vec<Entity>,
                            outcomes: &mut Vec<RaycastHit>| {
         let entity_result = world
-            .query::<&CreaturePose>()
+            .query::<&Pose>()
             .iter()
             .filter_map(|(entity, _)| {
                 if let Some((shape, shape_pose)) = get_shape(world, entity)
@@ -443,7 +443,7 @@ pub fn distance_entity_point(world: &World, entity: Entity, point: Point3<f32>) 
 }
 
 pub fn teleport_to(world: &mut World, entity: Entity, new_position: &Point3<f32>) {
-    if let Ok(mut pose) = world.get::<&mut CreaturePose>(entity) {
+    if let Ok(mut pose) = world.get::<&mut Pose>(entity) {
         pose.translation = new_position.clone().into();
     }
 }
@@ -516,7 +516,7 @@ pub fn entities_in_shape(
 ) -> Vec<Entity> {
     let mut entities = vec![];
 
-    for (entity, _) in world.query::<&CreaturePose>().iter() {
+    for (entity, _) in world.query::<&Pose>().iter() {
         if let Some((creature_shape, creature_shape_pose)) = get_shape(world, entity) {
             let intersects = parry3d::query::intersection_test(
                 shape_pose,

@@ -10,7 +10,7 @@ use nat20_core::{
         time::{EntityClock, TimeStep, TurnBoundary},
     },
     engine::game_state::GameState,
-    systems::{self, d20::D20CheckDCKind, geometry::CreaturePose, time::RestKind},
+    systems::{self, d20::D20CheckDCKind, geometry::Pose, time::RestKind},
 };
 use parry3d::na::UnitQuaternion;
 use strum::IntoEnumIterator;
@@ -33,8 +33,8 @@ pub enum CreatureDebugState {
     Clock,
     TogglePlayerControl,
     MoveTo {
-        starting_pose: CreaturePose,
-        target_pose: CreaturePose,
+        starting_pose: Pose,
+        target_pose: Pose,
     },
 }
 
@@ -108,9 +108,9 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                         7 => {
                             let starting_pose = game_state
                                 .world
-                                .get::<&CreaturePose>(self.creature)
+                                .get::<&Pose>(self.creature)
                                 .map(|p| *p)
-                                .unwrap_or_else(|_| CreaturePose::identity());
+                                .unwrap_or_else(|_| Pose::identity());
                             self.state = CreatureDebugState::MoveTo {
                                 starting_pose,
                                 target_pose: starting_pose,

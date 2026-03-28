@@ -27,7 +27,7 @@ use crate::{
         time::EntityClock,
     },
     from_world, registry,
-    systems::geometry::CreaturePose,
+    systems::geometry::Pose,
 };
 
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ from_world!(
         pub player_controlled: PlayerControlledTag,
         /// AI controller for this character. Ignored if `player_controlled` is present.
         pub brain: AIControllerId,
-        pub pose: CreaturePose,
+        pub pose: Pose,
         pub time: EntityClock,
         pub activity_state: ActivityState,
         pub name: Name,
@@ -81,7 +81,7 @@ impl Character {
             player_controlled: PlayerControlledTag,
             // TODO: Update to an actual ID
             brain: registry::ai::RANDOM_CONTROLLER_ID.clone(),
-            pose: CreaturePose::identity(),
+            pose: Pose::identity(),
             time: EntityClock::new(),
             activity_state: ActivityState::default(),
             name,

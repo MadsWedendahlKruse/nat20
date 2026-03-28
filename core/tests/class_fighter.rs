@@ -1,7 +1,6 @@
 extern crate nat20_core;
 
 mod tests {
-    use hecs::Entity;
     use nat20_core::{
         components::{
             actions::targeting::TargetInstance,
@@ -21,7 +20,7 @@ mod tests {
     #[test]
     fn fighter_action_surge() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5).id();
+        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5, None).id();
 
         // Check that the fighter has the Action Surge action
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
@@ -128,7 +127,7 @@ mod tests {
     #[test]
     fn fighter_second_wind() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5).id();
+        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5, None).id();
 
         // Check that the fighter has the Second Wind action
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
@@ -191,7 +190,7 @@ mod tests {
     #[test]
     fn fighter_extra_attack() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5).id();
+        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5, None).id();
         let _ = systems::health::heal_full(&mut game_state.world, fighter);
 
         // Check that the fighter has the Extra Attack effect
