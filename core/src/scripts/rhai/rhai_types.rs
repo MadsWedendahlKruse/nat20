@@ -320,7 +320,12 @@ impl CustomType for ScriptCommandBuffer {
             )
             .with_fn(
                 "apply_effect_for_turns",
-                |s: &mut Self, applier_id: u64, target_id: u64, effect_id: String, turns: i64| {
+                |s: &mut Self,
+                 applier_id: u64,
+                 target_id: u64,
+                 effect_id: String,
+                 turns: i64,
+                 one_shot: bool| {
                     if turns <= 0 {
                         panic!("turns must be greater than 0");
                     }
@@ -329,6 +334,7 @@ impl CustomType for ScriptCommandBuffer {
                         ScriptEntity { id: target_id },
                         &effect_id.parse().expect("Failed to parse EffectId"),
                         turns as u32,
+                        one_shot,
                     );
                 },
             )

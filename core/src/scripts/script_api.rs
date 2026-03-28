@@ -1362,6 +1362,7 @@ pub enum ScriptGameCommand {
         target: ScriptEntity,
         effect_id: EffectId,
         lifetime: EffectLifetimeTemplate,
+        one_shot: bool,
     },
     RemoveEffect {
         target: ScriptEntity,
@@ -1398,6 +1399,7 @@ impl ScriptCommandBuffer {
             target,
             effect_id: effect_id.clone(),
             lifetime: EffectLifetimeTemplate::Permanent,
+            one_shot: false,
         });
     }
 
@@ -1407,6 +1409,7 @@ impl ScriptCommandBuffer {
         target: ScriptEntity,
         effect_id: &EffectId,
         turns: u32,
+        one_shot: bool,
     ) {
         self.inner.write().push(ScriptGameCommand::ApplyEffect {
             applier,
@@ -1417,6 +1420,7 @@ impl ScriptCommandBuffer {
                 boundary: TurnBoundary::Start,
                 duration: TimeDuration::from_turns(turns),
             },
+            one_shot,
         });
     }
 

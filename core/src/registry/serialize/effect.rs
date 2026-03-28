@@ -150,92 +150,126 @@ impl From<EffectDefinition> for Effect {
         {
             let effect_id = effect_id.clone();
             let modifiers = definition.modifiers.clone();
-            effect.on_apply = Arc::new(
-                move |game_state: &mut GameState,
-                      entity: Entity,
-                      context: Option<&ActionContext>| {
-                    for modifier in &modifiers {
-                        modifier.evaluate(
-                            game_state,
-                            entity,
-                            &effect_id,
-                            EffectPhase::Apply,
-                            context,
-                        );
-                    }
-                },
-            );
+            if !modifiers.is_empty() {
+                effect.on_apply = Some(Arc::new(
+                    move |game_state: &mut GameState,
+                          entity: Entity,
+                          context: Option<&ActionContext>| {
+                        for modifier in &modifiers {
+                            modifier.evaluate(
+                                game_state,
+                                entity,
+                                &effect_id,
+                                EffectPhase::Apply,
+                                context,
+                            );
+                        }
+                    },
+                ));
+            }
         }
 
         // Build on_unapply from the *same* modifiers, but different phase
         {
             let effect_id = effect_id.clone();
             let modifiers_for_unapply = definition.modifiers;
-            effect.on_unapply = Arc::new(move |game_state: &mut GameState, entity: Entity| {
-                for modifier in &modifiers_for_unapply {
-                    modifier.evaluate(game_state, entity, &effect_id, EffectPhase::Unapply, None);
-                }
-            });
+            if !modifiers_for_unapply.is_empty() {
+                effect.on_unapply = Some(Arc::new(
+                    move |game_state: &mut GameState, entity: Entity| {
+                        for modifier in &modifiers_for_unapply {
+                            modifier.evaluate(
+                                game_state,
+                                entity,
+                                &effect_id,
+                                EffectPhase::Unapply,
+                                None,
+                            );
+                        }
+                    },
+                ));
+            }
         }
 
         // 2. Hook-based modifiers
         // Build pre_attack_roll hooks
         {
-            let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
-            effect.pre_attack_roll = AttackRollHookDefinition::combine_hooks(hooks);
+            if !definition.pre_attack_roll.is_empty() {
+                let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
+                effect.pre_attack_roll = Some(AttackRollHookDefinition::combine_hooks(hooks));
+            }
         }
         // Build on_attacked hooks
         {
-            let hooks = collect_effect_hooks(&definition.on_attacked, &effect_id);
-            effect.on_attacked = AttackedHookDefinition::combine_hooks(hooks);
+            if !definition.on_attacked.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_attacked, &effect_id);
+                effect.on_attacked = Some(AttackedHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build post_damage_roll hooks
         {
-            let hooks = collect_effect_hooks(&definition.post_damage_roll, &effect_id);
-            effect.post_damage_roll = DamageRollResultHookDefinition::combine_hooks(hooks);
+            if !definition.post_damage_roll.is_empty() {
+                let hooks = collect_effect_hooks(&definition.post_damage_roll, &effect_id);
+                effect.post_damage_roll =
+                    Some(DamageRollResultHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build pre_damage_taken hooks
         {
-            let hooks = collect_effect_hooks(&definition.pre_damage_mitigation, &effect_id);
-            effect.pre_damage_mitigation = PreDamageMitigationHookDefinition::combine_hooks(hooks);
+            if !definition.pre_damage_mitigation.is_empty() {
+                let hooks = collect_effect_hooks(&definition.pre_damage_mitigation, &effect_id);
+                effect.pre_damage_mitigation =
+                    Some(PreDamageMitigationHookDefinition::combine_hooks(hooks));
+            }
         }
         // Build post_damage_mitigation hooks
         {
-            let hooks = collect_effect_hooks(&definition.post_damage_mitigation, &effect_id);
-            effect.post_damage_mitigation =
-                PostDamageMitigationHookDefinition::combine_hooks(hooks);
+            if !definition.post_damage_mitigation.is_empty() {
+                let hooks = collect_effect_hooks(&definition.post_damage_mitigation, &effect_id);
+                effect.post_damage_mitigation =
+                    Some(PostDamageMitigationHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build armor class hooks
         {
-            let hooks = collect_effect_hooks(&definition.on_armor_class, &effect_id);
-            effect.on_armor_class = ArmorClassHookDefinition::combine_hooks(hooks);
+            if !definition.on_armor_class.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_armor_class, &effect_id);
+                effect.on_armor_class = Some(ArmorClassHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build resource cost hooks
         {
-            let hooks = collect_effect_hooks(&definition.on_resource_cost, &effect_id);
-            effect.on_resource_cost = ResourceCostHookDefinition::combine_hooks(hooks);
+            if !definition.on_resource_cost.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_resource_cost, &effect_id);
+                effect.on_resource_cost = Some(ResourceCostHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build on_action hooks
         {
-            let hooks = collect_effect_hooks(&definition.on_action, &effect_id);
-            effect.on_action = ActionHookDefinition::combine_hooks(hooks);
+            if !definition.on_action.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_action, &effect_id);
+                effect.on_action = Some(ActionHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build on_action_result hooks
         {
-            let hooks = collect_effect_hooks(&definition.on_action_result, &effect_id);
-            effect.on_action_result = ActionResultHookDefinition::combine_hooks(hooks);
+            if !definition.on_action_result.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_action_result, &effect_id);
+                effect.on_action_result = Some(ActionResultHookDefinition::combine_hooks(hooks));
+            }
         }
 
         // Build on_death hooks
         {
-            let hooks = collect_effect_hooks(&definition.on_death, &effect_id);
-            effect.on_death = DeathHookDefinition::combine_hooks(hooks);
+            if !definition.on_death.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_death, &effect_id);
+                effect.on_death = Some(DeathHookDefinition::combine_hooks(hooks));
+            }
         }
 
         effect
@@ -793,9 +827,9 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                     let modifier = modifier.clone();
                     let attacked_by = attacked_by.clone();
                     move |_world: &World,
+                          effect: &EffectInstance,
                           _victim: Entity,
                           attacker: Entity,
-                          effect: &EffectInstance,
                           attack_roll: &mut AttackRoll| {
                         if let Some(attacked_by) = attacked_by {
                             // Only apply if the attacker matches the reference
@@ -834,9 +868,9 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                 let distance_expression = auto_crit_distance.clone();
                 Arc::new(
                     move |world: &World,
+                          effect: &EffectInstance,
                           victim: Entity,
                           attacker: Entity,
-                          effect: &EffectInstance,
                           attack_roll: &mut AttackRoll| {
                         let distance = distance_expression.evaluate_without_variables().unwrap();
 
@@ -1076,6 +1110,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                                     target,
                                     effect_id,
                                     lifetime,
+                                    one_shot,
                                 } => {
                                     let applier_entity: Entity = applier.into();
                                     let target_entity: Entity = target.into();
@@ -1094,6 +1129,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                                             effect_id,
                                             lifetime,
                                             end_condition: None,
+                                            one_shot,
                                         },
                                         Some(&action_data.context),
                                         action_resolution.clone(),
@@ -1204,8 +1240,8 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
                 let script_id = script.clone();
                 Arc::new(
                     move |world: &World,
-                          entity: Entity,
                           effect: &EffectInstance,
+                          entity: Entity,
                           damage_roll_result: &mut DamageRollResult| {
                         let entity_view = ScriptEntityView::new_from_world(world, entity);
                         let effect_view = ScriptEffectView::from(effect);
@@ -1229,11 +1265,11 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
     fn combine_hooks(hooks: Vec<PreDamageMitigationHook>) -> PreDamageMitigationHook {
         Arc::new(
             move |world: &World,
-                  entity: Entity,
                   effect: &EffectInstance,
+                  entity: Entity,
                   damage_roll_result: &mut DamageRollResult| {
                 for hook in &hooks {
-                    hook(world, entity, effect, damage_roll_result);
+                    hook(world, effect, entity, damage_roll_result);
                 }
             },
         )
@@ -1375,6 +1411,8 @@ pub struct EffectInstanceDefinition {
     pub lifetime: EffectLifetimeTemplate,
     #[serde(default)]
     pub end_condition: Option<EffectEndConditionDefinition>,
+    #[serde(default)]
+    pub one_shot: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -1427,6 +1465,7 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
             effect_id,
             lifetime,
             end_condition,
+            one_shot,
         } = def;
 
         let end_condition = match end_condition {
@@ -1516,6 +1555,7 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
             effect_id,
             lifetime,
             end_condition,
+            one_shot,
         }
     }
 }

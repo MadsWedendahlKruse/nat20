@@ -3,7 +3,10 @@ use nat20_core::{
     components::{
         ability::AbilityScoreMap,
         damage::DamageResistances,
-        effects::effect::{EffectLifetime, EffectsMap},
+        effects::{
+            effect::{EffectLifetime, EffectsMap},
+            effect_manager::EffectManager,
+        },
         health::{hit_points::HitPoints, life_state::LifeState},
         id::{FeatId, Name, SpeciesId, SubspeciesId},
         level::{ChallengeRating, CharacterLevels},
@@ -172,14 +175,14 @@ fn render_overview(ui: &imgui::Ui, world: &World, entity: Entity, mode: &Creatur
 
 fn render_effects(ui: &imgui::Ui, world: &World, entity: Entity) {
     let time_mode = systems::helpers::get_component::<EntityClock>(world, entity).mode();
-    if let Ok(effects) = world.get::<&EffectsMap>(entity) {
-        effects.render_with_context(ui, &time_mode);
+    if let Ok(effects) = world.get::<&EffectManager>(entity) {
+        effects.effects.render_with_context(ui, &time_mode);
     }
 }
 
 fn render_effects_compact(ui: &imgui::Ui, world: &World, entity: Entity) {
     let time_mode = systems::helpers::get_component::<EntityClock>(world, entity).mode();
-    let effects = systems::helpers::get_component::<EffectsMap>(world, entity);
+    let effects = &systems::helpers::get_component::<EffectManager>(world, entity).effects;
     let conditions = effects
         .values()
         .filter(|e| !matches!(e.lifetime, EffectLifetime::Permanent))

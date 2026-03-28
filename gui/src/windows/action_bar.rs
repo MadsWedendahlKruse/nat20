@@ -378,15 +378,13 @@ fn render_actions_list(
 
                 let mut action_usable = false;
                 for (context, cost) in contexts_and_costs.iter_mut() {
-                    for effect in systems::effects::effects(&game_state.world, entity).values() {
-                        (effect.effect().on_resource_cost)(
-                            &game_state.world,
-                            entity,
-                            action_id,
-                            context,
-                            cost,
-                        );
-                    }
+                    systems::effects::effects(&game_state.world, entity).resource_cost(
+                        &game_state.world,
+                        entity,
+                        action_id,
+                        context,
+                        cost,
+                    );
                     if systems::actions::action_usable(
                         &game_state.world,
                         entity,
@@ -873,19 +871,18 @@ fn render_attack_hit_chance_tooltip(
     let mut attack_roll = attack_roll_fn(&game_state.world, action.actor, target, &action.context);
 
     // Effects on attacker
-    for effect in systems::effects::effects(&game_state.world, action.actor).values() {
-        (effect.effect().pre_attack_roll)(&game_state.world, action.actor, &mut attack_roll);
-    }
+    systems::effects::effects(&game_state.world, action.actor).pre_attack_roll(
+        &game_state.world,
+        action.actor,
+        &mut attack_roll,
+    );
     // Effects on target
-    for effect in systems::effects::effects(&game_state.world, target).values() {
-        (effect.effect().on_attacked)(
-            &game_state.world,
-            target,
-            action.actor,
-            effect,
-            &mut attack_roll,
-        );
-    }
+    systems::effects::effects(&game_state.world, target).attacked_preview(
+        &game_state.world,
+        target,
+        action.actor,
+        &mut attack_roll,
+    );
 
     let target_ac = systems::loadout::armor_class(&game_state.world, target);
 

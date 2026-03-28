@@ -14,15 +14,11 @@ pub fn damage_roll(
     entity: Entity,
     crit: bool,
 ) -> DamageRollResult {
-    for effect in systems::effects::effects(world, entity).values() {
-        (effect.effect().pre_damage_roll)(world, entity, &mut damage_roll);
-    }
+    systems::effects::effects(world, entity).pre_damage_roll(world, entity, &mut damage_roll);
 
     let mut result = damage_roll.roll(crit);
 
-    for effect in systems::effects::effects(world, entity).values() {
-        (effect.effect().post_damage_roll)(world, entity, &mut result);
-    }
+    systems::effects::effects(world, entity).post_damage_roll(world, entity, &mut result);
 
     result
 }
@@ -40,17 +36,15 @@ pub fn damage_roll_fn(
 
 pub fn attack_roll(
     mut attack_roll: AttackRoll,
-    world: &World,
+    world: &mut World,
     attacker: Entity,
     target: Entity,
 ) -> AttackRollResult {
-    for effect in systems::effects::effects(world, attacker).values() {
-        (effect.effect().pre_attack_roll)(world, attacker, &mut attack_roll);
-    }
+    systems::effects::effects(world, attacker).pre_attack_roll(world, attacker, &mut attack_roll);
 
-    for effect in systems::effects::effects(world, target).values() {
-        (effect.effect().on_attacked)(world, target, attacker, effect, &mut attack_roll);
-    }
+    let mut effects = systems::effects::take_effects(world, target);
+    effects.attacked(world, target, attacker, &mut attack_roll);
+    systems::effects::put_effects(world, target, effects);
 
     let mut result = {
         let level =
@@ -58,16 +52,14 @@ pub fn attack_roll(
         attack_roll.roll_raw(level.proficiency_bonus())
     };
 
-    for effect in systems::effects::effects(world, attacker).values() {
-        (effect.effect().post_attack_roll)(world, attacker, &mut result);
-    }
+    systems::effects::effects(world, attacker).post_attack_roll(world, attacker, &mut result);
 
     result
 }
 
 pub fn attack_roll_fn(
     attack_roll_fn: &AttackRollFunction,
-    world: &World,
+    world: &mut World,
     entity: Entity,
     target: Entity,
     context: &ActionContext,

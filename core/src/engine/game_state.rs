@@ -638,14 +638,9 @@ impl GameState {
             }
 
             EventKind::ActionPerformed { action, results } => {
-                let hooks: Vec<_> = systems::effects::effects(&self.world, action.actor)
-                    .values()
-                    .map(|effect| effect.effect().on_action_result.clone())
-                    .collect();
-
-                for hook in hooks {
-                    hook(self, action, results);
-                }
+                let effects = systems::effects::take_effects(&mut self.world, action.actor);
+                effects.action_result(self, action, results);
+                systems::effects::put_effects(&mut self.world, action.actor, effects);
 
                 for action_result in results {
                     match &action_result.kind {
@@ -791,6 +786,14 @@ impl GameState {
 
         for entity in entities {
             systems::time::advance_time(self, entity, time_step);
+
+            let marked_effects =
+                systems::effects::effects_mut(&mut self.world, entity).take_marked_for_removal();
+            systems::effects::remove_effects(
+                self,
+                entity,
+                &marked_effects.into_iter().collect::<Vec<_>>(),
+            );
 
             // TODO: No idea where to put this
             if !systems::ai::is_player_controlled(&self.world, entity)

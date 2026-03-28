@@ -1,11 +1,13 @@
-use hecs::{Entity, Ref, World};
+use hecs::{Entity, Ref, RefMut, World};
 use tracing::debug;
-use uuid::Uuid;
 
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext},
-        effects::effect::{EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectsMap},
+        effects::{
+            effect::{EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectsMap},
+            effect_manager::EffectManager,
+        },
         id::EffectId,
         modifier::ModifierSource,
     },
@@ -17,12 +19,26 @@ use crate::{
 };
 
 /// This gets used so often that it deserves its own function
-pub fn effects(world: &World, entity: Entity) -> Ref<'_, EffectsMap> {
-    systems::helpers::get_component::<EffectsMap>(world, entity)
+pub fn effects(world: &World, entity: Entity) -> Ref<'_, EffectManager> {
+    systems::helpers::get_component::<EffectManager>(world, entity)
 }
 
-pub fn effects_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, EffectsMap> {
-    systems::helpers::get_component_mut::<EffectsMap>(world, entity)
+pub fn effects_mut(world: &mut World, entity: Entity) -> RefMut<'_, EffectManager> {
+    systems::helpers::get_component_mut::<EffectManager>(world, entity)
+}
+
+#[must_use]
+pub fn take_effects(world: &mut World, entity: Entity) -> EffectManager {
+    world
+        .get::<&mut EffectManager>(entity)
+        .map(|mut mgr| std::mem::take(&mut *mgr))
+        .unwrap_or_default()
+}
+
+pub fn put_effects(world: &mut World, entity: Entity, effects: EffectManager) {
+    if let Ok(mut mgr) = world.get::<&mut EffectManager>(entity) {
+        *mgr = effects;
+    }
 }
 
 pub fn add_effect_template(
@@ -78,9 +94,8 @@ pub fn add_permanent_effect(
     context: Option<&ActionContext>,
 ) {
     let effect_instance = EffectInstance::permanent(effect_id.clone(), source.clone());
-    let instance_id = Uuid::new_v4();
     apply_and_replace(game_state, entity, &effect_instance, context);
-    effects_mut(&mut game_state.world, entity).insert(instance_id, effect_instance);
+    effects_mut(&mut game_state.world, entity).insert(effect_instance);
 }
 
 pub fn add_permanent_effects(
@@ -101,24 +116,28 @@ fn add_effect_instance(
     instance_id: EffectInstanceId,
     effect_instances: &mut EffectsMap,
     context: Option<&ActionContext>,
-) {
+) -> Vec<EffectInstance> {
+    let mut replaced_effects = Vec::new();
+
     if let Some(instance) = effect_instances.remove(&instance_id) {
         debug!(
             "Adding effect instance (id: {:?}) {:?} to entity {:?}",
             instance_id, instance, entity
         );
-        apply_and_replace(game_state, entity, &instance, context);
+        replaced_effects.extend(apply_and_replace(game_state, entity, &instance, context));
         for child_instance in &instance.children {
-            add_effect_instance(
+            replaced_effects.extend(add_effect_instance(
                 game_state,
                 entity,
                 child_instance.clone(),
                 effect_instances,
                 context,
-            );
+            ));
         }
-        effects_mut(&mut game_state.world, entity).insert(instance_id, instance);
+        effects_mut(&mut game_state.world, entity).insert(instance);
     }
+
+    replaced_effects
 }
 
 fn apply_and_replace(
@@ -126,22 +145,36 @@ fn apply_and_replace(
     entity: Entity,
     effect_instance: &EffectInstance,
     context: Option<&ActionContext>,
-) {
+) -> Vec<EffectInstance> {
     let effect = effect_instance.effect();
-    (effect.on_apply)(game_state, entity, context);
+    if let Some(on_apply) = &effect.on_apply {
+        on_apply(game_state, entity, context);
+    }
+
     if let Some(replaces) = &effect.replaces {
         // TODO: Not sure how best to find the instance that should be replaced.
         // It's probably always just one?
-        remove_effects_by_id(game_state, entity, replaces);
+        remove_effects_by_id(game_state, entity, replaces)
+    } else {
+        Vec::new()
     }
 }
 
-pub fn remove_effect(game_state: &mut GameState, entity: Entity, instance_id: &EffectInstanceId) {
+pub fn remove_effect(
+    game_state: &mut GameState,
+    entity: Entity,
+    instance_id: &EffectInstanceId,
+) -> Vec<EffectInstance> {
     debug!("Removing effect {:?} from entity {:?}", instance_id, entity);
-    if let Ok(effects) = game_state.world.query_one_mut::<&mut EffectsMap>(entity) {
+
+    let mut removed_effects = Vec::new();
+
+    if let Ok(effects) = game_state.world.query_one_mut::<&mut EffectManager>(entity) {
         if let Some(effect_instance) = effects.remove(instance_id) {
             let effect = effect_instance.effect();
-            (effect.on_unapply)(game_state, entity);
+            if let Some(on_unapply) = &effect.on_unapply {
+                on_unapply(game_state, entity);
+            }
 
             if !effect_instance.is_permanent() {
                 game_state.event_dispatcher.remove_listeners_by_source(
@@ -160,39 +193,59 @@ pub fn remove_effect(game_state: &mut GameState, entity: Entity, instance_id: &E
             }
 
             for child_id in effect_instance.children.iter() {
-                remove_effect(game_state, entity, child_id);
+                removed_effects.extend(remove_effect(game_state, entity, child_id));
             }
+
+            removed_effects.push(effect_instance);
         }
     }
+
+    removed_effects
 }
 
-pub fn remove_effects(game_state: &mut GameState, entity: Entity, effects: &[EffectInstanceId]) {
+pub fn remove_effects(
+    game_state: &mut GameState,
+    entity: Entity,
+    effects: &[EffectInstanceId],
+) -> Vec<EffectInstance> {
+    let mut removed_effects = Vec::new();
     for effect_id in effects {
-        remove_effect(game_state, entity, effect_id);
+        removed_effects.extend(remove_effect(game_state, entity, effect_id));
     }
+    removed_effects
 }
 
 pub fn remove_effects_by_source(
     game_state: &mut GameState,
     entity: Entity,
     source: &ModifierSource,
-) {
+) -> Vec<EffectInstance> {
     remove_effects_by_filter(game_state, entity, |effect_instance| {
         effect_instance.source == *source
-    });
+    })
 }
 
-pub fn remove_effects_by_id(game_state: &mut GameState, entity: Entity, effect_id: &EffectId) {
+pub fn remove_effects_by_id(
+    game_state: &mut GameState,
+    entity: Entity,
+    effect_id: &EffectId,
+) -> Vec<EffectInstance> {
     remove_effects_by_filter(game_state, entity, |effect_instance| {
         effect_instance.effect_id == *effect_id
-    });
+    })
+}
+
+pub fn remove_temporary_effects(game_state: &mut GameState, entity: Entity) -> Vec<EffectInstance> {
+    remove_effects_by_filter(game_state, entity, |effect_instance| {
+        !effect_instance.is_permanent()
+    })
 }
 
 fn remove_effects_by_filter(
     game_state: &mut GameState,
     entity: Entity,
     filter: impl Fn(&EffectInstance) -> bool,
-) {
+) -> Vec<EffectInstance> {
     let instance_ids: Vec<EffectInstanceId> = effects(&game_state.world, entity)
         .iter()
         .filter_map(|(id, effect_instance)| {
@@ -204,7 +257,11 @@ fn remove_effects_by_filter(
         })
         .collect();
 
+    let mut removed_effects = Vec::new();
+
     for instance_id in instance_ids {
-        remove_effect(game_state, entity, &instance_id);
+        removed_effects.extend(remove_effect(game_state, entity, &instance_id));
     }
+
+    removed_effects
 }

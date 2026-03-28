@@ -297,9 +297,7 @@ impl Loadout {
         if let Some(armor) = &self.armor() {
             let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
             let mut armor_class = armor.armor_class(&ability_scores);
-            for effect in systems::effects::effects(world, entity).values() {
-                (effect.effect().on_armor_class)(world, entity, &mut armor_class);
-            }
+            systems::effects::effects(world, entity).armor_class(world, entity, &mut armor_class);
             armor_class
         } else {
             // TODO: Not sure if this is the right way to handle unarmored characters

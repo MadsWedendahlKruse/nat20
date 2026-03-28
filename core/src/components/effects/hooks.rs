@@ -24,7 +24,7 @@ pub type AttackRollHook = Arc<dyn Fn(&World, Entity, &mut AttackRoll) + Send + S
 pub type AttackRollResultHook = Arc<dyn Fn(&World, Entity, &mut AttackRollResult) + Send + Sync>;
 /// Hook for when an entity is attacked. Parameters are: world, victim, attacker, attack roll result.
 pub type AttackedHook =
-    Arc<dyn Fn(&World, Entity, Entity, &EffectInstance, &mut AttackRoll) + Send + Sync>;
+    Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut AttackRoll) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&World, Entity, &mut ArmorClass) + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&World, Entity, &mut D20Check) + Send + Sync>;
 pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + Send + Sync>;
@@ -35,7 +35,7 @@ pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &[ActionResu
 pub type ResourceCostHook =
     Arc<dyn Fn(&World, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync>;
 pub type PreDamageMitigationHook =
-    Arc<dyn Fn(&World, Entity, &EffectInstance, &mut DamageRollResult) + Send + Sync>;
+    Arc<dyn Fn(&World, &EffectInstance, Entity, &mut DamageRollResult) + Send + Sync>;
 pub type PostDamageMitigationHook =
     Arc<dyn Fn(&World, Entity, &mut DamageMitigationResult) + Send + Sync>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)

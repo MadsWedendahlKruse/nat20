@@ -181,7 +181,7 @@ fn perform_attack_roll(
 ) {
     let attack_roll = systems::damage::attack_roll_fn(
         attack_roll_function.as_ref(),
-        &game_state.world,
+        &mut game_state.world,
         action_data.actor,
         target,
         &action_data.context,

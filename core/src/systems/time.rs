@@ -62,15 +62,7 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
         _ => { /* no special logging for other time steps */ }
     }
 
-    let mut expired_effects = Vec::new();
-    for (id, effect) in systems::effects::effects_mut(&mut game_state.world, entity).iter_mut() {
-        effect.advance_time(time_step);
-        if effect.is_expired() {
-            expired_effects.push(id.clone());
-        }
-    }
-
-    systems::effects::remove_effects(game_state, entity, &expired_effects);
+    systems::effects::effects_mut(&mut game_state.world, entity).advance_time(time_step);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

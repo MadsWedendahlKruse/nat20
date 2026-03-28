@@ -637,7 +637,7 @@ impl ImguiRenderableWithContext<&TimeMode> for EffectsMap {
     fn render_with_context(&self, ui: &imgui::Ui, time_mode: &TimeMode) {
         let (permanent_effects, temporary_effects): (Vec<&EffectInstance>, Vec<&EffectInstance>) =
             self.values()
-                .partition(|e| matches!(e.lifetime, EffectLifetime::Permanent));
+                .partition(|e| e.is_permanent());
 
         ui.separator_with_text("Conditions");
         if let Some(table) = table_with_columns!(ui, "Conditions", "Effect", "Source", "Duration") {

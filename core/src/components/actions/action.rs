@@ -74,17 +74,9 @@ impl Action {
         action_data: &ActionData,
         targets: &[Entity],
     ) {
-        // TODO: Not a fan of having to clone to avoid borrowing issues, but
-        // hopefully since most of the effect just have a no-op as their
-        // on_action component it'll be cheap to clone
-        let hooks: Vec<_> = systems::effects::effects(&game_state.world, action_data.actor)
-            .values()
-            .filter_map(|effect| Some(effect.effect().on_action.clone()))
-            .collect();
-
-        for hook in hooks {
-            hook(&mut game_state.world, action_data);
-        }
+        let effects = systems::effects::take_effects(&mut game_state.world, action_data.actor);
+        effects.action(&mut game_state.world, action_data);
+        systems::effects::put_effects(&mut game_state.world, action_data.actor, effects);
 
         self.kind.perform(game_state, action_data, targets);
     }

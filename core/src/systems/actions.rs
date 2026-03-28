@@ -171,15 +171,13 @@ pub fn available_actions(world: &World, entity: Entity) -> ActionMap {
 
     actions.retain(|action_id, action_data| {
         action_data.retain_mut(|(action_context, resource_cost)| {
-            for effect in systems::effects::effects(world, entity).values() {
-                (effect.effect().on_resource_cost)(
-                    world,
-                    entity,
-                    action_id,
-                    action_context,
-                    resource_cost,
-                );
-            }
+            systems::effects::effects(world, entity).resource_cost(
+                world,
+                entity,
+                action_id,
+                action_context,
+                resource_cost,
+            );
             action_usable(world, entity, action_id, &action_context, resource_cost).is_ok()
         });
 
