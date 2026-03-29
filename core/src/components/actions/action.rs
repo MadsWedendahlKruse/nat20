@@ -20,7 +20,7 @@ use crate::{
         dice::{DiceSetRoll, DiceSetRollResult},
         effects::effect::EffectInstanceTemplate,
         health::life_state::LifeState,
-        id::{ActionId, EffectId, EntityIdentifier, IdProvider, SpellId},
+        id::{ActionId, EffectId, EntityIdentifier, IdProvider, ResourceId, SpellId},
         items::equipment::{armor::ArmorClass, slots::EquipmentSlot},
         resource::{RechargeRule, ResourceAmountMap},
         saving_throw::{SavingThrowDC, SavingThrowKind},
@@ -101,6 +101,13 @@ impl Action {
 
     pub fn resource_cost_mut(&mut self) -> &mut ResourceAmountMap {
         &mut self.resource_cost
+    }
+
+    pub fn is_reaction(&self) -> bool {
+        self.kind.is_reaction()
+            || self
+                .resource_cost
+                .contains_key(&ResourceId::new("nat20_core", "resource.reaction"))
     }
 }
 

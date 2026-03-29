@@ -38,7 +38,7 @@ use crate::{
     },
     state::{self, gui_state::GuiState},
     windows::{
-        action_bar::ActionBarWindow,
+        action_bar::action_bar::ActionBarWindow,
         anchor::{self, AUTO_RESIZE, WindowManager},
         creature_debug::CreatureDebugWindow,
         creature_right_click::CreatureRightClickWindow,
