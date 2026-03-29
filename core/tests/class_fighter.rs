@@ -20,7 +20,8 @@ mod tests {
     #[test]
     fn fighter_action_surge() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5, None).id();
+        let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
+        let fighter = fighter_identifier.id();
 
         // Check that the fighter has the Action Surge action
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
@@ -49,11 +50,11 @@ mod tests {
         let _ = game_state.submit_activity(Activity::Act {
             action: ActionDecision::without_response_to(ActionDecisionKind::Action {
                 action: ActionData::new(
-                    fighter,
+                    fighter_identifier.clone(),
                     action_id.clone(),
                     contexts_and_costs[0].0.clone(),
                     contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Entity(fighter)],
+                    vec![TargetInstance::Entity(fighter_identifier)],
                 ),
             }),
         });
@@ -93,6 +94,8 @@ mod tests {
                 boundary: TurnBoundary::Start,
             },
         );
+        // Update to remove expired effects
+        game_state.update(0.0);
 
         // Check that the Action Surge effect is removed after the turn starts
         let effects = systems::effects::effects(&game_state.world, fighter);
@@ -127,7 +130,8 @@ mod tests {
     #[test]
     fn fighter_second_wind() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5, None).id();
+        let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
+        let fighter = fighter_identifier.id();
 
         // Check that the fighter has the Second Wind action
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
@@ -171,11 +175,11 @@ mod tests {
         let result = systems::actions::perform_action(
             &mut game_state,
             &ActionData::new(
-                fighter,
+                fighter_identifier.clone(),
                 action_id.clone(),
                 contexts_and_costs[0].0.clone(),
                 contexts_and_costs[0].1.clone(),
-                vec![TargetInstance::Entity(fighter)],
+                vec![TargetInstance::Entity(fighter_identifier)],
             ),
         );
         println!("Second Wind Result: {:?}", result);
@@ -190,7 +194,8 @@ mod tests {
     #[test]
     fn fighter_extra_attack() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter = fixtures::creatures::heroes::fighter(&mut game_state, 5, None).id();
+        let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
+        let fighter = fighter_identifier.id();
         let _ = systems::health::heal_full(&mut game_state.world, fighter);
 
         // Check that the fighter has the Extra Attack effect
@@ -229,7 +234,7 @@ mod tests {
         let result = game_state.submit_activity(Activity::Act {
             action: ActionDecision::without_response_to(ActionDecisionKind::Action {
                 action: ActionData::new(
-                    fighter,
+                    fighter_identifier.clone(),
                     action_id.clone(),
                     contexts_and_costs[0].0.clone(),
                     contexts_and_costs[0].1.clone(),
@@ -271,7 +276,7 @@ mod tests {
         let result = game_state.submit_activity(Activity::Act {
             action: ActionDecision::without_response_to(ActionDecisionKind::Action {
                 action: ActionData::new(
-                    fighter,
+                    fighter_identifier,
                     action_id.clone(),
                     contexts_and_costs[0].0.clone(),
                     contexts_and_costs[0].1.clone(),

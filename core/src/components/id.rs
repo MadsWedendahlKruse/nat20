@@ -168,6 +168,9 @@ impl Name {
 /// This is used to uniquely identify entities, such as characters or creatures.
 /// In most cases the id (`Entity`) is meaningless outside the context of the
 /// world, so for convenience we also store the name of the entity.
+/// When despawning an entity from the world, the `Entity` ID becomes invalid, which
+/// makes it impossible to fetch the name of the entity when rendering events related
+/// to the entity after it has been despawned.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntityIdentifier {
     id: Entity,

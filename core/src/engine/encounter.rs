@@ -183,7 +183,7 @@ impl Encounter {
                         EventKind::D20CheckResolved(performer, result, dc) => {
                             let mut life_state = systems::helpers::get_component_mut::<LifeState>(
                                 &mut game_state.world,
-                                *performer,
+                                performer.id(),
                             );
 
                             if let LifeState::Unconscious(ref mut death_saving_throws) = *life_state
@@ -197,7 +197,7 @@ impl Encounter {
 
                                     return CallbackResult::Event(Event::new(
                                         EventKind::LifeStateChanged {
-                                            entity: current_entity,
+                                            entity: performer.clone(),
                                             new_state: next_state,
                                             actor: None,
                                         },
@@ -260,5 +260,20 @@ impl Encounter {
 
     pub fn combat_log_move(&mut self) -> EventLog {
         std::mem::take(&mut self.event_log)
+    }
+
+    pub fn remove_participant(&mut self, game_state: &mut GameState, entity: Entity) {
+        self.participants.remove(&entity);
+        let current_entity = self.current_entity();
+        self.initiative_order.retain(|(e, _)| *e != entity);
+        self.turn_index = self
+            .initiative_order
+            .iter()
+            .position(|(e, _)| *e == current_entity)
+            .unwrap_or(0);
+        if current_entity == entity {
+            // If the current participant was removed, end their turn to move to the next one
+            self.end_turn(game_state, entity);
+        }
     }
 }

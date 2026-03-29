@@ -11,7 +11,7 @@ use crate::{
                 AreaShape, TargetInstance, TargetingContext, TargetingError, TargetingKind,
             },
         },
-        id::{ActionId, ResourceId},
+        id::{ActionId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap, ResourceMap},
         spells::spellbook::Spellbook,
@@ -196,7 +196,7 @@ pub fn perform_action(game_state: &mut GameState, action_data: &ActionData) {
     if let Some(cooldown) = action.cooldown {
         set_cooldown(
             &mut game_state.world,
-            action_data.actor,
+            action_data.actor.id(),
             &action_data.action_id,
             cooldown,
         );
@@ -214,7 +214,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
     let mut entities = Vec::new();
     let targeting_context = targeting_context(
         &game_state.world,
-        action_data.actor,
+        action_data.actor.id(),
         &action_data.action_id,
         &action_data.context,
     );
@@ -222,7 +222,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
         TargetingKind::SelfTarget | TargetingKind::Single | TargetingKind::Multiple { .. } => {
             for target in &action_data.targets {
                 match target {
-                    TargetInstance::Entity(entity) => entities.push(*entity),
+                    TargetInstance::Entity(entity) => entities.push(entity.id()),
                     TargetInstance::Point(point) => {
                         if let Some(entity) =
                             systems::geometry::get_entity_at_point(&game_state.world, *point)
@@ -241,7 +241,8 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
             for target in &action_data.targets {
                 let point = match target {
                     TargetInstance::Entity(entity) => {
-                        &systems::geometry::get_foot_position(&game_state.world, *entity).unwrap()
+                        &systems::geometry::get_foot_position(&game_state.world, entity.id())
+                            .unwrap()
                     }
 
                     TargetInstance::Point(point) => point,
@@ -249,7 +250,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
 
                 let (shape_hitbox, shape_pose) = shape.parry3d_shape(
                     &game_state.world,
-                    action_data.actor,
+                    action_data.actor.id(),
                     *fixed_on_actor,
                     point,
                 );
@@ -326,9 +327,12 @@ pub fn available_reactions_to_event(
                         TargetingKind::SelfTarget
                     );
                     let target = if self_target {
-                        TargetInstance::Entity(reactor)
+                        TargetInstance::Entity(EntityIdentifier::from_world(world, reactor))
                     } else {
-                        TargetInstance::Entity(event.actor().unwrap())
+                        TargetInstance::Entity(EntityIdentifier::from_world(
+                            world,
+                            event.actor().unwrap(),
+                        ))
                     };
                     if action_usable_on_targets(
                         world,
@@ -342,7 +346,7 @@ pub fn available_reactions_to_event(
                     .is_ok()
                     {
                         reactions.push(ReactionData::new(
-                            reactor,
+                            EntityIdentifier::from_world(world, reactor),
                             event.clone().into(),
                             reaction_id.clone(),
                             context.clone(),

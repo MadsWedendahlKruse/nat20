@@ -4,6 +4,7 @@ use crate::{
     components::{
         d20::{D20CheckDC, D20CheckOutcome, D20CheckResult},
         damage::AttackRollResult,
+        id::EntityIdentifier,
         items::equipment::armor::ArmorClass,
         modifier::Modifiable,
         saving_throw::{SavingThrowKind, SavingThrowSet},
@@ -28,7 +29,7 @@ pub enum D20CheckKind {
 pub enum D20CheckDCKind {
     SavingThrow(D20CheckDC<SavingThrowKind>),
     Skill(D20CheckDC<Skill>),
-    AttackRoll(Entity, ArmorClass),
+    AttackRoll(EntityIdentifier, ArmorClass),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,7 +109,7 @@ pub fn check_no_event(world: &World, entity: Entity, dc: &D20CheckDCKind) -> D20
 #[must_use]
 pub fn check(game_state: &mut GameState, entity: Entity, dc: &D20CheckDCKind) -> Event {
     Event::new(EventKind::D20CheckPerformed(
-        entity,
+        EntityIdentifier::from_world(&game_state.world, entity),
         check_no_event(&game_state.world, entity, dc),
         dc.clone(),
     ))

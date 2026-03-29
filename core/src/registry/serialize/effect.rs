@@ -28,7 +28,7 @@ use crate::{
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
-        id::{ActionId, EffectId, ResourceId, ScriptId},
+        id::{ActionId, EffectId, EntityIdentifier, ResourceId, ScriptId},
         items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
         modifier::{KeyedModifiable, Modifiable, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
@@ -1010,7 +1010,8 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
                 Arc::new(move |world: &mut World, action_data: &ActionData| {
                     let action_view = ScriptActionView::from(action_data);
 
-                    let entity_view = ScriptEntityView::take_from_world(world, action_data.actor);
+                    let entity_view =
+                        ScriptEntityView::take_from_world(world, action_data.actor.id());
 
                     systems::scripts::evalute_action_hook(&script_id, &action_view, &entity_view);
 
@@ -1060,8 +1061,8 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                             .filter_map(|result| {
                                 if let TargetInstance::Entity(target_entity) = &result.target {
                                     Some(ScriptActionResultView::from_action_result(
-                                        action_data.actor,
-                                        *target_entity,
+                                        action_data.actor.id(),
+                                        target_entity.id(),
                                         &result.kind,
                                     ))
                                 } else {
@@ -1082,7 +1083,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
 
                         let entity_view = ScriptEntityView::take_from_world(
                             &mut game_state.world,
-                            action_data.actor,
+                            action_data.actor.id(),
                         );
                         let mut commands = ScriptCommandBuffer::new_mut();
 
@@ -1116,7 +1117,10 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                                     let target_entity: Entity = target.into();
 
                                     game_state.process_event(Event::new(EventKind::GainedEffect {
-                                        entity: target_entity,
+                                        entity: EntityIdentifier::from_world(
+                                            &game_state.world,
+                                            target_entity,
+                                        ),
                                         effect: effect_id.clone(),
                                     }));
 

@@ -14,7 +14,7 @@ use crate::{
         },
         d20::D20CheckOutcome,
         damage::DamageRollResult,
-        id::ActionId,
+        id::{ActionId, EntityIdentifier},
         modifier::{Modifiable, ModifierSource},
         spells::spell::{ConcentrationInstance, SpellFlag},
     },
@@ -89,8 +89,12 @@ fn perform_unconditional(
 
     // Apply healing immediately (no gating for unconditional).
     let healing_outcome: Option<HealingOutcome> = payload.healing().map(|healing_amount| {
-        let healing_amount =
-            healing_amount(&game_state.world, action_data.actor, &action_data.context).roll();
+        let healing_amount = healing_amount(
+            &game_state.world,
+            action_data.actor.id(),
+            &action_data.context,
+        )
+        .roll();
         let new_life_state = systems::health::heal(
             &mut game_state.world,
             target,
@@ -105,7 +109,7 @@ fn perform_unconditional(
 
     let Some(damage_roll) = get_damage_roll(
         &game_state.world,
-        action_data.actor,
+        action_data.actor.id(),
         &action_data.action_id,
         payload,
         &None,
@@ -124,13 +128,16 @@ fn perform_unconditional(
         return game_state.process_event(Event::action_performed_event(
             game_state,
             action_data,
-            vec![(target, result)],
+            vec![(
+                EntityIdentifier::from_world(&game_state.world, target),
+                result,
+            )],
         ));
     };
 
     // Otherwise, do the damage roll event, and in the callback emit the combined result.
     let damage_event = Event::new(EventKind::DamageRollPerformed(
-        action_data.actor,
+        action_data.actor.clone(),
         damage_roll,
     ));
 
@@ -158,7 +165,10 @@ fn perform_unconditional(
                 CallbackResult::Event(Event::action_performed_event(
                     game_state,
                     &action_data,
-                    vec![(target, result)],
+                    vec![(
+                        EntityIdentifier::from_world(&game_state.world, target),
+                        result,
+                    )],
                 ))
             }
             _ => panic!(
@@ -182,7 +192,7 @@ fn perform_attack_roll(
     let attack_roll = systems::damage::attack_roll_fn(
         attack_roll_function.as_ref(),
         &mut game_state.world,
-        action_data.actor,
+        action_data.actor.id(),
         target,
         &action_data.context,
     );
@@ -190,11 +200,14 @@ fn perform_attack_roll(
     let armor_class = systems::loadout::armor_class(&game_state.world, target);
 
     let attack_event = Event::new(EventKind::D20CheckPerformed(
-        action_data.actor,
+        action_data.actor.clone(),
         D20ResultKind::AttackRoll {
             result: attack_roll.clone(),
         },
-        D20CheckDCKind::AttackRoll(target, armor_class),
+        D20CheckDCKind::AttackRoll(
+            EntityIdentifier::from_world(&game_state.world, target),
+            armor_class,
+        ),
     ));
 
     let callback = EventCallback::new({
@@ -230,7 +243,7 @@ fn perform_attack_roll(
 
                 let damage_roll = get_damage_roll(
                     &game_state.world,
-                    action_data.actor,
+                    action_data.actor.id(),
                     &action_data.action_id,
                     &payload,
                     &damage_on_miss,
@@ -260,12 +273,15 @@ fn perform_attack_roll(
                     return CallbackResult::Event(Event::action_performed_event(
                         game_state,
                         &action_data,
-                        vec![(target, result)],
+                        vec![(
+                            EntityIdentifier::from_world(&game_state.world, target),
+                            result,
+                        )],
                     ));
                 };
 
                 let damage_event = Event::new(EventKind::DamageRollPerformed(
-                    action_data.actor,
+                    action_data.actor.clone(),
                     damage_roll.unwrap(),
                 ));
 
@@ -308,7 +324,10 @@ fn perform_attack_roll(
                                 CallbackResult::Event(Event::action_performed_event(
                                     game_state,
                                     &action_data,
-                                    vec![(target, result)],
+                                    vec![(
+                                        EntityIdentifier::from_world(&game_state.world, target),
+                                        result,
+                                    )],
                                 ))
                             }
                             _ => panic!("Unexpected event kind in damage callback: {:?}", event),
@@ -331,8 +350,11 @@ fn perform_saving_throw(
     payload: &ActionPayload,
     damage_on_save: &Option<DamageOnFailure>,
 ) {
-    let saving_throw_dc =
-        saving_throw_function(&game_state.world, action_data.actor, &action_data.context);
+    let saving_throw_dc = saving_throw_function(
+        &game_state.world,
+        action_data.actor.id(),
+        &action_data.context,
+    );
 
     let saving_throw_event = systems::d20::check(
         game_state,
@@ -373,7 +395,7 @@ fn perform_saving_throw(
                 // If no damage, emit effect result immediately.
                 let Some(damage_roll) = get_damage_roll(
                     &game_state.world,
-                    action_data.actor,
+                    action_data.actor.id(),
                     &action_data.action_id,
                     &payload,
                     &damage_on_save,
@@ -391,12 +413,15 @@ fn perform_saving_throw(
                     return CallbackResult::Event(Event::action_performed_event(
                         game_state,
                         &action_data,
-                        vec![(target, result)],
+                        vec![(
+                            EntityIdentifier::from_world(&game_state.world, target),
+                            result,
+                        )],
                     ));
                 };
 
                 let damage_event = Event::new(EventKind::DamageRollPerformed(
-                    action_data.actor,
+                    action_data.actor.clone(),
                     damage_roll,
                 ));
 
@@ -434,7 +459,10 @@ fn perform_saving_throw(
                                 CallbackResult::Event(Event::action_performed_event(
                                     game_state,
                                     &action_data,
-                                    vec![(target, result)],
+                                    vec![(
+                                        EntityIdentifier::from_world(&game_state.world, target),
+                                        result,
+                                    )],
                                 ))
                             }
                             _ => panic!("Unexpected event kind in damage callback: {:?}", event),
@@ -514,7 +542,7 @@ fn get_effect_outcome(
     payload.effect().map(|effect| {
         let effect_instance_id = systems::effects::add_effect_template(
             game_state,
-            action_data.actor,
+            action_data.actor.id(),
             target,
             ModifierSource::Action(action_data.action_id.clone()),
             effect,
@@ -528,7 +556,7 @@ fn get_effect_outcome(
             if spell.has_flag(SpellFlag::Concentration) {
                 systems::spells::add_concentration_instance(
                     game_state,
-                    action_data.actor,
+                    action_data.actor.id(),
                     ConcentrationInstance::Effect {
                         entity: target,
                         effect: effect.effect_id.clone(),

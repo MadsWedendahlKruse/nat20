@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path, sync::Arc};
 
-use hecs::Entity;
+use hecs::{Entity, World};
 use imgui::{ChildFlags, MouseButton};
 use nat20_core::{
     components::{
@@ -14,7 +14,7 @@ use nat20_core::{
         },
         activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
-        id::{ActionId, Name, ResourceId},
+        id::{ActionId, EntityIdentifier, Name, ResourceId},
         modifier::{Modifiable, ModifierSource},
         resource::{RechargeRule, ResourceAmount, ResourceAmountMap, ResourceMap},
         saving_throw::SavingThrowSet,
@@ -360,22 +360,6 @@ fn render_actions_list(
                     continue;
                 }
 
-                // TODO: This works for now to hide stuff like Reapply Hex, but it's
-                // definitely not ideal. Probably better to "mark" these actions somehow
-                if contexts_and_costs.iter().all(|(_, cost)| {
-                    cost.iter().any(|(res_id, amount)| {
-                        let resources = systems::helpers::get_component::<ResourceMap>(
-                            &game_state.world,
-                            entity,
-                        );
-                        !resources.can_afford(res_id, amount)
-                            && ResourcesRegistry::get(res_id).unwrap().recharge
-                                == RechargeRule::Never
-                    })
-                }) {
-                    continue;
-                }
-
                 let mut action_usable = false;
                 for (context, cost) in contexts_and_costs.iter_mut() {
                     systems::effects::effects(&game_state.world, entity).resource_cost(
@@ -421,7 +405,12 @@ fn render_actions_list(
                         }
 
                         _ => {
-                            select_action(entity, new_state, action_id, contexts_and_costs);
+                            select_action(
+                                EntityIdentifier::from_world(&game_state.world, entity),
+                                new_state,
+                                action_id,
+                                contexts_and_costs,
+                            );
                         }
                     }
                 }
@@ -448,7 +437,7 @@ fn render_end_turn(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) {
 }
 
 fn select_action(
-    entity: Entity,
+    entity: EntityIdentifier,
     new_state: &mut Option<ActionBarState>,
     action_id: &ActionId,
     contexts_and_costs: &mut Vec<(ActionContext, HashMap<ResourceId, ResourceAmount>)>,
@@ -617,7 +606,7 @@ fn render_context_selection(
         if clicked {
             *new_state = Some(ActionBarState::Targets {
                 action: ActionData::new(
-                    actor,
+                    EntityIdentifier::from_world(&game_state.world, actor),
                     action.clone(),
                     context.clone(),
                     cost.clone(),
@@ -677,7 +666,7 @@ fn render_target_selection(
 
     let targeting_context = systems::actions::targeting_context(
         &game_state.world,
-        action.actor,
+        action.actor.id(),
         &action.action_id,
         &action.context,
     );
@@ -702,7 +691,8 @@ fn render_target_selection(
         hovered.raycast_hit,
     );
 
-    let hovered_target_instance = target_instance_from_raycast(hovered.raycast_hit);
+    let hovered_target_instance =
+        target_instance_from_raycast(&game_state.world, hovered.raycast_hit);
 
     let preview = compute_and_render_target_preview(
         ui,
@@ -766,9 +756,11 @@ fn hovered_target_from_cursor<'a>(gui_state: &'a GuiState) -> Option<HoveredWorl
     })
 }
 
-fn target_instance_from_raycast(raycast_hit: &RaycastHit) -> TargetInstance {
+fn target_instance_from_raycast(world: &World, raycast_hit: &RaycastHit) -> TargetInstance {
     match &raycast_hit.kind {
-        RaycastHitKind::Creature(entity) => TargetInstance::Entity(*entity),
+        RaycastHitKind::Creature(entity) => {
+            TargetInstance::Entity(EntityIdentifier::from_world(world, *entity))
+        }
         RaycastHitKind::World => TargetInstance::Point(raycast_hit.poi),
     }
 }
@@ -846,14 +838,20 @@ fn render_target_chance_tooltips(
 
     match condition {
         ActionCondition::AttackRoll { attack_roll, .. } => {
-            render_attack_hit_chance_tooltip(ui, game_state, action, *target_entity, attack_roll);
+            render_attack_hit_chance_tooltip(
+                ui,
+                game_state,
+                action,
+                target_entity.id(),
+                attack_roll,
+            );
         }
         ActionCondition::SavingThrow { saving_throw, .. } => {
             render_save_success_chance_tooltip(
                 ui,
                 game_state,
                 action,
-                *target_entity,
+                target_entity.id(),
                 saving_throw,
             );
         }
@@ -868,26 +866,34 @@ fn render_attack_hit_chance_tooltip(
     target: Entity,
     attack_roll_fn: &Arc<AttackRollFunction>,
 ) {
-    let mut attack_roll = attack_roll_fn(&game_state.world, action.actor, target, &action.context);
+    let mut attack_roll = attack_roll_fn(
+        &game_state.world,
+        action.actor.id(),
+        target,
+        &action.context,
+    );
 
     // Effects on attacker
-    systems::effects::effects(&game_state.world, action.actor).pre_attack_roll(
+    systems::effects::effects(&game_state.world, action.actor.id()).pre_attack_roll(
         &game_state.world,
-        action.actor,
+        action.actor.id(),
         &mut attack_roll,
     );
     // Effects on target
     systems::effects::effects(&game_state.world, target).attacked_preview(
         &game_state.world,
         target,
-        action.actor,
+        action.actor.id(),
         &mut attack_roll,
     );
 
     let target_ac = systems::loadout::armor_class(&game_state.world, target);
 
-    let hit_chance =
-        attack_roll.hit_chance(&game_state.world, action.actor, target_ac.total() as u32) * 100.0;
+    let hit_chance = attack_roll.hit_chance(
+        &game_state.world,
+        action.actor.id(),
+        target_ac.total() as u32,
+    ) * 100.0;
 
     ui.tooltip(|| {
         ui.separator_with_text("Hit chance");
@@ -947,7 +953,7 @@ fn render_save_success_chance_tooltip(
     target: Entity,
     saving_throw_fn: &Arc<SavingThrowFunction>,
 ) {
-    let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor, &action.context);
+    let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor.id(), &action.context);
     let saving_throws =
         systems::helpers::get_component::<SavingThrowSet>(&game_state.world, target);
     let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
@@ -1136,7 +1142,7 @@ fn reverse_text_kind(text_kind: TextKind) -> TextKind {
 fn apply_targeting_click_logic(
     ui: &imgui::Ui,
     gui_state: &mut GuiState,
-    _game_state: &mut GameState,
+    game_state: &mut GameState,
     action: &mut ActionData,
     targeting_context: &TargetingContext,
     potential_target_instance: &Option<TargetInstance>,
@@ -1148,7 +1154,12 @@ fn apply_targeting_click_logic(
         TargetingKind::SelfTarget => {
             if left_clicked {
                 action.targets.clear();
-                action.targets.push(TargetInstance::Entity(action.actor));
+                action
+                    .targets
+                    .push(TargetInstance::Entity(EntityIdentifier::from_world(
+                        &game_state.world,
+                        action.actor.id(),
+                    )));
                 gui_state.cursor_ray_result.take();
                 return true;
             }
@@ -1217,7 +1228,8 @@ fn apply_targeting_click_logic(
             if let Some(target) = potential_target_instance {
                 let center_point = match target {
                     TargetInstance::Entity(entity) => {
-                        systems::geometry::get_foot_position(&_game_state.world, *entity).unwrap()
+                        systems::geometry::get_foot_position(&game_state.world, entity.id())
+                            .unwrap()
                     }
                     TargetInstance::Point(point) => *point,
                 };
@@ -1226,9 +1238,9 @@ fn apply_targeting_click_logic(
 
                 highlight_entities_in_area(
                     gui_state,
-                    _game_state,
+                    game_state,
                     shape,
-                    action.actor,
+                    action.actor.id(),
                     *fixed_on_actor,
                     center_point,
                 );
@@ -1288,8 +1300,8 @@ fn submit_action_decision(
     action: &ActionData,
     path_to_target: &Option<PathResult>,
 ) {
-    let response_to = if let Some(prompt) = game_state.next_prompt_entity(action.actor)
-        && prompt.actors().contains(&action.actor)
+    let response_to = if let Some(prompt) = game_state.next_prompt_entity(action.actor.id())
+        && prompt.actors().contains(&action.actor.id())
     {
         info!("Submitting action in response to prompt: {:#?}", prompt);
         Some(prompt.id)
@@ -1342,7 +1354,7 @@ fn handle_target_selection_footer(
 
     if ui.button("Cancel") || right_click_cancel || submit_action {
         *new_state = Some(ActionBarState::Action {
-            actions: systems::actions::all_actions(&game_state.world, action.actor),
+            actions: systems::actions::all_actions(&game_state.world, action.actor.id()),
         });
     }
 }
@@ -1361,7 +1373,7 @@ fn get_target_path_preview(
 ) -> (Point3<f32>, Option<PathResult>) {
     match path_result {
         TargetPathFindingResult::AlreadyInRange => (
-            systems::geometry::get_eye_position(&game_state.world, action.actor).unwrap(),
+            systems::geometry::get_eye_position(&game_state.world, action.actor.id()).unwrap(),
             None,
         ),
 
@@ -1371,14 +1383,15 @@ fn get_target_path_preview(
                     systems::geometry::ground_position(&game_state.geometry, &end)
                 && let Some(eye_pos) = systems::geometry::get_eye_position_at_point(
                     &game_state.world,
-                    action.actor,
+                    action.actor.id(),
                     &end_at_ground,
                 )
             {
                 (eye_pos, Some(path.clone()))
             } else {
                 (
-                    systems::geometry::get_eye_position(&game_state.world, action.actor).unwrap(),
+                    systems::geometry::get_eye_position(&game_state.world, action.actor.id())
+                        .unwrap(),
                     None,
                 )
             }
@@ -1397,7 +1410,7 @@ fn render_target_path_preview(
     if let Some((shape, shape_pose_at_preview)) = systems::geometry::get_shape_at_point(
         &game_state.world,
         &game_state.geometry,
-        action.actor,
+        action.actor.id(),
         &preview_position,
     ) && let Some(mesh) = gui_state.mesh_cache.get(&format!("{:#?}", shape))
     {
@@ -1417,7 +1430,7 @@ fn render_target_path_preview(
 
         let line_end = match target {
             TargetInstance::Entity(entity) => {
-                systems::geometry::get_shape(&game_state.world, *entity)
+                systems::geometry::get_shape(&game_state.world, entity.id())
                     .map(|(_, shape_pose)| shape_pose.translation.vector.into())
                     .unwrap()
             }
@@ -1437,7 +1450,7 @@ fn render_range_preview(
 ) {
     let normal_range = targeting_context.range.normal().get::<meter>();
     let max_range = targeting_context.range.max().get::<meter>();
-    let actor_position = systems::geometry::get_foot_position(&game_state.world, action.actor)
+    let actor_position = systems::geometry::get_foot_position(&game_state.world, action.actor.id())
         .map(|point| [point.x, point.y, point.z])
         .unwrap();
     gui_state
@@ -1463,7 +1476,9 @@ fn update_potential_target(
     }
 
     let closest_target = match &closest.kind {
-        RaycastHitKind::Creature(entity) => TargetInstance::Entity(*entity),
+        RaycastHitKind::Creature(entity) => {
+            TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, *entity))
+        }
         RaycastHitKind::World => TargetInstance::Point(closest.poi),
     };
 
@@ -1486,7 +1501,7 @@ fn update_potential_target(
                 match targeting_context.validate_targets(
                     &game_state.world,
                     &game_state.geometry,
-                    action.actor,
+                    action.actor.id(),
                     &[closest_target.clone()],
                 ) {
                     Ok(_) => {

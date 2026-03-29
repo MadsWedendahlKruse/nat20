@@ -1,9 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::{HashMap, HashSet};
 
-use hecs::{Entity, World};
+use hecs::{Entity, NoSuchEntity, World};
 use parry3d::{na::Point3, shape::Ball};
 use tracing::{debug, info, warn};
 use uom::si::{f32::Length, length::meter};
@@ -595,7 +592,7 @@ impl GameState {
         systems::actions::action_usable_on_targets(
             &self.world,
             &self.geometry,
-            *actor,
+            actor.id(),
             action_id,
             action_context,
             resource_cost,
@@ -604,7 +601,7 @@ impl GameState {
         .map_err(|error| ActionError::Usability(error))?;
 
         if spend_resources {
-            systems::resources::spend(&mut self.world, *actor, resource_cost)
+            systems::resources::spend(&mut self.world, actor.id(), resource_cost)
                 .map_err(|error| ActionError::Resource(error))?;
         }
 
@@ -620,8 +617,10 @@ impl GameState {
                 continue_movement,
                 ..
             } => {
-                let mut state =
-                    systems::helpers::get_component_mut::<ActivityState>(&mut self.world, *mover);
+                let mut state = systems::helpers::get_component_mut::<ActivityState>(
+                    &mut self.world,
+                    mover.id(),
+                );
                 if *continue_movement {
                     state.resume();
                 } else {
@@ -638,9 +637,9 @@ impl GameState {
             }
 
             EventKind::ActionPerformed { action, results } => {
-                let effects = systems::effects::take_effects(&mut self.world, action.actor);
+                let effects = systems::effects::take_effects(&mut self.world, action.actor.id());
                 effects.action_result(self, action, results);
-                systems::effects::put_effects(&mut self.world, action.actor, effects);
+                systems::effects::put_effects(&mut self.world, action.actor.id(), effects);
 
                 for action_result in results {
                     match &action_result.kind {
@@ -709,23 +708,30 @@ impl GameState {
                     D20CheckDCKind::SavingThrow(_) | D20CheckDCKind::Skill(_) => dc_kind.clone(),
                     D20CheckDCKind::AttackRoll(target, _) => {
                         // Recalculate AC in case it changed due to reactions
-                        let armor_class = systems::loadout::armor_class(&self.world, *target);
-                        D20CheckDCKind::AttackRoll(*target, armor_class)
+                        let armor_class = systems::loadout::armor_class(&self.world, target.id());
+                        D20CheckDCKind::AttackRoll(target.clone(), armor_class)
                     }
                 };
 
                 let _ = self.process_event_scoped(
-                    self.scope_for_entity(*entity),
-                    Event::new(EventKind::D20CheckResolved(*entity, kind.clone(), dc))
-                        .as_response_to(event.id),
+                    self.scope_for_entity(entity.id()),
+                    Event::new(EventKind::D20CheckResolved(
+                        entity.clone(),
+                        kind.clone(),
+                        dc,
+                    ))
+                    .as_response_to(event.id),
                 );
             }
 
             EventKind::DamageRollPerformed(entity, damage) => {
                 let _ = self.process_event_scoped(
-                    self.scope_for_entity(*entity),
-                    Event::new(EventKind::DamageRollResolved(*entity, damage.clone()))
-                        .as_response_to(event.id),
+                    self.scope_for_entity(entity.id()),
+                    Event::new(EventKind::DamageRollResolved(
+                        entity.clone(),
+                        damage.clone(),
+                    ))
+                    .as_response_to(event.id),
                 );
             }
 
@@ -789,11 +795,13 @@ impl GameState {
 
             let marked_effects =
                 systems::effects::effects_mut(&mut self.world, entity).take_marked_for_removal();
-            systems::effects::remove_effects(
-                self,
-                entity,
-                &marked_effects.into_iter().collect::<Vec<_>>(),
-            );
+            if !marked_effects.is_empty() {
+                systems::effects::remove_effects(
+                    self,
+                    entity,
+                    &marked_effects.into_iter().collect::<Vec<_>>(),
+                );
+            }
 
             // TODO: No idea where to put this
             if !systems::ai::is_player_controlled(&self.world, entity)
@@ -826,5 +834,18 @@ impl GameState {
                 }
             }
         }
+    }
+
+    pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {
+        info!("Despawning entity {:?}", entity);
+        self.world.despawn(entity)?;
+        if let Some(encounter_id) = self.in_combat.remove(&entity)
+            && let Some(encounter) = self.encounters.get_mut(&encounter_id)
+        {
+            let encounter = unsafe { &mut *(encounter as *mut Encounter) };
+            encounter.remove_participant(self, entity);
+        }
+        self.resting.remove(&entity);
+        Ok(())
     }
 }

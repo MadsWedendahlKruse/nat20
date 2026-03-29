@@ -8,7 +8,7 @@ use crate::{
         class::{
             ClassAndSubclass, SpellAccessModel, SpellReplacementModel, SpellcastingProgression,
         },
-        id::ResourceId,
+        id::{EntityIdentifier, ResourceId},
         level::CharacterLevels,
         level_up::LevelUpPrompt,
         resource::{ResourceAmount, ResourceBudgetKind, ResourceMap},
@@ -258,7 +258,7 @@ pub fn break_concentration(game_state: &mut GameState, target: Entity) {
     }
 
     game_state.process_event(Event::new(EventKind::LostConcentration {
-        entity: target,
+        entity: EntityIdentifier::from_world(&game_state.world, target),
         instances: instances_to_break.clone(),
     }));
 

@@ -72,7 +72,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                 ) {
                     match index {
                         0 => {
-                            game_state.world.despawn(self.creature).ok();
+                            game_state.despawn(self.creature).ok();
                             ui.close_current_popup();
                         }
                         1 => {

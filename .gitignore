@@ -16,3 +16,4 @@ Cargo.lock
 /.vscode
 /.local
 /.idea
+/.claude

@@ -5,13 +5,10 @@ use rand::seq::{IndexedRandom, IteratorRandom};
 
 use crate::{
     components::{
-        actions::{
-            action::ActionKind,
-            targeting::{TargetInstance, TargetingKind},
-        },
+        actions::targeting::{TargetInstance, TargetingKind},
         activity::Activity,
         ai::AIController,
-        id::AIControllerId,
+        id::{AIControllerId, EntityIdentifier},
     },
     engine::{
         action_prompt::{
@@ -135,13 +132,18 @@ impl AIController for RandomController {
                     }
 
                     let action = ActionData::new(
-                        *actor,
+                        EntityIdentifier::from_world(&game_state.world, *actor),
                         action_id.clone(),
                         context.clone(),
                         resource_cost.clone(),
                         targets
                             .iter()
-                            .map(|entity| TargetInstance::Entity(*entity))
+                            .map(|entity| {
+                                TargetInstance::Entity(EntityIdentifier::from_world(
+                                    &game_state.world,
+                                    *entity,
+                                ))
+                            })
                             .collect(),
                     );
 

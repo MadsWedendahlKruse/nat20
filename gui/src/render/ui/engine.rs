@@ -9,6 +9,7 @@ use nat20_core::{
         action_prompt::ActionData,
         event::{EncounterEvent, Event, EventKind, EventLog},
     },
+    entities,
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
@@ -63,13 +64,10 @@ pub fn event_log_level(event: &Event) -> LogLevel {
     }
 }
 
-pub fn render_action_description(ui: &imgui::Ui, action: &ActionData, world: &World) {
+pub fn render_action_description(ui: &imgui::Ui, action: &ActionData) {
     TextSegments::new(vec![
         (
-            format!(
-                "{}'s",
-                systems::helpers::get_component::<Name>(world, action.actor).as_str(),
-            ),
+            format!("{}'s", action.actor.name().as_str()),
             TextKind::Actor,
         ),
         (format!("{}", action.action_id), TextKind::Action),
@@ -77,25 +75,27 @@ pub fn render_action_description(ui: &imgui::Ui, action: &ActionData, world: &Wo
     .render(ui);
 }
 
-pub fn render_event_description(ui: &imgui::Ui, event: &Event, world: &World) {
+pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
     match &event.kind {
         EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
-            render_action_description(ui, action, world);
+            render_action_description(ui, action);
         }
         EventKind::ReactionRequested { reaction } => {
-            render_action_description(ui, &ActionData::from(reaction), world);
+            render_action_description(ui, &ActionData::from(reaction));
         }
         EventKind::D20CheckPerformed(entity, _, dc_kind) => {
-            let label = get_dc_description(world, dc_kind);
-            let mut segments = vec![(
-                format!(
-                    "{}'s",
-                    systems::helpers::get_component::<Name>(world, *entity).as_str()
-                ),
-                TextKind::Actor,
-            )];
+            let label = get_dc_description(dc_kind);
+            let mut segments = vec![(format!("{}'s", entity.name().as_str()), TextKind::Actor)];
             segments.extend(label);
             TextSegments::new(segments).render(ui);
+        }
+        EventKind::MovingOutOfReach { mover, entity, .. } => {
+            TextSegments::new(vec![
+                (mover.name().as_str(), TextKind::Actor),
+                ("moving out of reach of", TextKind::Normal),
+                (entity.name().as_str(), TextKind::Target),
+            ])
+            .render(ui);
         }
         _ => TextSegments::new(vec![(format!("{:?}", event.kind), TextKind::Details)]).render(ui),
     };
@@ -172,13 +172,10 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 entity,
                 continue_movement,
             } => {
-                let mover_name = systems::helpers::get_component::<Name>(world, *mover).to_string();
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
                 TextSegments::new(vec![
-                    (mover_name, TextKind::Actor),
-                    ("is moving out of reach of".to_string(), TextKind::Normal),
-                    (entity_name, TextKind::Target),
+                    (mover.name().as_str(), TextKind::Actor),
+                    ("is moving out of reach of", TextKind::Normal),
+                    (entity.name().as_str(), TextKind::Target),
                 ])
                 .render(ui);
             }
@@ -190,49 +187,38 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
 
                 TextSegment::new("\tas a response to".to_string(), TextKind::Normal).render(ui);
                 ui.same_line();
-                render_event_description(ui, &reaction.event, world);
+                render_event_description(ui, &reaction.event);
             }
             EventKind::ActionPerformed { action, results } => {
                 TextSegments::new(vec![
-                    (
-                        &systems::helpers::get_component::<Name>(world, action.actor).to_string(),
-                        TextKind::Actor,
-                    ),
-                    (&"used".to_string(), TextKind::Normal),
-                    (&action.action_id.to_string(), TextKind::Action),
+                    (action.actor.name().as_str(), TextKind::Actor),
+                    ("used", TextKind::Normal),
+                    (action.action_id.to_string().as_str(), TextKind::Action),
                 ])
                 .render(ui);
 
-                if action.targets.len() == 1
-                    && action.targets[0] != TargetInstance::Entity(action.actor)
-                {
+                if action.is_self_target() {
                     let target = match &action.targets[0] {
-                        TargetInstance::Entity(entity) => {
-                            systems::helpers::get_component::<Name>(world, *entity).to_string()
-                        }
+                        TargetInstance::Entity(entity) => entity.name().as_str(),
                         TargetInstance::Point(point) => {
-                            format!("point ({:.1}, {:.1}, {:.1})", point.x, point.y, point.z)
-                                .to_string()
+                            &format!("point ({:.1}, {:.1}, {:.1})", point.x, point.y, point.z)
                         }
                     };
 
                     ui.same_line();
-                    TextSegments::new(vec![
-                        ("on".to_string(), TextKind::Normal),
-                        (target, TextKind::Target),
-                    ])
-                    .render(ui);
+                    TextSegments::new(vec![("on", TextKind::Normal), (target, TextKind::Target)])
+                        .render(ui);
                 }
 
                 for result in results {
-                    result.render_with_context(ui, (&world, 0));
+                    result.render_with_context(ui, 0);
                 }
             }
             EventKind::ReactionTriggered {
                 trigger_event,
                 reactors,
             } => {
-                render_event_description(ui, &trigger_event, world);
+                render_event_description(ui, &trigger_event);
 
                 ui.same_line();
 
@@ -250,24 +236,19 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 new_state,
                 actor,
             } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
-                let actor_name = actor.and_then(|a| {
-                    Some(systems::helpers::get_component::<Name>(world, a).to_string())
-                });
-
-                let segments = new_life_state_text(&entity_name, new_state, actor_name.as_deref());
+                let segments = new_life_state_text(
+                    entity.name().as_str(),
+                    new_state,
+                    actor.as_ref().map(|a| a.name().as_str()),
+                );
                 TextSegments::new(segments).render(ui);
             }
             EventKind::D20CheckResolved(entity, result_kind, dc_kind)
             | EventKind::D20CheckPerformed(entity, result_kind, dc_kind) => {
-                let dc_text_segments = get_dc_description(world, dc_kind);
+                let dc_text_segments = get_dc_description(dc_kind);
 
                 let mut segments = vec![
-                    (
-                        systems::helpers::get_component::<Name>(world, *entity).to_string(),
-                        TextKind::Actor,
-                    ),
+                    (entity.name().to_string(), TextKind::Actor),
                     (
                         if result_kind.is_success(dc_kind) {
                             "succeeded a".to_string()
@@ -303,13 +284,10 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
             EventKind::DamageRollPerformed(entity, damage_roll_result)
             | EventKind::DamageRollResolved(entity, damage_roll_result) => {
                 TextSegments::new(vec![
-                    (
-                        systems::helpers::get_component::<Name>(world, *entity).to_string(),
-                        TextKind::Details,
-                    ),
-                    ("rolled".to_string(), TextKind::Details),
-                    (format!("{}", damage_roll_result.total), TextKind::Details),
-                    ("damage".to_string(), TextKind::Details),
+                    (entity.name().as_str(), TextKind::Details),
+                    ("rolled", TextKind::Details),
+                    (&format!("{}", damage_roll_result.total), TextKind::Details),
+                    ("damage", TextKind::Details),
                 ])
                 .render(ui);
 
@@ -321,14 +299,12 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
             }
             // TODO: Not sure how to render this?
             EventKind::TurnBoundary { entity, boundary } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
                 let boundary_text = match boundary {
                     TurnBoundary::Start => "Starting",
                     TurnBoundary::End => "Ending",
                 };
                 TextSegments::new(vec![(
-                    format!("{} the turn for {}", boundary_text, entity_name),
+                    format!("{} the turn for {}", boundary_text, entity.name().as_str()),
                     TextKind::Details,
                 )])
                 .render(ui);
@@ -365,9 +341,6 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     .render_with_context(ui, &world);
             }
             EventKind::LostConcentration { entity, instances } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
-
                 let instance_descriptions = instances
                     .iter()
                     .map(|instance| match instance {
@@ -378,8 +351,8 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     .collect::<Vec<_>>();
 
                 TextSegments::new(vec![
-                    (entity_name, TextKind::Actor),
-                    ("lost concentration on".to_string(), TextKind::Normal),
+                    (entity.name().as_str(), TextKind::Actor),
+                    ("lost concentration on", TextKind::Normal),
                 ])
                 .render(ui);
 
@@ -405,24 +378,18 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 // }
             }
             EventKind::GainedEffect { entity, effect } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
-
                 TextSegments::new(vec![
-                    (entity_name, TextKind::Actor),
-                    ("gained effect".to_string(), TextKind::Normal),
-                    (effect.to_string(), TextKind::Effect),
+                    (entity.name().as_str(), TextKind::Actor),
+                    ("gained effect", TextKind::Normal),
+                    (&effect.to_string(), TextKind::Effect),
                 ])
                 .render(ui);
             }
             EventKind::LostEffect { entity, effect } => {
-                let entity_name =
-                    systems::helpers::get_component::<Name>(world, *entity).to_string();
-
                 TextSegments::new(vec![
-                    (entity_name, TextKind::Actor),
-                    ("lost effect".to_string(), TextKind::Normal),
-                    (effect.to_string(), TextKind::Effect),
+                    (entity.name().as_str(), TextKind::Actor),
+                    ("lost effect", TextKind::Normal),
+                    (&effect.to_string(), TextKind::Effect),
                 ])
                 .render(ui);
             }
@@ -447,7 +414,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
     }
 }
 
-fn get_dc_description(world: &World, dc_kind: &D20CheckDCKind) -> Vec<(String, TextKind)> {
+fn get_dc_description(dc_kind: &D20CheckDCKind) -> Vec<(String, TextKind)> {
     match dc_kind {
         D20CheckDCKind::SavingThrow(dc) => vec![
             (dc.key.to_string(), TextKind::Ability),
@@ -458,10 +425,9 @@ fn get_dc_description(world: &World, dc_kind: &D20CheckDCKind) -> Vec<(String, T
             ("check".to_string(), TextKind::Normal),
         ],
         D20CheckDCKind::AttackRoll(target, _) => {
-            let target_name = systems::helpers::get_component::<Name>(world, *target);
             vec![
                 ("attack roll against".to_string(), TextKind::Normal),
-                (target_name.to_string(), TextKind::Actor),
+                (target.name().to_string(), TextKind::Actor),
             ]
         }
     }
@@ -470,21 +436,22 @@ fn get_dc_description(world: &World, dc_kind: &D20CheckDCKind) -> Vec<(String, T
 impl ImguiRenderableWithContext<&World> for ActionData {
     fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
         TextSegments::new(vec![
-            (
-                &systems::helpers::get_component::<Name>(world, self.actor).to_string(),
-                TextKind::Actor,
-            ),
-            (&"is using".to_string(), TextKind::Normal),
+            (self.actor.name().as_str(), TextKind::Actor),
+            ("is using", TextKind::Normal),
             (&self.action_id.to_string(), TextKind::Action),
         ])
         .render(ui);
 
-        let self_target =
-            self.targets.len() == 1 && self.targets[0] == TargetInstance::Entity(self.actor);
+        if !self.is_self_target() && !self.targets.is_empty() {
+            let targets = self
+                .targets
+                .iter()
+                .filter_map(|t| match t {
+                    TargetInstance::Entity(entity) => Some(entity.clone()),
+                    TargetInstance::Point(point) => None,
+                })
+                .collect::<Vec<_>>();
 
-        let targets = self.entity_targets();
-
-        if !self_target && !targets.is_empty() {
             ui.same_line();
             TextSegment::new("on", TextKind::Normal).render(ui);
             targets.render_with_context(ui, &world);

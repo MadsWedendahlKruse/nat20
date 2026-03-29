@@ -22,7 +22,7 @@ use crate::{
         },
         dice::{DiceSet, DiceSetRoll},
         effects::effect::{EffectEntiyReference, EffectInstance, EffectLifetimeTemplate},
-        id::{ActionId, EffectId, ResourceId},
+        id::{ActionId, EffectId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
@@ -180,6 +180,12 @@ impl From<Entity> for ScriptEntity {
         ScriptEntity {
             id: u64::from(entity.to_bits()),
         }
+    }
+}
+
+impl From<EntityIdentifier> for ScriptEntity {
+    fn from(identifier: EntityIdentifier) -> Self {
+        ScriptEntity::from(identifier.id())
     }
 }
 
@@ -394,7 +400,7 @@ impl ScriptD20CheckDCKind {
             D20CheckDCKind::AttackRoll(target_entity, armor_class) => ScriptD20CheckDCKind {
                 label: "AttackRoll".to_string(),
                 dc: armor_class.total() as i32,
-                target: Some(ScriptEntity::from(*target_entity)),
+                target: Some(ScriptEntity::from(target_entity.id())),
             },
         }
     }
@@ -478,7 +484,7 @@ impl ScriptMovingOutOfReachView {
         }
     }
 
-    pub fn apply_to_event(&self, event: &mut Event) {
+    pub fn apply_to_event(&self, world: &World, event: &mut Event) {
         if let EventKind::MovingOutOfReach {
             mover,
             entity,
@@ -486,8 +492,8 @@ impl ScriptMovingOutOfReachView {
         } = &mut event.kind
         {
             let inner = self.inner.read();
-            *mover = inner.mover.clone().into();
-            *entity = inner.entity.clone().into();
+            *mover = EntityIdentifier::from_world(world, inner.mover.clone().into());
+            *entity = EntityIdentifier::from_world(world, inner.entity.clone().into());
             *continue_movement = inner.continue_movement;
         } else {
             panic!(
@@ -520,7 +526,7 @@ impl ScriptEventView {
         match &event.kind {
             EventKind::D20CheckPerformed(performer, result_kind, dc_kind) => {
                 Some(ScriptEventView::D20CheckPerformed(
-                    ScriptD20CheckView::from_parts(*performer, result_kind, dc_kind, mutable),
+                    ScriptD20CheckView::from_parts(performer.id(), result_kind, dc_kind, mutable),
                 ))
             }
 
@@ -540,10 +546,10 @@ impl ScriptEventView {
 
                 let mut script_results = Vec::new();
                 for result in results {
-                    if let TargetInstance::Entity(target_entity) = result.target {
+                    if let TargetInstance::Entity(target_entity) = &result.target {
                         script_results.push(ScriptActionResultView::from_action_result(
-                            action.actor,
-                            target_entity,
+                            action.actor.id(),
+                            target_entity.id(),
                             &result.kind,
                         ));
                     }
@@ -560,14 +566,14 @@ impl ScriptEventView {
                 continue_movement,
             } => Some(ScriptEventView::MovingOutOfReach(if mutable {
                 ScriptMovingOutOfReachView::new_mut(
-                    ScriptEntity::from(*mover),
-                    ScriptEntity::from(*entity),
+                    ScriptEntity::from(mover.clone()),
+                    ScriptEntity::from(entity.clone()),
                     *continue_movement,
                 )
             } else {
                 ScriptMovingOutOfReachView::new(
-                    ScriptEntity::from(*mover),
-                    ScriptEntity::from(*entity),
+                    ScriptEntity::from(mover.clone()),
+                    ScriptEntity::from(entity.clone()),
                     *continue_movement,
                 )
             })),
@@ -581,7 +587,7 @@ impl ScriptEventView {
             ScriptEventView::D20CheckPerformed(view) => {
                 view.apply_to_event(world, reaction_data, event)
             }
-            ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(event),
+            ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(world, event),
             // Other event view variants are currently read-only.
             _ => {}
         }
@@ -695,7 +701,7 @@ impl ScriptD20CheckView {
             match modification {
                 ScriptD20CheckModification::ModifyResult { bonus } => {
                     let bonus_value =
-                        bonus.evaluate(world, reaction_data.reactor, &reaction_data.context);
+                        bonus.evaluate(world, reaction_data.reactor.id(), &reaction_data.context);
 
                     match existing_result {
                         D20ResultKind::Skill { result, .. }
@@ -715,8 +721,11 @@ impl ScriptD20CheckView {
                 }
 
                 ScriptD20CheckModification::ModifyDC { modifier } => {
-                    let modifier_value =
-                        modifier.evaluate(world, reaction_data.reactor, &reaction_data.context);
+                    let modifier_value = modifier.evaluate(
+                        world,
+                        reaction_data.reactor.id(),
+                        &reaction_data.context,
+                    );
 
                     match dc_kind {
                         D20CheckDCKind::SavingThrow(d20_check_dc) => {
@@ -745,12 +754,16 @@ impl ScriptD20CheckView {
                     force_use_new,
                 } => {
                     let bonus_value = if let Some(bonus_expr) = bonus {
-                        bonus_expr.evaluate(world, reaction_data.reactor, &reaction_data.context)
+                        bonus_expr.evaluate(
+                            world,
+                            reaction_data.reactor.id(),
+                            &reaction_data.context,
+                        )
                     } else {
                         0
                     };
 
-                    let mut new_roll = systems::d20::check_no_event(world, *performer, dc_kind);
+                    let mut new_roll = systems::d20::check_no_event(world, performer.id(), dc_kind);
                     new_roll.d20_result_mut().add_bonus(
                         ModifierSource::Action(reaction_data.reaction_id.clone()),
                         bonus_value,
@@ -849,7 +862,7 @@ impl From<&ResourceAmountMap> for ScriptResourceCost {
 #[derive(Clone)]
 pub struct ScriptActionView {
     pub action_id: String,
-    pub actor: Entity,
+    pub actor: ScriptEntity,
     pub action_context: ScriptActionContext,
     pub resource_cost: ScriptResourceCost,
     pub targets: Vec<ScriptEntity>,
@@ -865,7 +878,7 @@ impl ScriptActionView {
     ) -> Self {
         ScriptActionView {
             action_id: action_id.to_string(),
-            actor,
+            actor: ScriptEntity::from(actor),
             action_context: ScriptActionContext::from(action_context),
             resource_cost,
             targets,
@@ -877,14 +890,14 @@ impl From<&ActionData> for ScriptActionView {
     fn from(action: &ActionData) -> Self {
         ScriptActionView {
             action_id: action.action_id.to_string(),
-            actor: action.actor,
+            actor: ScriptEntity::from(action.actor.id()),
             action_context: ScriptActionContext::from(&action.context),
             resource_cost: ScriptResourceCost::new(action.resource_cost.clone()),
             targets: action
                 .targets
                 .iter()
                 .filter_map(|t| match t {
-                    TargetInstance::Entity(entity) => Some(ScriptEntity::from(*entity)),
+                    TargetInstance::Entity(entity) => Some(ScriptEntity::from(entity.id())),
                     TargetInstance::Point(_) => None, // TODO: Handle point targets if needed
                 })
                 .collect(),
@@ -1550,7 +1563,7 @@ pub struct ScriptReactionBodyContext {
 impl From<&ReactionData> for ScriptReactionBodyContext {
     fn from(data: &ReactionData) -> Self {
         ScriptReactionBodyContext {
-            reactor: ScriptEntity::from(data.reactor),
+            reactor: ScriptEntity::from(data.reactor.id()),
             event: ScriptEventView::from_event_mut(&data.event).unwrap(),
             reaction_id: data.reaction_id.to_string(),
             context: ScriptActionContext::from(&data.context),

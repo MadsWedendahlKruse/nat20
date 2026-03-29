@@ -74,9 +74,9 @@ impl Action {
         action_data: &ActionData,
         targets: &[Entity],
     ) {
-        let effects = systems::effects::take_effects(&mut game_state.world, action_data.actor);
+        let effects = systems::effects::take_effects(&mut game_state.world, action_data.actor.id());
         effects.action(&mut game_state.world, action_data);
-        systems::effects::put_effects(&mut game_state.world, action_data.actor, effects);
+        systems::effects::put_effects(&mut game_state.world, action_data.actor.id(), effects);
 
         self.kind.perform(game_state, action_data, targets);
     }
@@ -629,9 +629,13 @@ impl Debug for ActionKind {
 }
 
 impl ActionResult {
-    pub fn new(world: &World, performer: Entity, target: Entity, kind: ActionKindResult) -> Self {
+    pub fn new(
+        performer: EntityIdentifier,
+        target: EntityIdentifier,
+        kind: ActionKindResult,
+    ) -> Self {
         ActionResult {
-            performer: EntityIdentifier::from_world(world, performer),
+            performer,
             target: TargetInstance::Entity(target),
             kind,
         }

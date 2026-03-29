@@ -8,6 +8,7 @@ use crate::{
     components::{
         activity::ActivityState,
         health::hit_points::HitPoints,
+        id::EntityIdentifier,
         resource::RechargeRule,
         time::{EntityClock, TimeMode, TimeStep},
     },
@@ -56,7 +57,10 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
             );
 
             if turn_entity == entity {
-                game_state.process_event(Event::new(EventKind::TurnBoundary { entity, boundary }));
+                game_state.process_event(Event::new(EventKind::TurnBoundary {
+                    entity: EntityIdentifier::from_world(&game_state.world, entity),
+                    boundary,
+                }));
             }
         }
         _ => { /* no special logging for other time steps */ }
@@ -107,7 +111,10 @@ pub fn start_rest(
 
     let event = Event::new(EventKind::RestStarted {
         kind: *kind,
-        participants: participants.clone(),
+        participants: participants
+            .iter()
+            .map(|&entity| EntityIdentifier::from_world(&game_state.world, entity))
+            .collect(),
     });
     game_state.process_event(event);
 
@@ -153,7 +160,10 @@ pub fn finish_rest(game_state: &mut GameState, participants: Vec<Entity>) -> Res
 
     let event = Event::new(EventKind::RestFinished {
         kind: *first_kind,
-        participants: participants.clone(),
+        participants: participants
+            .iter()
+            .map(|&entity| EntityIdentifier::from_world(&game_state.world, entity))
+            .collect(),
     });
     game_state.process_event(event);
 

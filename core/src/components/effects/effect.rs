@@ -396,7 +396,7 @@ impl EffectEventFilter {
                             boundary: b,
                         } = &event.kind
                         {
-                            *e == entity && *b == boundary
+                            e.id() == entity && *b == boundary
                         } else {
                             false
                         }

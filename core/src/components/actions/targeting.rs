@@ -16,8 +16,8 @@ use uom::{
 
 use crate::{
     components::{
-        health::life_state::LifeState, items::equipment::weapon::MELEE_RANGE_REACH,
-        species::CreatureType,
+        health::life_state::LifeState, id::EntityIdentifier,
+        items::equipment::weapon::MELEE_RANGE_REACH, species::CreatureType,
     },
     engine::geometry::WorldGeometry,
     entities::{character::CharacterTag, monster::MonsterTag},
@@ -174,7 +174,7 @@ impl EntityFilter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetInstance {
-    Entity(Entity),
+    Entity(EntityIdentifier),
     Point(Point3<f32>),
 }
 
@@ -381,7 +381,8 @@ impl TargetingContext {
                 if targets.len() > 1 {
                     return Err(TargetingError::ExceedsMaxTargets);
                 }
-                if targets[0] != TargetInstance::Entity(actor) {
+                if targets[0] != TargetInstance::Entity(EntityIdentifier::from_world(world, actor))
+                {
                     return Err(TargetingError::InvalidTarget {
                         target: targets[0].clone(),
                     });
@@ -425,7 +426,7 @@ impl TargetingContext {
 
             let distance = match target {
                 TargetInstance::Entity(entity) => {
-                    systems::geometry::distance_between_entities(world, actor, *entity).unwrap()
+                    systems::geometry::distance_between_entities(world, actor, entity.id()).unwrap()
                 }
 
                 TargetInstance::Point(point) => {
@@ -449,7 +450,7 @@ impl TargetingContext {
                             world,
                             world_geometry,
                             actor,
-                            *entity,
+                            entity.id(),
                         )
                     }
                     TargetInstance::Point(point) => systems::geometry::line_of_sight_entity_point(
@@ -470,7 +471,7 @@ impl TargetingContext {
             // Check allowed targets
             match target {
                 TargetInstance::Entity(entity) => {
-                    if !self.allowed_target(world, entity) {
+                    if !self.allowed_target(world, &entity.id()) {
                         return Err(TargetingError::InvalidTarget {
                             target: target.clone(),
                         });

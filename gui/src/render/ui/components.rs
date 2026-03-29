@@ -13,7 +13,7 @@ use nat20_core::{
             AttackRollResult, DamageComponentMitigation, DamageComponentResult,
             DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
             DamageRollResult, MitigationOperation,
-        }, effects::effect::{EffectInstance, EffectLifetime, EffectsMap}, health::{hit_points::HitPoints, life_state::LifeState}, id::{ActionId, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId}, items::{
+        }, effects::effect::{EffectInstance, EffectLifetime, EffectsMap}, health::{hit_points::HitPoints, life_state::LifeState}, id::{ActionId, EntityIdentifier, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId}, items::{
             equipment::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus, ArmorType},
                 loadout::Loadout,
@@ -104,7 +104,6 @@ impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
     }
 }
 
-// TODO: Replace with Name (or similar struct)?
 impl ImguiRenderable for Name {
     fn render(&self, ui: &imgui::Ui) {
         ui.text(self.as_str());
@@ -970,12 +969,11 @@ impl ImguiRenderable for DamageComponentMitigation {
     }
 }
 
-impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
-    fn render_with_context(&self, ui: &imgui::Ui, (world, indent_level): (&World, u8)) {
+impl ImguiRenderableWithContext<u8> for ActionResult {
+    fn render_with_context(&self, ui: &imgui::Ui, indent_level: u8) {
         let target_name = match &self.target {
             TargetInstance::Entity(entity) => {
-                let character_name = systems::helpers::get_component::<Name>(world, *entity);
-                character_name.as_str().to_string()
+                entity.name().as_str()
             }
             TargetInstance::Point(point) => todo!(),
         };
@@ -1089,7 +1087,7 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
                 if let Some(healing) = &action_outcome.healing {
                     ui.group(|| {
                         TextSegments::new(vec![
-                            (target_name.as_str(), TextKind::Target),
+                            (target_name, TextKind::Target),
                             ("was healed for", TextKind::Normal),
                             (&format!("{} HP", healing.healing.subtotal), TextKind::Healing),
                         ])
@@ -1121,7 +1119,7 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
                     if !effect.applied {
                         ui.same_line();
                         TextSegments::new(vec![
-                            (target_name.as_str(), TextKind::Target),
+                            (target_name, TextKind::Target),
                             ("was unaffected by", TextKind::Normal),
                             (&effect.effect.to_string(), TextKind::Effect),
                         ]).with_indent(indent_level + 1).render(ui);
@@ -1129,7 +1127,7 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
                     }
 
                     TextSegments::new(vec![
-                        (target_name.as_str(), TextKind::Target),
+                        (target_name, TextKind::Target),
                         ("gained effect", TextKind::Normal),
                         (&effect.effect.to_string(), TextKind::Effect),
                     ])
@@ -1153,7 +1151,7 @@ impl ImguiRenderableWithContext<(&World, u8)> for ActionResult {
                     // ui.same_line();
                     TextSegment::new("\tcancelling", TextKind::Normal).render(ui);
                     ui.same_line();
-                    render_event_description(ui, event, world);
+                    render_event_description(ui, event);
                 }
 
                 ReactionResult::NoEffect => {
@@ -1545,12 +1543,12 @@ impl ImguiRenderable for CreatureType {
     }
 }
 
-impl ImguiRenderableWithContext<&World> for Vec<Entity> {
+impl ImguiRenderableWithContext<&World> for Vec<EntityIdentifier> {
     fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
         if self.len() == 1 {
             ui.same_line();
             TextSegment::new(
-                systems::helpers::get_component::<Name>(world, self[0]).as_str(),
+                self[0].name().as_str(),
                 TextKind::Target,
             )
             .render(ui);
@@ -1564,8 +1562,7 @@ impl ImguiRenderableWithContext<&World> for Vec<Entity> {
                 }
                 indent_text(ui, 1);
                 TextSegment::new(
-                    systems::helpers::get_component_clone::<Name>(world, *action_target)
-                        .to_string(),
+                    action_target.name().as_str(),
                     TextKind::Target,
                 )
                 .render(ui);

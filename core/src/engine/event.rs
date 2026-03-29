@@ -15,7 +15,7 @@ use crate::{
         damage::DamageRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
-        id::EffectId,
+        id::{EffectId, EntityIdentifier},
         spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
@@ -60,31 +60,31 @@ impl Event {
 
     pub fn actor(&self) -> Option<Entity> {
         match &self.kind {
-            EventKind::MovingOutOfReach { mover, .. } => Some(*mover),
-            EventKind::ActionRequested { action } => Some(action.actor),
-            EventKind::ActionPerformed { action, .. } => Some(action.actor),
+            EventKind::MovingOutOfReach { mover, .. } => Some(mover.id()),
+            EventKind::ActionRequested { action } => Some(action.actor.id()),
+            EventKind::ActionPerformed { action, .. } => Some(action.actor.id()),
             // TODO: What to do here? Multiple reactors?
-            EventKind::ReactionTriggered { reactors, .. } => Some(*reactors.iter().next()?),
-            EventKind::ReactionRequested { reaction } => Some(reaction.reactor),
+            EventKind::ReactionTriggered { reactors, .. } => Some(reactors.iter().next()?.id()),
+            EventKind::ReactionRequested { reaction } => Some(reaction.reactor.id()),
             EventKind::LifeStateChanged { entity, actor, .. } => {
                 if let Some(actor) = actor {
-                    Some(*actor)
+                    Some(actor.id())
                 } else {
-                    Some(*entity)
+                    Some(entity.id())
                 }
             }
-            EventKind::D20CheckPerformed(entity, _, _) => Some(*entity),
-            EventKind::D20CheckResolved(entity, _, _) => Some(*entity),
-            EventKind::DamageRollPerformed(entity, _) => Some(*entity),
-            EventKind::DamageRollResolved(entity, _) => Some(*entity),
+            EventKind::D20CheckPerformed(entity, _, _) => Some(entity.id()),
+            EventKind::D20CheckResolved(entity, _, _) => Some(entity.id()),
+            EventKind::DamageRollPerformed(entity, _) => Some(entity.id()),
+            EventKind::DamageRollResolved(entity, _) => Some(entity.id()),
             EventKind::Encounter(_) => None,
-            EventKind::TurnBoundary { entity, .. } => Some(*entity),
+            EventKind::TurnBoundary { entity, .. } => Some(entity.id()),
             // TODO: Same problem as ReactionTriggered
-            EventKind::RestStarted { participants, .. } => Some(*participants.first()?),
-            EventKind::RestFinished { participants, .. } => Some(*participants.first()?),
-            EventKind::LostConcentration { entity, .. } => Some(*entity),
-            EventKind::GainedEffect { entity, .. } => Some(*entity),
-            EventKind::LostEffect { entity, .. } => Some(*entity),
+            EventKind::RestStarted { participants, .. } => Some(participants.first()?.id()),
+            EventKind::RestFinished { participants, .. } => Some(participants.first()?.id()),
+            EventKind::LostConcentration { entity, .. } => Some(entity.id()),
+            EventKind::GainedEffect { entity, .. } => Some(entity.id()),
+            EventKind::LostEffect { entity, .. } => Some(entity.id()),
         }
     }
 
@@ -92,14 +92,14 @@ impl Event {
         match &self.kind {
             EventKind::ActionRequested { action } => {
                 if let Some(TargetInstance::Entity(target)) = action.targets.first() {
-                    Some(*target)
+                    Some(target.id())
                 } else {
                     None
                 }
             }
             EventKind::ActionPerformed { action, .. } => {
                 if let Some(TargetInstance::Entity(target)) = action.targets.first() {
-                    Some(*target)
+                    Some(target.id())
                 } else {
                     None
                 }
@@ -111,13 +111,11 @@ impl Event {
     pub fn action_performed_event(
         game_state: &GameState,
         action_data: &ActionData,
-        results: Vec<(Entity, ActionKindResult)>,
+        results: Vec<(EntityIdentifier, ActionKindResult)>,
     ) -> Event {
         let results = results
             .into_iter()
-            .map(|(entity, result)| {
-                ActionResult::new(&game_state.world, action_data.actor, entity, result)
-            })
+            .map(|(entity, result)| ActionResult::new(action_data.actor.clone(), entity, result))
             .collect();
         Event::new(EventKind::ActionPerformed {
             action: action_data.clone(),
@@ -131,8 +129,8 @@ pub enum EventKind {
     Encounter(EncounterEvent),
 
     MovingOutOfReach {
-        mover: Entity,
-        entity: Entity,
+        mover: EntityIdentifier,
+        entity: EntityIdentifier,
         continue_movement: bool,
     },
 
@@ -153,49 +151,49 @@ pub enum EventKind {
         /// The event that triggered the reaction, e.g. an ActionRequested event
         /// might trigger a Counterspell reaction.
         trigger_event: Arc<Event>,
-        reactors: HashSet<Entity>,
+        reactors: HashSet<EntityIdentifier>,
     },
     ReactionRequested {
         reaction: ReactionData,
     },
     LifeStateChanged {
-        entity: Entity,
+        entity: EntityIdentifier,
         new_state: LifeState,
         /// The entity that caused the change, if any
-        actor: Option<Entity>,
+        actor: Option<EntityIdentifier>,
     },
     /// The initial D20 roll which can be reacted to, e.g. with the Lucky feat.
-    D20CheckPerformed(Entity, D20ResultKind, D20CheckDCKind),
+    D20CheckPerformed(EntityIdentifier, D20ResultKind, D20CheckDCKind),
     /// The final result of a D20 check after reactions have been applied.
-    D20CheckResolved(Entity, D20ResultKind, D20CheckDCKind),
-    DamageRollPerformed(Entity, DamageRollResult),
-    DamageRollResolved(Entity, DamageRollResult),
+    D20CheckResolved(EntityIdentifier, D20ResultKind, D20CheckDCKind),
+    DamageRollPerformed(EntityIdentifier, DamageRollResult),
+    DamageRollResolved(EntityIdentifier, DamageRollResult),
 
     TurnBoundary {
-        entity: Entity,
+        entity: EntityIdentifier,
         boundary: TurnBoundary,
     },
 
     RestStarted {
         kind: RestKind,
-        participants: Vec<Entity>,
+        participants: Vec<EntityIdentifier>,
     },
     RestFinished {
         kind: RestKind,
-        participants: Vec<Entity>,
+        participants: Vec<EntityIdentifier>,
     },
 
     LostConcentration {
-        entity: Entity,
+        entity: EntityIdentifier,
         instances: Vec<ConcentrationInstance>,
     },
 
     GainedEffect {
-        entity: Entity,
+        entity: EntityIdentifier,
         effect: EffectId,
     },
     LostEffect {
-        entity: Entity,
+        entity: EntityIdentifier,
         effect: EffectId,
     },
 }

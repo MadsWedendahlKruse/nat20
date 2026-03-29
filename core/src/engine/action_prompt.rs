@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
     components::{
         actions::{action::ActionContext, targeting::TargetInstance},
-        id::ActionId,
+        id::{ActionId, EntityIdentifier},
         resource::{ResourceAmountMap, ResourceError},
     },
     engine::event::Event,
@@ -144,7 +144,7 @@ impl ActionPrompt {
             ) => {
                 ensure_equal!(
                     prompt_actor,
-                    &action.actor,
+                    &action.actor.id(),
                     "actor",
                     FieldMismatch,
                     self,
@@ -209,7 +209,7 @@ impl ActionPrompt {
 impl ActionDecisionKind {
     pub fn actor(&self) -> Entity {
         match self {
-            ActionDecisionKind::Action { action, .. } => action.actor,
+            ActionDecisionKind::Action { action, .. } => action.actor.id(),
             ActionDecisionKind::Reaction { reactor, .. } => *reactor,
         }
     }
@@ -243,7 +243,7 @@ pub type ActionExecutionInstanceId = Uuid;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionData {
     pub instance_id: ActionExecutionInstanceId,
-    pub actor: Entity,
+    pub actor: EntityIdentifier,
     pub action_id: ActionId,
     pub context: ActionContext,
     pub resource_cost: ResourceAmountMap,
@@ -252,7 +252,7 @@ pub struct ActionData {
 
 impl ActionData {
     pub fn new(
-        actor: Entity,
+        actor: EntityIdentifier,
         action_id: ActionId,
         context: ActionContext,
         resource_cost: ResourceAmountMap,
@@ -268,24 +268,16 @@ impl ActionData {
         }
     }
 
-    pub fn entity_targets(&self) -> Vec<Entity> {
-        self.targets
-            .iter()
-            .filter_map(|t| {
-                if let TargetInstance::Entity(e) = t {
-                    Some(*e)
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn is_self_target(&self) -> bool {
+        self.targets.len() == 1
+            && matches!(&self.targets[0], TargetInstance::Entity(entity) if entity.id() == self.actor.id())
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReactionData {
     pub instance_id: ActionExecutionInstanceId,
-    pub reactor: Entity,
+    pub reactor: EntityIdentifier,
     // The event that triggered this reaction
     pub event: Box<Event>,
     pub reaction_id: ActionId,
@@ -296,7 +288,7 @@ pub struct ReactionData {
 
 impl ReactionData {
     pub fn new(
-        reactor: Entity,
+        reactor: EntityIdentifier,
         event: Event,
         reaction_id: ActionId,
         context: ActionContext,
@@ -319,7 +311,7 @@ impl From<&ReactionData> for ActionData {
     fn from(reaction: &ReactionData) -> Self {
         ActionData {
             instance_id: reaction.instance_id,
-            actor: reaction.reactor,
+            actor: reaction.reactor.clone(),
             action_id: reaction.reaction_id.clone(),
             context: reaction.context.clone(),
             resource_cost: reaction.resource_cost.clone(),

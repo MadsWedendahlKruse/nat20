@@ -305,21 +305,21 @@ pub fn path_to_target(
             let target_position = match target {
                 TargetInstance::Entity(entity) => {
                     let (_, shape_pose) =
-                        systems::geometry::get_shape(&game_state.world, *entity).unwrap();
+                        systems::geometry::get_shape(&game_state.world, entity.id()).unwrap();
                     shape_pose.translation.vector.into()
                 }
                 TargetInstance::Point(point) => *point,
             };
             let targeting_context = systems::actions::targeting_context(
                 &game_state.world,
-                action.actor,
+                action.actor.id(),
                 &action.action_id,
                 &action.context,
             );
 
             if let Ok(path_result) = systems::movement::path_in_range_of_point(
                 game_state,
-                action.actor,
+                action.actor.id(),
                 target_position,
                 targeting_context.range.max(),
                 true,

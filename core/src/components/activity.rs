@@ -6,7 +6,7 @@ use tracing::{debug, warn};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
-    components::{actions::action::ActionTimelineEvent, speed::Speed},
+    components::{actions::action::ActionTimelineEvent, id::EntityIdentifier, speed::Speed},
     engine::{
         action_prompt::{ActionDecision, ActionError},
         event::{Event, EventKind},
@@ -126,8 +126,8 @@ impl ActivityState {
                     if let Some(attacker) = opportunity_attacks.remove(current_target) {
                         commands.push(ActivityGameStateCommand::ProcessEvent(Event::new(
                             EventKind::MovingOutOfReach {
-                                mover: entity,
-                                entity: attacker,
+                                mover: EntityIdentifier::from_world(&game_state.world, entity),
+                                entity: EntityIdentifier::from_world(&game_state.world, attacker),
                                 continue_movement: true,
                             },
                         )));

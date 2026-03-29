@@ -279,7 +279,7 @@ pub mod creatures {
                     .clone(),
             );
 
-            EntityIdentifier::new(entity, name)
+            EntityIdentifier::from_world(&game_state.world, entity)
         }
 
         pub fn wizard(
@@ -422,7 +422,7 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::new(entity, name)
+            EntityIdentifier::from_world(&game_state.world, entity)
         }
 
         pub fn warlock(
@@ -543,7 +543,7 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::new(entity, name)
+            EntityIdentifier::from_world(&game_state.world, entity)
         }
     }
 
@@ -613,7 +613,7 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::new(entity, name)
+            EntityIdentifier::from_world(&game_state.world, entity)
         }
 
         fn monster_equipment(

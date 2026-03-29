@@ -8,7 +8,7 @@ use crate::{
             effect::{EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectsMap},
             effect_manager::EffectManager,
         },
-        id::EffectId,
+        id::{EffectId, EntityIdentifier},
         modifier::ModifierSource,
     },
     engine::{
@@ -186,7 +186,7 @@ pub fn remove_effect(
 
                 if effect_instance.is_parent() {
                     game_state.process_event(Event::new(EventKind::LostEffect {
-                        entity,
+                        entity: EntityIdentifier::from_world(&game_state.world, entity),
                         effect: effect.id.clone(),
                     }));
                 }

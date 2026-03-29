@@ -6,7 +6,7 @@ use tracing::error;
 use crate::{
     components::{
         actions::action::{ActionKindResult, ReactionResult},
-        id::ScriptId,
+        id::{EntityIdentifier, ScriptId},
         resource::ResourceAmountMap,
     },
     engine::{
@@ -381,7 +381,7 @@ pub fn apply_reaction_plan(
                 game_state,
                 &ActionData::from(reaction_data),
                 vec![(
-                    target_event.actor().unwrap(),
+                    EntityIdentifier::from_world(&game_state.world, target_event.actor().unwrap()),
                     ActionKindResult::Reaction { result },
                 )],
             ));
@@ -395,7 +395,7 @@ pub fn apply_reaction_plan(
         } => {
             // Resolve the target entity
             let target_entity = match target {
-                ScriptEntityRole::Reactor => reaction_data.reactor,
+                ScriptEntityRole::Reactor => reaction_data.reactor.id(),
                 ScriptEntityRole::Actor => reaction_data
                     .event
                     .actor()
