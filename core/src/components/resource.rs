@@ -4,6 +4,7 @@ use std::{
     hash::Hash,
     ops::{Add, AddAssign, Sub, SubAssign},
     str::FromStr,
+    sync::LazyLock,
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -15,6 +16,25 @@ use crate::{
     },
     systems::time::RestKind,
 };
+
+// TODO: Find a better place for these
+// Technically this contradicts the idea of resources being defined in the registry,
+// but these three are so fundamental that everything would break without them, so
+// they're probably not going to be removed ;)
+pub const RESOURCE_ACTION: LazyLock<ResourceId> =
+    LazyLock::new(|| ResourceId::new("nat20_core", "resource.action"));
+pub const RESOURCE_BONUS_ACTION: LazyLock<ResourceId> =
+    LazyLock::new(|| ResourceId::new("nat20_core", "resource.bonus_action"));
+pub const RESOURCE_REACTION: LazyLock<ResourceId> =
+    LazyLock::new(|| ResourceId::new("nat20_core", "resource.reaction"));
+
+pub const DEFAULT_RESOURCES: LazyLock<Vec<ResourceId>> = LazyLock::new(|| {
+    vec![
+        RESOURCE_ACTION.clone(),
+        RESOURCE_BONUS_ACTION.clone(),
+        RESOURCE_REACTION.clone(),
+    ]
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -764,20 +784,15 @@ impl ResourceMap {
 impl Default for ResourceMap {
     fn default() -> Self {
         let mut map = ResourceMap::new();
-        map.resources = HashMap::from([
-            (
-                ResourceId::new("nat20_core", "resource.action").clone(),
-                ResourceBudgetKind::Flat(ResourceBudget::new(1, 1).unwrap()),
-            ),
-            (
-                ResourceId::new("nat20_core", "resource.bonus_action").clone(),
-                ResourceBudgetKind::Flat(ResourceBudget::new(1, 1).unwrap()),
-            ),
-            (
-                ResourceId::new("nat20_core", "resource.reaction").clone(),
-                ResourceBudgetKind::Flat(ResourceBudget::new(1, 1).unwrap()),
-            ),
-        ]);
+        map.resources = DEFAULT_RESOURCES
+            .iter()
+            .map(|id| {
+                (
+                    id.clone(),
+                    ResourceBudgetKind::Flat(ResourceBudget::with_max_uses(1).unwrap()),
+                )
+            })
+            .collect();
         map
     }
 }

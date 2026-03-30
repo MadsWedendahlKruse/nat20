@@ -8,7 +8,7 @@ mod tests {
             damage::{DamageRoll, DamageSource, DamageType},
             health::hit_points::HitPoints,
             id::{ActionId, EffectId, ResourceId, SpellId},
-            resource::{ResourceAmount, ResourceMap},
+            resource::{RESOURCE_ACTION, ResourceAmount, ResourceMap},
             time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
         },
         engine::action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
@@ -41,10 +41,7 @@ mod tests {
                 &ResourceAmount::Flat(1),
             ));
             // Check that the fighter has one action before using Action Surge
-            assert!(resources.can_afford(
-                &ResourceId::new("nat20_core", "resource.action"),
-                &ResourceAmount::Flat(1),
-            ));
+            assert!(resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),));
         }
 
         let _ = game_state.submit_activity(Activity::Act {
@@ -74,10 +71,8 @@ mod tests {
 
         // Check that the fighter has two actions after using Action Surge
         assert!(
-            systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter).can_afford(
-                &ResourceId::new("nat20_core", "resource.action"),
-                &ResourceAmount::Flat(2),
-            ),
+            systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter)
+                .can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(2),),
         );
 
         // Check that the Action Surge action is on cooldown
@@ -111,13 +106,8 @@ mod tests {
         let resources = systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter);
         // Check that the fighter has one action after the turn starts
         assert!(
-            !resources.can_afford(
-                &ResourceId::new("nat20_core", "resource.action"),
-                &ResourceAmount::Flat(2),
-            ) && resources.can_afford(
-                &ResourceId::new("nat20_core", "resource.action"),
-                &ResourceAmount::Flat(1),
-            )
+            !resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(2),)
+                && resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),)
         );
 
         // Check that the Action Surge action is out of charges
@@ -259,10 +249,8 @@ mod tests {
         );
         // Check that the fighter has no Actions left
         assert!(
-            !systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter).can_afford(
-                &ResourceId::new("nat20_core", "resource.action"),
-                &ResourceAmount::Flat(1),
-            ),
+            !systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter)
+                .can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),),
             "Fighter should have no Actions left"
         );
 

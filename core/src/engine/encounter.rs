@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use hecs::{Entity, World};
 use uuid::Uuid;
@@ -215,13 +215,17 @@ impl Encounter {
             );
 
             return true;
-        } else {
-            // Normal / other states => decide if they can act
-            return !matches!(
-                *systems::helpers::get_component::<LifeState>(&game_state.world, current_entity),
-                LifeState::Normal
-            );
-        };
+        }
+
+        if matches!(
+            *systems::helpers::get_component::<LifeState>(&game_state.world, current_entity),
+            LifeState::Normal
+        ) {
+            return !systems::resources::can_act(&game_state.world, current_entity).0;
+        }
+
+        // Normal / other states => decide if they can act
+        return true;
     }
 
     pub fn round(&self) -> usize {
