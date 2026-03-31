@@ -149,7 +149,7 @@ impl AIController for RandomController {
 
                     match systems::movement::path_to_target(game_state, &action, true) {
                         Ok(result) => match result {
-                            TargetPathFindingResult::AlreadyInRange => {
+                            TargetPathFindingResult::AlreadyInRange(_) => {
                                 return Some(Activity::Act {
                                     action: ActionDecision {
                                         response_to: prompt.id,
@@ -160,7 +160,7 @@ impl AIController for RandomController {
 
                             TargetPathFindingResult::PathFound(path_result) => {
                                 return Some(Activity::MoveAndAct {
-                                    goal: path_result.taken_path.end().unwrap().clone(),
+                                    goal: path_result.path_result.taken_path.end().unwrap().clone(),
                                     action: ActionDecision {
                                         response_to: prompt.id,
                                         kind: ActionDecisionKind::Action { action },

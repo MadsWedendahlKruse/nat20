@@ -32,7 +32,7 @@
             }
         },
         "range": "60 feet",
-        "require_line_of_sight": true,
+        "line_of_sight": "ray",
         "allowed_targets": [
             {
                 "life_states": [

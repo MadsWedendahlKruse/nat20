@@ -3,9 +3,10 @@ use std::{fmt::Display, marker::PhantomData, str::FromStr};
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 use uom::si::{
-    f32::{Length, Time},
+    f32::{Length, Time, Velocity},
     length::{foot, meter},
     time::{hour, minute, second},
+    velocity::{foot_per_second, kilometer_per_hour, meter_per_second, mile_per_hour},
 };
 
 use crate::{
@@ -53,6 +54,27 @@ impl QuantityDimension for TimeDim {
             "min" | "minute" | "minutes" => Ok(Time::new::<minute>(value)),
             "hr" | "hour" | "hours" => Ok(Time::new::<hour>(value)),
             other => Err(format!("Unknown time unit: '{}'", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VelocityDim;
+
+impl QuantityDimension for VelocityDim {
+    type Quantity = Velocity;
+
+    fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
+        match unit_name.to_ascii_lowercase().as_str() {
+            "m/s" | "meter/second" | "meters/second" => {
+                Ok(Velocity::new::<meter_per_second>(value))
+            }
+            "ft/s" | "foot/second" | "feet/second" => Ok(Velocity::new::<foot_per_second>(value)),
+            "km/h" | "kilometer/hour" | "kilometers/hour" => {
+                Ok(Velocity::new::<kilometer_per_hour>(value))
+            }
+            "mph" | "mile/hour" | "miles/hour" => Ok(Velocity::new::<mile_per_hour>(value)),
+            other => Err(format!("Unknown velocity unit: '{}'", other)),
         }
     }
 }
@@ -146,14 +168,15 @@ impl<D: QuantityDimension> QuantityExpressionDefinition<D> {
 
 pub type LengthExpressionDefinition = QuantityExpressionDefinition<LengthDim>;
 pub type TimeExpressionDefinition = QuantityExpressionDefinition<TimeDim>;
+pub type VelocityExpressionDefinition = QuantityExpressionDefinition<VelocityDim>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
         components::{
             class::ClassAndSubclass,
-            id::{ClassId, ItemId, SpellId},
-            spells::spellbook::{GrantedSpellSource, SpellSource},
+            id::{ClassId, SpellId},
+            spells::spellbook::SpellSource,
         },
         registry::serialize::variables::PARSER_VARIABLES,
     };

@@ -1,3 +1,4 @@
+use core::f32;
 use std::{collections::HashMap, sync::Arc};
 
 use hecs::{Entity, World};
@@ -26,7 +27,7 @@ use nat20_core::{
     },
     systems::{
         self,
-        geometry::{RaycastHit, RaycastHitKind},
+        geometry::{LineOfSightResult, RaycastHit, RaycastHitKind, RaycastMode},
         movement::{PathResult, TargetPathFindingResult},
     },
 };
@@ -80,8 +81,14 @@ pub enum ActionBarState {
     },
     Targets {
         action: ActionData,
-        potential_target: Option<(TargetInstance, TargetPathFindingResult)>,
+        potential_target: Option<PotentialTarget>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct PotentialTarget {
+    pub target_instance: TargetInstance,
+    pub path_finding_result: TargetPathFindingResult,
 }
 
 pub struct ActionBarWindow {
@@ -552,7 +559,7 @@ fn render_target_selection(
     game_state: &mut GameState,
     new_state: &mut Option<ActionBarState>,
     action: &mut ActionData,
-    potential_target: &mut Option<(TargetInstance, TargetPathFindingResult)>,
+    potential_target: &mut Option<PotentialTarget>,
 ) {
     ui.tooltip(|| {
         ui.separator_with_text(action.action_id.to_string());
@@ -662,7 +669,7 @@ fn compute_and_render_target_preview(
     game_state: &mut GameState,
     action: &mut ActionData,
     targeting_context: &TargetingContext,
-    potential_target: &mut Option<(TargetInstance, TargetPathFindingResult)>,
+    potential_target: &mut Option<PotentialTarget>,
     hovered_target_instance: &TargetInstance,
 ) -> Option<TargetPreviewResult> {
     // If we don't render target preview for this targeting kind, then don't treat hover as selectable.
@@ -671,17 +678,17 @@ fn compute_and_render_target_preview(
     }
 
     // Require potential_target cache to exist and match the current hovered instance.
-    let Some((cached_target, path_result)) = potential_target.as_mut() else {
+    let Some(cached_target) = potential_target.as_mut() else {
         return None;
     };
 
-    if cached_target != hovered_target_instance {
+    if cached_target.target_instance != *hovered_target_instance {
         // Stale cache; wait for update_potential_target to recompute next frame.
         return None;
     }
 
-    let (preview_position, path_to_target) =
-        get_target_path_preview(game_state, action, path_result);
+    let (preview_position, path_to_target, line_of_sight_result) =
+        get_target_path_preview(game_state, action, &mut cached_target.path_finding_result);
 
     // Draw visuals for preview.
     render_target_path_preview(
@@ -690,11 +697,11 @@ fn compute_and_render_target_preview(
         action,
         preview_position,
         &path_to_target,
-        cached_target,
+        &line_of_sight_result,
     );
 
     Some(TargetPreviewResult {
-        target_instance: cached_target.clone(),
+        target_instance: cached_target.target_instance.clone(),
         path_to_target,
     })
 }
@@ -1253,15 +1260,16 @@ fn get_target_path_preview(
     game_state: &mut GameState,
     action: &mut ActionData,
     path_result: &mut TargetPathFindingResult,
-) -> (Point3<f32>, Option<PathResult>) {
+) -> (Point3<f32>, Option<PathResult>, LineOfSightResult) {
     match path_result {
-        TargetPathFindingResult::AlreadyInRange => (
+        TargetPathFindingResult::AlreadyInRange(line_of_sight) => (
             systems::geometry::get_eye_position(&game_state.world, action.actor.id()).unwrap(),
             None,
+            line_of_sight.clone(),
         ),
 
-        TargetPathFindingResult::PathFound(path) => {
-            if let Some(end) = path.taken_path.end()
+        TargetPathFindingResult::PathFound(result) => {
+            if let Some(end) = result.path_result.taken_path.end()
                 && let Some(end_at_ground) =
                     systems::geometry::ground_position(&game_state.geometry, &end)
                 && let Some(eye_pos) = systems::geometry::get_eye_position_at_point(
@@ -1270,12 +1278,21 @@ fn get_target_path_preview(
                     &end_at_ground,
                 )
             {
-                (eye_pos, Some(path.clone()))
+                (
+                    eye_pos,
+                    Some(result.path_result.clone()),
+                    result.line_of_sight_result.clone(),
+                )
             } else {
                 (
                     systems::geometry::get_eye_position(&game_state.world, action.actor.id())
                         .unwrap(),
                     None,
+                    systems::geometry::line_of_sight_entity_first_target(
+                        &game_state.world,
+                        &game_state.geometry,
+                        action,
+                    ),
                 )
             }
         }
@@ -1288,7 +1305,7 @@ fn render_target_path_preview(
     action: &mut ActionData,
     preview_position: Point3<f32>,
     path_to_target: &Option<PathResult>,
-    target: &mut TargetInstance,
+    line_of_sight: &LineOfSightResult,
 ) {
     if let Some((shape, shape_pose_at_preview)) = systems::geometry::get_shape_at_point(
         &game_state.world,
@@ -1311,17 +1328,30 @@ fn render_target_path_preview(
             );
         }
 
-        let line_end = match target {
-            TargetInstance::Entity(entity) => {
-                systems::geometry::get_shape(&game_state.world, entity.id())
-                    .map(|(_, shape_pose)| shape_pose.translation.vector.into())
-                    .unwrap()
+        if let Some(raycast_result) = &line_of_sight.raycast_result {
+            let color = if line_of_sight.has_line_of_sight {
+                Color::White
+            } else {
+                Color::Red
+            };
+
+            match &raycast_result.mode {
+                RaycastMode::Ray(ray) => {
+                    gui_state.line_renderer.add_ray(
+                        ray.origin.into(),
+                        ray.dir.into(),
+                        raycast_result
+                            .closest()
+                            .map(|hit| hit.toi)
+                            .unwrap_or(f32::MAX),
+                        color,
+                    );
+                }
+                RaycastMode::Parabola(parabola) => {
+                    gui_state.line_renderer.add_parabola(parabola, color);
+                }
             }
-            TargetInstance::Point(point) => *point,
-        };
-        gui_state
-            .line_renderer
-            .add_line(preview_position.into(), line_end.into(), Color::White);
+        }
     }
 }
 
@@ -1347,7 +1377,7 @@ fn render_range_preview(
 }
 
 fn update_potential_target(
-    potential_target: &mut Option<(TargetInstance, TargetPathFindingResult)>,
+    potential_target: &mut Option<PotentialTarget>,
     game_state: &mut GameState,
     action: &ActionData,
     targeting_context: &TargetingContext,
@@ -1369,8 +1399,8 @@ fn update_potential_target(
     potential_action.targets.clear();
     potential_action.targets.push(closest_target.clone());
 
-    let is_new_target = if let Some((target, _)) = potential_target {
-        target != &closest_target
+    let is_new_target = if let Some(target) = potential_target {
+        target.target_instance != closest_target
     } else {
         true
     };
@@ -1388,8 +1418,18 @@ fn update_potential_target(
                     &[closest_target.clone()],
                 ) {
                     Ok(_) => {
-                        *potential_target =
-                            Some((closest_target, TargetPathFindingResult::AlreadyInRange))
+                        *potential_target = Some(PotentialTarget {
+                            target_instance: closest_target.clone(),
+                            path_finding_result: TargetPathFindingResult::AlreadyInRange(
+                                systems::geometry::line_of_sight_entity_target(
+                                    &game_state.world,
+                                    &game_state.geometry,
+                                    action.actor.id(),
+                                    &closest_target.clone(),
+                                    &targeting_context.line_of_sight,
+                                ),
+                            ),
+                        });
                     }
                     Err(error) => {
                         trace!("New target {:?} is not valid: {:?}", closest_target, error);
@@ -1402,7 +1442,10 @@ fn update_potential_target(
                 match systems::movement::path_to_target(game_state, &potential_action, true) {
                     Ok(result) => {
                         trace!("Found path to target {:?}: {:?}", closest_target, result);
-                        *potential_target = Some((closest_target, result));
+                        *potential_target = Some(PotentialTarget {
+                            target_instance: closest_target,
+                            path_finding_result: result,
+                        });
                     }
                     Err(err) => {
                         trace!(

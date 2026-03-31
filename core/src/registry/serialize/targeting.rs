@@ -7,20 +7,23 @@ use std::{
 
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
-use uom::si::length::meter;
+use uom::si::{f32::Velocity, length::meter, velocity::meter_per_second};
 
 use crate::{
     components::{
         actions::{
             action::{ActionAttackKind, ActionContext, TargetingFunction},
-            targeting::{AreaShape, EntityFilter, TargetingContext, TargetingKind, TargetingRange},
+            targeting::{
+                AreaShape, EntityFilter, LineOfSightMode, TargetingContext, TargetingKind,
+                TargetingRange,
+            },
         },
         health::life_state::LifeState,
         species::CreatureType,
     },
     registry::serialize::{
         parser::{Evaluable, EvaluationError, IntExpression, Parser},
-        quantity::LengthExpressionDefinition,
+        quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
         variables::{PARSER_VARIABLES, VariableMap},
     },
     systems,
@@ -41,13 +44,19 @@ impl TargetingScope {
             TargetingScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
             TargetingScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
             TargetingScope::Melee => {
-                matches!(kind, ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed)
+                matches!(
+                    kind,
+                    ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
+                )
             }
         }
     }
 }
 
-fn scoped_attack_targeting(scope: TargetingScope, provider_name: &'static str) -> Arc<TargetingFunction> {
+fn scoped_attack_targeting(
+    scope: TargetingScope,
+    provider_name: &'static str,
+) -> Arc<TargetingFunction> {
     Arc::new(
         move |world: &World, entity: Entity, action_context: &ActionContext| {
             let attack = action_context
@@ -58,10 +67,21 @@ fn scoped_attack_targeting(scope: TargetingScope, provider_name: &'static str) -
                 panic!("{provider_name} does not support this attack context");
             }
 
+            let range = systems::loadout::attack_targeting_range(world, entity, action_context);
+
+            let line_of_sight = if range.is_melee() {
+                LineOfSightMode::Ray
+            } else {
+                LineOfSightMode::Parabola {
+                    // TODO: Default arrow speed?
+                    launch_velocity: Velocity::new::<meter_per_second>(50.0),
+                }
+            };
+
             TargetingContext {
                 kind: TargetingKind::Single,
-                range: systems::loadout::attack_targeting_range(world, entity, action_context),
-                require_line_of_sight: true,
+                range,
+                line_of_sight,
                 allowed_targets: vec![EntityFilter::not_dead()],
             }
         },
@@ -307,11 +327,43 @@ impl EntityFilterDefinition {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineOfSightModeDefinition {
+    Ignore,
+    Ray,
+    Parabola {
+        launch_velocity: VelocityExpressionDefinition,
+    },
+}
+
+impl Evaluable for LineOfSightModeDefinition {
+    type Output = LineOfSightMode;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        context: &ActionContext,
+        variables: &VariableMap,
+    ) -> Result<LineOfSightMode, EvaluationError> {
+        match self {
+            LineOfSightModeDefinition::Ignore => Ok(LineOfSightMode::Ignore),
+            LineOfSightModeDefinition::Ray => Ok(LineOfSightMode::Ray),
+            LineOfSightModeDefinition::Parabola { launch_velocity } => {
+                Ok(LineOfSightMode::Parabola {
+                    launch_velocity: launch_velocity.evaluate(world, entity, context, variables)?,
+                })
+            }
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TargetingContextDefinition {
     pub kind: TargetingKindDefinition,
     pub range: LengthExpressionDefinition,
-    pub require_line_of_sight: bool,
+    pub line_of_sight: LineOfSightModeDefinition,
     pub allowed_targets: Vec<EntityFilterDefinition>,
 }
 
@@ -326,15 +378,16 @@ impl TargetingContextDefinition {
                     .unwrap();
                 let range = TargetingRange::new::<meter>(range.get::<meter>());
 
-                let kind = definition
-                    .kind
-                    .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                    .unwrap();
-
                 TargetingContext {
-                    kind,
+                    kind: definition
+                        .kind
+                        .evaluate(world, entity, action_context, &PARSER_VARIABLES)
+                        .unwrap(),
                     range,
-                    require_line_of_sight: definition.require_line_of_sight,
+                    line_of_sight: definition
+                        .line_of_sight
+                        .evaluate(world, entity, action_context, &PARSER_VARIABLES)
+                        .unwrap(),
                     allowed_targets: definition
                         .allowed_targets
                         .iter()

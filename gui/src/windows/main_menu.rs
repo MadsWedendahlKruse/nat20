@@ -10,7 +10,7 @@ use nat20_core::{
     engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
     systems::{
         self,
-        geometry::{Pose, RaycastFilter, RaycastHitKind},
+        geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
     },
 };
 use parry3d::na::{Matrix4, Point3};
@@ -178,7 +178,7 @@ impl MainMenuWindow {
                     systems::geometry::raycast(
                         &game_state.world,
                         &game_state.geometry,
-                        &ray_from_cursor,
+                        &RaycastMode::Ray(ray_from_cursor),
                         &RaycastFilter::All,
                     )
                 } else {

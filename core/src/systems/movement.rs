@@ -5,14 +5,12 @@ use parry3d::{
     query::{Ray, RayCast},
     shape::Ball,
 };
-use tracing::{debug, trace};
+use tracing::trace;
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
-        actions::targeting::{TargetInstance, TargetingError},
-        id::ResourceId,
-        resource::{ResourceAmount, ResourceAmountMap},
+        actions::targeting::{LineOfSightMode, TargetInstance, TargetingError},
         speed::Speed,
     },
     engine::{
@@ -20,7 +18,11 @@ use crate::{
         game_state::GameState,
         geometry::WorldPath,
     },
-    systems::{self, actions::ActionUsabilityError, geometry::RaycastFilter},
+    systems::{
+        self,
+        actions::ActionUsabilityError,
+        geometry::{LineOfSightResult, RaycastFilter},
+    },
 };
 
 #[derive(Debug)]
@@ -101,6 +103,12 @@ pub fn path(
     })
 }
 
+#[derive(Debug, Clone)]
+pub struct PathInRangeOfPointResult {
+    pub path_result: PathResult,
+    pub line_of_sight_result: LineOfSightResult,
+}
+
 pub fn path_in_range_of_point(
     game_state: &mut GameState,
     entity: Entity,
@@ -108,10 +116,10 @@ pub fn path_in_range_of_point(
     range: Length,
     allow_partial: bool,
     move_entity: bool,
-    line_of_sight: bool,
+    line_of_sight: LineOfSightMode,
     trim_to_movement: bool,
     spend_movement: bool,
-) -> Result<PathResult, MovementError> {
+) -> Result<PathInRangeOfPointResult, MovementError> {
     trace!(
         "Attempting to path entity {:?} to within {:?} of point {:?}",
         entity, range, target
@@ -127,20 +135,21 @@ pub fn path_in_range_of_point(
 
     let distance_to_target = Length::new::<meter>(direction.magnitude());
 
-    if distance_to_target <= range {
-        if !line_of_sight
-            || systems::geometry::line_of_sight_entity_point(
-                &game_state.world,
-                &game_state.geometry,
-                entity,
-                target,
-            )
-            .has_line_of_sight
-        {
-            // Already in range
-            trace!("Entity is already in range of target point.");
-            return Ok(PathResult::empty());
-        }
+    let line_of_sight_result = systems::geometry::line_of_sight_entity_point(
+        &game_state.world,
+        &game_state.geometry,
+        entity,
+        target,
+        &line_of_sight,
+    );
+
+    if distance_to_target <= range && line_of_sight_result.has_line_of_sight {
+        // Already in range
+        trace!("Entity is already in range of target point.");
+        return Ok(PathInRangeOfPointResult {
+            path_result: PathResult::empty(),
+            line_of_sight_result,
+        });
     }
 
     trace!("Distance to target: {:?}", distance_to_target);
@@ -155,42 +164,54 @@ pub fn path_in_range_of_point(
         spend_movement,
     )?;
 
-    if let Some(intersection) = determine_path_sphere_intersections(
+    if let Some(result) = determine_path_sphere_intersections(
         game_state,
         entity,
-        line_of_sight,
+        &line_of_sight,
         range,
         &path_to_target.full_path,
         &target,
     ) {
-        return path(
-            game_state,
-            entity,
-            &intersection,
-            allow_partial,
-            move_entity,
-            trim_to_movement,
-            spend_movement,
-        );
+        return Ok(PathInRangeOfPointResult {
+            path_result: path(
+                game_state,
+                entity,
+                &result.intersection_point,
+                allow_partial,
+                move_entity,
+                trim_to_movement,
+                spend_movement,
+            )?,
+            line_of_sight_result: result.line_of_sight_result,
+        });
     }
 
     if allow_partial {
         // Return the partial path even if we couldn't get in range
         trace!("No intersection found, but allowing partial path.");
-        return Ok(path_to_target);
+        return Ok(PathInRangeOfPointResult {
+            path_result: path_to_target,
+            // TODO: Not sure what to do about line of sight in this case
+            line_of_sight_result,
+        });
     }
 
     Err(MovementError::NoPathFound)
 }
 
+pub struct PathSphereIntersectionResult {
+    pub intersection_point: Point3<f32>,
+    pub line_of_sight_result: LineOfSightResult,
+}
+
 fn determine_path_sphere_intersections(
     game_state: &mut GameState,
     entity: Entity,
-    line_of_sight: bool,
+    line_of_sight: &LineOfSightMode,
     range: Length,
     path_to_target: &WorldPath,
     target: &Point3<f32>,
-) -> Option<Point3<f32>> {
+) -> Option<PathSphereIntersectionResult> {
     // Entity shouldn't block its own line of sight
     let mut excluded_entities = vec![entity];
     // If an entity is standing on the end of the path, that's probably who we're
@@ -220,50 +241,29 @@ fn determine_path_sphere_intersections(
             true,
         ) {
             let intersection_point = ray.point_at(toi);
-            trace!(
-                "Found an intersection between sphere at {:?} with radius {:?} and path segment {:?} -> {:?}",
-                target, range, start, end
-            );
-            trace!("Intersection point: {:?}", intersection_point);
             let ground_at_intersection =
                 systems::geometry::ground_position(&game_state.geometry, &intersection_point)?;
-            trace!("Ground at intersection point: {:?}", ground_at_intersection);
             let eye_pos_at_intersection = systems::geometry::get_eye_position_at_point(
                 &game_state.world,
                 entity,
                 &ground_at_intersection,
             )?;
-            trace!(
-                "Eye position at intersection point: {:?}",
-                eye_pos_at_intersection
-            );
-            trace!(
-                "Line of sight from eye position at intersection point {:?} to target {:?}: {}",
+            let line_of_sight_result = systems::geometry::line_of_sight_point_point(
+                &game_state.world,
+                &game_state.geometry,
                 eye_pos_at_intersection,
-                target,
-                systems::geometry::line_of_sight_point_point(
-                    &game_state.world,
-                    &game_state.geometry,
-                    eye_pos_at_intersection,
-                    *target,
-                    &raycast_filter,
-                )
-                .has_line_of_sight
+                *target,
+                line_of_sight,
+                &raycast_filter,
             );
-            if line_of_sight
-                && !systems::geometry::line_of_sight_point_point(
-                    &game_state.world,
-                    &game_state.geometry,
-                    eye_pos_at_intersection,
-                    *target,
-                    &raycast_filter,
-                )
-                .has_line_of_sight
-            {
+            if !line_of_sight_result.has_line_of_sight {
                 // No line of sight to this intersection point; try next segment
                 continue;
             } else {
-                return Some(intersection_point);
+                return Some(PathSphereIntersectionResult {
+                    intersection_point,
+                    line_of_sight_result,
+                });
             }
         }
     }
@@ -277,8 +277,8 @@ pub fn recharge_movement(world: &mut World, entity: Entity) {
 
 #[derive(Debug, Clone)]
 pub enum TargetPathFindingResult {
-    AlreadyInRange,
-    PathFound(PathResult),
+    AlreadyInRange(LineOfSightResult),
+    PathFound(PathInRangeOfPointResult),
 }
 
 #[derive(Debug, Clone)]
@@ -324,7 +324,7 @@ pub fn path_to_target(
                 targeting_context.range.max(),
                 true,
                 false,
-                targeting_context.require_line_of_sight,
+                targeting_context.line_of_sight,
                 true,
                 true,
             ) {
@@ -337,7 +337,15 @@ pub fn path_to_target(
         }
     }
 
-    Ok(TargetPathFindingResult::AlreadyInRange)
+    // TODO: Not sure if this is the best solution
+    let line_of_sight_result = systems::geometry::line_of_sight_entity_first_target(
+        &game_state.world,
+        &game_state.geometry,
+        action,
+    );
+    Ok(TargetPathFindingResult::AlreadyInRange(
+        line_of_sight_result,
+    ))
 }
 
 pub fn potential_opportunity_attacks(

@@ -1,6 +1,9 @@
 // render/line_renderer.rs
 use glow::HasContext;
-use nat20_core::{engine::geometry::WorldPath, systems::movement::PathResult};
+use nat20_core::{
+    engine::geometry::WorldPath,
+    systems::{geometry::Parabola, movement::PathResult},
+};
 use parry3d::na;
 
 #[repr(C)]
@@ -230,6 +233,17 @@ impl LineRenderer {
             origin[2] + dir[2] * t,
         ];
         self.add_line(origin, b, col);
+    }
+
+    pub fn add_parabola<T: Into<[f32; 3]>>(&mut self, parabola: &Parabola, col: T) {
+        let segments = (parabola.max_time / parabola.time_step) as usize + 1;
+        let mut points = Vec::with_capacity(segments);
+        for i in 0..=segments {
+            let t = parabola.max_time.min((i as f32) * parabola.time_step);
+            let p = parabola.position_at_time(t);
+            points.push([p.x, p.y, p.z]);
+        }
+        self.add_polyline(&points, col);
     }
 
     /// Upload & draw everything in the batch.

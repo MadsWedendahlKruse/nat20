@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use uom::{
     Conversion,
     si::{
-        f32::{Angle, Length},
+        f32::{Angle, Length, Velocity},
         length::{Unit, meter},
     },
 };
@@ -23,6 +23,166 @@ use crate::{
     entities::{character::CharacterTag, monster::MonsterTag},
     systems,
 };
+
+#[derive(Debug, Clone)]
+pub struct TargetingContext {
+    pub kind: TargetingKind,
+    pub range: TargetingRange,
+    pub line_of_sight: LineOfSightMode,
+    pub allowed_targets: Vec<EntityFilter>,
+}
+
+impl TargetingContext {
+    pub fn new(
+        kind: TargetingKind,
+        range: TargetingRange,
+        line_of_sight: LineOfSightMode,
+        allowed_targets: Vec<EntityFilter>,
+    ) -> Self {
+        TargetingContext {
+            kind,
+            range,
+            line_of_sight,
+            allowed_targets,
+        }
+    }
+
+    pub fn self_target() -> Self {
+        TargetingContext {
+            kind: TargetingKind::SelfTarget,
+            range: TargetingRange::new::<meter>(0.0),
+            line_of_sight: LineOfSightMode::Ignore,
+            allowed_targets: vec![EntityFilter::All],
+        }
+    }
+
+    pub fn allowed_target(&self, world: &World, entity: &Entity) -> bool {
+        for filter in &self.allowed_targets {
+            if filter.matches(world, entity) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn validate_targets(
+        &self,
+        world: &World,
+        world_geometry: &WorldGeometry,
+        actor: Entity,
+        targets: &[TargetInstance],
+    ) -> Result<(), TargetingError> {
+        if targets.is_empty() {
+            return Err(TargetingError::NoTargetsProvided);
+        }
+
+        match self.kind {
+            TargetingKind::SelfTarget => {
+                if targets.len() > 1 {
+                    return Err(TargetingError::ExceedsMaxTargets);
+                }
+                if targets[0] != TargetInstance::Entity(EntityIdentifier::from_world(world, actor))
+                {
+                    return Err(TargetingError::InvalidTarget {
+                        target: targets[0].clone(),
+                    });
+                }
+            }
+
+            TargetingKind::Single => {
+                if targets.len() > 1 {
+                    return Err(TargetingError::ExceedsMaxTargets);
+                }
+            }
+
+            TargetingKind::Multiple {
+                max_targets,
+                allow_duplicates,
+            } => {
+                if targets.len() as u8 > max_targets {
+                    return Err(TargetingError::ExceedsMaxTargets);
+                }
+                if !allow_duplicates {
+                    let mut seen = Vec::new();
+                    for target in targets {
+                        if seen.contains(target) {
+                            return Err(TargetingError::DuplicateTargetNotAllowed {
+                                target: target.clone(),
+                            });
+                        }
+                        seen.push(target.clone());
+                    }
+                }
+            }
+
+            TargetingKind::Area { .. } => {
+                // No max target validation for area targeting - the shape will determine the valid targets
+            }
+        }
+
+        for target in targets {
+            // Check range
+            let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
+
+            let distance = match target {
+                TargetInstance::Entity(entity) => {
+                    systems::geometry::distance_between_entities(world, actor, entity.id()).unwrap()
+                }
+
+                TargetInstance::Point(point) => {
+                    Length::new::<meter>((point - actor_position).norm())
+                }
+            };
+
+            if !self.range.in_range(distance) {
+                return Err(TargetingError::OutOfRange {
+                    target: target.clone(),
+                    distance,
+                    max_range: self.range.max(),
+                });
+            }
+
+            // Check line of sight
+            let line_of_sight_result = systems::geometry::line_of_sight_entity_target(
+                world,
+                world_geometry,
+                actor,
+                target,
+                &self.line_of_sight,
+            );
+
+            if !line_of_sight_result.has_line_of_sight {
+                return Err(TargetingError::NoLineOfSight {
+                    target: target.clone(),
+                });
+            }
+
+            // Check allowed targets
+            match target {
+                TargetInstance::Entity(entity) => {
+                    if !self.allowed_target(world, &entity.id()) {
+                        return Err(TargetingError::InvalidTarget {
+                            target: target.clone(),
+                        });
+                    }
+                }
+                TargetInstance::Point(_) => {
+                    // Points are always allowed
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineOfSightMode {
+    Ignore,
+    Ray,
+    Parabola { launch_velocity: Velocity },
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetingKind {
@@ -321,168 +481,5 @@ impl TryFrom<String> for TargetingRange {
 impl From<TargetingRange> for String {
     fn from(spec: TargetingRange) -> Self {
         spec.to_string()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TargetingContext {
-    pub kind: TargetingKind,
-    pub range: TargetingRange,
-    pub require_line_of_sight: bool,
-    pub allowed_targets: Vec<EntityFilter>,
-}
-
-impl TargetingContext {
-    pub fn new(
-        kind: TargetingKind,
-        range: TargetingRange,
-        require_line_of_sight: bool,
-        allowed_targets: Vec<EntityFilter>,
-    ) -> Self {
-        TargetingContext {
-            kind,
-            range,
-            require_line_of_sight,
-            allowed_targets,
-        }
-    }
-
-    pub fn self_target() -> Self {
-        TargetingContext {
-            kind: TargetingKind::SelfTarget,
-            range: TargetingRange::new::<meter>(0.0),
-            require_line_of_sight: false,
-            allowed_targets: vec![EntityFilter::All],
-        }
-    }
-
-    pub fn allowed_target(&self, world: &World, entity: &Entity) -> bool {
-        for filter in &self.allowed_targets {
-            if filter.matches(world, entity) {
-                return true;
-            }
-        }
-        false
-    }
-
-    pub fn validate_targets(
-        &self,
-        world: &World,
-        world_geometry: &WorldGeometry,
-        actor: Entity,
-        targets: &[TargetInstance],
-    ) -> Result<(), TargetingError> {
-        if targets.is_empty() {
-            return Err(TargetingError::NoTargetsProvided);
-        }
-
-        match self.kind {
-            TargetingKind::SelfTarget => {
-                if targets.len() > 1 {
-                    return Err(TargetingError::ExceedsMaxTargets);
-                }
-                if targets[0] != TargetInstance::Entity(EntityIdentifier::from_world(world, actor))
-                {
-                    return Err(TargetingError::InvalidTarget {
-                        target: targets[0].clone(),
-                    });
-                }
-            }
-
-            TargetingKind::Single => {
-                if targets.len() > 1 {
-                    return Err(TargetingError::ExceedsMaxTargets);
-                }
-            }
-
-            TargetingKind::Multiple {
-                max_targets,
-                allow_duplicates,
-            } => {
-                if targets.len() as u8 > max_targets {
-                    return Err(TargetingError::ExceedsMaxTargets);
-                }
-                if !allow_duplicates {
-                    let mut seen = Vec::new();
-                    for target in targets {
-                        if seen.contains(target) {
-                            return Err(TargetingError::DuplicateTargetNotAllowed {
-                                target: target.clone(),
-                            });
-                        }
-                        seen.push(target.clone());
-                    }
-                }
-            }
-
-            TargetingKind::Area { .. } => {
-                // No max target validation for area targeting - the shape will determine the valid targets
-            }
-        }
-
-        for target in targets {
-            // Check range
-            let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
-
-            let distance = match target {
-                TargetInstance::Entity(entity) => {
-                    systems::geometry::distance_between_entities(world, actor, entity.id()).unwrap()
-                }
-
-                TargetInstance::Point(point) => {
-                    Length::new::<meter>((point - actor_position).norm())
-                }
-            };
-
-            if !self.range.in_range(distance) {
-                return Err(TargetingError::OutOfRange {
-                    target: target.clone(),
-                    distance,
-                    max_range: self.range.max(),
-                });
-            }
-
-            // Check line of sight
-            if self.require_line_of_sight {
-                let line_of_sight_result = match target {
-                    TargetInstance::Entity(entity) => {
-                        systems::geometry::line_of_sight_entity_entity(
-                            world,
-                            world_geometry,
-                            actor,
-                            entity.id(),
-                        )
-                    }
-                    TargetInstance::Point(point) => systems::geometry::line_of_sight_entity_point(
-                        world,
-                        world_geometry,
-                        actor,
-                        *point,
-                    ),
-                };
-
-                if !line_of_sight_result.has_line_of_sight {
-                    return Err(TargetingError::NoLineOfSight {
-                        target: target.clone(),
-                    });
-                }
-            }
-
-            // Check allowed targets
-            match target {
-                TargetInstance::Entity(entity) => {
-                    if !self.allowed_target(world, &entity.id()) {
-                        return Err(TargetingError::InvalidTarget {
-                            target: target.clone(),
-                        });
-                    }
-                }
-                TargetInstance::Point(_) => {
-                    // Points are always allowed
-                }
-            }
-        }
-
-        Ok(())
     }
 }

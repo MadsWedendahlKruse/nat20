@@ -8,7 +8,8 @@ use crate::{
                 Action, ActionContext, ActionCooldownMap, ActionKind, ActionMap, ActionProvider,
             },
             targeting::{
-                AreaShape, TargetInstance, TargetingContext, TargetingError, TargetingKind,
+                AreaShape, LineOfSightMode, TargetInstance, TargetingContext, TargetingError,
+                TargetingKind,
             },
         },
         id::{ActionId, EntityIdentifier, ResourceId},
@@ -277,6 +278,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
                                 &game_state.geometry,
                                 *entity,
                                 *point,
+                                &LineOfSightMode::Ray,
                                 // TODO: Can't hide behind other entities?
                                 &RaycastFilter::WorldOnly,
                             )
@@ -302,6 +304,15 @@ pub fn targeting_context(
 ) -> TargetingContext {
     // TODO: Handle missing action
     get_action(action_id).unwrap().targeting()(world, entity, context)
+}
+
+pub fn targeting_context_data(world: &World, action_data: &ActionData) -> TargetingContext {
+    targeting_context(
+        world,
+        action_data.actor.id(),
+        &action_data.action_id,
+        &action_data.context,
+    )
 }
 
 pub fn available_reactions_to_event(

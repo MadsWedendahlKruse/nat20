@@ -66,7 +66,7 @@ The engine is intentionally **data-driven**, meaing pretty much all “game cont
     "targeting": {
         "kind": "single",
         "range": "120 feet",
-        "require_line_of_sight": true,
+        "line_of_sight": "ray",
         "allowed_targets": ["not_dead"]
     }
 }
