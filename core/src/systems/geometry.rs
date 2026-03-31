@@ -380,18 +380,20 @@ pub fn raycast_parabola(
         time += parabola.time_step;
         let position = parabola.position_at_time(time);
         let translation = position - previous_position;
+        let segment_length = translation.magnitude();
         let ray = Ray::new(previous_position, translation.normalize());
         if let Some(mut result) =
-            raycast_with_toi(world, world_geometry, &ray, translation.magnitude(), filter)
+            raycast_with_toi(world, world_geometry, &ray, segment_length, filter)
         {
             // Adjust the time of impact to account for the time along the parabola
             let prev_time = time - parabola.time_step;
-            let speed_at_prev_time = parabola.velocity_at_time(prev_time).magnitude();
             result.hits.iter_mut().for_each(|hit| {
-                if speed_at_prev_time != 0.0 {
-                    hit.toi /= speed_at_prev_time;
-                }
-                hit.toi += prev_time;
+                let fraction = if segment_length > 0.0 {
+                    hit.toi / segment_length
+                } else {
+                    0.0
+                };
+                hit.toi = prev_time + fraction * parabola.time_step;
             });
             outcomes.extend(result.hits);
         }
