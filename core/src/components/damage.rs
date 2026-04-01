@@ -13,7 +13,10 @@ use crate::{
         d20::{D20Check, D20CheckOutcome, D20CheckResult},
         dice::{DiceSet, DiceSetRoll, DiceSetRollResult},
         id::{ActionId, SpellId},
-        items::equipment::weapon::{Weapon, WeaponKind},
+        items::equipment::{
+            armor::ArmorClass,
+            weapon::{Weapon, WeaponKind},
+        },
         modifier::{Modifiable, ModifierSet, ModifierSource},
     },
     systems::{self},
@@ -666,6 +669,16 @@ pub struct AttackRollResult {
     pub roll_result: D20CheckResult,
     pub source: AttackSource,
     pub range: AttackRange,
+}
+
+impl AttackRollResult {
+    pub fn is_success(&self, armor_class: &ArmorClass) -> bool {
+        match self.roll_result.outcome {
+            Some(D20CheckOutcome::CriticalSuccess) => true,
+            Some(D20CheckOutcome::CriticalFailure) => false,
+            _ => self.roll_result.total() >= armor_class.total() as u32,
+        }
+    }
 }
 
 impl fmt::Display for AttackRollResult {

@@ -2,11 +2,10 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        d20::{D20CheckDC, D20CheckOutcome, D20CheckResult},
+        d20::{D20CheckDC, D20CheckResult},
         damage::AttackRollResult,
         id::EntityIdentifier,
         items::equipment::armor::ArmorClass,
-        modifier::Modifiable,
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
     },
@@ -57,12 +56,7 @@ impl D20ResultKind {
                 result.is_success(dc)
             }
             (D20ResultKind::AttackRoll { result }, D20CheckDCKind::AttackRoll(_, armor_class)) => {
-                let result = &result.roll_result;
-                match result.outcome {
-                    Some(D20CheckOutcome::CriticalSuccess) => true,
-                    Some(D20CheckOutcome::CriticalFailure) => false,
-                    _ => result.total() >= armor_class.total() as u32,
-                }
+                result.is_success(armor_class)
             }
             _ => false,
         }
