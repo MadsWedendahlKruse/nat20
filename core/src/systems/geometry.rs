@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::LazyLock};
 use glam::Vec2;
 use hecs::{Entity, World};
 use parry3d::{
-    na::{Isometry3, Point3, Translation3, Vector3},
+    na::{Isometry3, Point3, Translation3, UnitQuaternion, Vector3},
     query::{PointQuery, Ray, RayCast},
     shape::{Ball, Capsule, Shape},
 };
@@ -151,7 +151,7 @@ impl Parabola {
         origin: Point3<f32>,
         target: Point3<f32>,
         gravity: Vector3<f32>,
-        launch_speed: Velocity,
+        launch_speed: &Velocity,
     ) -> Option<(Vector3<f32>, f32)> {
         let to_target = target - origin;
         let to_target_flat = Vec2::new(to_target.x, to_target.z);
@@ -193,7 +193,7 @@ impl Parabola {
         origin: Point3<f32>,
         target: Point3<f32>,
         gravity: Vector3<f32>,
-        launch_velocity: Velocity,
+        launch_velocity: &Velocity,
     ) -> Option<Self> {
         let (initial_velocity, time_of_flight) =
             Self::solve_initial_velocity(origin, target, gravity, launch_velocity)?;
@@ -211,6 +211,42 @@ impl Parabola {
 pub enum RaycastMode {
     Ray(Ray),
     Parabola(Parabola),
+}
+
+impl RaycastMode {
+    pub fn position_at_time(&self, time: f32) -> Point3<f32> {
+        match self {
+            RaycastMode::Ray(ray) => ray.point_at(time),
+            RaycastMode::Parabola(parabola) => parabola.position_at_time(time),
+        }
+    }
+
+    pub fn velocity_at_time(&self, time: f32) -> Vector3<f32> {
+        match self {
+            RaycastMode::Ray(ray) => ray.dir,
+            RaycastMode::Parabola(parabola) => parabola.velocity_at_time(time),
+        }
+    }
+
+    pub fn orientation_at_time(&self, time: f32) -> Option<UnitQuaternion<f32>> {
+        let velocity = self.velocity_at_time(time);
+        if velocity.magnitude_squared() > 0.0 {
+            Some(UnitQuaternion::face_towards(
+                &velocity.normalize(),
+                &Vector3::y_axis(),
+            ))
+        } else {
+            None
+        }
+    }
+
+    pub fn pose_at_time(&self, time: f32) -> Pose {
+        let position = self.position_at_time(time);
+        let rotation = self
+            .orientation_at_time(time)
+            .unwrap_or_else(UnitQuaternion::identity);
+        Pose::from_parts(position.into(), rotation)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -493,7 +529,7 @@ pub fn line_of_sight_point_point(
 
         LineOfSightMode::Parabola { launch_velocity } => {
             if let Some(parabola) =
-                Parabola::from_launch_velocity(from, to, DEFAULT_GRAVITY, *launch_velocity)
+                Parabola::from_launch_velocity(from, to, DEFAULT_GRAVITY, launch_velocity)
             {
                 trace!(
                     "Performing parabola raycast with initial velocity {:?} and time of flight {}",

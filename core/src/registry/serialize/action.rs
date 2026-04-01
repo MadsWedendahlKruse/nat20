@@ -2,16 +2,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::{Action, ActionCondition, ActionKind, ActionPayload, DamageOnFailure},
+        actions::action::{
+            Action, ActionCondition, ActionKind, ActionPayload, DamageOnFailure, PayloadDelivery,
+        },
         id::ActionId,
         resource::{RechargeRule, ResourceAmountMap},
     },
+    entities::projectile::ProjectileTemplate,
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
             effect::EffectInstanceDefinition,
+            quantity::VelocityExpressionDefinition,
             reaction::{ReactionBody, ReactionTrigger},
             targeting::TargetingDefinition,
             timeline::ActionTimelineDefinition,
@@ -76,6 +80,17 @@ pub enum DamageOnFailureDefinition {
     Custom(DamageEquation),
 }
 
+impl From<DamageOnFailureDefinition> for DamageOnFailure {
+    fn from(value: DamageOnFailureDefinition) -> Self {
+        match value {
+            DamageOnFailureDefinition::Half => DamageOnFailure::Half,
+            DamageOnFailureDefinition::Custom(damage_equation) => {
+                DamageOnFailure::Custom(damage_equation.function)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionConditionDefinition {
@@ -91,6 +106,66 @@ pub enum ActionConditionDefinition {
     },
 }
 
+impl From<ActionConditionDefinition> for ActionCondition {
+    fn from(value: ActionConditionDefinition) -> Self {
+        match value {
+            ActionConditionDefinition::AttackRoll {
+                attack_roll,
+                damage_on_miss,
+            } => ActionCondition::AttackRoll {
+                attack_roll: attack_roll.function,
+                damage_on_miss: damage_on_miss.map(|d| d.into()),
+            },
+            ActionConditionDefinition::SavingThrow {
+                saving_throw,
+                damage_on_save,
+            } => ActionCondition::SavingThrow {
+                saving_throw: saving_throw.function,
+                damage_on_save: damage_on_save.map(|d| d.into()),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrajectoryTemplateDefinition {
+    Ray,
+    Parabola,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PayloadDeliveryDefinition {
+    #[default]
+    Immediate,
+    Projectile {
+        trajectory: TrajectoryTemplateDefinition,
+        velocity: VelocityExpressionDefinition,
+    },
+}
+
+impl From<PayloadDeliveryDefinition> for PayloadDelivery {
+    fn from(value: PayloadDeliveryDefinition) -> Self {
+        match value {
+            PayloadDeliveryDefinition::Immediate => PayloadDelivery::Immediate,
+            PayloadDeliveryDefinition::Projectile {
+                trajectory,
+                velocity,
+            } => PayloadDelivery::Projectile {
+                template: match trajectory {
+                    TrajectoryTemplateDefinition::Ray => ProjectileTemplate::Ray {
+                        velocity: velocity.evaluate_without_variables().unwrap(),
+                    },
+                    TrajectoryTemplateDefinition::Parabola => ProjectileTemplate::Parabola {
+                        launch_velocity: velocity.evaluate_without_variables().unwrap(),
+                    },
+                },
+            },
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ActionPayloadDefinition {
     #[serde(default)]
@@ -99,6 +174,8 @@ pub struct ActionPayloadDefinition {
     pub healing: Option<HealEquation>,
     #[serde(default)]
     pub effect: Option<EffectInstanceDefinition>,
+    #[serde(default)]
+    pub delivery: PayloadDeliveryDefinition,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -125,36 +202,7 @@ impl From<ActionKindDefinition> for ActionKind {
         match spec {
             ActionKindDefinition::Standard { condition, payload } => ActionKind::Standard {
                 condition: if let Some(condition) = condition {
-                    match condition {
-                        ActionConditionDefinition::AttackRoll {
-                            attack_roll,
-                            damage_on_miss,
-                        } => ActionCondition::AttackRoll {
-                            attack_roll: attack_roll.function,
-                            damage_on_miss: damage_on_miss.map(|damage_on_failure| {
-                                match damage_on_failure {
-                                    DamageOnFailureDefinition::Half => DamageOnFailure::Half,
-                                    DamageOnFailureDefinition::Custom(damage_equation) => {
-                                        DamageOnFailure::Custom(damage_equation.function)
-                                    }
-                                }
-                            }),
-                        },
-                        ActionConditionDefinition::SavingThrow {
-                            saving_throw,
-                            damage_on_save,
-                        } => ActionCondition::SavingThrow {
-                            saving_throw: saving_throw.function,
-                            damage_on_save: damage_on_save.map(|damage_on_failure| {
-                                match damage_on_failure {
-                                    DamageOnFailureDefinition::Half => DamageOnFailure::Half,
-                                    DamageOnFailureDefinition::Custom(damage_equation) => {
-                                        DamageOnFailure::Custom(damage_equation.function)
-                                    }
-                                }
-                            }),
-                        },
-                    }
+                    condition.into()
                 } else {
                     ActionCondition::None
                 },
@@ -164,6 +212,7 @@ impl From<ActionKindDefinition> for ActionKind {
                         .effect
                         .map(|effect_instance_definition| effect_instance_definition.into()),
                     payload.healing.map(|eq| eq.function),
+                    payload.delivery.into(),
                 )
                 .unwrap(),
             },

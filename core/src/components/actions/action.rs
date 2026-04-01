@@ -31,6 +31,7 @@ use crate::{
         event::Event,
         game_state::GameState,
     },
+    entities::projectile::ProjectileTemplate,
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{self},
 };
@@ -298,11 +299,18 @@ pub enum ActionCondition {
     },
 }
 
+#[derive(Debug, Clone)]
+pub enum PayloadDelivery {
+    Immediate,
+    Projectile { template: ProjectileTemplate },
+}
+
 #[derive(Clone)]
 pub struct ActionPayload {
     damage: Option<Arc<DamageFunction>>,
     effect: Option<EffectInstanceTemplate>,
     healing: Option<Arc<HealFunction>>,
+    delivery: PayloadDelivery,
 }
 
 #[derive(Debug)]
@@ -315,11 +323,13 @@ impl ActionPayload {
         damage: Option<Arc<DamageFunction>>,
         effect: Option<EffectInstanceTemplate>,
         healing: Option<Arc<HealFunction>>,
+        delivery: PayloadDelivery,
     ) -> Result<Self, ActionPayloadError> {
         let payload = ActionPayload {
             damage,
             effect,
             healing,
+            delivery,
         };
 
         if payload.is_empty() {
@@ -333,30 +343,6 @@ impl ActionPayload {
         self.damage.is_none() && self.effect.is_none() && self.healing.is_none()
     }
 
-    pub fn with_damage(damage: Arc<DamageFunction>) -> Self {
-        Self {
-            damage: Some(damage),
-            effect: None,
-            healing: None,
-        }
-    }
-
-    pub fn with_effect(effect: EffectInstanceTemplate) -> Self {
-        Self {
-            damage: None,
-            effect: Some(effect),
-            healing: None,
-        }
-    }
-
-    pub fn with_healing(healing: Arc<HealFunction>) -> Self {
-        Self {
-            damage: None,
-            effect: None,
-            healing: Some(healing),
-        }
-    }
-
     pub fn damage(&self) -> Option<&Arc<DamageFunction>> {
         self.damage.as_ref()
     }
@@ -367,6 +353,10 @@ impl ActionPayload {
 
     pub fn healing(&self) -> Option<&Arc<HealFunction>> {
         self.healing.as_ref()
+    }
+
+    pub fn delivery(&self) -> &PayloadDelivery {
+        &self.delivery
     }
 }
 
@@ -399,6 +389,26 @@ pub enum ActionConditionResolution {
         saving_throw_dc: SavingThrowDC,
         saving_throw_result: D20CheckResult,
     },
+}
+
+impl ActionConditionResolution {
+    pub fn is_hit(&self) -> bool {
+        match self {
+            ActionConditionResolution::Unconditional => true,
+            ActionConditionResolution::AttackRoll {
+                attack_roll,
+                armor_class,
+            } => attack_roll.is_success(armor_class),
+            ActionConditionResolution::SavingThrow {
+                saving_throw_dc,
+                saving_throw_result,
+            } => {
+                // For saving throws, a successful save means the action's effect
+                // is avoided or reduced, so we check for failure here.
+                !saving_throw_result.is_success(saving_throw_dc)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -652,6 +662,8 @@ impl ActionResult {
 #[derive(Debug, Clone)]
 pub struct ActionTimeline {
     pub total_duration: f32,
+    // TODO: Probably fine?
+    pub step_spacing: f32,
     pub events: Vec<(f32, ActionTimelineEvent)>,
 }
 

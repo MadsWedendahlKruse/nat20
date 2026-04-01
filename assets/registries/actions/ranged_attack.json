@@ -7,7 +7,13 @@
                 "attack_roll": "ranged_attack_roll"
             },
             "payload": {
-                "damage": "ranged_damage_roll"
+                "damage": "ranged_damage_roll",
+                "delivery": {
+                    "projectile": {
+                        "trajectory": "parabola",
+                        "velocity": "60 m/s"
+                    }
+                }
             }
         }
     },
