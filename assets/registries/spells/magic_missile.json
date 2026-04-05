@@ -10,7 +10,13 @@
     "kind": {
         "standard": {
             "payload": {
-                "damage": "1d4 + 1;force"
+                "damage": "1d4 + 1;force",
+                "delivery": {
+                    "projectile": {
+                        "trajectory": "ray",
+                        "velocity": "40 m/s"
+                    }
+                }
             }
         }
     },
@@ -34,5 +40,10 @@
                 "invert": true
             }
         ]
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "submit_time": 0.5,
+        "step_spacing": 0.1
     }
 }

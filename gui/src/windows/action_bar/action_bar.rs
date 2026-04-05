@@ -727,7 +727,7 @@ fn render_target_chance_tooltips(
     };
 
     match condition {
-        ActionCondition::AttackRoll { attack_roll, .. } => {
+        ActionCondition::AttackRoll(attack_roll) => {
             render_attack_hit_chance_tooltip(
                 ui,
                 game_state,
@@ -736,7 +736,7 @@ fn render_target_chance_tooltips(
                 attack_roll,
             );
         }
-        ActionCondition::SavingThrow { saving_throw, .. } => {
+        ActionCondition::SavingThrow(saving_throw) => {
             render_save_success_chance_tooltip(
                 ui,
                 game_state,

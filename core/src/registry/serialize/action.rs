@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{
-            Action, ActionCondition, ActionKind, ActionPayload, DamageOnFailure, PayloadDelivery,
+            Action, ActionCondition, ActionKind, ActionPayload, ActionTimeline, DamageOnFailure,
+            PayloadDelivery,
         },
         id::ActionId,
         resource::{RechargeRule, ResourceAmountMap},
@@ -18,7 +19,6 @@ use crate::{
             quantity::VelocityExpressionDefinition,
             reaction::{ReactionBody, ReactionTrigger},
             targeting::TargetingDefinition,
-            timeline::ActionTimelineDefinition,
         },
     },
     scripts::script::ScriptFunction,
@@ -38,7 +38,7 @@ pub struct ActionDefinition {
     #[serde(default)]
     pub reaction_trigger: Option<ReactionTrigger>,
     #[serde(default)]
-    pub timeline: Option<ActionTimelineDefinition>,
+    pub timeline: Option<ActionTimeline>,
 }
 
 impl RegistryReferenceCollector for ActionDefinition {
@@ -94,35 +94,19 @@ impl From<DamageOnFailureDefinition> for DamageOnFailure {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionConditionDefinition {
-    AttackRoll {
-        attack_roll: AttackRollDefinition,
-        #[serde(default)]
-        damage_on_miss: Option<DamageOnFailureDefinition>,
-    },
-    SavingThrow {
-        saving_throw: SavingThrowDefinition,
-        #[serde(default)]
-        damage_on_save: Option<DamageOnFailureDefinition>,
-    },
+    AttackRoll { attack_roll: AttackRollDefinition },
+    SavingThrow { saving_throw: SavingThrowDefinition },
 }
 
 impl From<ActionConditionDefinition> for ActionCondition {
     fn from(value: ActionConditionDefinition) -> Self {
         match value {
-            ActionConditionDefinition::AttackRoll {
-                attack_roll,
-                damage_on_miss,
-            } => ActionCondition::AttackRoll {
-                attack_roll: attack_roll.function,
-                damage_on_miss: damage_on_miss.map(|d| d.into()),
-            },
-            ActionConditionDefinition::SavingThrow {
-                saving_throw,
-                damage_on_save,
-            } => ActionCondition::SavingThrow {
-                saving_throw: saving_throw.function,
-                damage_on_save: damage_on_save.map(|d| d.into()),
-            },
+            ActionConditionDefinition::AttackRoll { attack_roll } => {
+                ActionCondition::AttackRoll(attack_roll.function)
+            }
+            ActionConditionDefinition::SavingThrow { saving_throw } => {
+                ActionCondition::SavingThrow(saving_throw.function)
+            }
         }
     }
 }
@@ -171,6 +155,8 @@ pub struct ActionPayloadDefinition {
     #[serde(default)]
     pub damage: Option<DamageEquation>,
     #[serde(default)]
+    pub damage_on_failure: Option<DamageOnFailureDefinition>,
+    #[serde(default)]
     pub healing: Option<HealEquation>,
     #[serde(default)]
     pub effect: Option<EffectInstanceDefinition>,
@@ -208,6 +194,7 @@ impl From<ActionKindDefinition> for ActionKind {
                 },
                 payload: ActionPayload::new(
                     payload.damage.map(|eq| eq.function),
+                    payload.damage_on_failure.map(|d| d.into()),
                     payload
                         .effect
                         .map(|effect_instance_definition| effect_instance_definition.into()),

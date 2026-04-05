@@ -10,11 +10,17 @@
     "kind": {
         "standard": {
             "condition": {
-                "saving_throw": "spell_save_dc;dexterity",
-                "damage_on_save": "half"
+                "saving_throw": "spell_save_dc;dexterity"
             },
             "payload": {
-                "damage": "(8 + spell_level - 3)d6;fire"
+                "damage": "(8 + spell_level - 3)d6;fire",
+                "damage_on_failure": "half",
+                "delivery": {
+                    "projectile": {
+                        "trajectory": "ray",
+                        "velocity": "40 m/s"
+                    }
+                }
             }
         }
     },

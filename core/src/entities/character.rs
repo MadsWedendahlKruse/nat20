@@ -33,9 +33,14 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct CharacterTag;
 
+// TODO: Not sure where this should live
+#[derive(Debug, Clone)]
+pub struct CreatureTag;
+
 from_world!(
     #[derive(Bundle, Clone)]
     pub struct Character {
+        pub creature_tag: CreatureTag,
         pub character_tag: CharacterTag,
         /// By default, characters are player controlled. In case the player gets
         /// possessed or mind controlled, this component can be removed from the
@@ -77,6 +82,7 @@ from_world!(
 impl Character {
     pub fn new(name: Name) -> Self {
         Self {
+            creature_tag: CreatureTag,
             character_tag: CharacterTag,
             player_controlled: PlayerControlledTag,
             // TODO: Update to an actual ID

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::{ActionAttackKind, ActionContext, DamageFunction, HealFunction},
+        actions::action::{ActionAttackKind, ActionContext, DamageFunction, HealingFunction},
         damage::{DamageRoll, DamageSource, DamageType},
         dice::{DiceSet, DiceSetRoll},
         modifier::{Modifiable, ModifierSet, ModifierSource},
@@ -37,23 +37,31 @@ impl DamageRollScope {
             DamageRollScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
             DamageRollScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
             DamageRollScope::Melee => {
-                matches!(kind, ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed)
+                matches!(
+                    kind,
+                    ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
+                )
             }
         }
     }
 }
 
-fn scoped_attack_damage_roll(scope: DamageRollScope, provider_name: &'static str) -> Arc<DamageFunction> {
-    Arc::new(move |world: &World, entity: Entity, action_context: &ActionContext| {
-        let attack = action_context
-            .attack
-            .as_ref()
-            .unwrap_or_else(|| panic!("{provider_name} requires an attack context"));
-        if !scope.is_allowed(attack.kind) {
-            panic!("{provider_name} does not support this attack context");
-        }
-        systems::loadout::attack_damage_roll(world, entity, action_context)
-    }) as Arc<DamageFunction>
+fn scoped_attack_damage_roll(
+    scope: DamageRollScope,
+    provider_name: &'static str,
+) -> Arc<DamageFunction> {
+    Arc::new(
+        move |world: &World, entity: Entity, action_context: &ActionContext| {
+            let attack = action_context
+                .attack
+                .as_ref()
+                .unwrap_or_else(|| panic!("{provider_name} requires an attack context"));
+            if !scope.is_allowed(attack.kind) {
+                panic!("{provider_name} does not support this attack context");
+            }
+            systems::loadout::attack_damage_roll(world, entity, action_context)
+        },
+    ) as Arc<DamageFunction>
 }
 
 static DAMAGE_DEFAULTS: LazyLock<HashMap<String, Arc<DamageFunction>>> = LazyLock::new(|| {
@@ -163,7 +171,7 @@ impl From<DamageEquation> for String {
 #[serde(try_from = "String", into = "String")]
 pub struct HealEquation {
     pub raw: String,
-    pub function: Arc<HealFunction>,
+    pub function: Arc<HealingFunction>,
 }
 
 impl Display for HealEquation {

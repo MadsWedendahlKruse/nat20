@@ -679,6 +679,13 @@ impl AttackRollResult {
             _ => self.roll_result.total() >= armor_class.total() as u32,
         }
     }
+
+    pub fn is_crit(&self) -> bool {
+        matches!(
+            self.roll_result.outcome,
+            Some(D20CheckOutcome::CriticalSuccess)
+        )
+    }
 }
 
 impl fmt::Display for AttackRollResult {

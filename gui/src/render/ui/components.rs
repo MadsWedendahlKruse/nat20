@@ -1660,10 +1660,10 @@ impl ImguiRenderableWithContext<(&World, Entity)>
 
                 match action.kind() {
                     ActionKind::Standard { condition, .. } => match condition {
-                        ActionCondition::AttackRoll { .. } => {
+                        ActionCondition::AttackRoll(_) => {
                             TextSegment::new("Attack Roll", TextKind::Details).render(ui);
                         }
-                        ActionCondition::SavingThrow { saving_throw, .. } => {
+                        ActionCondition::SavingThrow(saving_throw) => {
                             let saving_throw = saving_throw(world, entity, &context);
                             let saving_throw_ability = match saving_throw.key {
                                 SavingThrowKind::Ability(ability) => ability,

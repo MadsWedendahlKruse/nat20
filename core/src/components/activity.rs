@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use hecs::Entity;
 use parry3d::na::Point3;
@@ -6,7 +6,14 @@ use tracing::{debug, warn};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
-    components::{actions::action::ActionTimelineEvent, id::EntityIdentifier, speed::Speed},
+    components::{
+        actions::{
+            action::{Action, ActionTimeline},
+            action_step::ActionPhase,
+        },
+        id::EntityIdentifier,
+        speed::Speed,
+    },
     engine::{
         action_prompt::{ActionDecision, ActionError},
         event::{Event, EventKind},
@@ -67,10 +74,10 @@ pub enum ActivityState {
         paused: bool,
     },
     Acting {
-        action: Option<ActionDecision>,
-        total_duration: f32,
+        timeline: ActionTimeline,
         elapsed_time: f32,
-        events: Vec<(f32, ActionTimelineEvent)>,
+        phases: VecDeque<ActionPhase>,
+        phase_cooldown: f32,
         paused: bool,
     },
 }
@@ -141,7 +148,11 @@ impl ActivityState {
                         debug!("Entity {:?} reached destination {:?}", entity, target_point);
 
                         if let Some(action_decision) = action.take() {
-                            self.set_acting(action_decision);
+                            debug!(
+                                "Entity {:?} has a follow-up action, setting to act after movement",
+                                entity
+                            );
+                            commands.push(ActivityGameStateCommand::SubmitAction(action_decision));
                         } else {
                             debug!(
                                 "Entity {:?} has no follow-up action, setting to idle",
@@ -154,50 +165,45 @@ impl ActivityState {
             }
 
             Self::Acting {
-                action,
-                total_duration,
                 elapsed_time,
-                events: timeline_events,
+                timeline:
+                    ActionTimeline {
+                        total_duration,
+                        submit_time,
+                        step_spacing,
+                    },
+                phases,
+                phase_cooldown,
                 paused,
             } => {
                 if *paused {
                     return commands;
                 }
 
-                if *total_duration == 0.0 {
-                    // Instant action, execute immediately
-                    if let Some(action) = action.take() {
-                        commands.push(ActivityGameStateCommand::SubmitAction(action));
-                    }
-                    *self = Self::Idle;
-                    return commands;
-                }
-
                 *elapsed_time += delta_time;
 
-                timeline_events.retain(|(event_time, event)| {
-                    if *event_time <= *elapsed_time {
-                        match event {
-                            ActionTimelineEvent::SubmitAction => {
-                                if let Some(action) = action.take() {
-                                    commands.push(ActivityGameStateCommand::SubmitAction(action));
-                                } else {
-                                    warn!("Timeline event triggered {:?} but no action decision found", event);
-                                }
-                            }
-                            ActionTimelineEvent::SpawnProjectile {} => todo!(),
-                        }
-                        false
-                    } else {
-                        true
-                    }
-                });
+                if *elapsed_time >= *submit_time {
+                    *phase_cooldown += delta_time;
+                }
 
-                if *elapsed_time >= *total_duration {
+                if *phase_cooldown >= *step_spacing && !phases.is_empty() {
+                    debug!(
+                        "Action phase cooldown elapsed for entity {:?}, checking for next phase",
+                        entity
+                    );
+                    *phase_cooldown = 0.0;
+                    commands.push(ActivityGameStateCommand::PerformActionPhase {
+                        entity,
+                        phase: phases.pop_front().unwrap(),
+                    });
+                }
+
+                if *elapsed_time >= *total_duration && phases.is_empty() {
                     debug!(
                         "Entity {:?} finished action after {:?} seconds",
                         entity, total_duration
                     );
+                    commands.push(ActivityGameStateCommand::ActivityCompleted { entity });
                     *self = Self::Idle;
                 }
             }
@@ -232,36 +238,70 @@ impl ActivityState {
         };
     }
 
-    pub fn set_acting(&mut self, action: ActionDecision) {
+    pub fn set_acting(&mut self, action: &Action, phases: Vec<ActionPhase>) {
+        if phases.is_empty() {
+            debug!("No phases provided for action, setting to idle");
+            *self = Self::Idle;
+            return;
+        }
+
+        if let Self::Acting {
+            phases: current_phases,
+            ..
+        } = self
+        {
+            warn!(
+                "Overriding activity state for entity which is already acting: {:?}, with new phases {:?}",
+                *current_phases, phases
+            );
+        }
         debug!("Setting entity to perform action {:?}", action);
 
-        let (total_duration, events) = if let Some(action_id) = action.action_id()
-            && let Some(action) = systems::actions::get_action(&action_id)
-            && let Some(timeline) = &action.timeline
-        {
-            (timeline.total_duration, timeline.events.clone())
+        let timeline = if let Some(timeline) = &action.timeline {
+            timeline
         } else {
-            (0.0, Vec::new())
+            &ActionTimeline {
+                total_duration: 0.0,
+                submit_time: 0.0,
+                step_spacing: 0.0,
+            }
         };
 
         *self = Self::Acting {
-            action: Some(action),
-            total_duration,
+            timeline: timeline.clone(),
             elapsed_time: 0.0,
-            events,
+            phases: phases.into(),
+            phase_cooldown: 0.0,
             paused: false,
         };
     }
 
+    pub fn is_acting(&self) -> bool {
+        matches!(self, Self::Acting { .. })
+    }
+
     pub fn resume(&mut self) {
         if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
+            debug!("Resuming activity");
             *paused = false;
+        } else {
+            warn!("Attempted to resume an activity that is not currently moving or acting");
         }
     }
 
     pub fn pause(&mut self) {
         if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
+            debug!("Pausing activity");
             *paused = true;
+        } else {
+            warn!("Attempted to pause an activity that is not currently moving or acting");
+        }
+    }
+
+    pub fn is_paused(&self) -> bool {
+        match self {
+            Self::Moving { paused, .. } | Self::Acting { paused, .. } => *paused,
+            Self::Idle => false,
         }
     }
 }
@@ -273,8 +313,51 @@ impl Default for ActivityState {
 }
 
 // TODO: Name?
-#[derive(Debug)]
 pub enum ActivityGameStateCommand {
     ProcessEvent(Event),
     SubmitAction(ActionDecision),
+    PerformActionPhase { entity: Entity, phase: ActionPhase },
+    ActivityCompleted { entity: Entity },
+    DespawnEntity { entity: Entity },
+}
+
+// TODO: If the implementaiton of this is in the GameState it can access all the
+// private methods without having to make them pub(crate)
+impl ActivityGameStateCommand {
+    pub fn execute(self, game_state: &mut GameState) {
+        match self {
+            Self::ProcessEvent(event) => game_state.process_event(event),
+
+            Self::SubmitAction(action) => game_state
+                .submit_decision(action)
+                .expect("Failed to submit action from activity"),
+
+            Self::PerformActionPhase { entity, mut phase } => {
+                phase.perform(game_state);
+                if !phase.is_applied() {
+                    let scope = game_state.scope_for_entity(entity);
+                    game_state
+                        .interaction_engine
+                        .session_mut(scope)
+                        .set_pending_phase(entity, phase);
+                }
+            }
+
+            Self::ActivityCompleted { entity } => {
+                let scope = game_state.scope_for_entity(entity);
+                game_state
+                    .interaction_engine
+                    .session_mut(scope)
+                    .remove_pending_reactor(entity);
+                game_state.resume_pending_events_if_ready(scope);
+            }
+
+            Self::DespawnEntity { entity } => {
+                game_state
+                    .world
+                    .despawn(entity)
+                    .expect("DespawnEntity: entity not found");
+            }
+        }
+    }
 }

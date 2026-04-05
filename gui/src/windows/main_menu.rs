@@ -8,6 +8,7 @@ use nat20_core::{
         id::Name,
     },
     engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
+    entities::projectile::Projectile,
     systems::{
         self,
         geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
@@ -594,6 +595,19 @@ impl MainMenuWindow {
                     gui_state.mesh_cache.insert(key, mesh);
                 }
             });
+        }
+
+        // TODO: Can it just live here?
+        for (_, projectile) in game_state.world.query::<&Projectile>().iter() {
+            let mesh = shapes::build_sphere_mesh(gui_state.ig_renderer.gl_context(), 8, 8, 0.15);
+
+            mesh.draw(
+                gui_state.ig_renderer.gl_context(),
+                &gui_state.program,
+                &projectile.pose.to_homogeneous(),
+                Color::Cyan.into(),
+                &MeshRenderMode::MeshOnly,
+            );
         }
 
         Self::render_creature_labels(ui, game_state, &gui_state.camera);

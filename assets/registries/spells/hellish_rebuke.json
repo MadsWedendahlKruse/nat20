@@ -10,11 +10,11 @@
     "kind": {
         "standard": {
             "condition": {
-                "saving_throw": "spell_save_dc;dexterity",
-                "damage_on_save": "half"
+                "saving_throw": "spell_save_dc;dexterity"
             },
             "payload": {
-                "damage": "(2 + spell_level - 1)d10;fire"
+                "damage": "(2 + spell_level - 1)d10;fire",
+                "damge_on_failure": "half"
             }
         }
     },

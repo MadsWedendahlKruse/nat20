@@ -1,12 +1,15 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use hecs::Entity;
-use tracing::info;
+use tracing::{info, warn};
 
-use crate::engine::{
-    action_prompt::{ActionDecision, ActionPrompt, ActionPromptId, ActionPromptKind},
-    encounter::EncounterId,
-    event::{Event, EventQueue},
+use crate::{
+    components::actions::action_step::ActionPhase,
+    engine::{
+        action_prompt::{ActionDecision, ActionPrompt, ActionPromptId, ActionPromptKind},
+        encounter::EncounterId,
+        event::{Event, EventQueue},
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -21,6 +24,11 @@ pub struct InteractionSession {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
     pending_events: EventQueue, // paused due to reactions
+    /// Entities performing a reaction activity that must complete before pending
+    /// events can be resumed.
+    pending_reaction_actors: HashSet<Entity>,
+    /// Phase parked while waiting for a pending event to be resumed and resolved.
+    pending_phase: Option<(Entity, ActionPhase)>,
 }
 
 impl InteractionSession {
@@ -103,6 +111,10 @@ impl InteractionSession {
     }
 
     pub fn ready_to_resume(&self) -> bool {
+        if !self.pending_reaction_actors.is_empty() {
+            return false;
+        }
+
         if self.pending_prompts().is_empty() {
             // Not sure this ever actually happens
             info!("No pending prompts; ready to resume pending events.");
@@ -115,6 +127,28 @@ impl InteractionSession {
         } else {
             false
         }
+    }
+
+    pub fn add_pending_reactor(&mut self, entity: Entity) {
+        self.pending_reaction_actors.insert(entity);
+    }
+
+    pub fn remove_pending_reactor(&mut self, entity: Entity) {
+        self.pending_reaction_actors.remove(&entity);
+    }
+
+    pub fn set_pending_phase(&mut self, entity: Entity, phase: ActionPhase) {
+        if let Some((pending_entity, pending_phase)) = &self.pending_phase {
+            warn!(
+                "Overwriting pending phase {:?} for entity {:?} with new phase {:?} for entity {:?}",
+                pending_phase, pending_entity, phase, entity
+            );
+        }
+        self.pending_phase = Some((entity, phase));
+    }
+
+    pub fn take_pending_phase(&mut self) -> Option<(Entity, ActionPhase)> {
+        self.pending_phase.take()
     }
 }
 

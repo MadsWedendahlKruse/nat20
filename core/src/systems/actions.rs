@@ -1,5 +1,4 @@
 use hecs::{Entity, World};
-use tracing::debug;
 
 use crate::{
     components::{
@@ -12,6 +11,7 @@ use crate::{
                 TargetingKind,
             },
         },
+        activity::ActivityState,
         id::{ActionId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap, ResourceMap},
@@ -190,9 +190,9 @@ pub fn available_actions(world: &World, entity: Entity) -> ActionMap {
 
 pub fn perform_action(game_state: &mut GameState, action_data: &ActionData) {
     // TODO: Handle missing action
-    let mut action = get_action(&action_data.action_id)
-        .cloned()
+    let action = get_action(&action_data.action_id)
         .expect("Action not found in character's actions or registry");
+
     // Set the action on cooldown if applicable
     if let Some(cooldown) = action.cooldown {
         set_cooldown(
@@ -202,16 +202,21 @@ pub fn perform_action(game_state: &mut GameState, action_data: &ActionData) {
             cooldown,
         );
     }
-    // Determine which entities are being targeted
-    let entities = get_targeted_entities(game_state, action_data);
-    debug!(
-        "Performing action {:?} by entity {:?} on targets {:?}",
-        action_data.action_id, action_data.actor, entities
-    );
-    action.perform(game_state, action_data, &entities);
+
+    let steps = action.perform(game_state, action_data);
+
+    systems::helpers::get_component_mut::<ActivityState>(
+        &mut game_state.world,
+        action_data.actor.id(),
+    )
+    .set_acting(action, steps);
 }
 
-fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -> Vec<Entity> {
+pub fn get_targeted_entities(
+    game_state: &GameState,
+    action_data: &ActionData,
+    specific_targets: Option<Vec<TargetInstance>>,
+) -> Vec<Entity> {
     let mut entities = Vec::new();
     let targeting_context = targeting_context(
         &game_state.world,
@@ -219,9 +224,12 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
         &action_data.action_id,
         &action_data.context,
     );
+
+    let targets = specific_targets.unwrap_or_else(|| action_data.targets.clone());
+
     match &targeting_context.kind {
         TargetingKind::SelfTarget | TargetingKind::Single | TargetingKind::Multiple { .. } => {
-            for target in &action_data.targets {
+            for target in &targets {
                 match target {
                     TargetInstance::Entity(entity) => entities.push(entity.id()),
                     TargetInstance::Point(point) => {
@@ -239,7 +247,7 @@ fn get_targeted_entities(game_state: &mut GameState, action_data: &ActionData) -
             shape,
             fixed_on_actor,
         } => {
-            for target in &action_data.targets {
+            for target in &targets {
                 let point = match target {
                     TargetInstance::Entity(entity) => {
                         &systems::geometry::get_foot_position(&game_state.world, entity.id())

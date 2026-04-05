@@ -1,6 +1,7 @@
 use hecs::Bundle;
 
 use crate::{
+    entities::character::CreatureTag,
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionCooldownMap, ActionMap, default_actions},
@@ -32,6 +33,7 @@ pub struct MonsterTag;
 from_world!(
     #[derive(Bundle, Clone)]
     pub struct Monster {
+        pub creature_tag: CreatureTag,
         pub tag: MonsterTag,
         pub name: Name,
         // TODO: Can monsters be player controlled?
@@ -76,6 +78,7 @@ impl Monster {
         factions: FactionSet,
     ) -> Self {
         Self {
+            creature_tag: CreatureTag,
             tag: MonsterTag,
             name,
             brain,

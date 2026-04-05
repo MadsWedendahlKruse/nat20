@@ -17,11 +17,7 @@
     },
     "timeline": {
         "total_duration": 1.0,
-        "events": [
-            [
-                0.5,
-                "submit_action"
-            ]
-        ]
+        "submit_time": 0.5,
+        "step_spacing": 0.0
     }
 }

@@ -11,7 +11,7 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
-        activity::{Activity, ActivityError, ActivityGameStateCommand, ActivityState},
+        activity::{Activity, ActivityError, ActivityState},
         speed::Speed,
         time::{TimeMode, TimeStep},
     },
@@ -27,6 +27,10 @@ use crate::{
         },
         geometry::WorldGeometry,
         interaction::{InteractionEngine, InteractionScopeId, InteractionSession},
+    },
+    entities::{
+        character::CreatureTag,
+        projectile::{Projectile, ProjectileTag},
     },
     systems::{self, d20::D20CheckDCKind, movement::MovementError, time::RestKind},
 };
@@ -147,11 +151,7 @@ impl GameState {
                 self.submit_movement(entity, goal, None)?;
             }
             Activity::Act { action } => {
-                systems::helpers::get_component_mut::<ActivityState>(
-                    &mut self.world,
-                    action.actor(),
-                )
-                .set_acting(action);
+                self.submit_decision(action)?;
             }
             Activity::MoveAndAct { goal, action } => {
                 self.submit_movement(action.actor(), goal, Some(action))?;
@@ -234,7 +234,7 @@ impl GameState {
         Ok(())
     }
 
-    fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
+    pub(crate) fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
         if let Some(id) = self.in_combat.get(&entity) {
             InteractionScopeId::Encounter(*id)
         } else {
@@ -378,6 +378,17 @@ impl GameState {
                             reaction: reaction_data.clone(),
                         }),
                     );
+
+                    // If perform_reaction started an activity on the reactor,
+                    // track it so ready_to_resume() blocks until it completes.
+                    let reactor = reaction_data.reactor.id();
+                    if systems::helpers::get_component::<ActivityState>(&self.world, reactor)
+                        .is_acting()
+                    {
+                        self.interaction_engine
+                            .session_mut(scope)
+                            .add_pending_reactor(reactor);
+                    }
                 }
             }
         }
@@ -437,6 +448,7 @@ impl GameState {
             session.queue_event(event, true);
 
             systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor).pause();
+            self.set_projectiles_paused_for_entity(actor, true);
 
             return;
         }
@@ -498,17 +510,37 @@ impl GameState {
         }
     }
 
-    fn resume_pending_events_if_ready(&mut self, scope: InteractionScopeId) {
-        let session = self.interaction_engine.session_mut(scope);
-
-        if session.ready_to_resume()
-            && let Some(event) = session.pending_events_mut().pop_front()
-        {
-            if let Some(actor) = event.actor() {
-                systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor)
-                    .resume();
+    pub(crate) fn resume_pending_events_if_ready(&mut self, scope: InteractionScopeId) {
+        let (event, actor, pending_phase) = {
+            let session = self.interaction_engine.session_mut(scope);
+            if !session.ready_to_resume() {
+                return;
             }
-            self.advance_event(event, true);
+
+            let Some(event) = session.pending_events_mut().pop_front() else {
+                return;
+            };
+
+            let actor = event.actor();
+
+            (event, actor, session.take_pending_phase())
+        };
+
+        self.advance_event(event, true);
+
+        if let Some(actor) = actor {
+            systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor).resume();
+            self.set_projectiles_paused_for_entity(actor, false);
+        }
+
+        if let Some((entity, mut phase)) = pending_phase {
+            phase.perform(self);
+            if !phase.is_applied() {
+                let scope = self.scope_for_entity(entity);
+                self.interaction_engine
+                    .session_mut(scope)
+                    .set_pending_phase(entity, phase);
+            }
         }
     }
 
@@ -788,7 +820,30 @@ impl GameState {
             delta_seconds: delta_time,
         };
 
-        let entities = self.world.iter().map(|e| e.entity()).collect::<Vec<_>>();
+        // Projectile entities
+        let projectiles: Vec<Entity> = self
+            .world
+            .query::<&ProjectileTag>()
+            .iter()
+            .map(|(e, _)| e)
+            .collect();
+
+        for projectile in projectiles {
+            let commands =
+                systems::helpers::get_component_mut::<Projectile>(&mut self.world, projectile)
+                    .update(projectile, delta_time);
+            for command in commands {
+                command.execute(self);
+            }
+        }
+
+        // Creature entities
+        let entities = self
+            .world
+            .query::<&CreatureTag>()
+            .iter()
+            .map(|(e, _)| e)
+            .collect::<Vec<_>>();
 
         for entity in entities {
             systems::time::advance_time(self, entity, time_step);
@@ -823,15 +878,7 @@ impl GameState {
             let commands = systems::helpers::get_component_mut::<ActivityState>(world, entity)
                 .update(self, entity, delta_time);
             for command in commands {
-                match command {
-                    ActivityGameStateCommand::ProcessEvent(event) => {
-                        self.process_event(event);
-                    }
-                    ActivityGameStateCommand::SubmitAction(action) => {
-                        self.submit_decision(action)
-                            .expect("Activity-submitted action should be valid");
-                    }
-                }
+                command.execute(self);
             }
         }
     }
@@ -847,5 +894,23 @@ impl GameState {
         }
         self.resting.remove(&entity);
         Ok(())
+    }
+
+    // TODO: Not a huge fan of having these projectile specific functions in the main GameState impl
+    fn set_projectiles_paused_for_entity(&mut self, entity: Entity, paused: bool) {
+        let pairs: Vec<(Entity, Entity)> = self
+            .world
+            .query::<&Projectile>()
+            .iter()
+            .map(|(entity, projectile)| (entity, projectile.delivery_phase.action.actor.id()))
+            .collect();
+        debug!("Found projectiles to check for pausing: {:?}", pairs);
+        for (proj_entity, actor) in pairs {
+            if actor == entity
+                && let Ok(mut projectile) = self.world.get::<&mut Projectile>(proj_entity)
+            {
+                projectile.paused = paused;
+            }
+        }
     }
 }

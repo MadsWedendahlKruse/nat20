@@ -5,12 +5,13 @@ use std::{
 };
 
 use hecs::{Entity, World};
-use serde::Deserialize;
+use kinded::Kinded;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
         actions::{
-            action_execution::perform_standard_action,
+            action_step::ActionPhase,
             targeting::{TargetInstance, TargetingContext},
         },
         d20::D20CheckResult,
@@ -41,7 +42,7 @@ pub type AttackRollFunction =
     dyn Fn(&World, Entity, Entity, &ActionContext) -> AttackRoll + Send + Sync;
 pub type SavingThrowFunction =
     dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
-pub type HealFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
+pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
 pub type ReactionTriggerFunction = dyn Fn(&World, &Entity, &Event) -> bool + Send + Sync;
@@ -66,20 +67,16 @@ pub struct Action {
 }
 
 impl Action {
-    /// Targets are very explicitly passed as a separate parameter here, since the
-    /// targets in the `ActionData` can also be points, so prior to calling `perform`
-    /// the targetted entities are resolved.
     pub fn perform(
-        &mut self,
+        &self,
         game_state: &mut GameState,
         action_data: &ActionData,
-        targets: &[Entity],
-    ) {
+    ) -> Vec<ActionPhase> {
         let effects = systems::effects::take_effects(&mut game_state.world, action_data.actor.id());
         effects.action(&mut game_state.world, action_data);
         systems::effects::put_effects(&mut game_state.world, action_data.actor.id(), effects);
 
-        self.kind.perform(game_state, action_data, targets);
+        self.kind.perform(game_state, action_data)
     }
 
     pub fn id(&self) -> &ActionId {
@@ -286,17 +283,30 @@ pub enum DamageOnFailure {
     Custom(Arc<DamageFunction>),
 }
 
-#[derive(Clone)]
+impl Debug for DamageOnFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DamageOnFailure::Half => write!(f, "Half"),
+            DamageOnFailure::Custom(_) => write!(f, "Custom"),
+        }
+    }
+}
+
+#[derive(Clone, Kinded)]
 pub enum ActionCondition {
     None,
-    AttackRoll {
-        attack_roll: Arc<AttackRollFunction>,
-        damage_on_miss: Option<DamageOnFailure>,
-    },
-    SavingThrow {
-        saving_throw: Arc<SavingThrowFunction>,
-        damage_on_save: Option<DamageOnFailure>,
-    },
+    AttackRoll(Arc<AttackRollFunction>),
+    SavingThrow(Arc<SavingThrowFunction>),
+}
+
+impl Debug for ActionCondition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActionCondition::None => write!(f, "None"),
+            ActionCondition::AttackRoll(_) => write!(f, "AttackRoll"),
+            ActionCondition::SavingThrow(_) => write!(f, "SavingThrow"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -308,8 +318,9 @@ pub enum PayloadDelivery {
 #[derive(Clone)]
 pub struct ActionPayload {
     damage: Option<Arc<DamageFunction>>,
+    damage_on_failure: Option<DamageOnFailure>,
     effect: Option<EffectInstanceTemplate>,
-    healing: Option<Arc<HealFunction>>,
+    healing: Option<Arc<HealingFunction>>,
     delivery: PayloadDelivery,
 }
 
@@ -321,12 +332,14 @@ pub enum ActionPayloadError {
 impl ActionPayload {
     pub fn new(
         damage: Option<Arc<DamageFunction>>,
+        damage_on_failure: Option<DamageOnFailure>,
         effect: Option<EffectInstanceTemplate>,
-        healing: Option<Arc<HealFunction>>,
+        healing: Option<Arc<HealingFunction>>,
         delivery: PayloadDelivery,
     ) -> Result<Self, ActionPayloadError> {
         let payload = ActionPayload {
             damage,
+            damage_on_failure,
             effect,
             healing,
             delivery,
@@ -347,11 +360,15 @@ impl ActionPayload {
         self.damage.as_ref()
     }
 
+    pub fn damage_on_failure(&self) -> Option<&DamageOnFailure> {
+        self.damage_on_failure.as_ref()
+    }
+
     pub fn effect(&self) -> Option<&EffectInstanceTemplate> {
         self.effect.as_ref()
     }
 
-    pub fn healing(&self) -> Option<&Arc<HealFunction>> {
+    pub fn healing(&self) -> Option<&Arc<HealingFunction>> {
         self.healing.as_ref()
     }
 
@@ -392,7 +409,7 @@ pub enum ActionConditionResolution {
 }
 
 impl ActionConditionResolution {
-    pub fn is_hit(&self) -> bool {
+    pub fn is_success(&self) -> bool {
         match self {
             ActionConditionResolution::Unconditional => true,
             ActionConditionResolution::AttackRoll {
@@ -407,6 +424,13 @@ impl ActionConditionResolution {
                 // is avoided or reduced, so we check for failure here.
                 !saving_throw_result.is_success(saving_throw_dc)
             }
+        }
+    }
+
+    pub fn is_crit(&self) -> bool {
+        match self {
+            ActionConditionResolution::AttackRoll { attack_roll, .. } => attack_roll.is_crit(),
+            _ => false,
         }
     }
 }
@@ -466,6 +490,15 @@ impl DamageOutcome {
             damage_roll,
             damage_taken,
             new_life_state,
+        }
+    }
+
+    pub fn empty(resolution: ActionConditionResolution) -> Self {
+        DamageOutcome {
+            resolution,
+            damage_roll: None,
+            damage_taken: None,
+            new_life_state: None,
         }
     }
 }
@@ -583,12 +616,19 @@ impl ActionKind {
         &self,
         game_state: &mut GameState,
         action_data: &ActionData,
-        targets: &[Entity],
-    ) {
+    ) -> Vec<ActionPhase> {
+        let mut phases = Vec::new();
+
         match self {
-            ActionKind::Standard { .. } => {
-                for target in targets {
-                    perform_standard_action(game_state, self, action_data, *target);
+            ActionKind::Standard { condition, payload } => {
+                for target in &action_data.targets {
+                    phases.push(ActionPhase::new(
+                        game_state,
+                        action_data,
+                        condition,
+                        payload,
+                        target.clone(),
+                    ));
                 }
             }
 
@@ -600,7 +640,7 @@ impl ActionKind {
                             // TODO: Also seems like a bit of a hack
                             continue;
                         }
-                        _ => action.perform(game_state, action_data, targets),
+                        _ => phases.extend(action.perform(game_state, action_data)),
                     }
                 }
             }
@@ -622,6 +662,8 @@ impl ActionKind {
                 todo!("Custom actions are not yet implemented");
             }
         }
+
+        phases
     }
 
     pub fn is_reaction(&self) -> bool {
@@ -659,20 +701,12 @@ impl ActionResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionTimeline {
     pub total_duration: f32,
+    pub submit_time: f32,
     // TODO: Probably fine?
     pub step_spacing: f32,
-    pub events: Vec<(f32, ActionTimelineEvent)>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ActionTimelineEvent {
-    SubmitAction,
-    SpawnProjectile {
-        // TODO: Populate
-    },
 }
 
 // TODO: Combine these two?

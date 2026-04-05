@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
+        actions::action::ActionTimeline,
         id::SpellId,
         resource::ResourceAmountMap,
         spells::spell::{MagicSchool, Spell, SpellFlag},
@@ -9,8 +10,7 @@ use crate::{
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
-            action::ActionKindDefinition, reaction::ReactionTrigger,
-            targeting::TargetingDefinition, timeline::ActionTimelineDefinition,
+            action::ActionKindDefinition, reaction::ReactionTrigger, targeting::TargetingDefinition,
         },
     },
     scripts::script::ScriptFunction,
@@ -39,7 +39,7 @@ pub struct SpellDefinition {
     #[serde(default)]
     pub granted_spells: Vec<(SpellId, u8)>,
     #[serde(default)]
-    pub timeline: Option<ActionTimelineDefinition>,
+    pub timeline: Option<ActionTimeline>,
 }
 
 impl From<SpellDefinition> for Spell {
@@ -55,7 +55,7 @@ impl From<SpellDefinition> for Spell {
             value.targeting.function(),
             value.reaction_trigger.map(|trigger| trigger.function),
             value.granted_spells,
-            value.timeline.map(|timeline_def| timeline_def.into()),
+            value.timeline,
         )
     }
 }

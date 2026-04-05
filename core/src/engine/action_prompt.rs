@@ -216,6 +216,10 @@ impl ActionDecisionKind {
             ActionDecisionKind::Reaction { reactor, .. } => *reactor,
         }
     }
+
+    pub fn is_reaction(&self) -> bool {
+        matches!(self, ActionDecisionKind::Reaction { .. })
+    }
 }
 
 impl ActionDecision {
