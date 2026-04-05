@@ -13,7 +13,8 @@
                 "attack_roll": "spell_attack_roll"
             },
             "payload": {
-                "damage": "1d10;force"
+                "damage": "1d10;force",
+                "delivery": "immediate"
             }
         }
     },

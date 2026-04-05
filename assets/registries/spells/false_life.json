@@ -13,7 +13,8 @@
                 "effect": {
                     "effect_id": "nat20_core::effect.dash",
                     "lifetime": "permanent"
-                }
+                },
+                "delivery": "immediate"
             }
         }
     },

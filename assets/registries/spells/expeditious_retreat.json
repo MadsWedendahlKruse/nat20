@@ -25,7 +25,8 @@
                                         }
                                     }
                                 }
-                            }
+                            },
+                            "delivery": "immediate"
                         }
                     }
                 },
@@ -43,7 +44,8 @@
                                         }
                                     }
                                 }
-                            }
+                            },
+                            "delivery": "immediate"
                         }
                     }
                 }

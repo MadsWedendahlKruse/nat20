@@ -14,7 +14,8 @@
             },
             "payload": {
                 "damage": "(3 + spell_level)d6;fire",
-                "damge_on_failure": "half"
+                "damge_on_failure": "half",
+                "delivery": "immediate"
             }
         }
     },

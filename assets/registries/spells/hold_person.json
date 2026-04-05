@@ -34,7 +34,8 @@
                         },
                         "callback": "repeat_apply_condition"
                     }
-                }
+                },
+                "delivery": "immediate"
             }
         }
     },

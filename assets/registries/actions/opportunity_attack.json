@@ -15,7 +15,8 @@
                             "attack_roll": "melee_attack_roll"
                         },
                         "payload": {
-                            "damage": "melee_damage_roll"
+                            "damage": "melee_damage_roll",
+                            "delivery": "immediate"
                         }
                     }
                 }

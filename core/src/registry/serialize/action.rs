@@ -118,10 +118,9 @@ pub enum TrajectoryTemplateDefinition {
     Parabola,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PayloadDeliveryDefinition {
-    #[default]
     Immediate,
     Projectile {
         trajectory: TrajectoryTemplateDefinition,
@@ -160,7 +159,6 @@ pub struct ActionPayloadDefinition {
     pub healing: Option<HealEquation>,
     #[serde(default)]
     pub effect: Option<EffectInstanceDefinition>,
-    #[serde(default)]
     pub delivery: PayloadDeliveryDefinition,
 }
 

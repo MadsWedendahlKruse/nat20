@@ -705,7 +705,7 @@ impl ActionResult {
 pub struct ActionTimeline {
     pub total_duration: f32,
     pub submit_time: f32,
-    // TODO: Probably fine?
+    #[serde(default)]
     pub step_spacing: f32,
 }
 
