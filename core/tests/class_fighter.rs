@@ -122,6 +122,7 @@ mod tests {
         let mut game_state = fixtures::engine::game_state();
         let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
         let fighter = fighter_identifier.id();
+        let _ = systems::health::heal_full(&mut game_state.world, fighter);
 
         // Check that the fighter has the Second Wind action
         let available_actions = systems::actions::available_actions(&game_state.world, fighter);
@@ -162,17 +163,19 @@ mod tests {
             hit_points.current()
         };
 
-        let result = systems::actions::perform_action(
-            &mut game_state,
-            &ActionData::new(
-                fighter_identifier.clone(),
-                action_id.clone(),
-                contexts_and_costs[0].0.clone(),
-                contexts_and_costs[0].1.clone(),
-                vec![TargetInstance::Entity(fighter_identifier)],
-            ),
-        );
+        let result = game_state.submit_activity(Activity::Act {
+            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
+                action: ActionData::new(
+                    fighter_identifier.clone(),
+                    action_id.clone(),
+                    contexts_and_costs[0].0.clone(),
+                    contexts_and_costs[0].1.clone(),
+                    vec![TargetInstance::Entity(fighter_identifier)],
+                ),
+            }),
+        });
         println!("Second Wind Result: {:?}", result);
+        game_state.update(3.0);
 
         // Check that the Fighters HP is increased by the Second Wind healing
         assert!(
