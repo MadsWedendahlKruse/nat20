@@ -545,9 +545,17 @@ pub fn line_of_sight_point_point(
     if let Some(result) = raycast_result
         && let Some(closest) = result.closest()
     {
-        let distance = (to - closest.poi).magnitude();
+        // Check if we hit the target (close enough)
+        let close_enough = (to - closest.poi).magnitude() < EPSILON_LOS;
+
+        // Check if the hit is beyond the target
+        let from_to_target = to - from;
+        let from_to_closest = closest.poi - from;
+        let beyond_target = from_to_closest.dot(&from_to_target).signum() > 0.0
+            && from_to_closest.magnitude() > from_to_target.magnitude() + EPSILON_LOS;
+
         LineOfSightResult {
-            has_line_of_sight: distance < EPSILON_LOS,
+            has_line_of_sight: close_enough || beyond_target,
             raycast_result: Some(result),
         }
     } else {

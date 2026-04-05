@@ -191,11 +191,6 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                 }
 
                 if ui.button("Compute Line of Sight") {
-                    debug!(
-                        "Computing line of sight from {:?} to {:?} with mode {:?}",
-                        self.from, self.to, self.mode
-                    );
-
                     match (&self.from, &self.to) {
                         (
                             LineOfSightTarget::Entity(from_entity_option),
