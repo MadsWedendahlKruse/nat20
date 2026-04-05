@@ -46,5 +46,9 @@
     },
     "resource_cost": {
         "nat20_core::resource.action": 1
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
     }
 }

@@ -27,5 +27,9 @@
             }
         ]
     },
-    "reaction_trigger": "nat20_core::script.spell.counterspell"
+    "reaction_trigger": "nat20_core::script.spell.counterspell",
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.2
+    }
 }

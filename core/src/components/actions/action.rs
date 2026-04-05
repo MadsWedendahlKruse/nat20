@@ -63,7 +63,7 @@ pub struct Action {
     pub reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
     /// Timeline describing the sequence of events that occur when performing the
     /// action, which can be used to synchronize animations and other visual effects.
-    pub timeline: Option<ActionTimeline>,
+    pub timeline: ActionTimeline,
 }
 
 impl Action {
@@ -704,7 +704,7 @@ impl ActionResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionTimeline {
     pub total_duration: f32,
-    pub submit_time: f32,
+    pub perform_time: f32,
     #[serde(default)]
     pub step_spacing: f32,
 }

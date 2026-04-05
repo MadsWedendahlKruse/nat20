@@ -36,5 +36,9 @@
     "resource_cost": {
         "nat20_core::resource.bonus_action": 1,
         "nat20_core::resource.warlock.hex_reapply": 1
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
     }
 }

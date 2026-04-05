@@ -24,5 +24,9 @@
     "resource_cost": {
         "nat20_core::resource.fighter.action_surge": 1
     },
-    "cooldown": "short_rest"
+    "cooldown": "short_rest",
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
+    }
 }

@@ -73,7 +73,7 @@ impl Spell {
         targeting: Arc<TargetingFunction>,
         reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
         granted_spells: Vec<(SpellId, u8)>,
-        timeline: Option<ActionTimeline>,
+        timeline: ActionTimeline,
     ) -> Self {
         let action_id = id.clone().into();
 

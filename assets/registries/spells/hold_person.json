@@ -64,5 +64,9 @@
                 ]
             }
         ]
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
     }
 }

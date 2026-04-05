@@ -38,8 +38,7 @@ pub struct SpellDefinition {
     /// an enemy marked by the original spell.
     #[serde(default)]
     pub granted_spells: Vec<(SpellId, u8)>,
-    #[serde(default)]
-    pub timeline: Option<ActionTimeline>,
+    pub timeline: ActionTimeline,
 }
 
 impl From<SpellDefinition> for Spell {

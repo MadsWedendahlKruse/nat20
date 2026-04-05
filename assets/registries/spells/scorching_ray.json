@@ -38,5 +38,10 @@
                 "invert": true
             }
         ]
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5,
+        "step_spacing": 0.1
     }
 }

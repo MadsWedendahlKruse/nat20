@@ -1,3 +1,5 @@
+use std::default;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -37,8 +39,7 @@ pub struct ActionDefinition {
     pub cooldown: Option<RechargeRule>,
     #[serde(default)]
     pub reaction_trigger: Option<ReactionTrigger>,
-    #[serde(default)]
-    pub timeline: Option<ActionTimeline>,
+    pub timeline: ActionTimeline,
 }
 
 impl RegistryReferenceCollector for ActionDefinition {
@@ -68,7 +69,7 @@ impl From<ActionDefinition> for Action {
             targeting: value.targeting.function(),
             cooldown: value.cooldown,
             reaction_trigger: value.reaction_trigger.map(|trigger| trigger.function),
-            timeline: value.timeline.map(|timeline_def| timeline_def.into()),
+            timeline: value.timeline,
         }
     }
 }
@@ -118,9 +119,10 @@ pub enum TrajectoryTemplateDefinition {
     Parabola,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PayloadDeliveryDefinition {
+    #[default]
     Immediate,
     Projectile {
         trajectory: TrajectoryTemplateDefinition,
@@ -159,6 +161,7 @@ pub struct ActionPayloadDefinition {
     pub healing: Option<HealEquation>,
     #[serde(default)]
     pub effect: Option<EffectInstanceDefinition>,
+    #[serde(default)]
     pub delivery: PayloadDeliveryDefinition,
 }
 

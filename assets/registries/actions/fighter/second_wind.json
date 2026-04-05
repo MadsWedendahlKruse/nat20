@@ -13,5 +13,9 @@
     "resource_cost": {
         "nat20_core::resource.bonus_action": 1,
         "nat20_core::resource.fighter.second_wind": 1
+    },
+    "timeline": {
+        "total_duration": 2.0,
+        "perform_time": 1.0
     }
 }

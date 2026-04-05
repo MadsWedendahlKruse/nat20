@@ -18,6 +18,6 @@
     },
     "timeline": {
         "total_duration": 1.0,
-        "submit_time": 0.5
+        "perform_time": 0.5
     }
 }

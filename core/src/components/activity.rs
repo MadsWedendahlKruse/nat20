@@ -169,7 +169,7 @@ impl ActivityState {
                 timeline:
                     ActionTimeline {
                         total_duration,
-                        submit_time,
+                        perform_time,
                         step_spacing,
                     },
                 phases,
@@ -182,7 +182,7 @@ impl ActivityState {
 
                 *elapsed_time += delta_time;
 
-                if *elapsed_time >= *submit_time {
+                if *elapsed_time >= *perform_time {
                     *phase_cooldown += delta_time;
                 }
 
@@ -257,18 +257,8 @@ impl ActivityState {
         }
         debug!("Setting entity to perform action {:?}", action);
 
-        let timeline = if let Some(timeline) = &action.timeline {
-            timeline
-        } else {
-            &ActionTimeline {
-                total_duration: 0.0,
-                submit_time: 0.0,
-                step_spacing: 0.0,
-            }
-        };
-
         *self = Self::Acting {
-            timeline: timeline.clone(),
+            timeline: action.timeline.clone(),
             elapsed_time: 0.0,
             phases: phases.into(),
             phase_cooldown: 0.0,

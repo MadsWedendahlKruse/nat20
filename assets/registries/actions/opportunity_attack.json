@@ -27,5 +27,9 @@
     "resource_cost": {
         "nat20_core::resource.reaction": 1
     },
-    "reaction_trigger": "nat20_core::script.action.opportunity_attack"
+    "reaction_trigger": "nat20_core::script.action.opportunity_attack",
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
+    }
 }

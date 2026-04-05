@@ -35,5 +35,9 @@
             }
         ]
     },
-    "reaction_trigger": "nat20_core::script.spell.hellish_rebuke"
+    "reaction_trigger": "nat20_core::script.spell.hellish_rebuke",
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.2
+    }
 }
