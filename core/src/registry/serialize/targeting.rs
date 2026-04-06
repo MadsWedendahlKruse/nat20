@@ -18,12 +18,15 @@ use crate::{
                 TargetingRange,
             },
         },
+        faction::Attitude,
         health::life_state::LifeState,
         species::CreatureType,
     },
     registry::serialize::{
         parser::{Evaluable, EvaluationError, IntExpression, Parser},
-        quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
+        quantity::{
+            AngleExpressionDefinition, LengthExpressionDefinition, VelocityExpressionDefinition,
+        },
         variables::{PARSER_VARIABLES, VariableMap},
     },
     systems,
@@ -82,7 +85,7 @@ fn scoped_attack_targeting(
                 kind: TargetingKind::Single,
                 range,
                 line_of_sight,
-                allowed_targets: vec![EntityFilter::not_dead()],
+                allowed_targets: vec![EntityFilter::not_dead(), EntityFilter::NotSelf],
             }
         },
     ) as Arc<TargetingFunction>
@@ -121,6 +124,20 @@ static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
 pub struct IntExpressionDefinition {
     pub raw: String,
     pub expression: IntExpression,
+}
+
+impl Evaluable for IntExpressionDefinition {
+    type Output = i32;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        context: &ActionContext,
+        variables: &VariableMap,
+    ) -> Result<i32, EvaluationError> {
+        self.expression.evaluate(world, entity, context, variables)
+    }
 }
 
 impl FromStr for IntExpressionDefinition {
@@ -162,10 +179,10 @@ pub enum AreaShapeDefinition {
     Sphere {
         radius: LengthExpressionDefinition,
     },
-    // Arc {
-    //     angle: IntExpressionDefinition,
-    //     length: LengthExpressionDefinition,
-    // },
+    Cone {
+        angle: AngleExpressionDefinition,
+        length: LengthExpressionDefinition,
+    },
     Cube {
         side: LengthExpressionDefinition,
     },
@@ -190,13 +207,13 @@ impl Evaluable for AreaShapeDefinition {
         variables: &VariableMap,
     ) -> Result<AreaShape, EvaluationError> {
         match self {
-            // AreaShapeDefinition::Arc {
-            //     angle,
-            //     length: radius,
-            // } => Ok(AreaShape::Arc {
-            //     angle: angle.evaluate(world, entity, context, variables)?,
-            //     length: radius.evaluate(world, entity, context, variables)?,
-            // }),
+            AreaShapeDefinition::Cone {
+                angle,
+                length: radius,
+            } => Ok(AreaShape::Cone {
+                angle: angle.evaluate(world, entity, context, variables)?,
+                length: radius.evaluate(world, entity, context, variables)?,
+            }),
             AreaShapeDefinition::Sphere { radius } => Ok(AreaShape::Sphere {
                 radius: radius.evaluate(world, entity, context, variables)?,
             }),
@@ -286,13 +303,20 @@ pub enum EntityFilterDefinition {
         #[serde(default)]
         invert: bool,
     },
+    Attitude {
+        attitudes: HashSet<Attitude>,
+        #[serde(default)]
+        invert: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EntityFilterTag {
     All,
     Characters,
     Monsters,
+    NotSelf,
 }
 
 impl EntityFilterDefinition {
@@ -302,7 +326,9 @@ impl EntityFilterDefinition {
                 EntityFilterTag::All => EntityFilter::All,
                 EntityFilterTag::Characters => EntityFilter::Characters,
                 EntityFilterTag::Monsters => EntityFilter::Monsters,
+                EntityFilterTag::NotSelf => EntityFilter::NotSelf,
             },
+
             EntityFilterDefinition::LifeState {
                 life_states,
                 invert,
@@ -313,6 +339,7 @@ impl EntityFilterDefinition {
                     EntityFilter::LifeStates(life_states.clone())
                 }
             }
+
             EntityFilterDefinition::CreatureType {
                 creature_types,
                 invert,
@@ -321,6 +348,14 @@ impl EntityFilterDefinition {
                     EntityFilter::NotCreatureTypes(creature_types.clone())
                 } else {
                     EntityFilter::CreatureTypes(creature_types.clone())
+                }
+            }
+
+            EntityFilterDefinition::Attitude { attitudes, invert } => {
+                if *invert {
+                    EntityFilter::NotAttitudes(attitudes.clone())
+                } else {
+                    EntityFilter::Attitudes(attitudes.clone())
                 }
             }
         }

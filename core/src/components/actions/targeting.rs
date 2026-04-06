@@ -2,13 +2,14 @@ use std::{collections::HashSet, fmt, str::FromStr};
 
 use hecs::{Entity, World};
 use parry3d::{
-    na::{Isometry3, Point3},
-    shape::Shape,
+    na::{Isometry3, Point3, Translation3, UnitQuaternion, Vector3},
+    shape::{Ball, Cone, Cuboid, Cylinder, Shape},
 };
 use serde::{Deserialize, Serialize};
 use uom::{
     Conversion,
     si::{
+        angle::radian,
         f32::{Angle, Length, Velocity},
         length::{Unit, meter},
     },
@@ -16,7 +17,7 @@ use uom::{
 
 use crate::{
     components::{
-        health::life_state::LifeState, id::EntityIdentifier,
+        faction::Attitude, health::life_state::LifeState, id::EntityIdentifier,
         items::equipment::weapon::MELEE_RANGE_REACH, species::CreatureType,
     },
     engine::geometry::WorldGeometry,
@@ -56,13 +57,13 @@ impl TargetingContext {
         }
     }
 
-    pub fn allowed_target(&self, world: &World, entity: &Entity) -> bool {
+    pub fn allowed_target(&self, world: &World, entity: Entity, actor: Option<Entity>) -> bool {
         for filter in &self.allowed_targets {
-            if filter.matches(world, entity) {
-                return true;
+            if !filter.matches(world, entity, actor) {
+                return false;
             }
         }
-        false
+        true
     }
 
     pub fn validate_targets(
@@ -160,7 +161,7 @@ impl TargetingContext {
             // Check allowed targets
             match target {
                 TargetInstance::Entity(entity) => {
-                    if !self.allowed_target(world, &entity.id()) {
+                    if !self.allowed_target(world, entity.id(), Some(actor)) {
                         return Err(TargetingError::InvalidTarget {
                             target: target.clone(),
                         });
@@ -201,11 +202,11 @@ pub enum TargetingKind {
 // TODO: parry3d shapes?
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AreaShape {
-    Arc { angle: Angle, length: Length },        // e.g. Cone of Cold
-    Sphere { radius: Length },                   // e.g. Fireball
-    Cube { side_length: Length },                // e.g. Wall of Force
+    Cone { angle: Angle, length: Length }, // e.g. Cone of Cold
+    Sphere { radius: Length },             // e.g. Fireball
+    Cube { side_length: Length },          // e.g. Wall of Force
     Cylinder { radius: Length, height: Length }, // e.g. Cloudkill
-    Line { length: Length, width: Length },      // e.g. Lightning Bolt
+    Line { length: Length, width: Length }, // e.g. Lightning Bolt
 }
 
 impl AreaShape {
@@ -215,7 +216,7 @@ impl AreaShape {
         actor: Entity,
         fixed_on_actor: bool,
         target_point: &Point3<f32>,
-    ) -> (Box<dyn Shape>, Isometry3<f32>) {
+    ) -> ShapeTransform {
         let (_, actor_shape_pose) = systems::geometry::get_shape(world, actor).unwrap();
         let actor_position = actor_shape_pose.translation.vector;
 
@@ -226,53 +227,84 @@ impl AreaShape {
         };
 
         match self {
-            AreaShape::Arc { .. } => {
-                todo!("Parry3D does not have a built-in arc shape");
+            AreaShape::Cone { angle, length } => {
+                let length = length.get::<meter>();
+                let half_height = length / 2.0;
+                let radius = length * (angle.get::<radian>() / 2.0).tan();
+                let shape = Cone::new(half_height, radius);
+
+                let mut transform = Isometry3::new(translation, Vector3::zeros());
+
+                // Rotate to have base along +x-axis
+                transform.append_rotation_wrt_center_mut(&UnitQuaternion::from_euler_angles(
+                    0.0,
+                    0.0,
+                    std::f32::consts::FRAC_PI_2,
+                ));
+                transform.append_translation_mut(&Translation3::new(half_height, 0.0, 0.0));
+                // Rotate to face target point
+                let direction = (target_point.coords - actor_position).normalize();
+                let yaw = direction.z.atan2(direction.x);
+                transform.append_rotation_wrt_point_mut(
+                    &UnitQuaternion::from_euler_angles(0.0, -yaw, 0.0),
+                    &Point3::from(actor_position),
+                );
+
+                ShapeTransform {
+                    shape: Box::new(shape),
+                    transform,
+                }
             }
-            AreaShape::Sphere { radius } => (
-                Box::new(parry3d::shape::Ball::new(radius.get::<meter>())),
-                Isometry3::new(translation, parry3d::na::Vector3::zeros()),
-            ),
+
+            AreaShape::Sphere { radius } => ShapeTransform {
+                shape: Box::new(Ball::new(radius.get::<meter>())),
+                transform: Isometry3::new(translation, Vector3::zeros()),
+            },
+
             AreaShape::Cube { side_length } => {
                 let half_size = side_length.get::<meter>() / 2.0;
-                (
-                    Box::new(parry3d::shape::Cuboid::new(parry3d::na::Vector3::new(
-                        half_size, half_size, half_size,
-                    ))),
-                    // TODO: Cube rotation?
-                    Isometry3::new(translation, parry3d::na::Vector3::zeros()),
-                )
+                ShapeTransform {
+                    shape: Box::new(Cuboid::new(Vector3::new(half_size, half_size, half_size))),
+                    transform: Isometry3::new(translation, Vector3::zeros()),
+                }
             }
-            AreaShape::Cylinder { radius, height } => (
-                Box::new(parry3d::shape::Cylinder::new(
-                    height.get::<meter>(),
+
+            AreaShape::Cylinder { radius, height } => ShapeTransform {
+                shape: Box::new(Cylinder::new(
+                    height.get::<meter>() / 2.0,
                     radius.get::<meter>(),
                 )),
-                Isometry3::new(translation, parry3d::na::Vector3::zeros()),
-            ),
+                transform: Isometry3::new(translation, Vector3::zeros()),
+            },
+
             AreaShape::Line { length, width } => {
                 let half_length = length.get::<meter>() / 2.0;
                 let half_width = width.get::<meter>() / 2.0;
-                let mut rotation = parry3d::na::Vector3::zeros();
+                let mut rotation = Vector3::zeros();
                 if fixed_on_actor {
                     // Line starts at the actor's position
                     translation.x += half_length;
                     // Rotate around Y axis to point towards target point
                     let direction = (target_point.coords - actor_position).normalize();
-                    let yaw = direction.y.atan2(direction.x);
-                    rotation = parry3d::na::Vector3::new(0.0, yaw, 0.0);
+                    let yaw = direction.z.atan2(direction.x);
+                    rotation = Vector3::new(0.0, -yaw, 0.0);
                 }
-                (
-                    Box::new(parry3d::shape::Cuboid::new(parry3d::na::Vector3::new(
+                ShapeTransform {
+                    shape: Box::new(Cuboid::new(Vector3::new(
                         half_length,
                         half_width,
                         half_width,
                     ))),
-                    Isometry3::new(translation, rotation),
-                )
+                    transform: Isometry3::new(translation, rotation),
+                }
             }
         }
     }
+}
+
+pub struct ShapeTransform {
+    pub shape: Box<dyn Shape>,
+    pub transform: Isometry3<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -280,11 +312,18 @@ pub enum EntityFilter {
     All,
     Characters,
     Monsters,
+
+    NotSelf,
     Specific(HashSet<Entity>),
+
     LifeStates(HashSet<LifeState>),
     NotLifeStates(HashSet<LifeState>),
+
     CreatureTypes(HashSet<CreatureType>),
     NotCreatureTypes(HashSet<CreatureType>),
+
+    Attitudes(HashSet<Attitude>),
+    NotAttitudes(HashSet<Attitude>),
 }
 
 impl EntityFilter {
@@ -292,22 +331,30 @@ impl EntityFilter {
         EntityFilter::NotLifeStates(HashSet::from([LifeState::Dead]))
     }
 
-    pub fn matches(&self, world: &World, entity: &Entity) -> bool {
+    pub fn matches(&self, world: &World, entity: Entity, actor: Option<Entity>) -> bool {
         match self {
             EntityFilter::All => true,
-            EntityFilter::Characters => world.get::<&CharacterTag>(*entity).is_ok(),
-            EntityFilter::Monsters => world.get::<&MonsterTag>(*entity).is_ok(),
-            EntityFilter::Specific(entities) => entities.contains(entity),
+            EntityFilter::Characters => world.get::<&CharacterTag>(entity).is_ok(),
+            EntityFilter::Monsters => world.get::<&MonsterTag>(entity).is_ok(),
+
+            EntityFilter::NotSelf => {
+                if let Some(actor) = actor {
+                    entity != actor
+                } else {
+                    true
+                }
+            }
+            EntityFilter::Specific(entities) => entities.contains(&entity),
 
             EntityFilter::LifeStates(states) => {
-                if let Ok(life_state) = world.get::<&LifeState>(*entity) {
+                if let Ok(life_state) = world.get::<&LifeState>(entity) {
                     states.contains(&life_state)
                 } else {
                     false
                 }
             }
             EntityFilter::NotLifeStates(states) => {
-                if let Ok(life_state) = world.get::<&LifeState>(*entity) {
+                if let Ok(life_state) = world.get::<&LifeState>(entity) {
                     !states.contains(&life_state)
                 } else {
                     true
@@ -315,18 +362,31 @@ impl EntityFilter {
             }
 
             EntityFilter::CreatureTypes(types) => {
-                if let Ok(creature_type) = world.get::<&CreatureType>(*entity) {
+                if let Ok(creature_type) = world.get::<&CreatureType>(entity) {
                     types.contains(&creature_type)
                 } else {
                     false
                 }
             }
             EntityFilter::NotCreatureTypes(types) => {
-                if let Ok(creature_type) = world.get::<&CreatureType>(*entity) {
+                if let Ok(creature_type) = world.get::<&CreatureType>(entity) {
                     !types.contains(&creature_type)
                 } else {
                     true
                 }
+            }
+
+            EntityFilter::Attitudes(attitudes) => {
+                let Some(actor) = actor else {
+                    return false;
+                };
+                attitudes.contains(&systems::factions::mutual_attitude(world, entity, actor))
+            }
+            EntityFilter::NotAttitudes(attitudes) => {
+                let Some(actor) = actor else {
+                    return false;
+                };
+                !attitudes.contains(&systems::factions::mutual_attitude(world, entity, actor))
             }
         }
     }

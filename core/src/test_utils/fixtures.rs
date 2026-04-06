@@ -351,7 +351,7 @@ pub mod creatures {
                             SpellId::new("nat20_core", "spell.magic_missile"),
                             SpellId::new("nat20_core", "spell.expeditious_retreat"),
                             SpellId::new("nat20_core", "spell.longstrider"),
-                            SpellId::new("nat20_core", "spell.ray_of_sickness"),
+                            SpellId::new("nat20_core", "spell.burning_hands"),
                         ],
                     ),
                     // Level 2

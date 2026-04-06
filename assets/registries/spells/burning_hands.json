@@ -23,25 +23,28 @@
         "nat20_core::resource.action": 1
     },
     "targeting": {
-        "_comment": "TODO: Not sure about the range. Also using sphere instead of cone for now.",
         "kind": {
             "area": {
                 "shape": {
-                    "sphere": {
-                        "radius": "15 feet"
+                    "cone": {
+                        "angle": "60 degrees",
+                        "length": "15 feet"
                     }
                 },
                 "fixed_on_actor": true
             }
         },
         "range": "15 feet",
-        "line_of_sight": "ray",
+        "line_of_sight": "ignore",
         "allowed_targets": [
             {
                 "life_states": [
                     "dead"
                 ],
                 "invert": true
+            },
+            {
+                "tag": "not_self"
             }
         ]
     },

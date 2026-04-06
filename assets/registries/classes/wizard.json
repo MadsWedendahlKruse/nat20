@@ -97,6 +97,7 @@
         "spell_replacement_model": "long_rest",
         "spell_list": [
             "nat20_core::spell.acid_splash",
+            "nat20_core::spell.burning_hands",
             "nat20_core::spell.counterspell",
             "nat20_core::spell.expeditious_retreat",
             "nat20_core::spell.false_life",

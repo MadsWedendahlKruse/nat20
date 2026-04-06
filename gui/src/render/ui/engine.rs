@@ -274,9 +274,9 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                         result_kind.render(ui);
                         ui.same_line();
                         if result_kind.is_success(dc_kind) {
-                            TextSegment::new("(Success)", TextKind::Details).render(ui);
+                            TextSegment::new("Success", TextKind::Green).render(ui);
                         } else {
-                            TextSegment::new("(Failure)", TextKind::Details).render(ui);
+                            TextSegment::new("Failure", TextKind::Red).render(ui);
                         }
                     });
                 }

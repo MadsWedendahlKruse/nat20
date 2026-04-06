@@ -912,10 +912,10 @@ impl ImguiRenderable for D20CheckResult {
         }
         match self.outcome {
             Some(D20CheckOutcome::CriticalSuccess) => {
-                segments.push(("(Critical Success!)".to_string(), TextKind::Normal));
+                segments.push(("(Critical Success!)".to_string(), TextKind::Green));
             },
             Some(D20CheckOutcome::CriticalFailure) => {
-                segments.push(("(Critical Failure!)".to_string(), TextKind::Normal));
+                segments.push(("(Critical Failure!)".to_string(), TextKind::Red));
             }
             _ => { /* No outcome to render */ }
         }
@@ -1068,11 +1068,12 @@ impl ImguiRenderableWithContext<u8> for ActionResult {
                                     saving_throw_result.render(ui);
 
                                     ui.same_line();
-                                    let label = if saving_throw_result.is_success(saving_throw_dc) {
-                                        "(Success)" } else {
-                                            "(Failure)"
-                                        };
-                                    TextSegment::new(label, TextKind::Details)
+                                    let (label, kind) = if saving_throw_result.is_success(saving_throw_dc) {
+                                        ("Success", TextKind::Green)
+                                    } else {
+                                        ("Failure", TextKind::Red)
+                                    };
+                                    TextSegment::new(label, kind)
                                         .render(ui);
                                     
                                     ui.text("");
@@ -1753,7 +1754,7 @@ impl ImguiRenderable for TargetingKind {
                 format!("{} Targets (Unique)", max_targets)
             },
             TargetingKind::Area { shape, .. } => match shape {
-                AreaShape::Arc { angle, length } => {
+                AreaShape::Cone { angle, length } => {
                     format!(
                         "AoE: Arc\n\tAngle: {:.0}°, Length: {:.1} meters",
                         angle.get::<degree>(),

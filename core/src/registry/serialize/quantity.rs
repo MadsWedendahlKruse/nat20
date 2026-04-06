@@ -3,7 +3,8 @@ use std::{fmt::Display, marker::PhantomData, str::FromStr};
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 use uom::si::{
-    f32::{Length, Time, Velocity},
+    angle::{degree, radian},
+    f32::{Angle, Length, Time, Velocity},
     length::{foot, meter},
     time::{hour, minute, second},
     velocity::{foot_per_second, kilometer_per_hour, meter_per_second, mile_per_hour},
@@ -75,6 +76,21 @@ impl QuantityDimension for VelocityDim {
             }
             "mph" | "mile/hour" | "miles/hour" => Ok(Velocity::new::<mile_per_hour>(value)),
             other => Err(format!("Unknown velocity unit: '{}'", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AngleDim;
+
+impl QuantityDimension for AngleDim {
+    type Quantity = Angle;
+
+    fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
+        match unit_name.to_ascii_lowercase().as_str() {
+            "deg" | "degree" | "degrees" => Ok(Angle::new::<degree>(value)),
+            "rad" | "radian" | "radians" => Ok(Angle::new::<radian>(value)),
+            other => Err(format!("Unknown angle unit: '{}'", other)),
         }
     }
 }
@@ -169,6 +185,7 @@ impl<D: QuantityDimension> QuantityExpressionDefinition<D> {
 pub type LengthExpressionDefinition = QuantityExpressionDefinition<LengthDim>;
 pub type TimeExpressionDefinition = QuantityExpressionDefinition<TimeDim>;
 pub type VelocityExpressionDefinition = QuantityExpressionDefinition<VelocityDim>;
+pub type AngleExpressionDefinition = QuantityExpressionDefinition<AngleDim>;
 
 #[cfg(test)]
 mod tests {

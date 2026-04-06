@@ -31,13 +31,16 @@ use nat20_core::{
         movement::{PathResult, TargetPathFindingResult},
     },
 };
-use parry3d::na::Point3;
+use parry3d::{na::Point3, shape::ShapeType};
 use tracing::{info, trace};
 use uom::si::length::meter;
 
 use crate::{
     render::{
-        common::{colors::Color, utils::RenderableMutWithContext},
+        common::{
+            colors::Color,
+            utils::{RenderableMutWithContext, RenderableWithContext},
+        },
         ui::{
             components::{
                 LOW_HEALTH_BG_COLOR, LOW_HEALTH_COLOR, ModifierSetRenderMode, SPEED_COLOR,
@@ -1124,13 +1127,12 @@ fn apply_targeting_click_logic(
                     TargetInstance::Point(point) => *point,
                 };
 
-                render_area_shape_preview(gui_state, shape, center_point);
-
-                highlight_entities_in_area(
+                render_area_shape(
+                    ui,
                     gui_state,
                     game_state,
+                    action,
                     shape,
-                    action.actor.id(),
                     *fixed_on_actor,
                     center_point,
                 );
@@ -1147,32 +1149,56 @@ fn apply_targeting_click_logic(
     }
 }
 
-fn render_area_shape_preview(gui_state: &mut GuiState, shape: &AreaShape, center: Point3<f32>) {
-    match shape {
-        AreaShape::Sphere { radius } => {
-            gui_state.line_renderer.add_circle(
-                [center.x, center.y, center.z],
-                radius.get::<meter>(),
-                Color::White,
-            );
-        }
-        _ => { /* TODO other shapes */ }
-    }
-}
-
-fn highlight_entities_in_area(
+fn render_area_shape(
+    ui: &imgui::Ui,
     gui_state: &mut GuiState,
     game_state: &GameState,
+    action: &ActionData,
     shape: &AreaShape,
-    actor: Entity,
     fixed_on_actor: bool,
     center: Point3<f32>,
 ) {
-    let (parry_shape, parry_pose) =
-        shape.parry3d_shape(&game_state.world, actor, fixed_on_actor, &center);
+    let shape_transform = shape.parry3d_shape(
+        &game_state.world,
+        action.actor.id(),
+        fixed_on_actor,
+        &center,
+    );
 
-    let affected_entities =
-        systems::geometry::entities_in_shape(&game_state.world, parry_shape, &parry_pose);
+    match shape_transform.shape.shape_type() {
+        ShapeType::Ball => {
+            let ball = shape_transform.shape.as_ball().unwrap();
+            gui_state.line_renderer.add_circle(
+                [
+                    shape_transform.transform.translation.x,
+                    shape_transform.transform.translation.y + 0.1, // Lift the circle slightly above the ground to avoid z-fighting
+                    shape_transform.transform.translation.z,
+                ],
+                ball.radius,
+                Color::White,
+            );
+        }
+
+        _ => {
+            shape_transform.render_with_context(
+                ui,
+                gui_state,
+                (
+                    Color::White.into(),
+                    &MeshRenderMode::WireFrameOnly {
+                        color: Color::White.into(),
+                        width: 0.1,
+                    },
+                ),
+            );
+        }
+    }
+
+    let affected_entities = systems::actions::get_targeted_entities(
+        game_state,
+        action,
+        Some(vec![TargetInstance::Point(center)]),
+    );
 
     for entity in affected_entities {
         gui_state.creature_render_mode.insert(

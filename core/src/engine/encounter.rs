@@ -92,7 +92,11 @@ impl Encounter {
     pub fn participants(&self, world: &World, filters: &[EntityFilter]) -> Vec<Entity> {
         self.participants
             .iter()
-            .filter(|entity| filters.iter().all(|filter| filter.matches(world, *entity)))
+            .filter(|entity| {
+                filters
+                    .iter()
+                    .all(|filter| filter.matches(world, **entity, None))
+            })
             .cloned()
             .collect()
     }

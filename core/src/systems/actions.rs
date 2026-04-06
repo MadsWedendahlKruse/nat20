@@ -257,7 +257,7 @@ pub fn get_targeted_entities(
                     TargetInstance::Point(point) => point,
                 };
 
-                let (shape_hitbox, shape_pose) = shape.parry3d_shape(
+                let shape_transform = shape.parry3d_shape(
                     &game_state.world,
                     action_data.actor.id(),
                     *fixed_on_actor,
@@ -266,13 +266,18 @@ pub fn get_targeted_entities(
 
                 let mut entities_in_shape = systems::geometry::entities_in_shape(
                     &game_state.world,
-                    shape_hitbox,
-                    &shape_pose,
+                    shape_transform.shape,
+                    &shape_transform.transform,
                 );
 
                 // Only keep the entities that are valid targets
-                entities_in_shape
-                    .retain(|entity| targeting_context.allowed_target(&game_state.world, entity));
+                entities_in_shape.retain(|entity| {
+                    targeting_context.allowed_target(
+                        &game_state.world,
+                        *entity,
+                        Some(action_data.actor.id()),
+                    )
+                });
 
                 // Check if any of the entities are behind cover and remove them
                 // TODO: Not sure what the best way to do this is, I guess it

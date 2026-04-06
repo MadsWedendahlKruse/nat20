@@ -1,6 +1,101 @@
-use parry3d::na;
+use nat20_core::components::actions::targeting::ShapeTransform;
+use parry3d::{
+    na::{self, Point3},
+    shape::{Shape, ShapeType, TriMesh},
+};
 
-use crate::render::world::mesh::Mesh;
+use crate::{
+    render::{
+        common::utils::RenderableWithContext,
+        world::mesh::{Mesh, MeshRenderMode},
+    },
+    state::gui_state::GuiState,
+};
+
+impl RenderableWithContext<([f32; 4], &MeshRenderMode)> for ShapeTransform {
+    fn render_with_context(
+        &self,
+        _ui: &imgui::Ui,
+        gui_state: &mut GuiState,
+        (color, render_mode): ([f32; 4], &MeshRenderMode),
+    ) {
+        let key = get_mesh_key(&self.shape);
+
+        let mesh = if let Some(mesh) = gui_state.mesh_cache.get(&key) {
+            mesh
+        } else {
+            let (points, indices) = get_points_indices(&self.shape);
+            let trimesh = TriMesh::new(points, indices).unwrap();
+            let mesh = Mesh::from_parry_trimesh(gui_state.gl_context(), &trimesh);
+            gui_state.mesh_cache.insert(key.clone(), mesh);
+            gui_state.mesh_cache.get(&key).unwrap()
+        };
+
+        mesh.draw(
+            gui_state.gl_context(),
+            &gui_state.program,
+            &self.transform.to_homogeneous(),
+            color,
+            render_mode,
+        );
+    }
+}
+
+fn get_mesh_key(shape: &Box<dyn Shape>) -> String {
+    match shape.shape_type() {
+        ShapeType::Ball => format!("{:?}", shape.as_ball()),
+        ShapeType::Cuboid => format!("{:?}", shape.as_cuboid()),
+        ShapeType::Capsule => format!("{:?}", shape.as_capsule()),
+        ShapeType::Segment => format!("{:?}", shape.as_segment()),
+        ShapeType::Triangle => format!("{:?}", shape.as_triangle()),
+        ShapeType::Voxels => format!("{:?}", shape.as_voxels()),
+        ShapeType::TriMesh => format!("{:?}", shape.as_trimesh()),
+        ShapeType::Polyline => format!("{:?}", shape.as_polyline()),
+        ShapeType::HalfSpace => format!("{:?}", shape.as_halfspace()),
+        ShapeType::HeightField => format!("{:?}", shape.as_heightfield()),
+        ShapeType::Compound => format!("{:?}", shape.as_compound()),
+        ShapeType::ConvexPolyhedron => format!("{:?}", shape.as_convex_polyhedron()),
+        ShapeType::Cylinder => format!("{:?}", shape.as_cylinder()),
+        ShapeType::Cone => format!("{:?}", shape.as_cone()),
+        ShapeType::RoundCuboid => format!("{:?}", shape.as_round_cuboid()),
+        ShapeType::RoundTriangle => format!("{:?}", shape.as_round_triangle()),
+        ShapeType::RoundCylinder => format!("{:?}", shape.as_round_cylinder()),
+        ShapeType::RoundCone => format!("{:?}", shape.as_round_cone()),
+        ShapeType::RoundConvexPolyhedron => format!("{:?}", shape.as_round_convex_polyhedron()),
+        ShapeType::Custom => todo!(),
+    }
+}
+
+fn get_points_indices(shape: &Box<dyn Shape>) -> (Vec<Point3<f32>>, Vec<[u32; 3]>) {
+    match shape.shape_type() {
+        ShapeType::Ball => {
+            let ball = shape.as_ball().unwrap();
+            ball.to_trimesh(8, 8)
+        }
+        ShapeType::Cuboid => todo!(),
+        ShapeType::Capsule => todo!(),
+        ShapeType::Segment => todo!(),
+        ShapeType::Triangle => todo!(),
+        ShapeType::Voxels => todo!(),
+        ShapeType::TriMesh => todo!(),
+        ShapeType::Polyline => todo!(),
+        ShapeType::HalfSpace => todo!(),
+        ShapeType::HeightField => todo!(),
+        ShapeType::Compound => todo!(),
+        ShapeType::ConvexPolyhedron => todo!(),
+        ShapeType::Cylinder => todo!(),
+        ShapeType::Cone => {
+            let cone = shape.as_cone().unwrap();
+            cone.to_trimesh(20)
+        }
+        ShapeType::RoundCuboid => todo!(),
+        ShapeType::RoundTriangle => todo!(),
+        ShapeType::RoundCylinder => todo!(),
+        ShapeType::RoundCone => todo!(),
+        ShapeType::RoundConvexPolyhedron => todo!(),
+        ShapeType::Custom => todo!(),
+    }
+}
 
 pub fn build_sphere_interleaved(
     rings: usize,
