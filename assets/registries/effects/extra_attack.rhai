@@ -1,4 +1,4 @@
-import "effects\\extra_attack_common" as common;
+import "effects/extra_attack_common" as common;
 
 fn action_hook(action_view, entity_view) {
     common::extra_attack_action_hook(action_view, entity_view, 1)
