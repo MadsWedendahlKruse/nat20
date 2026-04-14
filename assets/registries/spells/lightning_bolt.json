@@ -1,7 +1,7 @@
 {
-    "id": "nat20_core::spell.burning_hands",
-    "description": "A thin sheet of flames shoots forth from you. Each creature in a 15-foot Cone makes a Dexterity saving throw, taking 3d6 Fire damage on a failed save or half as much damage on a successful one. Flammable objects in the Cone that aren’t being worn or carried start burning.",
-    "base_level": 1,
+    "id": "nat20_core::spell.lightning_bolt",
+    "description": "A stroke of lightning forming a 100-foot-long, 5-foot-wide Line blasts out from you in a direction you choose. Each creature in the Line makes a Dexterity saving throw, taking 8d6 Lightning damage on a failed save or half as much damage on a successful one. Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 3",
+    "base_level": 3,
     "school": "evocation",
     "flags": [
         "verbal",
@@ -13,8 +13,8 @@
                 "saving_throw": "spell_save_dc;dexterity"
             },
             "payload": {
-                "damage": "(3 + spell_level)d6;fire",
-                "damge_on_failure": "half",
+                "damage": "(8 + spell_level - 3)d6;lightning",
+                "damage_on_failure": "half",
                 "delivery": "immediate"
             }
         }
@@ -26,15 +26,15 @@
         "kind": {
             "area": {
                 "shape": {
-                    "cone": {
-                        "angle": "60 degrees",
-                        "length": "15 feet"
+                    "line": {
+                        "length": "100 feet",
+                        "width": "5 feet"
                     }
                 },
                 "fixed_on_actor": true
             }
         },
-        "range": "15 feet",
+        "range": "100 feet",
         "line_of_sight": "ray",
         "allowed_targets": [
             {

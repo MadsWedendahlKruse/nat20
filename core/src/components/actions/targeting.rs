@@ -245,6 +245,12 @@ impl AreaShape {
                 // Rotate to face target point
                 let direction = (target_point.coords - actor_position).normalize();
                 let yaw = direction.z.atan2(direction.x);
+                let pitch = (-direction.y)
+                    .atan2((direction.x * direction.x + direction.z * direction.z).sqrt());
+                transform.append_rotation_wrt_point_mut(
+                    &UnitQuaternion::from_euler_angles(0.0, 0.0, -pitch),
+                    &Point3::from(actor_position),
+                );
                 transform.append_rotation_wrt_point_mut(
                     &UnitQuaternion::from_euler_angles(0.0, -yaw, 0.0),
                     &Point3::from(actor_position),
@@ -280,14 +286,23 @@ impl AreaShape {
             AreaShape::Line { length, width } => {
                 let half_length = length.get::<meter>() / 2.0;
                 let half_width = width.get::<meter>() / 2.0;
-                let mut rotation = Vector3::zeros();
+                let mut transform = Isometry3::new(translation, Vector3::zeros());
                 if fixed_on_actor {
                     // Line starts at the actor's position
-                    translation.x += half_length;
-                    // Rotate around Y axis to point towards target point
+                    transform.append_translation_mut(&Translation3::new(half_length, 0.0, 0.0));
+                    // Rotate to point towards target point
                     let direction = (target_point.coords - actor_position).normalize();
                     let yaw = direction.z.atan2(direction.x);
-                    rotation = Vector3::new(0.0, -yaw, 0.0);
+                    let pitch = (-direction.y)
+                        .atan2((direction.x * direction.x + direction.z * direction.z).sqrt());
+                    transform.append_rotation_wrt_point_mut(
+                        &UnitQuaternion::from_euler_angles(0.0, 0.0, -pitch),
+                        &Point3::from(actor_position),
+                    );
+                    transform.append_rotation_wrt_point_mut(
+                        &UnitQuaternion::from_euler_angles(0.0, -yaw, 0.0),
+                        &Point3::from(actor_position),
+                    );
                 }
                 ShapeTransform {
                     shape: Box::new(Cuboid::new(Vector3::new(
@@ -295,7 +310,7 @@ impl AreaShape {
                         half_width,
                         half_width,
                     ))),
-                    transform: Isometry3::new(translation, rotation),
+                    transform,
                 }
             }
         }

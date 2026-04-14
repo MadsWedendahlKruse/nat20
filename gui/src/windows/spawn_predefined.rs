@@ -14,7 +14,7 @@ use nat20_core::{
 };
 use parry3d::na::Point3;
 use rerecast::ConfigBuilder;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::{
     render::{
@@ -74,7 +74,7 @@ impl SpawnPredefinedWindow {
 
         let mut spawners = vec![
             Spawner::new(fixtures::creatures::heroes::fighter, 13),
-            Spawner::new(fixtures::creatures::heroes::wizard, 5),
+            Spawner::new(fixtures::creatures::heroes::wizard, 6),
             Spawner::new(fixtures::creatures::heroes::warlock, 5),
             Spawner::new(fixtures::creatures::monsters::goblin_warrior, 1),
         ];

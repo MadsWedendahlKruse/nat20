@@ -1,4 +1,5 @@
 use hecs::{Entity, World};
+use parry3d::na::Point3;
 
 use crate::{
     components::{
@@ -247,6 +248,10 @@ pub fn get_targeted_entities(
             shape,
             fixed_on_actor,
         } => {
+            let (_, actor_shape_pose) =
+                systems::geometry::get_shape(&game_state.world, action_data.actor.id()).unwrap();
+            let actor_position = Point3::from(actor_shape_pose.translation.vector);
+
             for target in &targets {
                 let point = match target {
                     TargetInstance::Entity(entity) => {
@@ -283,23 +288,37 @@ pub fn get_targeted_entities(
                 // TODO: Not sure what the best way to do this is, I guess it
                 // depends on the shape?
 
-                match shape {
-                    AreaShape::Sphere { .. } => {
-                        entities_in_shape.retain(|entity| {
-                            systems::geometry::line_of_sight_entity_point_filter(
-                                &game_state.world,
-                                &game_state.geometry,
-                                *entity,
-                                *point,
-                                &LineOfSightMode::Ray,
-                                // TODO: Can't hide behind other entities?
-                                &RaycastFilter::WorldOnly,
-                            )
-                            .has_line_of_sight
-                        });
-                    }
+                if *fixed_on_actor {
+                    entities_in_shape.retain(|entity| {
+                        systems::geometry::line_of_sight_entity_point_filter(
+                            &game_state.world,
+                            &game_state.geometry,
+                            *entity,
+                            actor_position,
+                            &LineOfSightMode::Ray,
+                            &RaycastFilter::WorldOnly,
+                        )
+                        .has_line_of_sight
+                    });
+                } else {
+                    match shape {
+                        AreaShape::Sphere { .. } => {
+                            entities_in_shape.retain(|entity| {
+                                systems::geometry::line_of_sight_entity_point_filter(
+                                    &game_state.world,
+                                    &game_state.geometry,
+                                    *entity,
+                                    *point,
+                                    &LineOfSightMode::Ray,
+                                    // TODO: Can't hide behind other entities?
+                                    &RaycastFilter::WorldOnly,
+                                )
+                                .has_line_of_sight
+                            });
+                        }
 
-                    _ => {}
+                        _ => {}
+                    }
                 }
 
                 entities.extend(entities_in_shape);

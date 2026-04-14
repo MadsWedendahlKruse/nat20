@@ -419,6 +419,17 @@ pub mod creatures {
                             SpellId::new("nat20_core", "spell.counterspell"),
                         ],
                     ),
+                    // Level 6
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.wizard",
+                    ))),
+                    LevelUpDecision::spells(
+                        "choice.spells",
+                        &ClassId::new("nat20_core", "class.wizard"),
+                        &None,
+                        vec![SpellId::new("nat20_core", "spell.lightning_bolt")],
+                    ),
                 ],
             );
 

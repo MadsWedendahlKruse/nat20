@@ -72,7 +72,10 @@ fn get_points_indices(shape: &Box<dyn Shape>) -> (Vec<Point3<f32>>, Vec<[u32; 3]
             let ball = shape.as_ball().unwrap();
             ball.to_trimesh(8, 8)
         }
-        ShapeType::Cuboid => todo!(),
+        ShapeType::Cuboid => {
+            let cuboid = shape.as_cuboid().unwrap();
+            cuboid.to_trimesh()
+        }
         ShapeType::Capsule => todo!(),
         ShapeType::Segment => todo!(),
         ShapeType::Triangle => todo!(),
