@@ -16,7 +16,7 @@ use crate::{
             ActionHook, ActionResultHook, ApplyEffectHook, ArmorClassHook, AttackRollHook,
             AttackRollResultHook, AttackedHook, D20CheckHooks, DamageRollHook,
             DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
-            ResourceCostHook, UnapplyEffectHook,
+            ResourceCostHook, TurnStartHook, UnapplyEffectHook,
         },
         id::{EffectId, IdProvider},
         modifier::ModifierSource,
@@ -44,12 +44,12 @@ pub struct Effect {
     pub replaces: Option<EffectId>,
     pub children: Vec<EffectId>,
 
-    // on_turn_start: EffectHook,
     // TODO: Do we need to differentiate between when an effect explicitly expires and when
     // the effect is removed from the character?
     // pub on_expire: EffectHook,
     pub on_apply: Option<ApplyEffectHook>,
     pub on_unapply: Option<UnapplyEffectHook>,
+    pub on_turn_start: Option<TurnStartHook>,
     pub on_skill_check: HashMap<Skill, D20CheckHooks>,
     pub on_saving_throw: HashMap<SavingThrowKind, D20CheckHooks>,
     pub pre_attack_roll: Option<AttackRollHook>,
@@ -77,6 +77,7 @@ impl Effect {
 
             on_apply: None,
             on_unapply: None,
+            on_turn_start: None,
             on_skill_check: HashMap::new(),
             on_saving_throw: HashMap::new(),
             pre_attack_roll: None,
@@ -126,7 +127,7 @@ pub struct EffectInstance {
 }
 
 impl EffectInstance {
-    pub fn new(
+    fn new(
         effect_id: EffectId,
         source: ModifierSource,
         lifetime: EffectLifetime,
@@ -147,18 +148,6 @@ impl EffectInstance {
             end_condition,
             one_shot,
         }
-    }
-
-    pub fn permanent(effect_id: EffectId, source: ModifierSource) -> Self {
-        Self::new(
-            effect_id,
-            source,
-            EffectLifetime::Permanent,
-            None,
-            ActionConditionResolution::Unconditional,
-            None,
-            false,
-        )
     }
 
     pub fn effect(&self) -> &Effect {

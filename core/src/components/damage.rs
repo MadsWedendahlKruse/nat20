@@ -608,15 +608,11 @@ pub enum AttackRange {
 #[derive(Debug, Clone)]
 pub struct AttackRollTemplate {
     pub d20_check: D20Check,
-    crit_threshold_reduction: ModifierSet,
 }
 
 impl AttackRollTemplate {
     pub fn new(d20_check: D20Check) -> Self {
-        Self {
-            d20_check,
-            crit_threshold_reduction: ModifierSet::new(),
-        }
+        Self { d20_check }
     }
 
     pub fn apply_to_roll(&self, attack_roll: &mut AttackRoll) {
@@ -632,27 +628,22 @@ impl AttackRollTemplate {
                 .add(advantage, source.clone());
         }
 
-        attack_roll.set_crit_threshold(self.crit_threshold());
+        attack_roll
+            .d20_check
+            .crit_threshold_reduction_mut()
+            .add_modifier_set(self.d20_check.crit_threshold_reduction());
     }
 
     pub fn instantiate(&self, source: AttackSource, range: AttackRange) -> AttackRoll {
-        let mut roll = AttackRoll::new(self.d20_check.clone(), source, range);
-        roll.set_crit_threshold(self.crit_threshold());
-        roll
+        AttackRoll::new(self.d20_check.clone(), source, range)
     }
 
     pub fn add_crit_threshold_reduction(&mut self, source: ModifierSource, amount: u8) {
-        self.crit_threshold_reduction
-            .add_modifier(source, amount as i32);
+        self.d20_check.add_crit_threshold_reduction(source, amount);
     }
 
     pub fn remove_crit_threshold_reduction(&mut self, source: &ModifierSource) {
-        self.crit_threshold_reduction.remove_modifier(source);
-    }
-
-    pub fn crit_threshold(&self) -> u8 {
-        let reduction = self.crit_threshold_reduction.total().max(0) as u8;
-        20u8.saturating_sub(reduction).max(1)
+        self.d20_check.remove_crit_threshold_reduction(source);
     }
 }
 
@@ -661,7 +652,6 @@ pub struct AttackRoll {
     pub d20_check: D20Check,
     pub source: AttackSource,
     pub range: AttackRange,
-    crit_threshold: u8, // Default critical threshold is 20
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -701,32 +691,11 @@ impl AttackRoll {
             d20_check,
             source,
             range,
-            crit_threshold: 20,
-        }
-    }
-
-    pub fn set_crit_threshold(&mut self, threshold: u8) {
-        self.crit_threshold = threshold.clamp(1, 20);
-    }
-
-    pub fn crit_threshold(&self) -> u8 {
-        self.crit_threshold
-    }
-
-    // TODO: Track the source of the crit threshold reduction?
-    pub fn reduce_crit_threshold(&mut self, amount: u8) {
-        if amount > self.crit_threshold {
-            self.crit_threshold = 1; // Minimum crit threshold is 1
-        } else {
-            self.crit_threshold -= amount;
         }
     }
 
     pub fn roll_raw(&self, proficiency_bonus: u8) -> AttackRollResult {
-        let mut roll_result = self.d20_check.roll(proficiency_bonus);
-        if roll_result.selected_roll >= self.crit_threshold {
-            roll_result.outcome = Some(D20CheckOutcome::CriticalSuccess);
-        }
+        let roll_result = self.d20_check.roll(proficiency_bonus);
 
         AttackRollResult {
             roll_result,

@@ -7,7 +7,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::{
-            action::{ActionConditionResolution, ActionContext, ActionKindResult, ActionResult},
+            action::{ActionConditionResolution, ActionContext, ActionResult},
             targeting::TargetInstance,
         },
         d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
@@ -18,17 +18,16 @@ use crate::{
         effects::{
             effect::{
                 Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
-                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetime,
-                EffectLifetimeTemplate,
+                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
             },
             hooks::{
                 ActionHook, ActionResultHook, ArmorClassHook, AttackRollHook, AttackedHook,
                 DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
-                ResourceCostHook,
+                ResourceCostHook, TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
-        id::{ActionId, EffectId, EntityIdentifier, ResourceId, ScriptId},
+        id::{ActionId, EffectId, ResourceId, ScriptId},
         items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
         modifier::{KeyedModifiable, Modifiable, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
@@ -40,7 +39,7 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{CallbackResult, Event, EventCallback, EventKind, ListenerSource},
+        event::{CallbackResult, EventCallback, EventKind, ListenerSource},
         game_state::GameState,
     },
     registry::{
@@ -48,10 +47,10 @@ use crate::{
         serialize::{
             dice::HealEquation,
             modifier::{
-                AbilityModifierProvider, ArmorClassModifierProvider, AttackRollModifier,
-                AttackSourceDefinition, D20CheckModifierProvider, D20Modifier,
-                DamageResistanceProvider, SavingThrowModifierProvider, SkillModifierProvider,
-                SpeedModifier, SpeedModifierProvider,
+                AbilityModifierProvider, ArmorClassModifierProvider, AttackSourceDefinition,
+                D20CheckModifierProvider, D20Modifier, DamageResistanceProvider,
+                SavingThrowModifierProvider, SkillModifierProvider, SpeedModifier,
+                SpeedModifierProvider,
             },
             quantity::{LengthExpressionDefinition, TimeExpressionDefinition},
         },
@@ -61,8 +60,7 @@ use crate::{
         script_api::{
             ScriptActionPerformedView, ScriptActionResultView, ScriptActionView,
             ScriptCommandBuffer, ScriptDamageMitigationResult, ScriptDamageRollResult,
-            ScriptEffectView, ScriptEntityView, ScriptGameCommand, ScriptOptionalEntityView,
-            ScriptResourceCost,
+            ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
         },
     },
     systems::{self, d20::D20CheckDCKind},
@@ -110,6 +108,7 @@ pub struct EffectDefinition {
     pub modifiers: Vec<EffectModifier>,
 
     /// Other hooks can be either pattern-based or script-based
+    /// TODO: I think this guy can be retired in favor of EffectModifier::AttackRoll
     #[serde(default)]
     pub pre_attack_roll: Vec<AttackRollHookDefinition>,
     // #[serde(default)]
@@ -135,6 +134,8 @@ pub struct EffectDefinition {
     pub on_resource_cost: Vec<ResourceCostHookDefinition>,
     #[serde(default)]
     pub on_death: Vec<DeathHookDefinition>,
+    #[serde(default)]
+    pub on_turn_start: Vec<TurnStartHookDefinition>,
 }
 
 impl From<EffectDefinition> for Effect {
@@ -272,6 +273,14 @@ impl From<EffectDefinition> for Effect {
             }
         }
 
+        // Build on_turn_start hooks
+        {
+            if !definition.on_turn_start.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_turn_start, &effect_id);
+                effect.on_turn_start = Some(TurnStartHookDefinition::combine_hooks(hooks));
+            }
+        }
+
         effect
     }
 }
@@ -280,6 +289,9 @@ impl RegistryReferenceCollector for EffectDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         if let Some(replaces) = &self.replaces {
             collector.add(RegistryReference::Effect(replaces.clone()));
+        }
+        for child in &self.children {
+            collector.add(RegistryReference::Effect(child.clone()));
         }
         for modifier in &self.modifiers {
             match modifier {
@@ -351,6 +363,26 @@ impl RegistryReferenceCollector for EffectDefinition {
                 }
             }
         }
+        for hook in &self.on_death {
+            match hook {
+                DeathHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::DeathHook,
+                    ));
+                }
+            }
+        }
+        for hook in &self.on_turn_start {
+            match hook {
+                TurnStartHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::TurnStartHook,
+                    ));
+                }
+            }
+        }
     }
 }
 
@@ -369,7 +401,7 @@ pub enum EffectModifier {
     AttackRoll {
         #[serde(default)]
         attack_roll_source: Option<AttackSourceDefinition>,
-        attack_roll_modifier: AttackRollModifier,
+        attack_roll_modifier: D20Modifier,
     },
     DamageResistance {
         resistance: DamageResistanceProvider,
@@ -660,12 +692,18 @@ impl EffectModifier {
                         modifiable.set_forced_outcome(kind, source.clone(), force_outcome);
                     }
                 }
+                D20Modifier::CritThreshold(reduction) => {
+                    for kind in &modifier.kind {
+                        modifiable.add_crit_threshold_reduction(kind, source.clone(), reduction);
+                    }
+                }
             },
             EffectPhase::Unapply => {
                 for kind in &modifier.kind {
                     modifiable.remove_modifier(kind, &source);
                     modifiable.remove_advantage(kind, &source);
                     modifiable.clear_forced_outcome(kind);
+                    modifiable.remove_crit_threshold_reduction(kind, &source);
                 }
             }
         }
@@ -673,33 +711,37 @@ impl EffectModifier {
 
     fn apply_attack_roll_modifier(
         template: &mut AttackRollTemplate,
-        modifier: &AttackRollModifier,
+        modifier: &D20Modifier,
         source: &ModifierSource,
         phase: EffectPhase,
     ) {
         match (modifier, phase) {
-            (AttackRollModifier::FlatBonus(bonus), EffectPhase::Apply) => {
+            (D20Modifier::Flat(bonus), EffectPhase::Apply) => {
                 template.d20_check.add_modifier(source.clone(), *bonus);
             }
-            (AttackRollModifier::FlatBonus(_), EffectPhase::Unapply) => {
+            (D20Modifier::Flat(_), EffectPhase::Unapply) => {
                 template.d20_check.remove_modifier(source);
             }
 
-            (AttackRollModifier::Advantage(advantage), EffectPhase::Apply) => {
+            (D20Modifier::Advantage(advantage), EffectPhase::Apply) => {
                 template
                     .d20_check
                     .advantage_tracker_mut()
                     .add(*advantage, source.clone());
             }
-            (AttackRollModifier::Advantage(_), EffectPhase::Unapply) => {
+            (D20Modifier::Advantage(_), EffectPhase::Unapply) => {
                 template.d20_check.advantage_tracker_mut().remove(source);
             }
 
-            (AttackRollModifier::CritThreshold(threshold), EffectPhase::Apply) => {
+            (D20Modifier::CritThreshold(threshold), EffectPhase::Apply) => {
                 template.add_crit_threshold_reduction(source.clone(), *threshold);
             }
-            (AttackRollModifier::CritThreshold(_), EffectPhase::Unapply) => {
+            (D20Modifier::CritThreshold(_), EffectPhase::Unapply) => {
                 template.remove_crit_threshold_reduction(source);
+            }
+
+            (D20Modifier::ForceOutcome(_), _) => {
+                // ForceOutcome is not applicable to attack rolls
             }
         }
     }
@@ -733,7 +775,7 @@ pub enum AttackRollHookDefinition {
         source: Option<AttackSource>,
         #[serde(default)]
         range: Option<AttackRange>,
-        modifier: AttackRollModifier,
+        modifier: D20Modifier,
     },
     Script {
         script: ScriptId,
@@ -768,20 +810,24 @@ impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
                         }
 
                         match modifier {
-                            AttackRollModifier::FlatBonus(bonus) => {
+                            D20Modifier::Flat(bonus) => {
                                 attack_roll
                                     .d20_check
                                     .add_modifier(modifier_source.clone(), bonus);
                             }
-                            AttackRollModifier::Advantage(advantage) => {
+                            D20Modifier::Advantage(advantage) => {
                                 attack_roll
                                     .d20_check
                                     .advantage_tracker_mut()
                                     .add(advantage, modifier_source.clone());
                             }
-                            AttackRollModifier::CritThreshold(threshold) => {
-                                attack_roll.reduce_crit_threshold(threshold);
+                            D20Modifier::CritThreshold(threshold) => {
+                                attack_roll.d20_check.add_crit_threshold_reduction(
+                                    modifier_source.clone(),
+                                    threshold,
+                                );
                             }
+                            D20Modifier::ForceOutcome(_) => {}
                         }
                     }
                 })
@@ -806,7 +852,7 @@ impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
 #[serde(untagged)]
 pub enum AttackedHookDefinition {
     Modifier {
-        modifier: AttackRollModifier,
+        modifier: D20Modifier,
         #[serde(default)]
         attacked_by: Option<EffectEntiyReference>,
     },
@@ -844,20 +890,24 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                         }
 
                         match modifier {
-                            AttackRollModifier::FlatBonus(bonus) => {
+                            D20Modifier::Flat(bonus) => {
                                 attack_roll
                                     .d20_check
                                     .add_modifier(modifier_source.clone(), bonus);
                             }
-                            AttackRollModifier::Advantage(advantage) => {
+                            D20Modifier::Advantage(advantage) => {
                                 attack_roll
                                     .d20_check
                                     .advantage_tracker_mut()
                                     .add(advantage, modifier_source.clone());
                             }
-                            AttackRollModifier::CritThreshold(threshold) => {
-                                attack_roll.reduce_crit_threshold(threshold);
+                            D20Modifier::CritThreshold(threshold) => {
+                                attack_roll.d20_check.add_crit_threshold_reduction(
+                                    modifier_source.clone(),
+                                    threshold,
+                                );
                             }
+                            D20Modifier::ForceOutcome(_) => {}
                         }
                     }
                 })
@@ -1094,63 +1144,10 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                             &commands,
                         );
 
-                        let action_resolution = if let Some(result) = results.first()
-                            && let ActionKindResult::Standard(outcome) = &result.kind
-                            && let Some(resolution) = outcome.resolution()
-                        {
-                            resolution.clone()
-                        } else {
-                            ActionConditionResolution::Unconditional
-                        };
-
-                        // TODO: Feels like this code should live somewhere else
-                        for command in commands.take_commands() {
-                            match command {
-                                ScriptGameCommand::ApplyEffect {
-                                    applier,
-                                    target,
-                                    effect_id,
-                                    lifetime,
-                                    one_shot,
-                                } => {
-                                    let applier_entity: Entity = applier.into();
-                                    let target_entity: Entity = target.into();
-
-                                    game_state.process_event(Event::new(EventKind::GainedEffect {
-                                        entity: EntityIdentifier::from_world(
-                                            &game_state.world,
-                                            target_entity,
-                                        ),
-                                        effect: effect_id.clone(),
-                                    }));
-
-                                    systems::effects::add_effect_template(
-                                        game_state,
-                                        applier_entity,
-                                        target_entity,
-                                        ModifierSource::Action(action_data.action_id.clone()),
-                                        &EffectInstanceTemplate {
-                                            effect_id,
-                                            lifetime,
-                                            end_condition: None,
-                                            one_shot,
-                                        },
-                                        Some(&action_data.context),
-                                        action_resolution.clone(),
-                                    );
-                                }
-
-                                ScriptGameCommand::RemoveEffect { target, effect_id } => {
-                                    let target_entity: Entity = target.into();
-
-                                    systems::effects::remove_effects_by_id(
-                                        game_state,
-                                        target_entity,
-                                        &effect_id,
-                                    );
-                                }
-                            }
-                        }
+                        systems::scripts::process_script_commands(
+                            game_state,
+                            commands.take_commands(),
+                        );
 
                         entity_view.replace_in_world(&mut game_state.world);
                     },
@@ -1407,6 +1404,41 @@ fn take_entity_view_once(
     taken
         .entry(entity)
         .or_insert_with(|| ScriptEntityView::take_from_world(world, entity));
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TurnStartHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> TurnStartHook {
+        match self {
+            TurnStartHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(move |game_state: &mut GameState, entity: Entity| {
+                    let entity_view =
+                        ScriptEntityView::take_from_world(&mut game_state.world, entity);
+                    let mut commands = ScriptCommandBuffer::new_mut();
+
+                    systems::scripts::evaluate_turn_start_hook(&script_id, &entity_view, &commands);
+
+                    entity_view.replace_in_world(&mut game_state.world);
+
+                    systems::scripts::process_script_commands(game_state, commands.take_commands());
+                })
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<TurnStartHook>) -> TurnStartHook {
+        Arc::new(move |world, entity| {
+            for hook in &hooks {
+                hook(world, entity);
+            }
+        })
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

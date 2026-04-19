@@ -4,6 +4,7 @@ use crate::{
     components::{
         actions::action::{ActionContext, AttackRollFunction, DamageFunction},
         damage::{AttackRoll, AttackRollResult, DamageRoll, DamageRollResult},
+        effects::{effect::EffectInstance, hooks::AttackedHook},
     },
     systems,
 };
@@ -42,9 +43,12 @@ pub fn attack_roll(
 ) -> AttackRollResult {
     systems::effects::effects(world, attacker).pre_attack_roll(world, attacker, &mut attack_roll);
 
-    let mut effects = systems::effects::take_effects(world, target);
-    effects.attacked(world, target, attacker, &mut attack_roll);
-    systems::effects::put_effects(world, target, effects);
+    let attacked_hooks: Vec<(AttackedHook, EffectInstance)> =
+        systems::effects::effects_mut(world, target)
+            .collect_one_shot_hooks_with_instance(|effect| effect.on_attacked.as_ref());
+    for (hook, instance) in &attacked_hooks {
+        hook(world, instance, target, attacker, &mut attack_roll);
+    }
 
     let mut result = {
         let level =

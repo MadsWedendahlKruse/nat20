@@ -113,4 +113,11 @@ pub trait ScriptEngine {
         killer_entity_view: &ScriptOptionalEntityView,
         applier_entity_view: &ScriptOptionalEntityView,
     ) -> Result<(), ScriptError>;
+
+    fn evaluate_turn_start_hook(
+        &mut self,
+        script: &Script,
+        entity_view: &ScriptEntityView,
+        commands: &ScriptCommandBuffer,
+    ) -> Result<(), ScriptError>;
 }

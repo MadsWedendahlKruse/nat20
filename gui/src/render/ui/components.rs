@@ -21,7 +21,7 @@ use nat20_core::{
             },
             item::{Item, ItemRarity},
             money::MonetaryValue,
-        }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{Modifiable, ModifierSet}, proficiency::{Proficiency, ProficiencyLevel}, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
+        }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{Modifiable, ModifierSet, ModifierSource}, proficiency::{Proficiency, ProficiencyLevel}, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
     },
     registry::registry::{FeatsRegistry, SpellsRegistry},
     systems::{
@@ -662,6 +662,11 @@ impl ImguiRenderableWithContext<&TimeMode> for EffectsMap {
         ui.separator_with_text("Permanent Effects");
         if let Some(table) = table_with_columns!(ui, "Permanent Effects", "Effect", "Source") {
             for effect in &permanent_effects {
+                if effect.parent.is_some() {
+                    // Skip child effects; they will be rendered under their parent
+                    continue;
+                }
+
                 // Effect ID column
                 ui.table_next_column();
                 render_effect(ui, effect, self);
@@ -1118,7 +1123,6 @@ impl ImguiRenderableWithContext<u8> for ActionResult {
 
                 if let Some(effect) = &action_outcome.effect {
                     if !effect.applied {
-                        ui.same_line();
                         TextSegments::new(vec![
                             (target_name, TextKind::Target),
                             ("was unaffected by", TextKind::Normal),
@@ -1514,7 +1518,7 @@ fn render_seconds(ui: &imgui::Ui, seconds: &f32) {
             TextKind::Details,
         ))
     } 
-    if seconds > 0 {
+    if seconds > 0 || minutes == 0 {
         segments.push((
             format!("{} seconds", remaining_seconds),
             TextKind::Details,
@@ -1799,6 +1803,31 @@ impl Renderable for ActivityState {
                 gui_state.line_renderer.add_circle(*points.last().unwrap(), 0.5, Color::White);
             },
             _ => {}
+        }
+    }
+}
+
+impl ImguiRenderable for ModifierSource {
+    fn render(&self, ui: &imgui::Ui) {
+        match self {
+            ModifierSource::Base => todo!(),
+            ModifierSource::Background(background_id) => todo!(),
+            ModifierSource::Item(item_id) => todo!(),
+            ModifierSource::ClassFeature(class_id) => todo!(),
+            ModifierSource::ClassLevel(class_id) => todo!(),
+            ModifierSource::SubclassFeature(subclass_id) => todo!(),
+            ModifierSource::Action(action_id) => todo!(),
+            ModifierSource::Effect(effect_id) => {
+                TextSegment::new(format!("{}", effect_id), TextKind::Effect).render(ui);
+            },
+            ModifierSource::Ability(ability) => todo!(),
+            ModifierSource::Proficiency(proficiency_level) => todo!(),
+            ModifierSource::Feat(feat_id) => todo!(),
+            ModifierSource::FeatRepeatable(feat_id, uuid) => todo!(),
+            ModifierSource::Custom(_) => todo!(),
+            ModifierSource::Species(species_id) => todo!(),
+            ModifierSource::Subspecies(subspecies_id) => todo!(),
+            ModifierSource::None => todo!(),
         }
     }
 }

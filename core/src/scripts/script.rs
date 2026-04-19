@@ -168,6 +168,7 @@ pub enum ScriptFunction {
     ReactionTrigger,
     ResourceCostHook,
     DeathHook,
+    TurnStartHook,
 }
 
 impl ScriptFunction {
@@ -184,6 +185,7 @@ impl ScriptFunction {
             ScriptFunction::ReactionTrigger => "reaction_trigger",
             ScriptFunction::ResourceCostHook => "resource_cost_hook",
             ScriptFunction::DeathHook => "death_hook",
+            ScriptFunction::TurnStartHook => "turn_start_hook",
         }
     }
 

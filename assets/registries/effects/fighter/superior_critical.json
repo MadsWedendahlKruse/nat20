@@ -1,7 +1,7 @@
 {
     "id": "nat20_core::effect.fighter.champion.superior_critical",
     "kind": "buff",
-    "description": "Your attack rolls with weapons and Unarmed Strikes can now score a Critical Hit on a roll of 18–20 on the d20",
+    "description": "Your attack rolls with weapons and Unarmed Strikes can now score a Critical Hit on a roll of 18-20 on the d20",
     "replaces": "nat20_core::effect.fighter.champion.improved_critical",
     "modifiers": [
         {

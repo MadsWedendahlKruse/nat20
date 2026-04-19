@@ -160,9 +160,19 @@ pub fn damage(
             .as_ref()
             .and_then(|(actor, _)| Some(actor));
 
-        let effects = systems::effects::take_effects(&mut game_state.world, target);
-        effects.death(&mut game_state.world, target, killer.cloned());
-        systems::effects::put_effects(&mut game_state.world, target, effects);
+        let death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
+            .values()
+            .filter_map(|instance| {
+                instance
+                    .effect()
+                    .on_death
+                    .clone()
+                    .map(|hook| (hook, instance.applier))
+            })
+            .collect();
+        for (hook, applier) in death_hooks {
+            hook(&mut game_state.world, target, killer.cloned(), applier);
+        }
 
         let temporary_effects = systems::effects::remove_temporary_effects(game_state, target);
 

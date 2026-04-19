@@ -4,7 +4,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::action::{ActionContext, ActionResult},
+        actions::action::ActionContext,
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
         },
@@ -14,7 +14,7 @@ use crate::{
         resource::ResourceAmountMap,
         time::TimeStep,
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::game_state::GameState,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -122,6 +122,43 @@ impl EffectManager {
         }
     }
 
+    /// Collect clones of all hook `Arc`s matching `get_hook`. Callers can then
+    /// drop the shared borrow on the world and invoke the hooks with `&mut GameState`
+    /// or `&mut World` without hitting a double-borrow. Any effects added by a hook
+    /// go directly into the world and are never overwritten.
+    pub fn collect_hooks<H: Clone>(
+        &self,
+        get_hook: impl Fn(&Effect) -> Option<&H>,
+    ) -> Vec<H> {
+        self.effects
+            .values()
+            .filter_map(|inst| get_hook(inst.effect()).cloned())
+            .collect()
+    }
+
+    /// Like `collect_hooks`, but for one-shot hooks that also need the `EffectInstance`
+    /// (e.g. `on_attacked`). Returns `(hook, instance)` pairs. One-shot instances are
+    /// marked for removal immediately as part of collection — consuming them is the act
+    /// of collecting them.
+    pub fn collect_one_shot_hooks_with_instance<H: Clone>(
+        &mut self,
+        get_hook: impl Fn(&Effect) -> Option<&H>,
+    ) -> Vec<(H, EffectInstance)> {
+        let mut result = Vec::new();
+        for inst in self.effects.values() {
+            if self.marked_for_removal.contains(&inst.instance_id) {
+                continue;
+            }
+            if let Some(hook) = get_hook(inst.effect()).cloned() {
+                if inst.one_shot {
+                    self.marked_for_removal.insert(inst.instance_id);
+                }
+                result.push((hook, inst.clone()));
+            }
+        }
+        result
+    }
+
     pub fn apply(&self, state: &mut GameState, entity: Entity, ctx: Option<&ActionContext>) {
         self.for_each(
             |effect| effect.on_apply.as_ref(),
@@ -171,22 +208,6 @@ impl EffectManager {
         );
     }
 
-    pub fn action(&self, world: &mut World, data: &ActionData) {
-        self.for_each(|effect| effect.on_action.as_ref(), |hook| hook(world, data));
-    }
-
-    pub fn action_result(
-        &self,
-        state: &mut GameState,
-        data: &ActionData,
-        results: &[ActionResult],
-    ) {
-        self.for_each(
-            |effect| effect.on_action_result.as_ref(),
-            |hook| hook(state, data, results),
-        );
-    }
-
     pub fn resource_cost(
         &self,
         world: &World,
@@ -213,13 +234,6 @@ impl EffectManager {
         );
     }
 
-    pub fn death(&self, world: &mut World, victim: Entity, killer: Option<Entity>) {
-        self.for_each_with_instance(
-            |effect| effect.on_death.as_ref(),
-            |hook, effect| hook(world, victim, killer, effect.applier),
-        );
-    }
-
     pub fn pre_damage_mitigation(
         &self,
         world: &World,
@@ -229,19 +243,6 @@ impl EffectManager {
         self.for_each_with_instance(
             |effect| effect.pre_damage_mitigation.as_ref(),
             |hook, inst| hook(world, inst, entity, result),
-        );
-    }
-
-    pub fn attacked(
-        &mut self,
-        world: &World,
-        victim: Entity,
-        attacker: Entity,
-        roll: &mut AttackRoll,
-    ) {
-        self.for_each_one_shot_with_instance(
-            |effect| effect.on_attacked.as_ref(),
-            |hook, inst| hook(world, inst, victim, attacker, roll),
         );
     }
 

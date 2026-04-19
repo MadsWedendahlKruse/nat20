@@ -3,21 +3,24 @@ use std::collections::HashMap;
 use rhai::{AST, Dynamic, Engine, Scope, exported_module, module_resolvers::FileModuleResolver};
 
 use crate::{
-    components::id::ScriptId,
+    components::{
+        id::ScriptId,
+        modifier::{ModifierSet, ModifierSource},
+    },
     registry::registry::REGISTRY_ROOT,
     scripts::{
         rhai::rhai_types,
         script::{Script, ScriptError, ScriptFunction},
         script_api::{
-            ScriptActionContext, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
-            ScriptActionPerformedView, ScriptActionResultView, ScriptActionView,
-            ScriptCommandBuffer, ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result,
-            ScriptDamageMitigationResult, ScriptDamageOutcomeView, ScriptDamageResolutionKindView,
+            ScriptActionConditionResolution, ScriptActionContext, ScriptActionKindResultView,
+            ScriptActionOutcomeBundleView, ScriptActionPerformedView, ScriptActionResultView,
+            ScriptActionView, ScriptCommandBuffer, ScriptD20CheckDCKind, ScriptD20CheckView,
+            ScriptD20Result, ScriptDamageMitigationResult, ScriptDamageOutcomeView,
             ScriptDamageRollResult, ScriptEffectView, ScriptEntity, ScriptEntityView,
             ScriptEventView, ScriptLoadoutView, ScriptMovingOutOfReachView,
             ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
-            ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView,
-            ScriptSavingThrow,
+            ScriptReactionPlan, ScriptReactionTriggerContext, ScriptResourceCost,
+            ScriptResourceView, ScriptSavingThrow,
         },
         script_engine::ScriptEngine,
     },
@@ -33,6 +36,8 @@ impl RhaiScriptEngine {
         let mut engine = Engine::new();
 
         engine
+            .build_type::<ModifierSet>()
+            .build_type::<ModifierSource>()
             .build_type::<ScriptActionContext>()
             .build_type::<ScriptActionView>()
             .build_type::<ScriptActionResultView>()
@@ -46,7 +51,7 @@ impl RhaiScriptEngine {
             .build_type::<ScriptDamageMitigationResult>()
             .build_type::<ScriptDamageOutcomeView>()
             .build_type::<ScriptDamageRollResult>()
-            .build_type::<ScriptDamageResolutionKindView>()
+            .build_type::<ScriptActionConditionResolution>()
             .build_type::<ScriptEffectView>()
             .build_type::<ScriptEntity>()
             .build_type::<ScriptEntityView>()
@@ -69,6 +74,14 @@ impl RhaiScriptEngine {
         engine.register_static_module(
             "SavingThrow",
             exported_module!(rhai_types::saving_throw_module).into(),
+        );
+        engine.register_static_module(
+            "ModifierSet",
+            exported_module!(rhai_types::modifier_set_module).into(),
+        );
+        engine.register_static_module(
+            "ModifierSource",
+            exported_module!(rhai_types::modifier_source_module).into(),
         );
 
         let resolver = FileModuleResolver::new_with_path(&*REGISTRY_ROOT);
@@ -301,6 +314,25 @@ impl ScriptEngine for RhaiScriptEngine {
                 &ast,
                 ScriptFunction::PostDamageMitigationHook.fn_name(),
                 (entity.clone(), damage_mitigation_result.clone()),
+            )
+            .map_err(|e| ScriptError::RuntimeError(format!("Rhai error: {}", e)))?;
+        Ok(())
+    }
+
+    fn evaluate_turn_start_hook(
+        &mut self,
+        script: &Script,
+        entity_view: &ScriptEntityView,
+        commands: &ScriptCommandBuffer,
+    ) -> Result<(), ScriptError> {
+        let ast = self.get_ast(script).cloned()?;
+        let mut scope = Scope::new();
+        self.engine
+            .call_fn::<()>(
+                &mut scope,
+                &ast,
+                ScriptFunction::TurnStartHook.fn_name(),
+                (entity_view.clone(), commands.clone()),
             )
             .map_err(|e| ScriptError::RuntimeError(format!("Rhai error: {}", e)))?;
         Ok(())

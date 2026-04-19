@@ -261,6 +261,52 @@ pub mod creatures {
                         "nat20_core",
                         "class.fighter",
                     ))),
+                    // Level 14
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Constitution,
+                        2,
+                    )])),
+                    // Level 15
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    // Level 16
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    // Level 14
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Constitution,
+                        2,
+                    )])),
+                    // Level 17
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
+                    // Level 18
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.fighter",
+                    ))),
                 ],
             );
 

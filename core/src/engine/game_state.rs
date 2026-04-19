@@ -11,7 +11,7 @@ use crate::{
             action::{ActionKindResult, ReactionResult},
             targeting::EntityFilter,
         },
-        activity::{Activity, ActivityError, ActivityState},
+        activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
         speed::Speed,
         time::{TimeMode, TimeStep},
     },
@@ -26,7 +26,7 @@ use crate::{
             EventListener, EventLog, ListenerSource,
         },
         geometry::WorldGeometry,
-        interaction::{InteractionEngine, InteractionScopeId, InteractionSession},
+        interaction::{InteractionEngine, InteractionScopeId, InteractionSession, PendingEvent},
     },
     entities::{
         character::CreatureTag,
@@ -322,7 +322,7 @@ impl GameState {
         scope: InteractionScopeId,
         prompt_id: ActionPromptId,
     ) -> Result<(), ActionError> {
-        let (all_decisions_ready, decisions) = {
+        let (all_decisions_ready, decisions, trigger_actor) = {
             let session = self.interaction_engine.session(scope);
             let prompt = session
                 .and_then(|s| s.pending_prompts().iter().find(|p| p.id == prompt_id))
@@ -342,19 +342,34 @@ impl GameState {
                 .actors()
                 .iter()
                 .all(|a| decisions_map.contains_key(a));
-            (all_actors_submitted, decisions_map)
+
+            let trigger_actor = match &prompt.kind {
+                ActionPromptKind::Reactions { event, .. } => event.actor(),
+                ActionPromptKind::Action { .. } => None,
+            };
+
+            (all_actors_submitted, decisions_map, trigger_actor)
         };
 
         if !all_decisions_ready {
             return Ok(());
         }
 
+        // Resume all the entities that were waiting for this prompt to resolve
+        let mut entities = decisions.keys().cloned().collect::<Vec<_>>();
+        if let Some(trigger) = trigger_actor {
+            entities.push(trigger);
+        }
+        for entity in entities {
+            systems::actions::resume_action(self, entity, ActivityPauseReason::Reaction);
+        }
+
         // Convert decisions → actions / reactions and validate/execute
-        for (_actor, decision) in decisions {
+        for (entity, decision) in &decisions {
             match &decision.kind {
                 ActionDecisionKind::Action { action } => {
                     // Normal action flow: validate + enqueue ActionRequested
-                    self.validate_action(action, true)?;
+                    self.validate_action(action, false)?;
                     self.process_event_scoped(
                         scope,
                         Event::new(EventKind::ActionRequested {
@@ -364,14 +379,17 @@ impl GameState {
                 }
 
                 ActionDecisionKind::Reaction { choice, .. } => {
-                    // No reaction chosen – skip
+                    // Declined – reactor is no longer a blocker on any pending event.
                     let Some(reaction_data) = choice else {
+                        self.interaction_engine
+                            .session_mut(scope)
+                            .clear_blocker(*entity);
                         continue;
                     };
 
                     // Validate reaction as if it were an action:
                     let action_view = ActionData::from(reaction_data);
-                    self.validate_action(&action_view, true)?;
+                    self.validate_action(&action_view, false)?;
                     self.process_event_scoped(
                         scope,
                         Event::new(EventKind::ReactionRequested {
@@ -379,15 +397,17 @@ impl GameState {
                         }),
                     );
 
-                    // If perform_reaction started an activity on the reactor,
-                    // track it so ready_to_resume() blocks until it completes.
+                    // If perform_reaction spawned an activity on the reactor,
+                    // they stay in `blocked_by` until ActivityCompleted clears
+                    // them. Otherwise (instant modifier / decline-equivalent)
+                    // we can clear them now.
                     let reactor = reaction_data.reactor.id();
-                    if systems::helpers::get_component::<ActivityState>(&self.world, reactor)
+                    if !systems::helpers::get_component::<ActivityState>(&self.world, reactor)
                         .is_acting()
                     {
                         self.interaction_engine
                             .session_mut(scope)
-                            .add_pending_reactor(reactor);
+                            .clear_blocker(reactor);
                     }
                 }
             }
@@ -436,7 +456,18 @@ impl GameState {
         if let Some(actor) = event.actor()
             && let Some(reaction_options) = self.collect_reactions(actor, &event)
         {
-            // Announce and prompt
+            // Pause everyone involved in the reaction
+            let mut entities = reaction_options.keys().cloned().collect::<Vec<_>>();
+            entities.push(actor);
+            for entity in entities {
+                systems::actions::pause_action(self, entity, ActivityPauseReason::Reaction);
+            }
+
+            // Announce and prompt. The set of potential reactors is exactly the
+            // initial `blocked_by`: each reactor stays on the event until their
+            // decision resolves (cleared if decline / instant) or their chosen
+            // reaction activity completes.
+            let blocked_by: HashSet<Entity> = reaction_options.keys().copied().collect();
             let session = self.interaction_engine.session_mut(scope);
             session.queue_prompt(
                 ActionPrompt::new(ActionPromptKind::Reactions {
@@ -445,10 +476,7 @@ impl GameState {
                 }),
                 true,
             );
-            session.queue_event(event, true);
-
-            systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor).pause();
-            self.set_projectiles_paused_for_entity(actor, true);
+            session.queue_pending_event(PendingEvent::new(event, blocked_by), true);
 
             return;
         }
@@ -511,35 +539,44 @@ impl GameState {
     }
 
     pub(crate) fn resume_pending_events_if_ready(&mut self, scope: InteractionScopeId) {
-        let (event, actor, pending_phase) = {
-            let session = self.interaction_engine.session_mut(scope);
-            if !session.ready_to_resume() {
-                return;
-            }
-
-            let Some(event) = session.pending_events_mut().pop_front() else {
+        loop {
+            let event_opt = {
+                let session = self.interaction_engine.session_mut(scope);
+                let Some(idx) = session.first_drainable_event() else {
+                    return;
+                };
+                session.pending_events_mut().remove(idx).map(|pe| pe.event)
+            };
+            let Some(event) = event_opt else {
                 return;
             };
 
-            let actor = event.actor();
+            self.advance_event(event, true);
 
-            (event, actor, session.take_pending_phase())
-        };
-
-        self.advance_event(event, true);
-
-        if let Some(actor) = actor {
-            systems::helpers::get_component_mut::<ActivityState>(&mut self.world, actor).resume();
-            self.set_projectiles_paused_for_entity(actor, false);
+            // An event advance may have filled parked phases' slots via the
+            // response callback. Drive any phases that are now ready to apply.
+            self.drain_ready_pending_phases(scope);
         }
+    }
 
-        if let Some((entity, mut phase)) = pending_phase {
+    fn drain_ready_pending_phases(&mut self, scope: InteractionScopeId) {
+        loop {
+            let next = {
+                let session = self.interaction_engine.session_mut(scope);
+                session.pending_phases_mut().pop_front()
+            };
+            let Some((entity, mut phase)) = next else {
+                return;
+            };
+
             phase.perform(self);
+
             if !phase.is_applied() {
-                let scope = self.scope_for_entity(entity);
+                let entity_scope = self.scope_for_entity(entity);
                 self.interaction_engine
-                    .session_mut(scope)
-                    .set_pending_phase(entity, phase);
+                    .session_mut(entity_scope)
+                    .queue_phase(entity, phase, true);
+                return;
             }
         }
     }
@@ -609,8 +646,7 @@ impl GameState {
     pub fn validate_action(
         &mut self,
         action: &ActionData,
-        // TODO: Could also be called simulate?
-        spend_resources: bool,
+        simulate: bool,
     ) -> Result<(), ActionError> {
         let ActionData {
             instance_id: _,
@@ -632,9 +668,11 @@ impl GameState {
         )
         .map_err(|error| ActionError::Usability(error))?;
 
-        if spend_resources {
+        if !simulate {
             systems::resources::spend(&mut self.world, actor.id(), resource_cost)
                 .map_err(|error| ActionError::Resource(error))?;
+
+            systems::spells::break_concentration_if_spell(self, action);
         }
 
         Ok(())
@@ -654,7 +692,7 @@ impl GameState {
                     mover.id(),
                 );
                 if *continue_movement {
-                    state.resume();
+                    state.resume_movement();
                 } else {
                     state.set_idle();
                 }
@@ -669,9 +707,11 @@ impl GameState {
             }
 
             EventKind::ActionPerformed { action, results } => {
-                let effects = systems::effects::take_effects(&mut self.world, action.actor.id());
-                effects.action_result(self, action, results);
-                systems::effects::put_effects(&mut self.world, action.actor.id(), effects);
+                let hooks = systems::effects::effects(&self.world, action.actor.id())
+                    .collect_hooks(|effect| effect.on_action_result.as_ref());
+                for hook in hooks {
+                    hook(self, action, results);
+                }
 
                 for action_result in results {
                     match &action_result.kind {
@@ -694,8 +734,12 @@ impl GameState {
                                     );
 
                                     if let Some(actor) =
-                                        session.pending_events().iter().find_map(|e| {
-                                            if e.id == event.id { e.actor() } else { None }
+                                        session.pending_events().iter().find_map(|pe| {
+                                            if pe.event.id == event.id {
+                                                pe.event.actor()
+                                            } else {
+                                                None
+                                            }
                                         })
                                     {
                                         systems::resources::restore(
@@ -703,7 +747,9 @@ impl GameState {
                                             actor,
                                             resources_refunded,
                                         );
-                                        session.pending_events_mut().retain(|e| e.id != event.id);
+                                        session
+                                            .pending_events_mut()
+                                            .retain(|pe| pe.event.id != event.id);
                                     } else {
                                         panic!(
                                             "Attempted to cancel event which is not pending: {:#?}",
@@ -721,7 +767,11 @@ impl GameState {
                                     );
                                     (modification)(
                                         &self.world,
-                                        &mut session.pending_events_mut().front_mut().unwrap(),
+                                        &mut session
+                                            .pending_events_mut()
+                                            .front_mut()
+                                            .unwrap()
+                                            .event,
                                     );
                                 }
 
@@ -894,23 +944,5 @@ impl GameState {
         }
         self.resting.remove(&entity);
         Ok(())
-    }
-
-    // TODO: Not a huge fan of having these projectile specific functions in the main GameState impl
-    fn set_projectiles_paused_for_entity(&mut self, entity: Entity, paused: bool) {
-        let pairs: Vec<(Entity, Entity)> = self
-            .world
-            .query::<&Projectile>()
-            .iter()
-            .map(|(entity, projectile)| (entity, projectile.delivery_phase.action.actor.id()))
-            .collect();
-        debug!("Found projectiles to check for pausing: {:?}", pairs);
-        for (proj_entity, actor) in pairs {
-            if actor == entity
-                && let Ok(mut projectile) = self.world.get::<&mut Projectile>(proj_entity)
-            {
-                projectile.paused = paused;
-            }
-        }
     }
 }

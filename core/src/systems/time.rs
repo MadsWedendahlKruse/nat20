@@ -6,14 +6,12 @@ use tracing::{debug, error, info};
 
 use crate::{
     components::{
-        activity::ActivityState,
         health::hit_points::HitPoints,
         id::EntityIdentifier,
         resource::RechargeRule,
         time::{EntityClock, TimeMode, TimeStep},
     },
     engine::{
-        action_prompt::ActionError,
         event::{Event, EventKind},
         game_state::GameState,
     },
@@ -83,10 +81,16 @@ pub enum RestError {
     DifferentRestKinds { entities: HashMap<Entity, RestKind> },
 }
 
-pub fn on_turn_start(world: &mut World, entity: Entity) {
+pub fn on_turn_start(game_state: &mut GameState, entity: Entity) {
     debug!("Starting turn for entity {:?}", entity);
-    systems::resources::recharge(world, entity, &RechargeRule::Turn);
-    systems::movement::recharge_movement(world, entity);
+    systems::resources::recharge(&mut game_state.world, entity, &RechargeRule::Turn);
+    systems::movement::recharge_movement(&mut game_state.world, entity);
+
+    let hooks = systems::effects::effects(&game_state.world, entity)
+        .collect_hooks(|effect| effect.on_turn_start.as_ref());
+    for hook in hooks {
+        hook(game_state, entity);
+    }
 }
 
 pub fn on_turn_end(_world: &mut World, _entity: Entity) {

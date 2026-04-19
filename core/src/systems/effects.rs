@@ -5,7 +5,10 @@ use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext},
         effects::{
-            effect::{EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectsMap},
+            effect::{
+                EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectLifetimeTemplate,
+                EffectsMap,
+            },
             effect_manager::EffectManager,
         },
         id::{EffectId, EntityIdentifier},
@@ -25,20 +28,6 @@ pub fn effects(world: &World, entity: Entity) -> Ref<'_, EffectManager> {
 
 pub fn effects_mut(world: &mut World, entity: Entity) -> RefMut<'_, EffectManager> {
     systems::helpers::get_component_mut::<EffectManager>(world, entity)
-}
-
-#[must_use]
-pub fn take_effects(world: &mut World, entity: Entity) -> EffectManager {
-    world
-        .get::<&mut EffectManager>(entity)
-        .map(|mut mgr| std::mem::take(&mut *mgr))
-        .unwrap_or_default()
-}
-
-pub fn put_effects(world: &mut World, entity: Entity, effects: EffectManager) {
-    if let Ok(mut mgr) = world.get::<&mut EffectManager>(entity) {
-        *mgr = effects;
-    }
 }
 
 pub fn add_effect_template(
@@ -93,9 +82,20 @@ pub fn add_permanent_effect(
     source: &ModifierSource,
     context: Option<&ActionContext>,
 ) {
-    let effect_instance = EffectInstance::permanent(effect_id.clone(), source.clone());
-    apply_and_replace(game_state, entity, &effect_instance, context);
-    effects_mut(&mut game_state.world, entity).insert(effect_instance);
+    add_effect_template(
+        game_state,
+        entity,
+        entity,
+        source.clone(),
+        &EffectInstanceTemplate {
+            effect_id,
+            lifetime: EffectLifetimeTemplate::Permanent,
+            end_condition: None,
+            one_shot: false,
+        },
+        context,
+        ActionConditionResolution::Unconditional,
+    );
 }
 
 pub fn add_permanent_effects(
@@ -121,8 +121,8 @@ fn add_effect_instance(
 
     if let Some(instance) = effect_instances.remove(&instance_id) {
         debug!(
-            "Adding effect instance (id: {:?}) {:?} to entity {:?}",
-            instance_id, instance, entity
+            "Adding effect instance to entity {:?}: {:?} ",
+            entity, instance,
         );
         replaced_effects.extend(apply_and_replace(game_state, entity, &instance, context));
         for child_instance in &instance.children {

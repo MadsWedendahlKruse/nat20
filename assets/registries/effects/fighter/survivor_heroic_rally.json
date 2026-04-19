@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.fighter.champion.survivor.heroic_rally",
+    "kind": "buff",
+    "description": "At the start of each of your turns, you regain Hit Points equal to 5 plus your Constitution modifier if you are Bloodied and have at least 1 Hit Point.",
+    "on_turn_start": [
+        {
+            "script": "nat20_core::script.effect.fighter.survivor_heroic_rally"
+        }
+    ]
+}

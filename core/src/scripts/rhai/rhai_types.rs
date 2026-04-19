@@ -1,14 +1,17 @@
 use rhai::{Array, CustomType, TypeBuilder, plugin::*};
 
 use crate::{
-    components::id::ResourceId,
+    components::{
+        id::ResourceId,
+        modifier::{Modifiable, ModifierSet, ModifierSource},
+    },
     scripts::script_api::{
-        ScriptActionContext, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
-        ScriptActionPerformedView, ScriptActionResultView, ScriptActionView, ScriptCommandBuffer,
-        ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result, ScriptDamageMitigationResult,
-        ScriptDamageOutcomeView, ScriptDamageResolutionKindView, ScriptDamageRollResult,
-        ScriptEffectView, ScriptEntity, ScriptEntityView, ScriptEventRef, ScriptEventView,
-        ScriptLoadoutView, ScriptMovingOutOfReachView, ScriptOptionalEntityView,
+        ScriptActionConditionResolution, ScriptActionContext, ScriptActionKindResultView,
+        ScriptActionOutcomeBundleView, ScriptActionPerformedView, ScriptActionResultView,
+        ScriptActionView, ScriptCommandBuffer, ScriptD20CheckDCKind, ScriptD20CheckView,
+        ScriptD20Result, ScriptDamageMitigationResult, ScriptDamageOutcomeView,
+        ScriptDamageRollResult, ScriptEffectView, ScriptEntity, ScriptEntityView, ScriptEventRef,
+        ScriptEventView, ScriptLoadoutView, ScriptMovingOutOfReachView, ScriptOptionalEntityView,
         ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
         ScriptReactionTriggerContext, ScriptResourceCost, ScriptResourceView, ScriptSavingThrow,
     },
@@ -219,7 +222,7 @@ impl CustomType for ScriptActionView {
     }
 }
 
-impl CustomType for ScriptDamageResolutionKindView {
+impl CustomType for ScriptActionConditionResolution {
     fn build(mut builder: TypeBuilder<Self>) {
         builder
             .with_name("DamageResolutionKindView")
@@ -310,11 +313,16 @@ impl CustomType for ScriptCommandBuffer {
             .with_name("CommandBuffer")
             .with_fn(
                 "apply_effect",
-                |s: &mut Self, applier_id: u64, target_id: u64, effect_id: String| {
+                |s: &mut Self,
+                 applier_id: u64,
+                 target_id: u64,
+                 effect_id: String,
+                 action: ScriptActionPerformedView| {
                     s.apply_effect(
-                        ScriptEntity { id: applier_id },
-                        ScriptEntity { id: target_id },
+                        applier_id.into(),
+                        target_id.into(),
                         &effect_id.parse().expect("Failed to parse EffectId"),
+                        action,
                     );
                 },
             )
@@ -325,16 +333,18 @@ impl CustomType for ScriptCommandBuffer {
                  target_id: u64,
                  effect_id: String,
                  turns: i64,
-                 one_shot: bool| {
+                 one_shot: bool,
+                 action: ScriptActionPerformedView| {
                     if turns <= 0 {
                         panic!("turns must be greater than 0");
                     }
                     s.apply_effect_for_turns(
-                        ScriptEntity { id: applier_id },
-                        ScriptEntity { id: target_id },
+                        applier_id.into(),
+                        target_id.into(),
                         &effect_id.parse().expect("Failed to parse EffectId"),
                         turns as u32,
                         one_shot,
+                        action,
                     );
                 },
             )
@@ -342,9 +352,19 @@ impl CustomType for ScriptCommandBuffer {
                 "remove_effect",
                 |s: &mut Self, target_id: u64, effect_id: String| {
                     s.remove_effect(
-                        ScriptEntity { id: target_id },
+                        target_id.into(),
                         &effect_id.parse().expect("Failed to parse EffectId"),
                     );
+                },
+            )
+            .with_fn(
+                "heal",
+                |s: &mut Self,
+                 target_id: u64,
+                 dice: String,
+                 bonus: ModifierSet,
+                 source: ModifierSource| {
+                    s.heal(target_id.into(), dice, bonus, source);
                 },
             );
     }
@@ -505,7 +525,18 @@ impl CustomType for ScriptEntityView {
                 "resources",
                 |s: &mut Self| s.resources.clone(),
                 |s: &mut Self, v: ScriptResourceView| s.resources = v,
-            );
+            )
+            .with_get("hp_current", |s: &mut Self| s.hp_current as i64)
+            .with_get("hp_max", |s: &mut Self| s.hp_max as i64)
+            .with_fn("ability_modifier", |s: &mut Self, name: String| {
+                s.ability_scores
+                    .ability_modifier(
+                        &name
+                            .parse()
+                            .expect("Invalid ability name passed to ability_modifier()"),
+                    )
+                    .total() as i64
+            });
     }
 }
 
@@ -546,5 +577,56 @@ impl CustomType for ScriptReactionBodyContext {
             .with_name("ReactionBodyContext")
             .with_get("reactor", |s: &mut Self| s.reactor.id)
             .with_get("event", |s: &mut Self| s.event.clone());
+    }
+}
+
+#[export_module]
+pub mod modifier_source_module {
+    use super::*;
+
+    pub fn ability(ability_name: String) -> ModifierSource {
+        ModifierSource::Ability(
+            ability_name
+                .parse()
+                .expect("Invalid ability name passed to modifier_source.ability()"),
+        )
+    }
+
+    pub fn base() -> ModifierSource {
+        ModifierSource::Base
+    }
+
+    pub fn effect(effect_id: String) -> ModifierSource {
+        ModifierSource::Effect(effect_id.parse().expect("Failed to parse EffectId"))
+    }
+}
+
+impl CustomType for ModifierSource {
+    fn build(mut builder: TypeBuilder<Self>) {
+        builder.with_name("ModifierSource");
+    }
+}
+
+#[export_module]
+pub mod modifier_set_module {
+    use super::*;
+
+    pub fn empty() -> ModifierSet {
+        ModifierSet::new()
+    }
+
+    pub fn from(source: ModifierSource, value: i64) -> ModifierSet {
+        ModifierSet::from(source, value as i32)
+    }
+}
+
+impl CustomType for ModifierSet {
+    fn build(mut builder: TypeBuilder<Self>) {
+        builder.with_name("ModifierSet").with_fn(
+            "add_modifier",
+            |s: &mut Self, source: ModifierSource, value: i64| {
+                s.add_modifier(source, value as i32);
+            },
+        );
     }
 }

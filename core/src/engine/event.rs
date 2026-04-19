@@ -13,9 +13,11 @@ use crate::{
             targeting::TargetInstance,
         },
         damage::DamageRollResult,
+        dice::DiceSetRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
         id::{EffectId, EntityIdentifier},
+        modifier::ModifierSource,
         spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
@@ -23,7 +25,6 @@ use crate::{
         action_prompt::{ActionData, ReactionData},
         encounter::EncounterId,
         game_state::GameState,
-        geometry::WorldPath,
     },
     systems::{
         d20::{D20CheckDCKind, D20ResultKind},
@@ -85,6 +86,7 @@ impl Event {
             EventKind::LostConcentration { entity, .. } => Some(entity.id()),
             EventKind::GainedEffect { entity, .. } => Some(entity.id()),
             EventKind::LostEffect { entity, .. } => Some(entity.id()),
+            EventKind::Healing { entity, .. } => Some(entity.id()),
         }
     }
 
@@ -109,7 +111,6 @@ impl Event {
     }
 
     pub fn action_performed_event(
-        game_state: &GameState,
         action_data: &ActionData,
         results: Vec<(EntityIdentifier, ActionKindResult)>,
     ) -> Event {
@@ -195,6 +196,14 @@ pub enum EventKind {
     LostEffect {
         entity: EntityIdentifier,
         effect: EffectId,
+    },
+
+    // TODO: What's the best way to do this? Seems like we in general need to create
+    // more specific events for things otherwise usually happens during actions
+    Healing {
+        entity: EntityIdentifier,
+        amount: DiceSetRollResult,
+        source: ModifierSource,
     },
 }
 

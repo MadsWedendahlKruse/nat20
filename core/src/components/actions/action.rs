@@ -72,9 +72,11 @@ impl Action {
         game_state: &mut GameState,
         action_data: &ActionData,
     ) -> Vec<ActionPhase> {
-        let effects = systems::effects::take_effects(&mut game_state.world, action_data.actor.id());
-        effects.action(&mut game_state.world, action_data);
-        systems::effects::put_effects(&mut game_state.world, action_data.actor.id(), effects);
+        let hooks = systems::effects::effects(&game_state.world, action_data.actor.id())
+            .collect_hooks(|effect| effect.on_action.as_ref());
+        for hook in hooks {
+            hook(&mut game_state.world, action_data);
+        }
 
         self.kind.perform(game_state, action_data)
     }
@@ -512,6 +514,7 @@ pub struct EffectOutcome {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HealingOutcome {
+    // TODO: Dedicated type for healing rolls?
     pub healing: DiceSetRollResult,
     pub new_life_state: Option<LifeState>,
 }

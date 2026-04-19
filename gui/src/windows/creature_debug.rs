@@ -1,9 +1,12 @@
+use std::u32;
+
 use hecs::Entity;
 use nat20_core::{
     components::{
         ai::PlayerControlledTag,
         d20::D20CheckDC,
-        modifier::{ModifierSet, ModifierSource},
+        damage::DamageRollResult,
+        modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::RechargeRule,
         saving_throw::SavingThrowKind,
         skill::Skill,
@@ -19,13 +22,12 @@ use crate::render::ui::utils::{
     ImguiRenderableMutWithContext, render_uniform_buttons_with_padding,
 };
 
-pub enum CheckKind {
-    SavingThrow,
-    SkillCheck,
-}
-
 pub enum CreatureDebugState {
     MainMenu,
+    Health {
+        healing_amount: u32,
+        damage_amount: i32,
+    },
     Check {
         kind: CheckKind,
         dc_value: i32,
@@ -36,6 +38,11 @@ pub enum CreatureDebugState {
         starting_pose: Pose,
         target_pose: Pose,
     },
+}
+
+pub enum CheckKind {
+    SavingThrow,
+    SkillCheck,
 }
 
 pub struct CreatureDebugWindow {
@@ -60,7 +67,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     ui,
                     [
                         "Despawn",
-                        "Heal Full",
+                        "Health",
                         "Restore All Resources",
                         "Clock (Advance Time)",
                         "Toggle Player Control",
@@ -76,8 +83,10 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                             ui.close_current_popup();
                         }
                         1 => {
-                            systems::health::heal_full(&mut game_state.world, self.creature);
-                            ui.close_current_popup();
+                            self.state = CreatureDebugState::Health {
+                                healing_amount: 0,
+                                damage_amount: 0,
+                            };
                         }
                         2 => {
                             systems::resources::recharge(
@@ -119,6 +128,42 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                         _ => unreachable!(),
                     }
                 }
+            }
+
+            CreatureDebugState::Health {
+                healing_amount,
+                damage_amount,
+            } => {
+                let width_token = ui.push_item_width(35.0);
+
+                ui.input_scalar("Healing Amount", healing_amount)
+                    .auto_select_all(true)
+                    .enter_returns_true(true)
+                    .build();
+                ui.same_line();
+                if ui.button("Heal") {
+                    systems::health::heal(&mut game_state.world, self.creature, *healing_amount);
+                }
+
+                ui.input_int("Damage Amount", damage_amount)
+                    .auto_select_all(true)
+                    .enter_returns_true(true)
+                    .build();
+                ui.same_line();
+                if ui.button("Damage") {
+                    let mut damage_roll_result = DamageRollResult::default();
+                    damage_roll_result.components[0]
+                        .result
+                        .modifiers
+                        .add_modifier(
+                            ModifierSource::Custom("Debug Damage".to_string()),
+                            *damage_amount,
+                        );
+                    damage_roll_result.recalculate_total();
+                    systems::health::damage(game_state, self.creature, &damage_roll_result, None);
+                }
+
+                width_token.end();
             }
 
             CreatureDebugState::Check { kind, dc_value } => match kind {
@@ -218,7 +263,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                                 },
                             );
                             // TODO: Temporary, should be handled in advance_time
-                            systems::time::on_turn_start(&mut game_state.world, self.creature);
+                            systems::time::on_turn_start(game_state, self.creature);
                         }
                         1 | 2 => {
                             let rest_kind = match index {

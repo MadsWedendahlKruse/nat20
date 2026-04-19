@@ -40,6 +40,7 @@ pub type PostDamageMitigationHook =
     Arc<dyn Fn(&World, Entity, &mut DamageMitigationResult) + Send + Sync>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)
 pub type DeathHook = Arc<dyn Fn(&mut World, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
+pub type TurnStartHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct D20CheckHooks {

@@ -47,20 +47,14 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                     for entity in entities {
                         ui.text(format!("Entity {:?}", entity));
 
-                        let mut activity_state = systems::helpers::get_component_mut::<ActivityState>(
+                        let activity_state = systems::helpers::get_component_mut::<ActivityState>(
                             &mut game_state.world,
                             entity,
                         );
 
-                        if activity_state.is_paused() {
-                            if ui.button("Resume") {
-                                activity_state.resume();
-                            }
-                        } else {
-                            if ui.button("Pause") {
-                                activity_state.pause();
-                            }
-                        }
+                        ui.text(format!("Activity State: {:#?}", activity_state));
+
+                        ui.separator();
                     }
                 }
                 if ui.collapsing_header("Interaction Engine", TreeNodeFlags::empty()) {

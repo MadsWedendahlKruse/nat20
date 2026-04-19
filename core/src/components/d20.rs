@@ -75,6 +75,7 @@ impl AdvantageTracker {
 
 pub static D20_CRITICAL_SUCCESS: u8 = 20;
 pub static D20_CRITICAL_FAILURE: u8 = 1;
+pub static D20_MIN_CRIT_THRESHOLD: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +92,7 @@ pub struct D20Check {
     proficiency: Proficiency,
     advantage_tracker: AdvantageTracker,
     forced_outcome: Option<(ModifierSource, D20CheckOutcome)>,
+    crit_threshold_reduction: ModifierSet,
 }
 
 impl D20Check {
@@ -100,7 +102,32 @@ impl D20Check {
             proficiency,
             advantage_tracker: AdvantageTracker::new(),
             forced_outcome: None,
+            crit_threshold_reduction: ModifierSet::new(),
         }
+    }
+
+    pub fn crit_threshold(&self) -> u8 {
+        let reduction = self.crit_threshold_reduction.total().max(0) as u8;
+        D20_CRITICAL_SUCCESS
+            .saturating_sub(reduction)
+            .max(D20_MIN_CRIT_THRESHOLD)
+    }
+
+    pub fn add_crit_threshold_reduction(&mut self, source: ModifierSource, reduction: u8) {
+        self.crit_threshold_reduction
+            .add_modifier(source, reduction as i32);
+    }
+
+    pub fn remove_crit_threshold_reduction(&mut self, source: &ModifierSource) {
+        self.crit_threshold_reduction.remove_modifier(source);
+    }
+
+    pub fn crit_threshold_reduction(&self) -> &ModifierSet {
+        &self.crit_threshold_reduction
+    }
+
+    pub fn crit_threshold_reduction_mut(&mut self) -> &mut ModifierSet {
+        &mut self.crit_threshold_reduction
     }
 
     pub fn advantage_tracker(&self) -> &AdvantageTracker {
@@ -189,7 +216,7 @@ impl D20Check {
             RollMode::Disadvantage => rolls.iter().min().unwrap().clone(),
         };
 
-        let outcome = if selected_roll == D20_CRITICAL_SUCCESS {
+        let outcome = if selected_roll >= self.crit_threshold() {
             Some(D20CheckOutcome::CriticalSuccess)
         } else if selected_roll == D20_CRITICAL_FAILURE {
             Some(D20CheckOutcome::CriticalFailure)
@@ -416,6 +443,20 @@ where
 
     pub fn clear_forced_outcome(&mut self, key: &K) {
         self.get_mut(key).clear_forced_outcome();
+    }
+
+    pub fn add_crit_threshold_reduction(
+        &mut self,
+        key: &K,
+        source: ModifierSource,
+        reduction: u8,
+    ) {
+        self.get_mut(key)
+            .add_crit_threshold_reduction(source, reduction);
+    }
+
+    pub fn remove_crit_threshold_reduction(&mut self, key: &K, source: &ModifierSource) {
+        self.get_mut(key).remove_crit_threshold_reduction(source);
     }
 
     pub fn ability(&self, key: &K) -> Option<Ability> {

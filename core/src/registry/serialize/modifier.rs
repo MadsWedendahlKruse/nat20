@@ -59,11 +59,52 @@ macro_rules! impl_display_roundtrip_spec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum D20Modifier {
     Advantage(AdvantageType),
     Flat(i32),
     ForceOutcome(D20CheckOutcome),
+    CritThreshold(u8),
 }
+
+impl Display for D20Modifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            D20Modifier::Advantage(a) => write!(f, "{}", serde_plain::to_string(a).unwrap()),
+            D20Modifier::Flat(n) => {
+                if *n >= 0 {
+                    write!(f, "+{}", n)
+                } else {
+                    write!(f, "{}", n)
+                }
+            }
+            D20Modifier::ForceOutcome(o) => {
+                write!(f, "{}", serde_plain::to_string(o).unwrap())
+            }
+            D20Modifier::CritThreshold(n) => write!(f, "crit(-{})", n),
+        }
+    }
+}
+
+impl FromStr for D20Modifier {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let s = input.trim().to_lowercase();
+
+        if s.starts_with("crit(-") && s.ends_with(')') {
+            let inner = &s[6..s.len() - 1];
+            let n: u8 = inner
+                .parse()
+                .map_err(|_| format!("Invalid crit threshold in '{}'", input))?;
+            return Ok(D20Modifier::CritThreshold(n));
+        }
+
+        parse_d20_modifier(&s, input)
+    }
+}
+
+impl_display_roundtrip_spec!(D20Modifier);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -101,7 +142,7 @@ where
             vec![parse_plain_enum(check_str, "check kind", &normalized)?]
         };
 
-        let modifier = parse_d20_modifier(modifier_str, &normalized)?;
+        let modifier = D20Modifier::from_str(modifier_str)?;
 
         Ok(D20CheckModifierProvider {
             raw: normalized,
@@ -220,62 +261,6 @@ impl FromStr for DamageResistanceProvider {
 }
 
 impl_string_backed_spec!(DamageResistanceProvider);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub enum AttackRollModifier {
-    FlatBonus(i32),
-    Advantage(AdvantageType),
-    CritThreshold(u8),
-}
-
-impl Display for AttackRollModifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AttackRollModifier::FlatBonus(bonus) => {
-                if *bonus >= 0 {
-                    write!(f, "+{}", bonus)
-                } else {
-                    write!(f, "{}", bonus)
-                }
-            }
-            AttackRollModifier::Advantage(advantage) => {
-                write!(f, "{}", serde_plain::to_string(advantage).unwrap())
-            }
-            AttackRollModifier::CritThreshold(modifier) => {
-                write!(f, "crit(-{})", modifier)
-            }
-        }
-    }
-}
-
-impl FromStr for AttackRollModifier {
-    type Err = String;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let normalized = normalize_spec_string(input);
-
-        if let Ok(advantage) = serde_plain::from_str::<AdvantageType>(&normalized) {
-            return Ok(AttackRollModifier::Advantage(advantage));
-        }
-
-        if normalized.starts_with("crit(-") && normalized.ends_with(')') {
-            let inner = &normalized[6..normalized.len() - 1];
-            let threshold: u8 = inner
-                .parse()
-                .map_err(|_| format!("Invalid crit threshold in '{}'", input))?;
-            return Ok(AttackRollModifier::CritThreshold(threshold));
-        }
-
-        let bonus: i32 = normalized
-            .parse()
-            .map_err(|_| format!("Invalid flat bonus in '{}'", input))?;
-
-        Ok(AttackRollModifier::FlatBonus(bonus))
-    }
-}
-
-impl_display_roundtrip_spec!(AttackRollModifier);
 
 // TODO: Not sure if this is the correct place
 #[derive(Debug, Clone, Serialize, Deserialize)]

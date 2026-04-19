@@ -292,7 +292,7 @@ pub fn path_to_target(
     action: &ActionData,
     pathfind_if_out_of_range: bool,
 ) -> Result<TargetPathFindingResult, TargetPathFindingError> {
-    let validation_result = game_state.validate_action(action, false);
+    let validation_result = game_state.validate_action(action, true);
 
     if let Err(action_error) = &validation_result {
         // Check if it's an error that can be resolved with pathfinding

@@ -244,7 +244,7 @@ impl Encounter {
         // TODO: Not sure if this is the correct place to do it?
         match boundary {
             TurnBoundary::Start => {
-                systems::time::on_turn_start(&mut game_state.world, self.current_entity());
+                systems::time::on_turn_start(game_state, self.current_entity());
             }
             TurnBoundary::End => {
                 systems::time::on_turn_end(&mut game_state.world, self.current_entity());

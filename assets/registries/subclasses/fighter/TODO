@@ -1,9 +1,8 @@
 CHAMPION
 [x] Level 3: Improved Critical
-[~] Level 3: Remarkable Athlete
-    Missing the part about crits not provoking opportunity attacks
+[x] Level 3: Remarkable Athlete
 [x] Level 7: Additional Fighting Style
 [ ] Level 10: Heroic Warrior
     Pretty complicated to implement
 [x] Level 15: Superior Critical
-[ ] Level 18: Survivor
+[x] Level 18: Survivor

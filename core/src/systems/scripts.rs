@@ -6,7 +6,9 @@ use tracing::error;
 use crate::{
     components::{
         actions::action::{ActionKindResult, ReactionResult},
+        effects::effect::EffectInstanceTemplate,
         id::{EntityIdentifier, ScriptId},
+        modifier::ModifierSource,
         resource::ResourceAmountMap,
     },
     engine::{
@@ -19,9 +21,9 @@ use crate::{
         script_api::{
             ScriptActionPerformedView, ScriptActionView, ScriptCommandBuffer,
             ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
-            ScriptEntityRole, ScriptEntityView, ScriptEventRef, ScriptOptionalEntityView,
-            ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
-            ScriptReactionTriggerContext,
+            ScriptEntityRole, ScriptEntityView, ScriptEventRef, ScriptGameCommand,
+            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
+            ScriptReactionPlan, ScriptReactionTriggerContext,
         },
         script_engine::SCRIPT_ENGINES,
     },
@@ -305,6 +307,25 @@ pub fn evaluate_death_hook(
     }
 }
 
+pub fn evaluate_turn_start_hook(
+    script_id: &ScriptId,
+    entity_view: &ScriptEntityView,
+    commands: &ScriptCommandBuffer,
+) {
+    let script = ScriptsRegistry::get(script_id)
+        .expect(format!("Turn start hook script not found: {:?}", script_id).as_str());
+    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
+    let engine = engine_lock
+        .get_mut(&script.language)
+        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
+    if let Err(err) = engine.evaluate_turn_start_hook(script, entity_view, commands) {
+        error!(
+            "Error evaluating turn start hook script {:?}: {:?}",
+            script_id, err
+        );
+    }
+}
+
 pub fn apply_reaction_body_result(
     game_state: &mut GameState,
     reaction_data: &ReactionData,
@@ -324,7 +345,6 @@ pub fn apply_reaction_body_result(
             };
 
             game_state.process_event(Event::action_performed_event(
-                game_state,
                 &ActionData::from(&reaction_data),
                 vec![(
                     reaction_data.reactor,
@@ -378,7 +398,6 @@ pub fn apply_reaction_plan(
             };
 
             game_state.process_event(Event::action_performed_event(
-                game_state,
                 &ActionData::from(reaction_data),
                 vec![(
                     EntityIdentifier::from_world(&game_state.world, target_event.actor().unwrap()),
@@ -442,6 +461,66 @@ pub fn apply_reaction_plan(
             });
 
             let _ = game_state.process_event_with_response_callback(check_event, callback);
+        }
+    }
+}
+
+pub fn process_script_commands(game_state: &mut GameState, commands: Vec<ScriptGameCommand>) {
+    for command in commands {
+        match command {
+            ScriptGameCommand::ApplyEffect {
+                applier,
+                target,
+                effect_id,
+                lifetime,
+                one_shot,
+                action_id,
+                action_context,
+                action_resolution,
+            } => {
+                let target_entity = target.into();
+
+                game_state.process_event(Event::new(EventKind::GainedEffect {
+                    entity: EntityIdentifier::from_world(&game_state.world, target_entity),
+                    effect: effect_id.clone(),
+                }));
+
+                systems::effects::add_effect_template(
+                    game_state,
+                    applier.into(),
+                    target_entity,
+                    ModifierSource::Action(action_id),
+                    &EffectInstanceTemplate {
+                        effect_id,
+                        lifetime,
+                        end_condition: None,
+                        one_shot,
+                    },
+                    Some(&action_context),
+                    action_resolution,
+                );
+            }
+
+            ScriptGameCommand::RemoveEffect { target, effect_id } => {
+                systems::effects::remove_effects_by_id(game_state, target.into(), &effect_id);
+            }
+
+            ScriptGameCommand::Heal {
+                target,
+                healing,
+                source,
+            } => {
+                // TODO: Should it always be the target rolling their own healing dice?
+                let healing = healing.roll();
+                let target = target.into();
+                systems::health::heal(&mut game_state.world, target, healing.subtotal as u32);
+                let event = Event::new(EventKind::Healing {
+                    entity: EntityIdentifier::from_world(&game_state.world, target),
+                    amount: healing,
+                    source,
+                });
+                game_state.process_event(event);
+            }
         }
     }
 }

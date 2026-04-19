@@ -1,0 +1,13 @@
+{
+    "id": "nat20_core::effect.fighter.champion.survivor.defy_death",
+    "kind": "buff",
+    "description": "You have Advantage on Death Saving Throws. Moreover, when you roll 18-20 on a Death Saving Throw, you gain the benefit of rolling a 20 on it.",
+    "modifiers": [
+        {
+            "saving_throw": "death advantage"
+        },
+        {
+            "saving_throw": "death crit(-2)"
+        }
+    ]
+}

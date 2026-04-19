@@ -1,5 +1,6 @@
 use hecs::{Entity, World};
 use parry3d::na::Point3;
+use tracing::debug;
 
 use crate::{
     components::{
@@ -12,7 +13,7 @@ use crate::{
                 TargetingKind,
             },
         },
-        activity::ActivityState,
+        activity::{ActivityPauseReason, ActivityState},
         id::{ActionId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap, ResourceMap},
@@ -24,6 +25,7 @@ use crate::{
         game_state::GameState,
         geometry::WorldGeometry,
     },
+    entities::projectile::Projectile,
     registry::registry::{ActionsRegistry, SpellsRegistry},
     systems::{self, geometry::RaycastFilter},
 };
@@ -432,4 +434,36 @@ pub fn perform_reaction(game_state: &mut GameState, reaction_data: &ReactionData
             perform_action(game_state, &ActionData::from(reaction_data));
         }
     }
+}
+
+// TODO: Something about this seems a bit clunky
+fn set_projectiles_paused_for_entity(game_state: &mut GameState, entity: Entity, paused: bool) {
+    let pairs: Vec<(Entity, Entity)> = game_state
+        .world
+        .query::<&Projectile>()
+        .iter()
+        .map(|(entity, projectile)| (entity, projectile.delivery_phase.action.actor.id()))
+        .collect();
+    debug!("Found projectiles to check for pausing: {:?}", pairs);
+    for (proj_entity, actor) in pairs {
+        if actor == entity
+            && let Ok(mut projectile) = game_state.world.get::<&mut Projectile>(proj_entity)
+        {
+            projectile.paused = paused;
+        }
+    }
+}
+
+pub fn pause_action(game_state: &mut GameState, entity: Entity, reason: ActivityPauseReason) {
+    debug!("Pausing actions for entity {:?}: {:?}", entity, reason);
+    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
+        .pause_action(reason);
+    set_projectiles_paused_for_entity(game_state, entity, true);
+}
+
+pub fn resume_action(game_state: &mut GameState, entity: Entity, reason: ActivityPauseReason) {
+    debug!("Resuming actions for entity {:?}: {:?}", entity, reason);
+    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
+        .resume_action(reason);
+    set_projectiles_paused_for_entity(game_state, entity, false);
 }

@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use hecs::Entity;
-use tracing::{info, warn};
 
 use crate::{
     components::actions::action_step::ActionPhase,
     engine::{
-        action_prompt::{ActionDecision, ActionPrompt, ActionPromptId, ActionPromptKind},
+        action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
         encounter::EncounterId,
-        event::{Event, EventQueue},
+        event::Event,
     },
 };
 
@@ -18,17 +17,32 @@ pub enum InteractionScopeId {
     Encounter(EncounterId),
 }
 
+/// A paused event together with the reactors that are still holding it up.
+///
+/// Populated with the full set of potential reactors at park time. Each reactor
+/// is cleared either when their decision resolves without spawning an activity
+/// (decline or instant modifier reaction), or when their resulting reaction
+/// activity completes. The event becomes drainable when `blocked_by` is empty.
+#[derive(Debug, Clone)]
+pub struct PendingEvent {
+    pub event: Event,
+    pub blocked_by: HashSet<Entity>,
+}
+
+impl PendingEvent {
+    pub fn new(event: Event, blocked_by: HashSet<Entity>) -> Self {
+        Self { event, blocked_by }
+    }
+}
+
 /// One place for prompts, decisions, and paused events.
 #[derive(Debug, Default)]
 pub struct InteractionSession {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
-    pending_events: EventQueue, // paused due to reactions
-    /// Entities performing a reaction activity that must complete before pending
-    /// events can be resumed.
-    pending_reaction_actors: HashSet<Entity>,
-    /// Phase parked while waiting for a pending event to be resumed and resolved.
-    pending_phase: Option<(Entity, ActionPhase)>,
+    pending_events: VecDeque<PendingEvent>,
+    /// Phases parked while waiting for a pending event to be resumed and resolved.
+    pending_phases: VecDeque<(Entity, ActionPhase)>,
 }
 
 impl InteractionSession {
@@ -89,19 +103,19 @@ impl InteractionSession {
         }
     }
 
-    pub fn queue_event(&mut self, event: Event, front: bool) {
+    pub fn queue_pending_event(&mut self, pending: PendingEvent, front: bool) {
         if front {
-            self.pending_events.push_front(event);
+            self.pending_events.push_front(pending);
         } else {
-            self.pending_events.push_back(event);
+            self.pending_events.push_back(pending);
         }
     }
 
-    pub fn pending_events(&self) -> &VecDeque<Event> {
+    pub fn pending_events(&self) -> &VecDeque<PendingEvent> {
         &self.pending_events
     }
 
-    pub fn pending_events_mut(&mut self) -> &mut VecDeque<Event> {
+    pub fn pending_events_mut(&mut self) -> &mut VecDeque<PendingEvent> {
         &mut self.pending_events
     }
 
@@ -110,45 +124,32 @@ impl InteractionSession {
         self.decisions_by_prompt.clear();
     }
 
-    pub fn ready_to_resume(&self) -> bool {
-        if !self.pending_reaction_actors.is_empty() {
-            return false;
-        }
+    /// Index of the first pending event whose blockers have all cleared, if any.
+    pub fn first_drainable_event(&self) -> Option<usize> {
+        self.pending_events
+            .iter()
+            .position(|pe| pe.blocked_by.is_empty())
+    }
 
-        if self.pending_prompts().is_empty() {
-            // Not sure this ever actually happens
-            info!("No pending prompts; ready to resume pending events.");
-            true
-        } else if let Some(front) = self.next_prompt()
-            && !matches!(front.kind, ActionPromptKind::Reactions { .. })
-        {
-            info!("Next prompt is not a reaction; ready to resume pending events.");
-            true
+    /// Remove `reactor` from every pending event's `blocked_by` set. Called when
+    /// a reaction activity completes, or when a reactor's decision resolves
+    /// without spawning an activity.
+    pub fn clear_blocker(&mut self, reactor: Entity) {
+        for pe in self.pending_events.iter_mut() {
+            pe.blocked_by.remove(&reactor);
+        }
+    }
+
+    pub fn queue_phase(&mut self, entity: Entity, phase: ActionPhase, front: bool) {
+        if front {
+            self.pending_phases.push_front((entity, phase));
         } else {
-            false
+            self.pending_phases.push_back((entity, phase));
         }
     }
 
-    pub fn add_pending_reactor(&mut self, entity: Entity) {
-        self.pending_reaction_actors.insert(entity);
-    }
-
-    pub fn remove_pending_reactor(&mut self, entity: Entity) {
-        self.pending_reaction_actors.remove(&entity);
-    }
-
-    pub fn set_pending_phase(&mut self, entity: Entity, phase: ActionPhase) {
-        if let Some((pending_entity, pending_phase)) = &self.pending_phase {
-            warn!(
-                "Overwriting pending phase {:?} for entity {:?} with new phase {:?} for entity {:?}",
-                pending_phase, pending_entity, phase, entity
-            );
-        }
-        self.pending_phase = Some((entity, phase));
-    }
-
-    pub fn take_pending_phase(&mut self) -> Option<(Entity, ActionPhase)> {
-        self.pending_phase.take()
+    pub fn pending_phases_mut(&mut self) -> &mut VecDeque<(Entity, ActionPhase)> {
+        &mut self.pending_phases
     }
 }
 

@@ -17,6 +17,7 @@ use crate::{
             },
             targeting::TargetInstance,
         },
+        activity::ActivityPauseReason,
         damage::DamageRollResult,
         dice::DiceSetRollResult,
         effects::effect::EffectInstanceTemplate,
@@ -180,10 +181,6 @@ impl ActionStep {
     }
 
     pub fn resolve_condition(&mut self, game_state: &mut GameState, action: &ActionData) {
-        debug!(
-            "Resolving condition for action instance {:?}",
-            action.instance_id
-        );
         self.condition.resolve(game_state, action, self.target);
     }
 
@@ -246,6 +243,11 @@ impl ActionStepCondition {
             Self::PendingResolution { .. } => unreachable!(),
         };
 
+        debug!(
+            "Resolving condition for action instance {:?}: {:?}",
+            action.instance_id, condition
+        );
+
         match condition {
             ActionCondition::None => {
                 *self = Self::Resolved {
@@ -281,8 +283,8 @@ impl ActionStepCondition {
                 // TEMP
                 let action_instance_id = action.instance_id.clone();
 
-                let callback = EventCallback::new(move |_game_state, event, _| match &event.kind {
-                    EventKind::D20CheckResolved(_actor, result, dc) => {
+                let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
+                    EventKind::D20CheckResolved(actor, result, dc) => {
                         let armor_class = match dc {
                             D20CheckDCKind::AttackRoll(_, armor_class) => armor_class.clone(),
                             _ => panic!("Expected AttackRoll DC in callback, got {:?}", dc),
@@ -304,6 +306,12 @@ impl ActionStepCondition {
                                 armor_class,
                             });
 
+                        systems::actions::resume_action(
+                            game_state,
+                            actor.id(),
+                            ActivityPauseReason::ActionStepResolution,
+                        );
+
                         CallbackResult::None
                     }
                     _ => panic!(
@@ -311,6 +319,13 @@ impl ActionStepCondition {
                         event.kind
                     ),
                 });
+
+                // Pause while waiting for the attack roll to resolve
+                systems::actions::pause_action(
+                    game_state,
+                    action.actor.id(),
+                    ActivityPauseReason::ActionStepResolution,
+                );
 
                 game_state.process_event_with_response_callback(attack_event, callback);
 
@@ -334,7 +349,9 @@ impl ActionStepCondition {
                 let result_slot = Arc::new(Mutex::new(None::<ActionConditionResolution>));
                 let result_slot_clone = Arc::clone(&result_slot);
 
-                let callback = EventCallback::new(move |_game_state, event, _| match &event.kind {
+                let action_actor = action.actor.id().clone();
+
+                let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
                     EventKind::D20CheckResolved(_, result, dc) => {
                         let saving_throw_dc = match dc {
                             D20CheckDCKind::SavingThrow(dc) => dc.clone(),
@@ -354,6 +371,12 @@ impl ActionStepCondition {
                                 saving_throw_dc,
                             });
 
+                        systems::actions::resume_action(
+                            game_state,
+                            action_actor,
+                            ActivityPauseReason::ActionStepResolution,
+                        );
+
                         CallbackResult::None
                     }
                     _ => panic!(
@@ -361,6 +384,13 @@ impl ActionStepCondition {
                         event.kind
                     ),
                 });
+
+                // Pause while waiting for the saving throw to resolve
+                systems::actions::pause_action(
+                    game_state,
+                    action.actor.id(),
+                    ActivityPauseReason::ActionStepResolution,
+                );
 
                 game_state.process_event_with_response_callback(saving_throw_event, callback);
 
@@ -497,7 +527,6 @@ impl ActionStepPayload {
         });
 
         game_state.process_event(Event::action_performed_event(
-            game_state,
             action,
             vec![(
                 EntityIdentifier::from_world(&game_state.world, target),

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use hecs::Entity;
 use parry3d::na::Point3;
@@ -71,6 +71,7 @@ pub enum ActivityState {
         /// Potential action to be performed after reaching the destination
         action: Option<ActionDecision>,
         /// Whether the movement is currently paused due to an opportunity attack
+        /// TODO: Can movement only be paused by opportunity attacks?
         paused: bool,
     },
     Acting {
@@ -78,7 +79,7 @@ pub enum ActivityState {
         elapsed_time: f32,
         phases: VecDeque<ActionPhase>,
         phase_cooldown: f32,
-        paused: bool,
+        pause_reasons: HashSet<ActivityPauseReason>,
     },
 }
 
@@ -93,6 +94,10 @@ impl ActivityState {
     ) -> Vec<ActivityGameStateCommand> {
         let mut commands = Vec::new();
 
+        if self.is_paused() {
+            return commands;
+        }
+
         match self {
             Self::Idle => {
                 // Do nothing
@@ -105,10 +110,6 @@ impl ActivityState {
                 action,
                 paused,
             } => {
-                if *paused {
-                    return commands;
-                }
-
                 let target_point = path.points[*current_target];
                 let position =
                     systems::geometry::get_foot_position(&game_state.world, entity).unwrap();
@@ -174,12 +175,8 @@ impl ActivityState {
                     },
                 phases,
                 phase_cooldown,
-                paused,
+                pause_reasons,
             } => {
-                if *paused {
-                    return commands;
-                }
-
                 *elapsed_time += delta_time;
 
                 if *elapsed_time >= *perform_time {
@@ -255,14 +252,17 @@ impl ActivityState {
                 *current_phases, phases
             );
         }
-        debug!("Setting entity to perform action {:?}", action);
+        debug!(
+            "Setting entity to perform action {:?}\nWith phases:{:?}",
+            action, phases
+        );
 
         *self = Self::Acting {
             timeline: action.timeline.clone(),
             elapsed_time: 0.0,
             phases: phases.into(),
             phase_cooldown: 0.0,
-            paused: false,
+            pause_reasons: HashSet::new(),
         };
     }
 
@@ -270,27 +270,42 @@ impl ActivityState {
         matches!(self, Self::Acting { .. })
     }
 
-    pub fn resume(&mut self) {
-        if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
-            debug!("Resuming activity");
-            *paused = false;
+    pub fn pause_movement(&mut self) {
+        if let Self::Moving { paused, .. } = self {
+            *paused = true;
         } else {
-            warn!("Attempted to resume an activity that is not currently moving or acting");
+            warn!("Attempted to pause movement for an activity that is not currently moving");
         }
     }
 
-    pub fn pause(&mut self) {
-        if let Self::Moving { paused, .. } | Self::Acting { paused, .. } = self {
-            debug!("Pausing activity");
-            *paused = true;
+    pub fn resume_movement(&mut self) {
+        if let Self::Moving { paused, .. } = self {
+            *paused = false;
         } else {
-            warn!("Attempted to pause an activity that is not currently moving or acting");
+            warn!("Attempted to resume movement for an activity that is not currently moving");
+        }
+    }
+
+    pub fn pause_action(&mut self, reason: ActivityPauseReason) {
+        if let Self::Acting { pause_reasons, .. } = self {
+            pause_reasons.insert(reason);
+        } else {
+            warn!("Attempted to pause an activity that is not currently acting");
+        }
+    }
+
+    pub fn resume_action(&mut self, reason: ActivityPauseReason) {
+        if let Self::Acting { pause_reasons, .. } = self {
+            pause_reasons.remove(&reason);
+        } else {
+            warn!("Attempted to resume an activity that is not currently acting");
         }
     }
 
     pub fn is_paused(&self) -> bool {
         match self {
-            Self::Moving { paused, .. } | Self::Acting { paused, .. } => *paused,
+            Self::Moving { paused, .. } => *paused,
+            Self::Acting { pause_reasons, .. } => !pause_reasons.is_empty(),
             Self::Idle => false,
         }
     }
@@ -300,6 +315,12 @@ impl Default for ActivityState {
     fn default() -> Self {
         Self::Idle
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ActivityPauseReason {
+    Reaction,
+    ActionStepResolution,
 }
 
 // TODO: Name?
@@ -329,7 +350,7 @@ impl ActivityGameStateCommand {
                     game_state
                         .interaction_engine
                         .session_mut(scope)
-                        .set_pending_phase(entity, phase);
+                        .queue_phase(entity, phase, false);
                 }
             }
 
@@ -338,7 +359,7 @@ impl ActivityGameStateCommand {
                 game_state
                     .interaction_engine
                     .session_mut(scope)
-                    .remove_pending_reactor(entity);
+                    .clear_blocker(entity);
                 game_state.resume_pending_events_if_ready(scope);
             }
 

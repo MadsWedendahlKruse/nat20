@@ -2,14 +2,13 @@ use hecs::World;
 use imgui::TreeNodeFlags;
 use nat20_core::{
     components::{
-        actions::targeting::TargetInstance, id::Name, spells::spell::ConcentrationInstance,
+        actions::targeting::TargetInstance, spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
     engine::{
         action_prompt::ActionData,
         event::{EncounterEvent, Event, EventKind, EventLog},
     },
-    entities,
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
@@ -61,6 +60,7 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::LostConcentration { .. } => LogLevel::Info,
         EventKind::GainedEffect { .. } => LogLevel::Info,
         EventKind::LostEffect { .. } => LogLevel::Info,
+        EventKind::Healing { .. } => LogLevel::Info,
     }
 }
 
@@ -392,6 +392,32 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     (&effect.to_string(), TextKind::Effect),
                 ])
                 .render(ui);
+            }
+            EventKind::Healing {
+                entity,
+                amount,
+                source,
+            } => {
+                let group_token = ui.begin_group();
+                TextSegments::new(vec![
+                    (entity.name().as_str(), TextKind::Actor),
+                    ("was healed for", TextKind::Normal),
+                    (&format!("{} HP", amount.subtotal), TextKind::Healing),
+                    ("by", TextKind::Normal),
+                ])
+                .render(ui);
+                ui.same_line();
+                source.render(ui);
+                group_token.end();
+
+                // TODO: Better healing rendering
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        ui.text("Healing:");
+                        ui.same_line();
+                        TextSegment::new(&format!("{} HP", amount), TextKind::Healing).render(ui);
+                    });
+                }
             }
         }
 

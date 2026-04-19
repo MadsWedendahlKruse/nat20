@@ -8,6 +8,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
+        ability::AbilityScoreMap,
         actions::{
             action::{
                 ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
@@ -15,13 +16,13 @@ use crate::{
             },
             targeting::TargetInstance,
         },
-        d20::D20CheckOutcome,
         damage::{
             DamageComponentResult, DamageMitigationEffect, DamageMitigationResult,
             DamageRollResult, DamageType, MitigationOperation,
         },
         dice::{DiceSet, DiceSetRoll},
         effects::effect::{EffectEntiyReference, EffectInstance, EffectLifetimeTemplate},
+        health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         modifier::{Modifiable, ModifierSet, ModifierSource},
@@ -192,6 +193,12 @@ impl From<EntityIdentifier> for ScriptEntity {
 impl Into<Entity> for ScriptEntity {
     fn into(self) -> Entity {
         Entity::from_bits(self.id).unwrap()
+    }
+}
+
+impl From<u64> for ScriptEntity {
+    fn from(id: u64) -> Self {
+        ScriptEntity { id }
     }
 }
 
@@ -923,6 +930,17 @@ impl ScriptActionPerformedView {
     pub fn results(&self) -> &Vec<ScriptActionResultView> {
         &self.results
     }
+
+    pub fn resolution(&self) -> Option<ScriptActionConditionResolution> {
+        for result in &self.results {
+            if let ScriptActionKindResultView::Standard(bundle) = &result.kind {
+                if let Some(resolution) = bundle.get_resolution() {
+                    return Some(resolution.clone());
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -1052,28 +1070,32 @@ impl ScriptActionOutcomeBundleView {
         self.damage.as_ref().expect("No damage outcome")
     }
 
+    pub fn get_resolution(&self) -> Option<&ScriptActionConditionResolution> {
+        self.damage.as_ref().map(|damage| damage.get_resolution())
+    }
+
     pub fn has_attack_hit(&self) -> bool {
         self.damage
             .as_ref()
-            .is_some_and(|damage| damage.kind.is_attack_roll_hit())
+            .is_some_and(|damage| damage.resolution.is_attack_roll_hit())
     }
 
     pub fn has_attack_critical_hit(&self) -> bool {
         self.damage
             .as_ref()
-            .is_some_and(|damage| damage.kind.is_attack_roll_critical_hit())
+            .is_some_and(|damage| damage.resolution.is_attack_roll_critical_hit())
     }
 
     pub fn has_attack_miss(&self) -> bool {
-        self.damage
-            .as_ref()
-            .is_some_and(|damage| damage.kind.is_attack_roll() && !damage.kind.is_attack_roll_hit())
+        self.damage.as_ref().is_some_and(|damage| {
+            damage.resolution.is_attack_roll() && !damage.resolution.is_attack_roll_hit()
+        })
     }
 }
 
 #[derive(Clone)]
 pub struct ScriptDamageOutcomeView {
-    kind: ScriptDamageResolutionKindView,
+    resolution: ScriptActionConditionResolution,
     damage_roll: Option<ScriptDamageRollResult>,
     damage_taken: Option<ScriptDamageMitigationResult>,
     // If you want: new_life_state: Option<ScriptLifeStateView>
@@ -1082,7 +1104,7 @@ pub struct ScriptDamageOutcomeView {
 impl ScriptDamageOutcomeView {
     pub fn from(outcome: &DamageOutcome) -> Self {
         Self {
-            kind: ScriptDamageResolutionKindView::from(&outcome.resolution),
+            resolution: ScriptActionConditionResolution::from(&outcome.resolution),
             damage_roll: outcome.damage_roll.clone().map(ScriptDamageRollResult::new),
             damage_taken: outcome
                 .damage_taken
@@ -1091,8 +1113,8 @@ impl ScriptDamageOutcomeView {
         }
     }
 
-    pub fn get_kind(&self) -> &ScriptDamageResolutionKindView {
-        &self.kind
+    pub fn get_resolution(&self) -> &ScriptActionConditionResolution {
+        &self.resolution
     }
 
     pub fn has_damage_roll(&self) -> bool {
@@ -1129,77 +1151,51 @@ impl ScriptDamageOutcomeView {
 }
 
 #[derive(Clone)]
-pub enum ScriptDamageResolutionKindView {
-    Unconditional,
-    AttackRoll { is_hit: bool, is_critical_hit: bool },
-    SavingThrow { is_success: bool },
+pub struct ScriptActionConditionResolution {
+    inner: ActionConditionResolution,
 }
 
-impl ScriptDamageResolutionKindView {
-    pub fn from(kind: &ActionConditionResolution) -> Self {
-        match kind {
-            ActionConditionResolution::Unconditional => Self::Unconditional,
-            ActionConditionResolution::AttackRoll {
-                attack_roll,
-                armor_class,
-            } => {
-                let is_critical_hit = matches!(
-                    attack_roll.roll_result.outcome,
-                    Some(D20CheckOutcome::CriticalSuccess)
-                );
-                let is_hit = match attack_roll.roll_result.outcome {
-                    Some(D20CheckOutcome::CriticalSuccess) => true,
-                    Some(D20CheckOutcome::CriticalFailure) => false,
-                    _ => attack_roll.roll_result.total() >= armor_class.total() as u32,
-                };
-
-                Self::AttackRoll {
-                    is_hit,
-                    is_critical_hit,
-                }
-            }
-            ActionConditionResolution::SavingThrow {
-                saving_throw_dc,
-                saving_throw_result,
-            } => Self::SavingThrow {
-                is_success: saving_throw_result.is_success(saving_throw_dc),
-            },
-        }
-    }
-
+impl ScriptActionConditionResolution {
     pub fn is_unconditional(&self) -> bool {
-        matches!(self, Self::Unconditional)
+        matches!(self.inner, ActionConditionResolution::Unconditional)
     }
 
     pub fn is_attack_roll(&self) -> bool {
-        matches!(self, Self::AttackRoll { .. })
+        matches!(self.inner, ActionConditionResolution::AttackRoll { .. })
     }
 
     pub fn is_saving_throw(&self) -> bool {
-        matches!(self, Self::SavingThrow { .. })
+        matches!(self.inner, ActionConditionResolution::SavingThrow { .. })
+    }
+
+    pub fn is_success(&self) -> bool {
+        self.inner.is_success()
     }
 
     pub fn is_attack_roll_hit(&self) -> bool {
-        match self {
-            Self::AttackRoll { is_hit, .. } => *is_hit,
-            _ => false,
-        }
+        self.is_attack_roll() && self.is_success()
     }
 
     pub fn is_attack_roll_critical_hit(&self) -> bool {
-        match self {
-            Self::AttackRoll {
-                is_critical_hit, ..
-            } => *is_critical_hit,
-            _ => false,
-        }
+        self.is_attack_roll() && self.inner.is_crit()
     }
 
     pub fn is_saving_throw_success(&self) -> bool {
-        match self {
-            Self::SavingThrow { is_success } => *is_success,
-            _ => false,
+        self.is_saving_throw() && self.is_success()
+    }
+}
+
+impl From<&ActionConditionResolution> for ScriptActionConditionResolution {
+    fn from(resolution: &ActionConditionResolution) -> Self {
+        ScriptActionConditionResolution {
+            inner: resolution.clone(),
         }
+    }
+}
+
+impl From<ScriptActionConditionResolution> for ActionConditionResolution {
+    fn from(script_resolution: ScriptActionConditionResolution) -> Self {
+        script_resolution.inner
     }
 }
 
@@ -1376,10 +1372,19 @@ pub enum ScriptGameCommand {
         effect_id: EffectId,
         lifetime: EffectLifetimeTemplate,
         one_shot: bool,
+        // TODO: Not sure about these fields
+        action_id: ActionId,
+        action_context: ActionContext,
+        action_resolution: ActionConditionResolution,
     },
     RemoveEffect {
         target: ScriptEntity,
         effect_id: EffectId,
+    },
+    Heal {
+        target: ScriptEntity,
+        healing: DiceSetRoll,
+        source: ModifierSource,
     },
 }
 
@@ -1406,6 +1411,7 @@ impl ScriptCommandBuffer {
         applier: ScriptEntity,
         target: ScriptEntity,
         effect_id: &EffectId,
+        action: ScriptActionPerformedView,
     ) {
         self.inner.write().push(ScriptGameCommand::ApplyEffect {
             applier,
@@ -1413,6 +1419,13 @@ impl ScriptCommandBuffer {
             effect_id: effect_id.clone(),
             lifetime: EffectLifetimeTemplate::Permanent,
             one_shot: false,
+
+            action_id: ActionId::from_str(&action.action.action_id).unwrap(),
+            action_context: action.action.action_context.inner.clone(),
+            action_resolution: action
+                .resolution()
+                .map(|r| r.into())
+                .unwrap_or(ActionConditionResolution::Unconditional),
         });
     }
 
@@ -1423,6 +1436,7 @@ impl ScriptCommandBuffer {
         effect_id: &EffectId,
         turns: u32,
         one_shot: bool,
+        action: ScriptActionPerformedView,
     ) {
         self.inner.write().push(ScriptGameCommand::ApplyEffect {
             applier,
@@ -1434,6 +1448,13 @@ impl ScriptCommandBuffer {
                 duration: TimeDuration::from_turns(turns),
             },
             one_shot,
+
+            action_id: ActionId::from_str(&action.action.action_id).unwrap(),
+            action_context: action.action.action_context.inner.clone(),
+            action_resolution: action
+                .resolution()
+                .map(|r| r.into())
+                .unwrap_or(ActionConditionResolution::Unconditional),
         });
     }
 
@@ -1441,6 +1462,22 @@ impl ScriptCommandBuffer {
         self.inner.write().push(ScriptGameCommand::RemoveEffect {
             target,
             effect_id: effect_id.clone(),
+        });
+    }
+
+    pub fn heal(
+        &mut self,
+        target: ScriptEntity,
+        dice: String,
+        bonus: ModifierSet,
+        source: ModifierSource,
+    ) {
+        let mut dice_roll: DiceSetRoll = dice.parse().expect("Invalid dice expression for healing");
+        dice_roll.modifiers.add_modifier_set(&bonus);
+        self.inner.write().push(ScriptGameCommand::Heal {
+            target,
+            healing: dice_roll,
+            source,
         });
     }
 
@@ -1454,22 +1491,37 @@ pub struct ScriptEntityView {
     pub entity: ScriptEntity,
     pub resources: ScriptResourceView,
     pub loadout: ScriptLoadoutView,
+    pub hp_current: u32,
+    pub hp_max: u32,
+    pub ability_scores: AbilityScoreMap,
 }
 
 impl ScriptEntityView {
     pub fn new_from_world(world: &World, entity: Entity) -> Self {
+        let hit_points = systems::helpers::get_component_clone::<HitPoints>(world, entity);
+        let ability_scores =
+            systems::helpers::get_component_clone::<AbilityScoreMap>(world, entity);
         ScriptEntityView {
             entity: ScriptEntity::from(entity),
             resources: ScriptResourceView::new_from_world(world, entity),
             loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
+            hp_current: hit_points.current(),
+            hp_max: hit_points.max(),
+            ability_scores,
         }
     }
 
     pub fn take_from_world(world: &mut World, entity: Entity) -> Self {
+        let hit_points = systems::helpers::get_component_clone::<HitPoints>(world, entity);
+        let ability_scores =
+            systems::helpers::get_component_clone::<AbilityScoreMap>(world, entity);
         ScriptEntityView {
             entity: ScriptEntity::from(entity),
             resources: ScriptResourceView::take_from_world(world, entity),
             loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
+            hp_current: hit_points.current(),
+            hp_max: hit_points.max(),
+            ability_scores,
         }
     }
 
@@ -1549,8 +1601,7 @@ pub struct ScriptReactionTriggerContext {
     pub event: ScriptEventView,
 }
 
-/// What the body function logically receives (you can extend later).
-/// TODO: Implement this properly - if it's even need at all?
+/// What the reaction body function logically receives
 #[derive(Clone)]
 pub struct ScriptReactionBodyContext {
     pub reactor: ScriptEntity,

@@ -9,7 +9,8 @@ fn action_result_hook(action_performed_view, entity_view, commands) {
                 result.target,
                 "nat20_core::effect.fighter.studied_attacks_advantage",
                 1,
-                true
+                true,
+                action_performed_view
             );
         }
     }

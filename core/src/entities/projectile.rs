@@ -140,7 +140,7 @@ impl ProjectileTemplate {
             delivery_phase,
             paused: game_state
                 .session_for_entity(action.actor.id())
-                .map_or(false, |session| !session.ready_to_resume()),
+                .map_or(false, |session| !session.pending_events().is_empty()),
         })
     }
 }
