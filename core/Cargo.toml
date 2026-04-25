@@ -27,6 +27,10 @@ tracing-subscriber = { version = "0.3.22", features = ["fmt", "time", "env-filte
 strsim = "0.11.1"
 kinded = "0.5.0"
 
+[dev-dependencies]
+insta = "1"
+proptest = "1"
+
 [lib]
 name = "nat20_core"
 path = "src/lib.rs"

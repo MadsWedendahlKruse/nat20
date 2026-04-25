@@ -3,9 +3,10 @@ use hecs::{Entity, World};
 use crate::{
     components::{
         d20::{D20CheckDC, D20CheckResult},
-        damage::AttackRollResult,
+        damage::{AttackRange, AttackRollResult, AttackSource},
         id::EntityIdentifier,
         items::equipment::armor::ArmorClass,
+        modifier::ModifierSet,
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
     },
@@ -21,7 +22,7 @@ use crate::{
 pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
     Skill(Skill),
-    AttackRoll,
+    AttackRoll(AttackSource, AttackRange),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +30,20 @@ pub enum D20CheckDCKind {
     SavingThrow(D20CheckDC<SavingThrowKind>),
     Skill(D20CheckDC<Skill>),
     AttackRoll(EntityIdentifier, ArmorClass),
+}
+
+impl D20CheckDCKind {
+    pub fn saving_throw(kind: SavingThrowKind, dc: ModifierSet) -> Self {
+        D20CheckDCKind::SavingThrow(D20CheckDC { key: kind, dc })
+    }
+
+    pub fn skill_check(skill: Skill, dc: ModifierSet) -> Self {
+        D20CheckDCKind::Skill(D20CheckDC { key: skill, dc })
+    }
+
+    pub fn attack_roll(target: EntityIdentifier, armor_class: ArmorClass) -> Self {
+        D20CheckDCKind::AttackRoll(target, armor_class)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

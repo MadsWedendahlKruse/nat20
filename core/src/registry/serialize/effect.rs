@@ -734,10 +734,12 @@ impl EffectModifier {
             }
 
             (D20Modifier::CritThreshold(threshold), EffectPhase::Apply) => {
-                template.add_crit_threshold_reduction(source.clone(), *threshold);
+                template
+                    .d20_check
+                    .add_crit_threshold_reduction(source.clone(), *threshold);
             }
             (D20Modifier::CritThreshold(_), EffectPhase::Unapply) => {
-                template.remove_crit_threshold_reduction(source);
+                template.d20_check.remove_crit_threshold_reduction(source);
             }
 
             (D20Modifier::ForceOutcome(_), _) => {

@@ -6,7 +6,10 @@ use std::{
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::components::modifier::{Modifiable, ModifierSet, ModifierSource};
+use crate::{
+    components::modifier::{Modifiable, ModifierSet, ModifierSource},
+    utils::rng,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,10 +96,11 @@ impl DiceSetRoll {
     }
 
     pub fn roll(&self) -> DiceSetRollResult {
-        let mut rng = rand::rng();
-        let rolls: Vec<u32> = (0..self.dice.num_dice)
-            .map(|_| rng.random_range(1..=self.dice.die_size as u32))
-            .collect();
+        let rolls: Vec<u32> = rng::with_rng(|rng| {
+            (0..self.dice.num_dice)
+                .map(|_| rng.random_range(1..=self.dice.die_size as u32))
+                .collect()
+        });
         let subtotal = rolls.iter().sum::<u32>() as i32 + self.modifiers.total();
 
         DiceSetRollResult {

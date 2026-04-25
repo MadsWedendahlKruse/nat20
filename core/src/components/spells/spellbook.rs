@@ -762,10 +762,6 @@ impl Spellbook {
         &mut self.saving_throw
     }
 
-    pub fn attack_roll_modifiers_mut(&mut self) -> &mut D20Check {
-        &mut self.attack_roll.d20_check
-    }
-
     pub fn attack_roll_template_mut(&mut self) -> &mut AttackRollTemplate {
         &mut self.attack_roll
     }
@@ -788,7 +784,8 @@ impl AttackRollProvider for Spellbook {
         let spellcasting_ability = self.spellcasting_ability(world, entity, &spell_context.source);
 
         let mut attack_roll = self.attack_roll.instantiate(AttackSource::Spell, {
-            let spell = SpellsRegistry::get(&spell_context.id).expect("Spell must exist in registry");
+            let spell =
+                SpellsRegistry::get(&spell_context.id).expect("Spell must exist in registry");
             let spell_range = (spell.action().targeting)(world, entity, context).range;
             if spell_range.is_melee() {
                 AttackRange::Melee

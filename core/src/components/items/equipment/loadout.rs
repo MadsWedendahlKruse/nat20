@@ -142,12 +142,6 @@ impl Loadout {
         }
     }
 
-    pub fn attack_roll_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierSet {
-        self.attack_roll_template_mut(weapon_kind)
-            .d20_check
-            .modifiers_mut()
-    }
-
     pub fn attack_roll_template_mut(
         &mut self,
         weapon_kind: &WeaponKind,

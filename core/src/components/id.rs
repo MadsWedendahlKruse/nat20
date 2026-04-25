@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Debug, hash::Hash, str::FromStr};
 use strum::Display;
 
+const CORE_NAMESPACE: &str = "nat20_core";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 pub enum IdError {
     MissingNamespace,
@@ -26,6 +28,15 @@ macro_rules! id_newtypes {
                 pub fn new(namespace: impl Into<String>, id: impl Into<String>) -> Self {
                     Self {
                         namespace: namespace.into(),
+                        id: id.into(),
+                    }
+                }
+
+                /// Convenience constructor for creating IDs in the core namespace,
+                /// which is very common in tests.
+                pub fn new_core(id: impl Into<String>) -> Self {
+                    Self {
+                        namespace: CORE_NAMESPACE.to_string(),
                         id: id.into(),
                     }
                 }

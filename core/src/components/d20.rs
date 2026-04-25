@@ -13,6 +13,7 @@ use crate::{
         proficiency::{Proficiency, ProficiencyLevel},
     },
     systems,
+    utils::rng,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -173,15 +174,14 @@ impl D20Check {
             self.proficiency.bonus(proficiency_bonus) as i32,
         );
 
-        let mut rng = rand::rng();
         let roll_mode = self.advantage_tracker.roll_mode();
-        let mut rolls = match roll_mode {
+        let mut rolls = rng::with_rng(|rng| match roll_mode {
             RollMode::Normal => vec![rng.random_range(1..=20) as u8],
             _ => vec![
                 rng.random_range(1..=20) as u8,
                 rng.random_range(1..=20) as u8,
             ],
-        };
+        });
 
         if let Some((source, forced_outcome)) = &self.forced_outcome {
             match forced_outcome {
@@ -445,12 +445,7 @@ where
         self.get_mut(key).clear_forced_outcome();
     }
 
-    pub fn add_crit_threshold_reduction(
-        &mut self,
-        key: &K,
-        source: ModifierSource,
-        reduction: u8,
-    ) {
+    pub fn add_crit_threshold_reduction(&mut self, key: &K, source: ModifierSource, reduction: u8) {
         self.get_mut(key)
             .add_crit_threshold_reduction(source, reduction);
     }

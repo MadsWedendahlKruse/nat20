@@ -2,293 +2,211 @@ extern crate nat20_core;
 
 mod tests {
     use nat20_core::{
+        assert_action, assert_effect, assert_hp, assert_no_effect, assert_no_pending_reaction,
+        assert_no_resource, assert_on_cooldown, assert_pending_reaction, assert_resource,
         components::{
-            actions::targeting::TargetInstance,
-            activity::Activity,
-            damage::{DamageRoll, DamageSource, DamageType},
-            health::hit_points::HitPoints,
-            id::{ActionId, EffectId, ResourceId, SpellId},
-            resource::{RESOURCE_ACTION, ResourceAmount, ResourceMap},
-            time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
+            ability::Ability,
+            d20::D20CheckOutcome,
+            id::ActionId,
+            modifier::{ModifierSet, ModifierSource},
+            saving_throw::SavingThrowKind,
         },
-        engine::action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
-        systems,
-        test_utils::fixtures,
+        engine::event::{CallbackResult, EventCallback, EventKind},
+        systems::d20::{D20CheckDCKind, D20CheckKind},
+        test_utils::{builders::CreatureBuilder, fixtures},
     };
-    use parry3d::na::Point3;
 
     #[test]
     fn fighter_action_surge() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
-        let fighter = fighter_identifier.id();
+        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+            .level(5)
+            .turn_based()
+            .spawn();
 
-        // Check that the fighter has the Action Surge action
-        let available_actions = systems::actions::available_actions(&game_state.world, fighter);
-        let action_id = ActionId::new("nat20_core", "action.fighter.action_surge");
-        assert!(
-            available_actions.contains_key(&action_id),
-            "Fighter should have Action Surge action"
-        );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
+        // Pre-conditions: action available, one charge, one action this turn.
+        assert_action!(fighter, "action.fighter.action_surge");
+        assert_resource!(fighter, "resource.fighter.action_surge", == 1);
+        assert_resource!(fighter, "resource.action", == 1);
 
-        {
-            let resources =
-                systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter);
-            // Check that the fighter has one charge of Action Surge
-            assert!(resources.can_afford(
-                &ResourceId::new("nat20_core", "resource.fighter.action_surge"),
-                &ResourceAmount::Flat(1),
-            ));
-            // Check that the fighter has one action before using Action Surge
-            assert!(resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),));
-        }
+        fighter
+            .act("action.fighter.action_surge")
+            .on_self()
+            .submit_ok();
 
-        let _ = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier.clone(),
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Entity(fighter_identifier)],
-                ),
-            }),
-        });
-        game_state.update(3.0);
+        // Effect applied, action budget bumped to 2, action goes on cooldown.
+        assert_effect!(fighter, "effect.fighter.action_surge");
+        assert_resource!(fighter, "resource.action", == 2);
+        assert_on_cooldown!(fighter, "action.fighter.action_surge");
 
-        {
-            // Check that the Action Surge effect is applied
-            let effects = systems::effects::effects(&game_state.world, fighter);
-            let action_surge_effect = effects.iter().find(|(_, e)| {
-                e.effect_id == EffectId::new("nat20_core", "effect.fighter.action_surge")
-            });
-            assert!(
-                action_surge_effect.is_some(),
-                "Action Surge effect should be applied"
-            );
-        }
+        // The Action Surge effect should fall off at the start of the next turn.
+        fighter.start_turn();
 
-        // Check that the fighter has two actions after using Action Surge
-        assert!(
-            systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter)
-                .can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(2),),
-        );
-
-        // Check that the Action Surge action is on cooldown
-        assert!(systems::actions::on_cooldown(&game_state.world, fighter, &action_id).is_some());
-
-        // Simulate the start of the turn to remove the Action Surge effect
-        systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, fighter)
-            .set_mode(TimeMode::TurnBased { encounter_id: None });
-        systems::time::advance_time(
-            &mut game_state,
-            fighter,
-            TimeStep::TurnBoundary {
-                entity: fighter,
-                boundary: TurnBoundary::Start,
-            },
-        );
-        // Update to remove expired effects
-        game_state.update(0.0);
-
-        // Check that the Action Surge effect is removed after the turn starts
-        let effects = systems::effects::effects(&game_state.world, fighter);
-        let action_surge_effect = effects.iter().find(|(_, e)| {
-            e.effect_id == EffectId::new("nat20_core", "effect.fighter.action_surge")
-        });
-        assert!(
-            action_surge_effect.is_none(),
-            "Action Surge effect should be removed. Remaining duration: {:?}",
-            action_surge_effect.unwrap().1.lifetime
-        );
-
-        let resources = systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter);
-        // Check that the fighter has one action after the turn starts
-        assert!(
-            !resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(2),)
-                && resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),)
-        );
-
-        // Check that the Action Surge action is out of charges
-        assert!(!resources.can_afford(
-            &ResourceId::new("nat20_core", "resource.fighter.action_surge"),
-            &ResourceAmount::Flat(1),
-        ));
+        assert_no_effect!(fighter, "effect.fighter.action_surge");
+        assert_resource!(fighter, "resource.action", == 1);
+        assert_no_resource!(fighter, "resource.fighter.action_surge");
     }
 
     #[test]
     fn fighter_second_wind() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
-        let fighter = fighter_identifier.id();
-        let _ = systems::health::heal_full(&mut game_state.world, fighter);
+        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+            .level(5)
+            .turn_based()
+            .spawn();
 
-        // Check that the fighter has the Second Wind action
-        let available_actions = systems::actions::available_actions(&game_state.world, fighter);
-        let action_id = ActionId::new("nat20_core", "action.fighter.second_wind");
-        assert!(
-            available_actions.contains_key(&action_id),
-            "Fighter should have Second Wind action"
-        );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
+        assert_action!(fighter, "action.fighter.second_wind");
+        assert_resource!(fighter, "resource.fighter.second_wind", >= 2);
 
-        // Check that the fighter has two charges of Second Wind
-        assert!(
-            systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter).can_afford(
-                &ResourceId::new("nat20_core", "resource.fighter.second_wind"),
-                &ResourceAmount::Flat(2),
-            )
-        );
+        // Take a small hit so Second Wind has something to heal.
+        let max = fighter.max_hp();
+        fighter.damage_raw(5);
+        assert_hp!(fighter, < max);
 
-        // Let the fighter take some damage
-        systems::health::damage(
-            &mut game_state,
-            fighter,
-            &DamageRoll::new(
-                "1d4".parse().unwrap(),
-                DamageType::Force,
-                DamageSource::Spell(SpellId::new("nat20_core", "test.spell")),
-            )
-            .roll(false),
-            None,
-        );
+        let prev_hp = fighter.hp();
 
-        // Check that the fighter's HP is reduced
-        let prev_hp = {
-            let hit_points =
-                systems::helpers::get_component::<HitPoints>(&game_state.world, fighter);
-            assert!(hit_points.current() < hit_points.max());
+        fighter
+            .act("action.fighter.second_wind")
+            .on_self()
+            .submit_ok();
 
-            hit_points.current()
-        };
-
-        let result = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier.clone(),
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Entity(fighter_identifier)],
-                ),
-            }),
-        });
-        println!("Second Wind Result: {:?}", result);
-        game_state.update(3.0);
-
-        // Check that the Fighters HP is increased by the Second Wind healing
-        assert!(
-            systems::helpers::get_component::<HitPoints>(&game_state.world, fighter).current()
-                > prev_hp
-        );
+        assert_hp!(fighter, > prev_hp);
     }
 
     #[test]
     fn fighter_extra_attack() {
         let mut game_state = fixtures::engine::game_state();
-        let fighter_identifier = fixtures::creatures::heroes::fighter(&mut game_state, 5, None);
-        let fighter = fighter_identifier.id();
-        let _ = systems::health::heal_full(&mut game_state.world, fighter);
+        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+            .level(5)
+            .turn_based()
+            .spawn();
 
-        // Check that the fighter has the Extra Attack effect
-        {
-            let effects = systems::effects::effects(&game_state.world, fighter);
-            let extra_attack_effect = effects
-                .iter()
-                .find(|(_, e)| e.effect_id == EffectId::new("nat20_core", "effect.extra_attack"));
-            assert!(
-                extra_attack_effect.is_some(),
-                "Fighter should have Extra Attack effect"
-            );
-        }
+        // Level-5 fighter has the Extra Attack passive but zero stacks queued.
+        assert_effect!(fighter, "effect.extra_attack");
+        assert_no_resource!(fighter, "resource.extra_attack");
 
-        // Check that the fighter has no stacks of Extra Attack (yet)
-        assert!(
-            !systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter).can_afford(
-                &ResourceId::new("nat20_core", "resource.extra_attack"),
-                &ResourceAmount::Flat(1),
-            ),
-            "Fighter should have no stacks of Extra Attack"
+        // First melee attack: spends the Action and grants one Extra Attack stack.
+        fighter
+            .act("action.melee_attack")
+            .at_point((1.0, 0.0, 0.0))
+            .submit_ok();
+        assert_resource!(fighter, "resource.extra_attack", >= 1);
+        assert_no_resource!(fighter, "resource.action");
+
+        // Second melee attack: consumes the Extra Attack stack instead of an Action.
+        fighter
+            .act("action.melee_attack")
+            .at_point((1.0, 0.0, 0.0))
+            .submit_ok();
+        assert_no_resource!(fighter, "resource.extra_attack");
+    }
+
+    #[test]
+    fn fighter_two_extra_attacks() {
+        let mut game_state = fixtures::engine::game_state();
+        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+            .level(11)
+            .turn_based()
+            .spawn();
+
+        // Level 11 fighter has the Two Extra Attack passive, but zero stacks queued.
+        // Two Extra Attacks also replaces the original Extra Attack effect.
+        assert_effect!(fighter, "effect.fighter.two_extra_attacks");
+        assert_no_effect!(fighter, "effect.extra_attack");
+        assert_no_resource!(fighter, "resource.extra_attack");
+
+        // First melee attack: consumes an action and grants two charges of Extra Attack.
+        fighter
+            .act("action.melee_attack")
+            .at_point((1.0, 0.0, 0.0))
+            .submit_ok();
+        assert_resource!(fighter, "resource.extra_attack", >= 2);
+        assert_no_resource!(fighter, "resource.action");
+
+        // Second melee attack: consumes the first Extra Attack stack.
+        fighter
+            .act("action.melee_attack")
+            .at_point((1.0, 0.0, 0.0))
+            .submit_ok();
+        assert_resource!(fighter, "resource.extra_attack", >= 1);
+
+        // Third melee attack: consumes the second Extra Attack stack.
+        fighter
+            .act("action.melee_attack")
+            .at_point((1.0, 0.0, 0.0))
+            .submit_ok();
+        assert_no_resource!(fighter, "resource.extra_attack");
+    }
+
+    #[test]
+    fn fighter_studied_attacks() {
+        let mut game_state = fixtures::engine::game_state();
+        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+            .level(13)
+            .turn_based()
+            .spawn();
+
+        // Level 13 fighter has the studied attacks passive
+        assert_effect!(fighter, "effect.fighter.studied_attacks");
+        // TODO: Requires multi-actor scenario to test properly
+    }
+
+    #[test]
+    fn fighter_indomitable() {
+        let mut game_state = fixtures::engine::game_state();
+        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+            .level(9)
+            .turn_based()
+            .spawn();
+
+        // Level 9 fighter has the Indomitable action and resource
+        assert_action!(fighter, "action.fighter.indomitable");
+        assert_resource!(fighter, "resource.fighter.indomitable", == 1);
+
+        // Force a failed saving throw to trigger the reaction
+        let saving_throw = SavingThrowKind::Ability(Ability::Intelligence);
+        let dc = D20CheckDCKind::saving_throw(
+            saving_throw,
+            ModifierSet::from(ModifierSource::Custom("test".to_string()), 99),
+        );
+        // Prevent rolling a nat 20
+        fighter.d20_force_outcome(
+            D20CheckKind::SavingThrow(saving_throw),
+            D20CheckOutcome::CriticalFailure,
         );
 
-        // Fighter makes a weapon attack, which costs one Action and grants one stack of Extra Attack
-        let available_actions = systems::actions::available_actions(&game_state.world, fighter);
-        println!(
-            "Available actions before attacking: {:#?}",
-            available_actions
-        );
-        let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        assert!(
-            available_actions.contains_key(&action_id),
-            "Fighter should have Melee Attack action"
-        );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
-        let result = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier.clone(),
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Point(Point3::new(1.0, 0.0, 0.0))],
-                ),
-            }),
-        });
-        game_state.update(3.0);
-        assert!(
-            result.is_ok(),
-            "Performing melee attack action should succeed. Error: {:?}",
-            result.err()
+        fighter.d20_check(
+            &dc,
+            Some(EventCallback::new(|game_state, event, _| {
+                let EventKind::D20CheckResolved(entity, result, dc) = &event.kind else {
+                    panic!("Expected D20CheckResult event");
+                };
+
+                let Some(modifier) =
+                    result
+                        .d20_result()
+                        .modifier_breakdown
+                        .get(&ModifierSource::Action(ActionId::new_core(
+                            "action.fighter.indomitable",
+                        )))
+                else {
+                    panic!("Expected indomitable modifier to be applied");
+                };
+
+                // Modifier should be equal to the level of the fighter
+                assert_eq!(modifier, 9);
+
+                CallbackResult::None
+            })),
         );
 
-        // Check that the fighter has one stack of Extra Attack
-        assert!(
-            systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter).can_afford(
-                &ResourceId::new("nat20_core", "resource.extra_attack"),
-                &ResourceAmount::Flat(1),
-            ),
-            "Fighter should have one stack of Extra Attack"
-        );
-        // Check that the fighter has no Actions left
-        assert!(
-            !systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter)
-                .can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),),
-            "Fighter should have no Actions left"
-        );
+        // Failed save should trigger the Indomitable reaction
+        assert_pending_reaction!(fighter, "action.fighter.indomitable");
+        fighter.react().id("action.fighter.indomitable").submit_ok();
 
-        // Fighter makes another attack, which should consume the Extra Attack stack
-        let available_actions = systems::actions::available_actions(&game_state.world, fighter);
-        assert!(
-            available_actions.contains_key(&action_id),
-            "Fighter should have Melee Attack action available for second attack"
-        );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
-        let result = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier,
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Point(Point3::new(1.0, 0.0, 0.0))],
-                ),
-            }),
-        });
-        game_state.update(3.0);
-        assert!(
-            result.is_ok(),
-            "Performing second melee attack action should succeed. Error: {:?}",
-            result.err()
-        );
-
-        // Check that the fighter has no stacks of Extra Attack left
-        assert!(
-            !systems::helpers::get_component::<ResourceMap>(&game_state.world, fighter).can_afford(
-                &ResourceId::new("nat20_core", "resource.extra_attack"),
-                &ResourceAmount::Flat(1),
-            ),
-            "Fighter should have no stacks of Extra Attack left"
-        );
+        // Indomitable should be triggered and consume the resources
+        assert_no_pending_reaction!(fighter, "action.fighter.indomitable");
+        assert_no_resource!(fighter, "resource.fighter.indomitable");
+        assert_no_resource!(fighter, "resource.reaction");
     }
 }
