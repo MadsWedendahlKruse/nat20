@@ -2,8 +2,6 @@ extern crate nat20_core;
 
 mod tests {
     use nat20_core::{
-        assert_action, assert_effect, assert_hp, assert_no_effect, assert_no_pending_reaction,
-        assert_no_resource, assert_on_cooldown, assert_pending_reaction, assert_resource,
         components::{
             ability::Ability,
             d20::D20CheckOutcome,
@@ -13,7 +11,15 @@ mod tests {
         },
         engine::event::{CallbackResult, EventCallback, EventKind},
         systems::d20::{D20CheckDCKind, D20CheckKind},
-        test_utils::{builders::CreatureBuilder, fixtures},
+        test_utils::{
+            assertions::{
+                Cmp, assert_action, assert_effect, assert_hp, assert_no_effect,
+                assert_no_pending_reaction, assert_no_resource, assert_on_cooldown,
+                assert_pending_reaction, assert_resource,
+            },
+            builders::CreatureBuilder,
+            fixtures,
+        },
     };
 
     #[test]
@@ -25,9 +31,9 @@ mod tests {
             .spawn();
 
         // Pre-conditions: action available, one charge, one action this turn.
-        assert_action!(fighter, "action.fighter.action_surge");
-        assert_resource!(fighter, "resource.fighter.action_surge", == 1);
-        assert_resource!(fighter, "resource.action", == 1);
+        assert_action(&fighter, "action.fighter.action_surge");
+        assert_resource(&fighter, "resource.fighter.action_surge", Cmp::Equal(1));
+        assert_resource(&fighter, "resource.action", Cmp::Equal(1));
 
         fighter
             .act("action.fighter.action_surge")
@@ -35,16 +41,16 @@ mod tests {
             .submit_ok();
 
         // Effect applied, action budget bumped to 2, action goes on cooldown.
-        assert_effect!(fighter, "effect.fighter.action_surge");
-        assert_resource!(fighter, "resource.action", == 2);
-        assert_on_cooldown!(fighter, "action.fighter.action_surge");
+        assert_effect(&fighter, "effect.fighter.action_surge");
+        assert_resource(&fighter, "resource.action", Cmp::Equal(2));
+        assert_on_cooldown(&fighter, "action.fighter.action_surge");
 
         // The Action Surge effect should fall off at the start of the next turn.
         fighter.start_turn();
 
-        assert_no_effect!(fighter, "effect.fighter.action_surge");
-        assert_resource!(fighter, "resource.action", == 1);
-        assert_no_resource!(fighter, "resource.fighter.action_surge");
+        assert_no_effect(&fighter, "effect.fighter.action_surge");
+        assert_resource(&fighter, "resource.action", Cmp::Equal(1));
+        assert_no_resource(&fighter, "resource.fighter.action_surge");
     }
 
     #[test]
@@ -55,13 +61,13 @@ mod tests {
             .turn_based()
             .spawn();
 
-        assert_action!(fighter, "action.fighter.second_wind");
-        assert_resource!(fighter, "resource.fighter.second_wind", >= 2);
+        assert_action(&fighter, "action.fighter.second_wind");
+        assert_resource(&fighter, "resource.fighter.second_wind", Cmp::AtLeast(2));
 
         // Take a small hit so Second Wind has something to heal.
         let max = fighter.max_hp();
         fighter.damage_raw(5);
-        assert_hp!(fighter, < max);
+        assert_hp(&fighter, Cmp::Less(max));
 
         let prev_hp = fighter.hp();
 
@@ -70,7 +76,7 @@ mod tests {
             .on_self()
             .submit_ok();
 
-        assert_hp!(fighter, > prev_hp);
+        assert_hp(&fighter, Cmp::Greater(prev_hp));
     }
 
     #[test]
@@ -82,23 +88,23 @@ mod tests {
             .spawn();
 
         // Level-5 fighter has the Extra Attack passive but zero stacks queued.
-        assert_effect!(fighter, "effect.extra_attack");
-        assert_no_resource!(fighter, "resource.extra_attack");
+        assert_effect(&fighter, "effect.extra_attack");
+        assert_no_resource(&fighter, "resource.extra_attack");
 
         // First melee attack: spends the Action and grants one Extra Attack stack.
         fighter
             .act("action.melee_attack")
             .at_point((1.0, 0.0, 0.0))
             .submit_ok();
-        assert_resource!(fighter, "resource.extra_attack", >= 1);
-        assert_no_resource!(fighter, "resource.action");
+        assert_resource(&fighter, "resource.extra_attack", Cmp::AtLeast(1));
+        assert_no_resource(&fighter, "resource.action");
 
         // Second melee attack: consumes the Extra Attack stack instead of an Action.
         fighter
             .act("action.melee_attack")
             .at_point((1.0, 0.0, 0.0))
             .submit_ok();
-        assert_no_resource!(fighter, "resource.extra_attack");
+        assert_no_resource(&fighter, "resource.extra_attack");
     }
 
     #[test]
@@ -111,43 +117,43 @@ mod tests {
 
         // Level 11 fighter has the Two Extra Attack passive, but zero stacks queued.
         // Two Extra Attacks also replaces the original Extra Attack effect.
-        assert_effect!(fighter, "effect.fighter.two_extra_attacks");
-        assert_no_effect!(fighter, "effect.extra_attack");
-        assert_no_resource!(fighter, "resource.extra_attack");
+        assert_effect(&fighter, "effect.fighter.two_extra_attacks");
+        assert_no_effect(&fighter, "effect.extra_attack");
+        assert_no_resource(&fighter, "resource.extra_attack");
 
         // First melee attack: consumes an action and grants two charges of Extra Attack.
         fighter
             .act("action.melee_attack")
             .at_point((1.0, 0.0, 0.0))
             .submit_ok();
-        assert_resource!(fighter, "resource.extra_attack", >= 2);
-        assert_no_resource!(fighter, "resource.action");
+        assert_resource(&fighter, "resource.extra_attack", Cmp::AtLeast(2));
+        assert_no_resource(&fighter, "resource.action");
 
         // Second melee attack: consumes the first Extra Attack stack.
         fighter
             .act("action.melee_attack")
             .at_point((1.0, 0.0, 0.0))
             .submit_ok();
-        assert_resource!(fighter, "resource.extra_attack", >= 1);
+        assert_resource(&fighter, "resource.extra_attack", Cmp::AtLeast(1));
 
         // Third melee attack: consumes the second Extra Attack stack.
         fighter
             .act("action.melee_attack")
             .at_point((1.0, 0.0, 0.0))
             .submit_ok();
-        assert_no_resource!(fighter, "resource.extra_attack");
+        assert_no_resource(&fighter, "resource.extra_attack");
     }
 
     #[test]
     fn fighter_studied_attacks() {
         let mut game_state = fixtures::engine::game_state();
-        let mut fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
+        let fighter = CreatureBuilder::from_template(&mut game_state, "hero.fighter")
             .level(13)
             .turn_based()
             .spawn();
 
         // Level 13 fighter has the studied attacks passive
-        assert_effect!(fighter, "effect.fighter.studied_attacks");
+        assert_effect(&fighter, "effect.fighter.studied_attacks");
         // TODO: Requires multi-actor scenario to test properly
     }
 
@@ -160,8 +166,8 @@ mod tests {
             .spawn();
 
         // Level 9 fighter has the Indomitable action and resource
-        assert_action!(fighter, "action.fighter.indomitable");
-        assert_resource!(fighter, "resource.fighter.indomitable", == 1);
+        assert_action(&fighter, "action.fighter.indomitable");
+        assert_resource(&fighter, "resource.fighter.indomitable", Cmp::Equal(1));
 
         // Force a failed saving throw to trigger the reaction
         let saving_throw = SavingThrowKind::Ability(Ability::Intelligence);
@@ -201,12 +207,12 @@ mod tests {
         );
 
         // Failed save should trigger the Indomitable reaction
-        assert_pending_reaction!(fighter, "action.fighter.indomitable");
+        assert_pending_reaction(&fighter, "action.fighter.indomitable");
         fighter.react().id("action.fighter.indomitable").submit_ok();
 
         // Indomitable should be triggered and consume the resources
-        assert_no_pending_reaction!(fighter, "action.fighter.indomitable");
-        assert_no_resource!(fighter, "resource.fighter.indomitable");
-        assert_no_resource!(fighter, "resource.reaction");
+        assert_no_pending_reaction(&fighter, "action.fighter.indomitable");
+        assert_no_resource(&fighter, "resource.fighter.indomitable");
+        assert_no_resource(&fighter, "resource.reaction");
     }
 }

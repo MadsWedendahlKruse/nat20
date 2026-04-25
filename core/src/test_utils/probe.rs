@@ -13,7 +13,7 @@ use crate::{
         id::{ActionId, EffectId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         modifier::ModifierSource,
-        resource::{ResourceAmount, ResourceMap},
+        resource::{ResourceAmount, ResourceBudgetKind, ResourceMap},
         saving_throw::SavingThrowSet,
         skill::SkillSet,
         spells::spellbook::Spellbook,
@@ -103,6 +103,21 @@ impl<'gs> Probe<'gs> {
         let resources =
             systems::helpers::get_component::<ResourceMap>(&self.game_state.world, self.entity);
         resources.can_afford(&ResourceId::new_core(id), amount)
+    }
+
+    /// Current `Flat` resource amount, or 0 if the resource isn't present.
+    /// Panics on `Tiered` resources — use a tier-aware accessor for those.
+    pub fn resource_amount(&self, id: &str) -> u8 {
+        let resources =
+            systems::helpers::get_component::<ResourceMap>(&self.game_state.world, self.entity);
+        match resources.get(&ResourceId::new_core(id)) {
+            None => 0,
+            Some(ResourceBudgetKind::Flat(budget)) => budget.current_uses,
+            Some(ResourceBudgetKind::Tiered(_)) => panic!(
+                "resource_amount called on tiered resource '{}'; use a tier-aware accessor",
+                id
+            ),
+        }
     }
 
     /// Pretty-printed dump of the entity's resources, for failure messages.
