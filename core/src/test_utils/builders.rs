@@ -115,20 +115,21 @@ impl<'p, 'gs> ActionBuilder<'p, 'gs> {
 
     /// Default — targets the actor themself.
     pub fn on_self(mut self) -> Self {
-        let target = self.probe.self_target();
-        self.targets = Some(vec![target]);
+        self.targets = Some(vec![TargetInstance::Entity(
+            self.probe.identifier().clone(),
+        )]);
         self
     }
 
     /// Target another entity (typically another `Probe`).
     pub fn at(mut self, other: &Probe<'_>) -> Self {
-        self.targets = Some(vec![Probe::entity_target(other)]);
+        self.targets = Some(vec![TargetInstance::Entity(other.identifier().clone())]);
         self
     }
 
     /// Target a world point (e.g. fireball).
-    pub fn at_point(mut self, p: (f32, f32, f32)) -> Self {
-        self.targets = Some(vec![Probe::point_target(p)]);
+    pub fn at_point(mut self, p: [f32; 3]) -> Self {
+        self.targets = Some(vec![TargetInstance::Point(p.into())]);
         self
     }
 
@@ -179,7 +180,7 @@ impl<'p, 'gs> ActionBuilder<'p, 'gs> {
 
         let targets = self
             .targets
-            .unwrap_or_else(|| vec![self.probe.self_target()]);
+            .unwrap_or_else(|| vec![TargetInstance::Entity(self.probe.identifier().clone())]);
 
         let actor = self.probe.identifier().clone();
         let result = self.probe.game_state_mut().submit_activity(Activity::Act {

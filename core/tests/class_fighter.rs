@@ -94,7 +94,7 @@ mod tests {
         // First melee attack: spends the Action and grants one Extra Attack stack.
         fighter
             .act("action.melee_attack")
-            .at_point((1.0, 0.0, 0.0))
+            .at_point([1.0, 0.0, 0.0])
             .submit_ok();
         assert_resource(&fighter, "resource.extra_attack", Cmp::AtLeast(1));
         assert_no_resource(&fighter, "resource.action");
@@ -102,7 +102,7 @@ mod tests {
         // Second melee attack: consumes the Extra Attack stack instead of an Action.
         fighter
             .act("action.melee_attack")
-            .at_point((1.0, 0.0, 0.0))
+            .at_point([1.0, 0.0, 0.0])
             .submit_ok();
         assert_no_resource(&fighter, "resource.extra_attack");
     }
@@ -124,7 +124,7 @@ mod tests {
         // First melee attack: consumes an action and grants two charges of Extra Attack.
         fighter
             .act("action.melee_attack")
-            .at_point((1.0, 0.0, 0.0))
+            .at_point([1.0, 0.0, 0.0])
             .submit_ok();
         assert_resource(&fighter, "resource.extra_attack", Cmp::AtLeast(2));
         assert_no_resource(&fighter, "resource.action");
@@ -132,14 +132,14 @@ mod tests {
         // Second melee attack: consumes the first Extra Attack stack.
         fighter
             .act("action.melee_attack")
-            .at_point((1.0, 0.0, 0.0))
+            .at_point([1.0, 0.0, 0.0])
             .submit_ok();
         assert_resource(&fighter, "resource.extra_attack", Cmp::AtLeast(1));
 
         // Third melee attack: consumes the second Extra Attack stack.
         fighter
             .act("action.melee_attack")
-            .at_point((1.0, 0.0, 0.0))
+            .at_point([1.0, 0.0, 0.0])
             .submit_ok();
         assert_no_resource(&fighter, "resource.extra_attack");
     }

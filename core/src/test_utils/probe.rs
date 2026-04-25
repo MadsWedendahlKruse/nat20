@@ -312,24 +312,8 @@ impl<'gs> Probe<'gs> {
     pub fn advance_real_time(&mut self, delta_seconds: f32) {
         self.game_state.update(delta_seconds);
     }
-
-    // --- Targeting helpers (used by ActBuilder) ------------------------
-
-    pub(crate) fn self_target(&self) -> TargetInstance {
-        TargetInstance::Entity(self.identifier.clone())
-    }
-
-    pub(crate) fn point_target(p: (f32, f32, f32)) -> TargetInstance {
-        TargetInstance::Point(Point3::new(p.0, p.1, p.2))
-    }
-
-    pub(crate) fn entity_target(other: &Probe<'_>) -> TargetInstance {
-        TargetInstance::Entity(other.identifier.clone())
-    }
 }
 
-/// Internal: returned by [`Probe::act`] context lookups so that `act.rs` can
-/// avoid touching private fields.
 pub(crate) fn lookup_action_contexts(
     probe: &Probe<'_>,
     action_id: &ActionId,
