@@ -10,7 +10,7 @@ use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
-        actions::targeting::{LineOfSightMode, TargetInstance, TargetingError},
+        actions::targeting::{LineOfSightMode, TargetInstance, TargetingError, TargetingKind},
         speed::Speed,
     },
     engine::{
@@ -284,24 +284,32 @@ pub enum TargetPathFindingResult {
 #[derive(Debug, Clone)]
 pub enum TargetPathFindingError {
     NoPathFound,
+    MultiplePotentialTargets,
     ActionError(ActionError),
 }
 
 pub fn path_to_target(
     game_state: &mut GameState,
     action: &ActionData,
-    pathfind_if_out_of_range: bool,
 ) -> Result<TargetPathFindingResult, TargetPathFindingError> {
     let validation_result = game_state.validate_action(action, true);
 
     if let Err(action_error) = &validation_result {
         // Check if it's an error that can be resolved with pathfinding
-        if pathfind_if_out_of_range
-            && let ActionError::Usability(usability_error) = action_error
+        if let ActionError::Usability(usability_error) = action_error
             && let ActionUsabilityError::TargetingError(targeting_error) = usability_error
             && let TargetingError::OutOfRange { target, .. }
             | TargetingError::NoLineOfSight { target } = targeting_error
         {
+            let targeting_context =
+                systems::actions::targeting_context_data(&game_state.world, action);
+
+            if matches!(targeting_context.kind, TargetingKind::Multiple { .. }) {
+                // For simplicity, don't attempt to find a path if there are multiple
+                // potential targets since we don't know which one to path to
+                return Err(TargetPathFindingError::MultiplePotentialTargets);
+            }
+
             let target_position = match target {
                 TargetInstance::Entity(entity) => {
                     let (_, shape_pose) =

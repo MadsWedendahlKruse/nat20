@@ -147,7 +147,7 @@ impl AIController for RandomController {
                             .collect(),
                     );
 
-                    match systems::movement::path_to_target(game_state, &action, true) {
+                    match systems::movement::path_to_target(game_state, &action) {
                         Ok(result) => match result {
                             TargetPathFindingResult::AlreadyInRange(_) => {
                                 return Some(Activity::Act {

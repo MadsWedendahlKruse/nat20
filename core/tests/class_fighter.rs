@@ -3,19 +3,16 @@ extern crate nat20_core;
 mod tests {
     use nat20_core::{
         components::{
-            actions::targeting::TargetInstance,
-            activity::Activity,
+            actions::{action_builder::ActionBuilder, targeting::TargetInstance},
             damage::{DamageRoll, DamageSource, DamageType},
             health::hit_points::HitPoints,
             id::{ActionId, EffectId, ResourceId, SpellId},
             resource::{RESOURCE_ACTION, ResourceAmount, ResourceMap},
             time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
         },
-        engine::action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
         systems,
         test_utils::fixtures,
     };
-    use parry3d::na::Point3;
 
     #[test]
     fn fighter_action_surge() {
@@ -30,7 +27,6 @@ mod tests {
             available_actions.contains_key(&action_id),
             "Fighter should have Action Surge action"
         );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
 
         {
             let resources =
@@ -44,17 +40,10 @@ mod tests {
             assert!(resources.can_afford(&RESOURCE_ACTION, &ResourceAmount::Flat(1),));
         }
 
-        let _ = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier.clone(),
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Entity(fighter_identifier)],
-                ),
-            }),
-        });
+        let result = ActionBuilder::available(&game_state.world, fighter)
+            .action(&game_state.world, &action_id)
+            .perform(&mut game_state);
+        println!("Action Surge Result: {:?}", result);
         game_state.update(3.0);
 
         {
@@ -131,7 +120,6 @@ mod tests {
             available_actions.contains_key(&action_id),
             "Fighter should have Second Wind action"
         );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
 
         // Check that the fighter has two charges of Second Wind
         assert!(
@@ -163,17 +151,9 @@ mod tests {
             hit_points.current()
         };
 
-        let result = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier.clone(),
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Entity(fighter_identifier)],
-                ),
-            }),
-        });
+        let result = ActionBuilder::available(&game_state.world, fighter)
+            .action(&game_state.world, &action_id)
+            .perform(&mut game_state);
         println!("Second Wind Result: {:?}", result);
         game_state.update(3.0);
 
@@ -223,18 +203,13 @@ mod tests {
             available_actions.contains_key(&action_id),
             "Fighter should have Melee Attack action"
         );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
-        let result = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier.clone(),
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Point(Point3::new(1.0, 0.0, 0.0))],
-                ),
-            }),
-        });
+        let result = ActionBuilder::available(&game_state.world, fighter)
+            .action(&game_state.world, &action_id)
+            .target(
+                &mut game_state,
+                TargetInstance::Point([1.0, 0.0, 0.0].into()),
+            )
+            .perform(&mut game_state);
         game_state.update(3.0);
         assert!(
             result.is_ok(),
@@ -263,18 +238,13 @@ mod tests {
             available_actions.contains_key(&action_id),
             "Fighter should have Melee Attack action available for second attack"
         );
-        let contexts_and_costs = available_actions.get(&action_id).unwrap();
-        let result = game_state.submit_activity(Activity::Act {
-            action: ActionDecision::without_response_to(ActionDecisionKind::Action {
-                action: ActionData::new(
-                    fighter_identifier,
-                    action_id.clone(),
-                    contexts_and_costs[0].0.clone(),
-                    contexts_and_costs[0].1.clone(),
-                    vec![TargetInstance::Point(Point3::new(1.0, 0.0, 0.0))],
-                ),
-            }),
-        });
+        let result = ActionBuilder::available(&game_state.world, fighter)
+            .action(&game_state.world, &action_id)
+            .target(
+                &mut game_state,
+                TargetInstance::Point([1.0, 0.0, 0.0].into()),
+            )
+            .perform(&mut game_state);
         game_state.update(3.0);
         assert!(
             result.is_ok(),

@@ -1459,7 +1459,7 @@ fn update_potential_target(
             }
             _ => {
                 trace!("Finding path to new target {:?}", closest_target);
-                match systems::movement::path_to_target(game_state, &potential_action, true) {
+                match systems::movement::path_to_target(game_state, &potential_action) {
                     Ok(result) => {
                         trace!("Found path to target {:?}: {:?}", closest_target, result);
                         *potential_target = Some(PotentialTarget {
