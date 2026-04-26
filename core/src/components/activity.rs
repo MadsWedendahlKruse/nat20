@@ -175,24 +175,24 @@ impl ActivityState {
                     },
                 phases,
                 phase_cooldown,
-                pause_reasons,
+                ..
             } => {
                 *elapsed_time += delta_time;
 
                 if *elapsed_time >= *perform_time {
                     *phase_cooldown += delta_time;
-                }
 
-                if *phase_cooldown >= *step_spacing && !phases.is_empty() {
-                    debug!(
-                        "Action phase cooldown elapsed for entity {:?}, checking for next phase",
-                        entity
-                    );
-                    *phase_cooldown = 0.0;
-                    commands.push(ActivityGameStateCommand::PerformActionPhase {
-                        entity,
-                        phase: phases.pop_front().unwrap(),
-                    });
+                    if *phase_cooldown >= *step_spacing && !phases.is_empty() {
+                        debug!(
+                            "Action phase cooldown elapsed for entity {:?}, checking for next phase",
+                            entity
+                        );
+                        *phase_cooldown = 0.0;
+                        commands.push(ActivityGameStateCommand::PerformActionPhase {
+                            entity,
+                            phase: phases.pop_front().unwrap(),
+                        });
+                    }
                 }
 
                 if *elapsed_time >= *total_duration && phases.is_empty() {
@@ -261,7 +261,7 @@ impl ActivityState {
             timeline: action.timeline.clone(),
             elapsed_time: 0.0,
             phases: phases.into(),
-            phase_cooldown: 0.0,
+            phase_cooldown: action.timeline.step_spacing,
             pause_reasons: HashSet::new(),
         };
     }
