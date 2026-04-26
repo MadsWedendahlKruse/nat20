@@ -10,9 +10,9 @@ use crate::{
             action::{ActionConditionResolution, ActionContext, ActionResult},
             targeting::TargetInstance,
         },
-        d20::{D20CheckKey, D20CheckMap, D20CheckOutcome},
+        d20::{D20CheckKey, D20CheckMap},
         damage::{
-            AttackRange, AttackRoll, AttackRollTemplate, AttackSource, DamageMitigationEffect,
+            AttackRoll, AttackRollTemplate, AttackSource, DamageMitigationEffect,
             DamageMitigationResult, DamageResistances, DamageRollResult,
         },
         effects::{
@@ -21,9 +21,9 @@ use crate::{
                 EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
             },
             hooks::{
-                ActionHook, ActionResultHook, ArmorClassHook, AttackRollHook, AttackedHook,
-                DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
-                ResourceCostHook, TurnStartHook,
+                ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, DamageRollResultHook,
+                DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
+                TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},

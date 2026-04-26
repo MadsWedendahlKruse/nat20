@@ -438,7 +438,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_skill_modifier_provider_parsing() {
+    fn skill_modifier_provider_parsing() {
         let spec: SkillModifierProvider = "stealth+2".parse().unwrap();
         assert_eq!(spec.kind[0], Skill::Stealth);
         assert!(matches!(spec.modifier, D20Modifier::Flat(2)));
@@ -467,10 +467,14 @@ mod tests {
             spec.modifier,
             D20Modifier::ForceOutcome(D20CheckOutcome::CriticalSuccess)
         ));
+
+        let spec: SkillModifierProvider = "stealth crit(-5)".parse().unwrap();
+        assert_eq!(spec.kind[0], Skill::Stealth);
+        assert!(matches!(spec.modifier, D20Modifier::CritThreshold(5)));
     }
 
     #[test]
-    fn test_saving_throw_modifier_provider_parsing() {
+    fn saving_throw_modifier_provider_parsing() {
         let spec: SavingThrowModifierProvider = "constitution advantage".parse().unwrap();
         assert_eq!(
             spec.kind[0],
@@ -508,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ability_modifier_provider_parsing() {
+    fn ability_modifier_provider_parsing() {
         let spec: AbilityModifierProvider = "strength+2".parse().unwrap();
         assert_eq!(spec.ability, Ability::Strength);
         assert_eq!(spec.delta, 2);
@@ -519,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn test_damage_resistance_provider_parsing() {
+    fn damage_resistance_provider_parsing() {
         let spec: DamageResistanceProvider = "fire resistance".parse().unwrap();
         assert_eq!(spec.damage_type, DamageType::Fire);
         assert_eq!(spec.operation, MitigationOperation::Resistance);
@@ -531,5 +535,20 @@ mod tests {
         let spec: DamageResistanceProvider = "force -2".parse().unwrap();
         assert_eq!(spec.damage_type, DamageType::Force);
         assert_eq!(spec.operation, MitigationOperation::FlatReduction(2));
+    }
+
+    #[test]
+    fn attack_source_definition_parsing() {
+        let spec: AttackSourceDefinition = "melee_weapon".parse().unwrap();
+        assert_eq!(spec.source, AttackSource::Weapon(WeaponKind::Melee));
+
+        let spec: AttackSourceDefinition = "ranged_weapon".parse().unwrap();
+        assert_eq!(spec.source, AttackSource::Weapon(WeaponKind::Ranged));
+
+        let spec: AttackSourceDefinition = "unarmed".parse().unwrap();
+        assert_eq!(spec.source, AttackSource::Weapon(WeaponKind::Unarmed));
+
+        let spec: AttackSourceDefinition = "spell".parse().unwrap();
+        assert_eq!(spec.source, AttackSource::Spell);
     }
 }

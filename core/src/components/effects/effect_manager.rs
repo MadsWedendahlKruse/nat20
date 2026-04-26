@@ -126,10 +126,7 @@ impl EffectManager {
     /// drop the shared borrow on the world and invoke the hooks with `&mut GameState`
     /// or `&mut World` without hitting a double-borrow. Any effects added by a hook
     /// go directly into the world and are never overwritten.
-    pub fn collect_hooks<H: Clone>(
-        &self,
-        get_hook: impl Fn(&Effect) -> Option<&H>,
-    ) -> Vec<H> {
+    pub fn collect_hooks<H: Clone>(&self, get_hook: impl Fn(&Effect) -> Option<&H>) -> Vec<H> {
         self.effects
             .values()
             .filter_map(|inst| get_hook(inst.effect()).cloned())
@@ -170,13 +167,6 @@ impl EffectManager {
         self.for_each(
             |effect| effect.on_unapply.as_ref(),
             |hook| hook(state, entity),
-        );
-    }
-
-    pub fn pre_attack_roll(&self, world: &World, entity: Entity, roll: &mut AttackRoll) {
-        self.for_each(
-            |effect| effect.pre_attack_roll.as_ref(),
-            |hook| hook(world, entity, roll),
         );
     }
 

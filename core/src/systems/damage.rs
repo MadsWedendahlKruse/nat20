@@ -41,8 +41,6 @@ pub fn attack_roll(
     attacker: Entity,
     target: Entity,
 ) -> AttackRollResult {
-    systems::effects::effects(world, attacker).pre_attack_roll(world, attacker, &mut attack_roll);
-
     let attacked_hooks: Vec<(AttackedHook, EffectInstance)> =
         systems::effects::effects_mut(world, target)
             .collect_one_shot_hooks_with_instance(|effect| effect.on_attacked.as_ref());

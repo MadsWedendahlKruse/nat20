@@ -766,12 +766,6 @@ fn render_attack_hit_chance_tooltip(
         &action.context,
     );
 
-    // Effects on attacker
-    systems::effects::effects(&game_state.world, action.actor.id()).pre_attack_roll(
-        &game_state.world,
-        action.actor.id(),
-        &mut attack_roll,
-    );
     // Effects on target
     systems::effects::effects(&game_state.world, target).attacked_preview(
         &game_state.world,
