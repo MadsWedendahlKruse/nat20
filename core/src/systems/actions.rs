@@ -279,11 +279,9 @@ pub fn get_targeted_entities(
 
                 // Only keep the entities that are valid targets
                 entities_in_shape.retain(|entity| {
-                    targeting_context.allowed_target(
-                        &game_state.world,
-                        *entity,
-                        Some(action_data.actor.id()),
-                    )
+                    targeting_context
+                        .allowed_target(&game_state.world, *entity, Some(action_data.actor.id()))
+                        .is_ok()
                 });
 
                 // Check if any of the entities are behind cover and remove them

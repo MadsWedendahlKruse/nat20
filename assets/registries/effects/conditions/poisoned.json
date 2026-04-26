@@ -5,11 +5,9 @@
     "modifiers": [
         {
             "skill": "all disadvantage"
-        }
-    ],
-    "pre_attack_roll": [
+        },
         {
-            "modifier": "disadvantage"
+            "attack_roll_modifier": "disadvantage"
         }
     ]
 }

@@ -122,6 +122,7 @@ impl ProjectileTemplate {
 
         match (&self, &mut raycast_result.mode) {
             (ProjectileTemplate::Ray { velocity }, RaycastMode::Ray(ray)) => {
+                // Scale the time of impact so it matches the velocity of the projectile
                 let velocity = velocity.get::<meter_per_second>();
                 time_of_impact /= velocity;
                 *ray = Ray {

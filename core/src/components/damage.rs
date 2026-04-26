@@ -637,14 +637,6 @@ impl AttackRollTemplate {
     pub fn instantiate(&self, source: AttackSource, range: AttackRange) -> AttackRoll {
         AttackRoll::new(self.d20_check.clone(), source, range)
     }
-
-    pub fn add_crit_threshold_reduction(&mut self, source: ModifierSource, amount: u8) {
-        self.d20_check.add_crit_threshold_reduction(source, amount);
-    }
-
-    pub fn remove_crit_threshold_reduction(&mut self, source: &ModifierSource) {
-        self.d20_check.remove_crit_threshold_reduction(source);
-    }
 }
 
 #[derive(Debug, Clone)]

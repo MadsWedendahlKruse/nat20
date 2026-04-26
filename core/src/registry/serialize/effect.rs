@@ -107,17 +107,12 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub modifiers: Vec<EffectModifier>,
 
-    /// Other hooks can be either pattern-based or script-based
-    /// TODO: I think this guy can be retired in favor of EffectModifier::AttackRoll
-    #[serde(default)]
-    pub pre_attack_roll: Vec<AttackRollHookDefinition>,
     // #[serde(default)]
     // pub post_attack_roll: Vec<AttackRollResultHookDef>,
     #[serde(default)]
     pub on_attacked: Vec<AttackedHookDefinition>,
     #[serde(default)]
     pub on_armor_class: Vec<ArmorClassHookDefinition>,
-
     // #[serde(default)]
     // pub pre_damage_roll: Vec<DamageRollHookDef>,
     #[serde(default)]
@@ -192,13 +187,6 @@ impl From<EffectDefinition> for Effect {
         }
 
         // 2. Hook-based modifiers
-        // Build pre_attack_roll hooks
-        {
-            if !definition.pre_attack_roll.is_empty() {
-                let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
-                effect.pre_attack_roll = Some(AttackRollHookDefinition::combine_hooks(hooks));
-            }
-        }
         // Build on_attacked hooks
         {
             if !definition.on_attacked.is_empty() {
@@ -297,17 +285,6 @@ impl RegistryReferenceCollector for EffectDefinition {
             match modifier {
                 EffectModifier::Resource { resource, .. } => {
                     collector.add(RegistryReference::Resource(resource.clone()));
-                }
-                _ => { /* No references to collect */ }
-            }
-        }
-        for hook in &self.pre_attack_roll {
-            match hook {
-                AttackRollHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::AttackRollHook,
-                    ));
                 }
                 _ => { /* No references to collect */ }
             }
@@ -734,14 +711,21 @@ impl EffectModifier {
             }
 
             (D20Modifier::CritThreshold(threshold), EffectPhase::Apply) => {
-                template.add_crit_threshold_reduction(source.clone(), *threshold);
+                template
+                    .d20_check
+                    .add_crit_threshold_reduction(source.clone(), *threshold);
             }
             (D20Modifier::CritThreshold(_), EffectPhase::Unapply) => {
-                template.remove_crit_threshold_reduction(source);
+                template.d20_check.remove_crit_threshold_reduction(source);
             }
 
-            (D20Modifier::ForceOutcome(_), _) => {
-                // ForceOutcome is not applicable to attack rolls
+            (D20Modifier::ForceOutcome(outcome), EffectPhase::Apply) => {
+                template
+                    .d20_check
+                    .set_forced_outcome(source.clone(), *outcome);
+            }
+            (D20Modifier::ForceOutcome(_), EffectPhase::Unapply) => {
+                template.d20_check.clear_forced_outcome();
             }
         }
     }
@@ -769,95 +753,12 @@ where
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum AttackRollHookDefinition {
-    Modifier {
-        #[serde(default)]
-        source: Option<AttackSource>,
-        #[serde(default)]
-        range: Option<AttackRange>,
-        modifier: D20Modifier,
-    },
-    Script {
-        script: ScriptId,
-    },
-}
-
-impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
-    fn build_hook(&self, effect: &EffectId) -> AttackRollHook {
-        match self {
-            AttackRollHookDefinition::Modifier {
-                source,
-                range,
-                modifier,
-            } => {
-                let modifier_source = ModifierSource::Effect(effect.clone());
-                Arc::new({
-                    let source = source.clone();
-                    let range = range.clone();
-                    let modifier = modifier.clone();
-                    move |_world, _entity, attack_roll| {
-                        if let Some(source) = source
-                            && attack_roll.source != source
-                        {
-                            // Only apply if the attack source matches
-                            return;
-                        }
-                        if let Some(range) = range
-                            && attack_roll.range != range
-                        {
-                            // Only apply if the damage source matches
-                            return;
-                        }
-
-                        match modifier {
-                            D20Modifier::Flat(bonus) => {
-                                attack_roll
-                                    .d20_check
-                                    .add_modifier(modifier_source.clone(), bonus);
-                            }
-                            D20Modifier::Advantage(advantage) => {
-                                attack_roll
-                                    .d20_check
-                                    .advantage_tracker_mut()
-                                    .add(advantage, modifier_source.clone());
-                            }
-                            D20Modifier::CritThreshold(threshold) => {
-                                attack_roll.d20_check.add_crit_threshold_reduction(
-                                    modifier_source.clone(),
-                                    threshold,
-                                );
-                            }
-                            D20Modifier::ForceOutcome(_) => {}
-                        }
-                    }
-                })
-            }
-
-            AttackRollHookDefinition::Script { script } => {
-                todo!("Implement script-based AttackRollHook")
-            }
-        }
-    }
-
-    fn combine_hooks(hooks: Vec<AttackRollHook>) -> AttackRollHook {
-        Arc::new(move |world, entity, attack_roll| {
-            for hook in &hooks {
-                hook(world, entity, attack_roll);
-            }
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
 pub enum AttackedHookDefinition {
     Modifier {
         modifier: D20Modifier,
         #[serde(default)]
         attacked_by: Option<EffectEntiyReference>,
-    },
-    AutoCrit {
-        auto_crit_distance: LengthExpressionDefinition,
+        distance: Option<LengthExpressionDefinition>,
     },
 }
 
@@ -867,16 +768,33 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
             AttackedHookDefinition::Modifier {
                 modifier,
                 attacked_by,
+                distance,
             } => {
                 let modifier_source = ModifierSource::Effect(effect.clone());
                 Arc::new({
                     let modifier = modifier.clone();
                     let attacked_by = attacked_by.clone();
-                    move |_world: &World,
+                    let distance = distance.clone();
+
+                    move |world: &World,
                           effect: &EffectInstance,
-                          _victim: Entity,
+                          victim: Entity,
                           attacker: Entity,
                           attack_roll: &mut AttackRoll| {
+                        if let Some(distance_expression) = &distance {
+                            let distance_between = systems::geometry::distance_between_entities(
+                                world, victim, attacker,
+                            )
+                            .unwrap();
+
+                            let max_distance =
+                                distance_expression.evaluate_without_variables().unwrap();
+
+                            if distance_between > max_distance {
+                                return;
+                            }
+                        }
+
                         if let Some(attacked_by) = attacked_by {
                             // Only apply if the attacker matches the reference
                             let attacker_matches = match attacked_by {
@@ -907,35 +825,14 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                                     threshold,
                                 );
                             }
-                            D20Modifier::ForceOutcome(_) => {}
+                            D20Modifier::ForceOutcome(outcome) => {
+                                attack_roll
+                                    .d20_check
+                                    .set_forced_outcome(modifier_source.clone(), outcome);
+                            }
                         }
                     }
                 })
-            }
-
-            AttackedHookDefinition::AutoCrit { auto_crit_distance } => {
-                let effect_id = effect.clone();
-                let distance_expression = auto_crit_distance.clone();
-                Arc::new(
-                    move |world: &World,
-                          effect: &EffectInstance,
-                          victim: Entity,
-                          attacker: Entity,
-                          attack_roll: &mut AttackRoll| {
-                        let distance = distance_expression.evaluate_without_variables().unwrap();
-
-                        let distance_between =
-                            systems::geometry::distance_between_entities(world, victim, attacker)
-                                .unwrap();
-
-                        if distance_between <= distance {
-                            attack_roll.d20_check.set_forced_outcome(
-                                ModifierSource::Effect(effect_id.clone()),
-                                D20CheckOutcome::CriticalSuccess,
-                            );
-                        }
-                    },
-                )
             }
         }
     }

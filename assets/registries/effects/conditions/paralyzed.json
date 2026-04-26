@@ -21,7 +21,8 @@
             "modifier": "advantage"
         },
         {
-            "auto_crit_distance": "5 ft"
+            "modifier": "critical_success",
+            "distance": "5 feet"
         }
     ]
 }

@@ -3,9 +3,9 @@
     "kind": "buff",
     "description": "While wearing this ring, you have advantage on attack rolls.",
     "duration": "conditional",
-    "pre_attack_roll": [
+    "modifiers": [
         {
-            "modifier": "advantage"
+            "attack_roll_modifier": "advantage"
         }
     ]
 }

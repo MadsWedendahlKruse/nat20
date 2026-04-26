@@ -57,13 +57,24 @@ impl TargetingContext {
         }
     }
 
-    pub fn allowed_target(&self, world: &World, entity: Entity, actor: Option<Entity>) -> bool {
-        for filter in &self.allowed_targets {
-            if !filter.matches(world, entity, actor) {
-                return false;
-            }
+    pub fn allowed_target(
+        &self,
+        world: &World,
+        entity: Entity,
+        actor: Option<Entity>,
+    ) -> Result<(), Vec<EntityFilter>> {
+        let violated_filters: Vec<EntityFilter> = self
+            .allowed_targets
+            .iter()
+            .filter(|filter| !filter.matches(world, entity, actor))
+            .cloned()
+            .collect();
+
+        if violated_filters.is_empty() {
+            Ok(())
+        } else {
+            Err(violated_filters)
         }
-        true
     }
 
     pub fn validate_targets(
@@ -84,8 +95,9 @@ impl TargetingContext {
                 }
                 if targets[0] != TargetInstance::Entity(EntityIdentifier::from_world(world, actor))
                 {
-                    return Err(TargetingError::InvalidTarget {
+                    return Err(TargetingError::NotSelf {
                         target: targets[0].clone(),
+                        actor: EntityIdentifier::from_world(world, actor),
                     });
                 }
             }
@@ -161,9 +173,12 @@ impl TargetingContext {
             // Check allowed targets
             match target {
                 TargetInstance::Entity(entity) => {
-                    if !self.allowed_target(world, entity.id(), Some(actor)) {
+                    if let Err(violated_filters) =
+                        self.allowed_target(world, entity.id(), Some(actor))
+                    {
                         return Err(TargetingError::InvalidTarget {
                             target: target.clone(),
+                            violated_filters,
                         });
                     }
                 }
@@ -431,6 +446,11 @@ pub enum TargetingError {
     },
     InvalidTarget {
         target: TargetInstance,
+        violated_filters: Vec<EntityFilter>,
+    },
+    NotSelf {
+        target: TargetInstance,
+        actor: EntityIdentifier,
     },
 }
 
