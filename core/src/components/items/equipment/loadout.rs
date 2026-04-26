@@ -15,8 +15,7 @@ use crate::{
         },
         d20::{AdvantageType, D20Check},
         damage::{
-            AttackRange, AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageSource,
-            DamageType,
+            AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageSource, DamageType,
         },
         dice::{DiceSet, DieSize},
         id::{ActionId, EffectId, ItemId},
@@ -475,11 +474,8 @@ impl AttackRollProvider for Loadout {
                     ModifierSource::Ability(Ability::Strength),
                     strength_modifier,
                 );
-                let mut attack_roll = AttackRoll::new(
-                    d20_check,
-                    AttackSource::Weapon(WeaponKind::Unarmed),
-                    AttackRange::Melee,
-                );
+                let mut attack_roll =
+                    AttackRoll::new(d20_check, AttackSource::Weapon(WeaponKind::Unarmed));
                 if let Some(template) = self.attack_roll_templates.get(&WeaponKind::Unarmed) {
                     template.apply_to_roll(&mut attack_roll);
                 }

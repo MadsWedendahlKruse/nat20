@@ -28,7 +28,7 @@ use crate::{
         },
         class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel, SpellcastingRules},
         d20::{D20Check, D20CheckDC},
-        damage::{AttackRange, AttackRoll, AttackRollTemplate, AttackSource},
+        damage::{AttackRoll, AttackRollTemplate, AttackSource},
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
         modifier::{Modifiable, ModifierSet, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
@@ -783,16 +783,7 @@ impl AttackRollProvider for Spellbook {
         let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
         let spellcasting_ability = self.spellcasting_ability(world, entity, &spell_context.source);
 
-        let mut attack_roll = self.attack_roll.instantiate(AttackSource::Spell, {
-            let spell =
-                SpellsRegistry::get(&spell_context.id).expect("Spell must exist in registry");
-            let spell_range = (spell.action().targeting)(world, entity, context).range;
-            if spell_range.is_melee() {
-                AttackRange::Melee
-            } else {
-                AttackRange::Ranged
-            }
-        });
+        let mut attack_roll = self.attack_roll.instantiate(AttackSource::Spell);
         let spellcasting_modifier = ability_scores
             .ability_modifier(&spellcasting_ability)
             .total();

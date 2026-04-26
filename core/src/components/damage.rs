@@ -598,13 +598,6 @@ pub enum AttackSource {
     Spell,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AttackRange {
-    Melee,
-    Ranged,
-}
-
 #[derive(Debug, Clone)]
 pub struct AttackRollTemplate {
     pub d20_check: D20Check,
@@ -634,8 +627,8 @@ impl AttackRollTemplate {
             .add_modifier_set(self.d20_check.crit_threshold_reduction());
     }
 
-    pub fn instantiate(&self, source: AttackSource, range: AttackRange) -> AttackRoll {
-        AttackRoll::new(self.d20_check.clone(), source, range)
+    pub fn instantiate(&self, source: AttackSource) -> AttackRoll {
+        AttackRoll::new(self.d20_check.clone(), source)
     }
 }
 
@@ -643,14 +636,12 @@ impl AttackRollTemplate {
 pub struct AttackRoll {
     pub d20_check: D20Check,
     pub source: AttackSource,
-    pub range: AttackRange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackRollResult {
     pub roll_result: D20CheckResult,
     pub source: AttackSource,
-    pub range: AttackRange,
 }
 
 impl AttackRollResult {
@@ -678,12 +669,8 @@ impl fmt::Display for AttackRollResult {
 }
 
 impl AttackRoll {
-    pub fn new(d20_check: D20Check, source: AttackSource, range: AttackRange) -> Self {
-        Self {
-            d20_check,
-            source,
-            range,
-        }
+    pub fn new(d20_check: D20Check, source: AttackSource) -> Self {
+        Self { d20_check, source }
     }
 
     pub fn roll_raw(&self, proficiency_bonus: u8) -> AttackRollResult {
@@ -691,7 +678,6 @@ impl AttackRoll {
 
         AttackRollResult {
             roll_result,
-            range: self.range,
             source: self.source,
         }
     }

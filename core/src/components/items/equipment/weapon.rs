@@ -14,7 +14,7 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::targeting::TargetingRange,
         d20::D20Check,
-        damage::{AttackRange, AttackRoll, AttackSource, DamageRoll, DamageSource, DamageType},
+        damage::{AttackRoll, AttackSource, DamageRoll, DamageSource, DamageType},
         dice::DiceSet,
         id::{ActionId, EffectId},
         items::{
@@ -291,13 +291,7 @@ impl Weapon {
             enchantment as i32,
         );
 
-        let range = match self.kind {
-            WeaponKind::Melee => AttackRange::Melee,
-            WeaponKind::Ranged => AttackRange::Ranged,
-            WeaponKind::Unarmed => AttackRange::Melee,
-        };
-
-        AttackRoll::new(attack_roll, AttackSource::Weapon(*self.kind()), range)
+        AttackRoll::new(attack_roll, AttackSource::Weapon(*self.kind()))
     }
 
     pub fn damage_roll(
