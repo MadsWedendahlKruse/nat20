@@ -698,14 +698,19 @@ impl ResourceMap {
         }
     }
 
-    pub fn can_afford_all(&self, cost: &ResourceAmountMap) -> (bool, Option<ResourceId>) {
+    pub fn can_afford_all(&self, cost: &ResourceAmountMap) -> Result<(), Vec<ResourceId>> {
+        let mut lacking_resources = Vec::new();
         for (res_id, res_cost) in cost {
             if !self.can_afford(res_id, res_cost) {
-                return (false, Some(res_id.clone()));
+                lacking_resources.push(res_id.clone());
             }
         }
 
-        (true, None)
+        if lacking_resources.is_empty() {
+            Ok(())
+        } else {
+            Err(lacking_resources)
+        }
     }
 
     pub fn spend(&mut self, id: &ResourceId, cost: &ResourceAmount) -> Result<(), ResourceError> {
@@ -721,28 +726,39 @@ impl ResourceMap {
         }
     }
 
-    pub fn spend_all(&mut self, cost: &ResourceAmountMap) -> Result<(), ResourceError> {
-        let (can_afford, lacking_id) = self.can_afford_all(cost);
-        if !can_afford {
-            let resource_id = lacking_id.unwrap();
-            return Err(ResourceError::InsufficientResource {
-                id: resource_id.clone(),
-                needed: cost.get(&resource_id).unwrap().clone(),
-                available: self
-                    .get(&resource_id)
-                    .unwrap()
-                    .current_uses()
-                    .first()
-                    .unwrap()
-                    .clone(),
-            });
+    pub fn spend_all(&mut self, cost: &ResourceAmountMap) -> Result<(), Vec<ResourceError>> {
+        match self.can_afford_all(cost) {
+            Ok(()) => {
+                let mut spend_errors = Vec::new();
+                for (id, res_cost) in cost {
+                    if let Err(e) = self.spend(id, res_cost) {
+                        spend_errors.push(e);
+                    }
+                }
+                if spend_errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(spend_errors)
+                }
+            }
+            Err(lacking_resources) => {
+                let errors = lacking_resources
+                    .into_iter()
+                    .map(|id| ResourceError::InsufficientResource {
+                        id: id.clone(),
+                        needed: cost.get(&id).unwrap().clone(),
+                        available: self
+                            .get(&id)
+                            .unwrap()
+                            .current_uses()
+                            .first()
+                            .unwrap()
+                            .clone(),
+                    })
+                    .collect();
+                Err(errors)
+            }
         }
-
-        for (id, res_cost) in cost {
-            self.spend(id, res_cost)?;
-        }
-
-        Ok(())
     }
 
     pub fn restore(
@@ -1043,7 +1059,7 @@ mod tests {
             ResourceAmount::Flat(2),
         );
 
-        assert!(map.can_afford_all(&cost).0);
+        assert!(map.can_afford_all(&cost).is_ok());
     }
 
     #[test]
@@ -1061,7 +1077,7 @@ mod tests {
             ResourceAmount::Flat(2),
         );
 
-        assert!(!map.can_afford_all(&cost).0);
+        assert!(!map.can_afford_all(&cost).is_ok());
     }
 
     #[test]
@@ -1079,7 +1095,7 @@ mod tests {
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
 
-        assert!(map.can_afford_all(&cost).0);
+        assert!(map.can_afford_all(&cost).is_ok());
     }
 
     #[test]
@@ -1097,7 +1113,7 @@ mod tests {
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
 
-        assert!(!map.can_afford_all(&cost).0);
+        assert!(!map.can_afford_all(&cost).is_ok());
     }
 
     #[test]
@@ -1136,7 +1152,8 @@ mod tests {
         );
 
         let err = map.spend_all(&cost).unwrap_err();
-        match err {
+        assert!(err.len() == 1);
+        match err[0].clone() {
             ResourceError::InsufficientResource {
                 id,
                 needed,
@@ -1203,7 +1220,7 @@ mod tests {
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
 
-        assert!(map.can_afford_all(&cost).0);
+        assert!(map.can_afford_all(&cost).is_ok());
     }
 
     #[test]

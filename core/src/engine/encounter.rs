@@ -225,7 +225,7 @@ impl Encounter {
             *systems::helpers::get_component::<LifeState>(&game_state.world, current_entity),
             LifeState::Normal
         ) {
-            return !systems::resources::can_act(&game_state.world, current_entity).0;
+            return systems::resources::can_act(&game_state.world, current_entity).is_err();
         }
 
         // Normal / other states => decide if they can act

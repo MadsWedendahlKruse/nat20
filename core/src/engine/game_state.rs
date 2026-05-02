@@ -666,11 +666,11 @@ impl GameState {
             resource_cost,
             targets,
         )
-        .map_err(|error| ActionError::Usability(error))?;
+        .map_err(ActionError::Usability)?;
 
         if !simulate {
             systems::resources::spend(&mut self.world, actor.id(), resource_cost)
-                .map_err(|error| ActionError::Resource(error))?;
+                .map_err(ActionError::Resource)?;
 
             systems::spells::break_concentration_if_spell(self, action);
         }

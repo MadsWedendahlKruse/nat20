@@ -103,7 +103,7 @@ pub enum ActionError {
         decision: ActionDecision,
     },
     Usability(ActionUsabilityError),
-    Resource(ResourceError),
+    Resource(Vec<ResourceError>),
 }
 
 macro_rules! ensure_equal {

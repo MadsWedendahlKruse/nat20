@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Debug, hash::Hash, str::FromStr};
 use strum::Display;
 
+pub const DEFAULT_NAMESPACE: &str = "nat20_core";
+pub const NAMESPACE_SEPARATOR: &str = "::";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 pub enum IdError {
-    MissingNamespace,
     InvalidPrefix { expected: String, found: String },
     EmptyId,
 }
@@ -43,12 +45,13 @@ macro_rules! id_newtypes {
                 type Err = IdError;
 
                 fn from_str(s: &str) -> Result<Self, IdError> {
-                    let parts: Vec<&str> = s.splitn(2, "::").collect();
-                    if parts.len() != 2 {
-                        return Err(IdError::MissingNamespace);
-                    }
+                    let parts: Vec<&str> = s.splitn(2, NAMESPACE_SEPARATOR).collect();
+                    let (namespace, id) = if parts.len() != 2 {
+                        (DEFAULT_NAMESPACE, parts[0])
+                    } else {
+                        (parts[0], parts[1])
+                    };
                     let prefix = stringify!($name).to_lowercase().replace("id", "");
-                    let id = parts[1];
                     if !id.starts_with(&prefix) {
                         return Err(IdError::InvalidPrefix {
                             expected: prefix,
@@ -59,13 +62,19 @@ macro_rules! id_newtypes {
                         return Err(IdError::EmptyId);
                     }
 
-                    Ok(Self::new(parts[0].to_string(), parts[1].to_string()))
+                    Ok(Self::new(namespace.to_string(), id.to_string()))
+                }
+            }
+
+            impl From<&str> for $name {
+                fn from(value: &str) -> Self {
+                    value.parse().unwrap_or_else(|err| panic!("Failed to parse {} from string '{}': {:?}", stringify!($name), value, err))
                 }
             }
 
             impl fmt::Display for $name {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    write!(f, "{}::{}", self.namespace, self.id)
+                    write!(f, "{}{}{}", self.namespace, NAMESPACE_SEPARATOR, self.id)
                 }
             }
 

@@ -10,7 +10,10 @@ use crate::{
     },
     engine::game_state::GameState,
     systems,
-    test_utils::fixtures::creatures::{heroes, monsters},
+    test_utils::{
+        creature_probe::CreatureProbe,
+        fixtures::creatures::{heroes, monsters},
+    },
 };
 
 /// `(game_state, level/challenge_rating, optional_entity_to_spawn_at) -> spawned`
@@ -35,7 +38,7 @@ pub struct CreatureBuilder {
     level: u8,
     position: Option<(Point3<f32>, bool)>,
     time_mode: TimeMode,
-    spawn_at: Option<Entity>,
+    entity_id: Option<Entity>,
 }
 
 impl CreatureBuilder {
@@ -47,7 +50,7 @@ impl CreatureBuilder {
             level: 1,
             time_mode: TimeMode::RealTime,
             position: None,
-            spawn_at: None,
+            entity_id: None,
         }
     }
 
@@ -66,13 +69,13 @@ impl CreatureBuilder {
         self
     }
 
-    pub fn spawn_at(mut self, entity: Entity) -> Self {
-        self.spawn_at = Some(entity);
+    pub fn with_id(mut self, entity: Entity) -> Self {
+        self.entity_id = Some(entity);
         self
     }
 
     pub fn spawn(self, game_state: &mut GameState) -> EntityIdentifier {
-        let entity_id = (self.template)(game_state, self.level, self.spawn_at);
+        let entity_id = (self.template)(game_state, self.level, self.entity_id);
         let entity = entity_id.id();
 
         if let Some((position, on_ground)) = self.position {
@@ -94,5 +97,10 @@ impl CreatureBuilder {
         let _ = systems::health::heal_full(&mut game_state.world, entity);
 
         entity_id
+    }
+
+    pub fn probe(self, game_state: &mut GameState) -> CreatureProbe {
+        let entity_id = self.spawn(game_state);
+        CreatureProbe::new(entity_id)
     }
 }

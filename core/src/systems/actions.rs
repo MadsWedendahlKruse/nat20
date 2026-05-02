@@ -115,7 +115,7 @@ fn merge_action_maps(destination: &mut ActionMap, source: ActionMap) {
 pub enum ActionUsabilityError {
     EntityNotAlive(Entity),
     OnCooldown(RechargeRule),
-    NotEnoughResources(ResourceAmountMap),
+    NotEnoughResources(Vec<ResourceId>),
     ResourceNotFound(ResourceId),
     TargetingError(TargetingError),
 }
@@ -136,13 +136,8 @@ pub fn action_usable(
         return Err(ActionUsabilityError::OnCooldown(cooldown));
     }
 
-    if !systems::helpers::get_component::<ResourceMap>(world, entity)
-        .can_afford_all(resource_cost)
-        .0
-    {
-        return Err(ActionUsabilityError::NotEnoughResources(
-            resource_cost.clone(),
-        ));
+    if let Err(missing_resources) = systems::resources::can_afford(world, entity, resource_cost) {
+        return Err(ActionUsabilityError::NotEnoughResources(missing_resources));
     }
 
     Ok(())

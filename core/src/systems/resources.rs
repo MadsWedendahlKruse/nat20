@@ -39,7 +39,7 @@ pub fn can_afford(
     world: &World,
     entity: Entity,
     cost: &ResourceAmountMap,
-) -> (bool, Option<ResourceId>) {
+) -> Result<(), Vec<ResourceId>> {
     systems::helpers::get_component::<ResourceMap>(world, entity).can_afford_all(cost)
 }
 
@@ -47,7 +47,7 @@ pub fn spend(
     world: &mut World,
     entity: Entity,
     cost: &ResourceAmountMap,
-) -> Result<(), ResourceError> {
+) -> Result<(), Vec<ResourceError>> {
     systems::helpers::get_component_mut::<ResourceMap>(world, entity).spend_all(cost)
 }
 
@@ -59,7 +59,7 @@ pub fn restore(
     systems::helpers::get_component_mut::<ResourceMap>(world, entity).restore_all(restoration)
 }
 
-pub fn can_act(world: &World, entity: Entity) -> (bool, Option<ResourceId>) {
+pub fn can_act(world: &World, entity: Entity) -> Result<(), Vec<ResourceId>> {
     // Presumably the entity can't act if they don't have any action, bonus action,
     // or reaction resources left
     can_afford(

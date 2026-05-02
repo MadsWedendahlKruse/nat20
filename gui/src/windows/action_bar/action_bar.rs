@@ -485,8 +485,9 @@ fn render_context_selection(
             ui.same_line();
         }
 
-        let disabled_token =
-            ui.begin_disabled(!systems::resources::can_afford(&game_state.world, actor, cost).0);
+        let disabled_token = ui.begin_disabled(
+            systems::resources::can_afford(&game_state.world, actor, cost).is_err(),
+        );
 
         let clicked = if let Some(spell) = &context.spell {
             let level = spell.level;

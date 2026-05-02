@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use hecs::{Entity, World};
+use parry3d::na::Point3;
 
 use crate::{
     components::{
@@ -156,11 +157,37 @@ impl ActionBuilder {
         self
     }
 
+    pub fn target_point(
+        mut self,
+        game_state: &mut GameState,
+        point: impl Into<Point3<f32>>,
+    ) -> Self {
+        self.target(game_state, TargetInstance::Point(point.into()))
+    }
+
+    pub fn target_entity(mut self, game_state: &mut GameState, entity: Entity) -> Self {
+        let target =
+            TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, entity));
+        self.target(game_state, target)
+    }
+
     pub fn perform(self, game_state: &mut GameState) -> Result<(), ActionBuilderError> {
         let activity = self.build(game_state)?;
         game_state
             .submit_activity(activity)
             .map_err(ActionBuilderError::Activity)
+    }
+
+    /// Convenience method for performing an action and panicking if it returns an
+    /// error, to reduce boilerplate in tests where the action is expected to succeed.
+    pub fn perform_ok(self, game_state: &mut GameState) {
+        match self.perform(game_state) {
+            Ok(()) => (),
+            Err(e) => panic!(
+                "Expected perform to succeed, but it returned error: {:?}",
+                e
+            ),
+        }
     }
 
     pub fn build(self, game_state: &mut GameState) -> Result<Activity, ActionBuilderError> {
@@ -504,6 +531,17 @@ impl ReactionBuilder {
         game_state
             .submit_activity(activity)
             .map_err(ReactionBuilderError::Activity)
+    }
+
+    /// See `ActionBuilder::perform_ok`
+    pub fn perform_ok(self, game_state: &mut GameState) {
+        match self.perform(game_state) {
+            Ok(()) => (),
+            Err(e) => panic!(
+                "Expected perform to succeed, but it returned error: {:?}",
+                e
+            ),
+        }
     }
 }
 
