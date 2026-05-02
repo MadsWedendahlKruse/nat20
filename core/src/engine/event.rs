@@ -248,6 +248,10 @@ impl EventLog {
         }
         false
     }
+
+    pub fn filter_events(&self, filter: &EventFilter) -> Vec<&Event> {
+        self.events.iter().filter(|e| filter.matches(e)).collect()
+    }
 }
 
 pub type EventQueue = VecDeque<Event>;

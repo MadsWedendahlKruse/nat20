@@ -625,6 +625,12 @@ impl AttackRollTemplate {
             .d20_check
             .crit_threshold_reduction_mut()
             .add_modifier_set(self.d20_check.crit_threshold_reduction());
+
+        if let Some((source, forced_outcome)) = self.d20_check.forced_outcome() {
+            attack_roll
+                .d20_check
+                .set_forced_outcome(source.clone(), forced_outcome.clone());
+        }
     }
 
     pub fn instantiate(&self, source: AttackSource) -> AttackRoll {

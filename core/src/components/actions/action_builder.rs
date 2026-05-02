@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use hecs::{Entity, World};
 
 use crate::{
@@ -11,7 +13,10 @@ use crate::{
         resource::ResourceAmountMap,
     },
     engine::{
-        action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
+        action_prompt::{
+            ActionData, ActionDecision, ActionDecisionKind, ActionPromptKind, ReactionData,
+        },
+        event::Event,
         game_state::GameState,
     },
     systems::{
@@ -152,6 +157,13 @@ impl ActionBuilder {
     }
 
     pub fn perform(self, game_state: &mut GameState) -> Result<(), ActionBuilderError> {
+        let activity = self.build(game_state)?;
+        game_state
+            .submit_activity(activity)
+            .map_err(ActionBuilderError::Activity)
+    }
+
+    pub fn build(self, game_state: &mut GameState) -> Result<Activity, ActionBuilderError> {
         let state = self.state?;
         match state {
             ActionBuilderState::Targets {
@@ -185,9 +197,7 @@ impl ActionBuilder {
                     Activity::Act { action: decision }
                 };
 
-                game_state
-                    .submit_activity(activity)
-                    .map_err(ActionBuilderError::Activity)
+                return Ok(activity);
             }
             other => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Targets",
@@ -355,18 +365,222 @@ pub enum ActionBuilderError {
     Activity(ActivityError),
 }
 
+pub struct ReactionBuilder {
+    actor: EntityIdentifier,
+    state: Result<ReactionBuilderState, ReactionBuilderError>,
+}
+
+impl ReactionBuilder {
+    pub fn new(game_state: &GameState, entity: Entity) -> Self {
+        let actor = EntityIdentifier::from_world(&game_state.world, entity);
+
+        let Some(prompt) = game_state.next_prompt_entity(entity) else {
+            return Self {
+                actor,
+                state: Err(ReactionBuilderError::NoPrompt),
+            };
+        };
+
+        match &prompt.kind {
+            ActionPromptKind::Action { .. } => {
+                return Self {
+                    actor,
+                    state: Err(ReactionBuilderError::NoReactionPrompt),
+                };
+            }
+
+            ActionPromptKind::Reactions { event, options } => {
+                let Some(actor_options) = options.get(&actor.id()) else {
+                    return Self {
+                        actor,
+                        state: Err(ReactionBuilderError::NoOptionsForEntity {
+                            options: options.clone(),
+                        }),
+                    };
+                };
+
+                Self {
+                    actor,
+                    state: Ok(ReactionBuilderState::Options {
+                        event: event.clone(),
+                        options: actor_options.clone(),
+                    }),
+                }
+            }
+        }
+    }
+
+    pub fn actor(&self) -> &EntityIdentifier {
+        &self.actor
+    }
+
+    pub fn state(&self) -> Result<&ReactionBuilderState, &ReactionBuilderError> {
+        self.state.as_ref()
+    }
+
+    pub fn option_none(mut self) -> Self {
+        self.state = self.state.and_then(|state| match state {
+            ReactionBuilderState::Options { event, .. } => Ok(ReactionBuilderState::Decision {
+                event,
+                decision: None,
+            }),
+            other => Err(ReactionBuilderError::InvalidStateTransition {
+                expected: "Options",
+                actual: other.kind_name(),
+            }),
+        });
+        self
+    }
+
+    pub fn option_index(mut self, option_index: usize) -> Self {
+        self.state = self.state.and_then(|state| match state {
+            ReactionBuilderState::Options { event, options } => {
+                if let Some(option) = options.get(option_index) {
+                    Ok(ReactionBuilderState::Decision {
+                        event,
+                        decision: Some(option.clone()),
+                    })
+                } else {
+                    Err(ReactionBuilderError::InvalidOptionIndex {
+                        index: option_index,
+                        len: options.len(),
+                    })
+                }
+            }
+            other => Err(ReactionBuilderError::InvalidStateTransition {
+                expected: "Options",
+                actual: other.kind_name(),
+            }),
+        });
+        self
+    }
+
+    pub fn option_filter(mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> Self {
+        self.state = self.state.and_then(|state| match state {
+            ReactionBuilderState::Options { event, options } => {
+                match options.iter().position(filter_fn) {
+                    Some(index) => {
+                        let option = options.get(index).unwrap().clone();
+                        Ok(ReactionBuilderState::Decision {
+                            event,
+                            decision: Some(option),
+                        })
+                    }
+                    None => Err(ReactionBuilderError::NoMatchingOption {
+                        options: options.clone(),
+                    }),
+                }
+            }
+            other => Err(ReactionBuilderError::InvalidStateTransition {
+                expected: "Options",
+                actual: other.kind_name(),
+            }),
+        });
+        self
+    }
+
+    pub fn build(self) -> Result<Activity, ReactionBuilderError> {
+        let state = self.state?;
+        match state {
+            ReactionBuilderState::Decision { event, decision } => Ok(Activity::Act {
+                action: ActionDecision {
+                    response_to: event.id,
+                    kind: ActionDecisionKind::Reaction {
+                        event: event,
+                        reactor: self.actor.id(),
+                        choice: decision,
+                    },
+                },
+            }),
+            other => Err(ReactionBuilderError::InvalidStateTransition {
+                expected: "Decision",
+                actual: other.kind_name(),
+            }),
+        }
+    }
+
+    pub fn perform(self, game_state: &mut GameState) -> Result<(), ReactionBuilderError> {
+        let activity = self.build()?;
+        game_state
+            .submit_activity(activity)
+            .map_err(ReactionBuilderError::Activity)
+    }
+}
+
+pub enum ReactionBuilderState {
+    Options {
+        event: Event,
+        options: Vec<ReactionData>,
+    },
+    Decision {
+        event: Event,
+        decision: Option<ReactionData>,
+    },
+}
+
+impl ReactionBuilderState {
+    fn kind_name(&self) -> &'static str {
+        match self {
+            ReactionBuilderState::Options { .. } => "Options",
+            ReactionBuilderState::Decision { .. } => "Decision",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ReactionBuilderError {
+    NoPrompt,
+    NoReactionPrompt,
+    NoOptionsForEntity {
+        options: HashMap<Entity, Vec<ReactionData>>,
+    },
+    InvalidOptionIndex {
+        index: usize,
+        len: usize,
+    },
+    NoMatchingOption {
+        options: Vec<ReactionData>,
+    },
+    InvalidStateTransition {
+        expected: &'static str,
+        actual: &'static str,
+    },
+    Activity(ActivityError),
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use rstest::{fixture, rstest};
+
     use super::*;
 
-    use crate::test_utils::{creature_builder::CreatureBuilder, fixtures};
+    use crate::{
+        components::{
+            d20::D20CheckOutcome, items::equipment::weapon::WeaponKind, modifier::ModifierSource,
+        },
+        test_utils::{creature_builder::CreatureBuilder, fixtures},
+    };
 
-    #[test]
-    fn known_action_with_available_context_succeeds() {
-        let mut game_state = fixtures::engine::game_state();
+    #[fixture]
+    fn game_state() -> GameState {
+        fixtures::engine::game_state()
+    }
+
+    #[fixture]
+    fn game_state_fighter(mut game_state: GameState) -> (GameState, EntityIdentifier) {
         let fighter = CreatureBuilder::new("hero.fighter")
             .level(5)
             .spawn(&mut game_state);
+        (game_state, fighter)
+    }
+
+    #[rstest]
+    fn action_builder_known_action_with_available_context_succeeds(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
 
         let action_id = ActionId::new("nat20_core", "action.fighter.action_surge");
         let result = ActionBuilder::available(&game_state.world, fighter.id())
@@ -376,12 +590,11 @@ mod tests {
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
     }
 
-    #[test]
-    fn unknown_action_returns_error() {
-        let mut game_state = fixtures::engine::game_state();
-        let fighter = CreatureBuilder::new("hero.fighter")
-            .level(5)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_unknown_action_returns_error(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
 
         let bogus = ActionId::new("nat20_core", "action.does_not_exist");
         let result = ActionBuilder::available(&game_state.world, fighter.id())
@@ -395,12 +608,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unavailable_action_returns_error() {
-        let mut game_state = fixtures::engine::game_state();
-        let fighter = CreatureBuilder::new("hero.fighter")
-            .level(5)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_unavailable_action_returns_error(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
 
         // Fighter doesn't know any spells, so this should return an ActionNotAvailable error, not ActionNotFound
         let action_id = ActionId::new("nat20_core", "spell.magic_missile");
@@ -421,12 +633,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn wrong_state_returns_error() {
-        let mut game_state = fixtures::engine::game_state();
-        let fighter = CreatureBuilder::new("hero.fighter")
-            .level(5)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_wrong_state_returns_error(game_state_fighter: (GameState, EntityIdentifier)) {
+        let (mut game_state, fighter) = game_state_fighter;
 
         // Calling target() before action() should poison the builder with
         // an InvalidStateTransition error that surfaces at perform().
@@ -447,12 +656,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn valid_context_index_succeeds() {
-        let mut game_state = fixtures::engine::game_state();
+    #[fixture]
+    fn game_state_wizard(mut game_state: GameState) -> (GameState, EntityIdentifier) {
         let wizard = CreatureBuilder::new("hero.wizard")
             .level(5)
             .spawn(&mut game_state);
+        (game_state, wizard)
+    }
+
+    #[rstest]
+    fn action_builder_valid_context_index_succeeds(
+        game_state_wizard: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
         let result = ActionBuilder::available(&game_state.world, wizard.id())
@@ -464,12 +680,11 @@ mod tests {
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
     }
 
-    #[test]
-    fn invalid_context_index_returns_error() {
-        let mut game_state = fixtures::engine::game_state();
-        let wizard = CreatureBuilder::new("hero.wizard")
-            .level(5)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_invalid_context_index_returns_error(
+        game_state_wizard: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
         let result = ActionBuilder::available(&game_state.world, wizard.id())
@@ -488,12 +703,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn valid_context_filter_succeeds() {
-        let mut game_state = fixtures::engine::game_state();
-        let wizard = CreatureBuilder::new("hero.wizard")
-            .level(5)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_valid_context_filter_succeeds(
+        game_state_wizard: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
         let result = ActionBuilder::available(&game_state.world, wizard.id())
@@ -512,12 +726,11 @@ mod tests {
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
     }
 
-    #[test]
-    fn invalid_context_filter_returns_error() {
-        let mut game_state = fixtures::engine::game_state();
-        let wizard = CreatureBuilder::new("hero.wizard")
-            .level(5)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_invalid_context_filter_returns_error(
+        game_state_wizard: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
         let result = ActionBuilder::available(&game_state.world, wizard.id())
@@ -540,13 +753,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn target_entity_in_range_succeeds() {
-        let mut game_state = fixtures::engine::game_state();
-        let fighter = CreatureBuilder::new("hero.fighter")
-            .level(5)
-            .position([0.0, 0.0, 0.0].into(), false)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_target_entity_in_range_succeeds(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
+
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
             .position([1.0, 0.0, 0.0].into(), false)
@@ -565,13 +777,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn target_entity_out_of_range_but_within_movement_succeeds() {
-        let mut game_state = fixtures::engine::game_state();
-        let fighter = CreatureBuilder::new("hero.fighter")
-            .level(5)
-            .position([0.0, 0.0, 0.0].into(), false)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_target_entity_out_of_range_but_within_movement_succeeds(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
+
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
             .position([3.0, 0.0, 0.0].into(), false)
@@ -590,13 +801,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn target_entity_out_of_range_returns_error() {
-        let mut game_state = fixtures::engine::game_state();
-        let fighter = CreatureBuilder::new("hero.fighter")
-            .level(5)
-            .position([0.0, 0.0, 0.0].into(), false)
-            .spawn(&mut game_state);
+    #[rstest]
+    fn action_builder_target_entity_out_of_range_returns_error(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
+
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
             .position([100.0, 0.0, 0.0].into(), false)
@@ -613,6 +823,192 @@ mod tests {
             if target == &TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, goblin.id()))),
             // && matches!(reason, TargetingError::OutOfRange { .. })),
             "expected InvalidTarget with reason OutOfRange, got {:?}",
+            result
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_no_prompt_returns_error(game_state_fighter: (GameState, EntityIdentifier)) {
+        let (game_state, fighter) = game_state_fighter;
+
+        let result = ReactionBuilder::new(&game_state, fighter.id()).build();
+
+        assert!(
+            matches!(result, Err(ReactionBuilderError::NoPrompt)),
+            "expected NoPrompt error, got {:?}",
+            result
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_wrong_prompt_type_returns_error(
+        game_state_fighter: (GameState, EntityIdentifier),
+    ) {
+        let (mut game_state, fighter) = game_state_fighter;
+
+        // Start encounter to queue an action prompt
+        game_state.start_encounter(HashSet::from([fighter.id()]));
+
+        let result = ReactionBuilder::new(&game_state, fighter.id()).build();
+
+        assert!(
+            matches!(result, Err(ReactionBuilderError::NoReactionPrompt)),
+            "expected WrongPromptType error, got {:?}",
+            result
+        );
+    }
+
+    #[fixture]
+    fn game_state_reaction(
+        mut game_state: GameState,
+    ) -> (GameState, EntityIdentifier, EntityIdentifier) {
+        let fighter = CreatureBuilder::new("hero.fighter")
+            .level(5)
+            .position([0.0, 0.0, 0.0].into(), false)
+            .spawn(&mut game_state);
+        let wizard = CreatureBuilder::new("hero.wizard")
+            .level(5)
+            .position([1.0, 0.0, 0.0].into(), false)
+            .spawn(&mut game_state);
+        // Force the fighter to hit the attack so the wizard has a reason to react
+        systems::loadout::loadout_mut(&mut game_state.world, fighter.id())
+            .attack_roll_template_mut(&WeaponKind::Melee)
+            .d20_check
+            .set_forced_outcome(
+                ModifierSource::Custom("Testing".to_string()),
+                D20CheckOutcome::CriticalSuccess,
+            );
+
+        // Fighter attacking wizard triggers shield reaction
+        ActionBuilder::available(&game_state.world, fighter.id())
+            .action(
+                &game_state.world,
+                &ActionId::new("nat20_core", "action.melee_attack"),
+            )
+            .target(&mut game_state, TargetInstance::Entity(wizard.clone()))
+            .perform(&mut game_state)
+            .expect("Failed to perform action");
+        game_state.update(10.0);
+
+        (game_state, fighter, wizard)
+    }
+
+    #[rstest]
+    fn reaction_builder_no_options_for_entity_returns_error(
+        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+    ) {
+        let (game_state, fighter, _wizard) = game_state_reaction;
+
+        let result = ReactionBuilder::new(&game_state, fighter.id()).build();
+
+        assert!(
+            matches!(result, Err(ReactionBuilderError::NoOptionsForEntity { .. })),
+            "expected NoOptionsForEntity error, got {:?}",
+            result
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_valid_option_index_succeeds(
+        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+    ) {
+        let (game_state, _fighter, wizard) = game_state_reaction;
+
+        let result = ReactionBuilder::new(&game_state, wizard.id())
+            .option_index(0) // Choose the first reaction option (Shield spell)
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "expected Ok(()) when choosing valid reaction option, got {:?}",
+            result.err()
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_invalid_option_index_returns_error(
+        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+    ) {
+        let (game_state, _fighter, wizard) = game_state_reaction;
+
+        let result = ReactionBuilder::new(&game_state, wizard.id())
+            .option_index(999) // Invalid index
+            .build();
+
+        assert!(
+            matches!(
+                result,
+                Err(ReactionBuilderError::InvalidOptionIndex { index: 999, len: _ })
+            ),
+            "expected InvalidOptionIndex error with index 999, got {:?}",
+            result
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_option_none_succeeds(
+        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+    ) {
+        let (game_state, _fighter, wizard) = game_state_reaction;
+
+        let result = ReactionBuilder::new(&game_state, wizard.id())
+            .option_none() // Choose to not react
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "expected Ok(()) when choosing no reaction option, got {:?}",
+            result.err()
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_option_filter_succeeds(
+        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+    ) {
+        let (game_state, _fighter, wizard) = game_state_reaction;
+
+        let result = ReactionBuilder::new(&game_state, wizard.id())
+            .option_filter(|option| {
+                // Choose the level 3 Shield reaction option
+                option
+                    .context
+                    .spell
+                    .as_ref()
+                    .map(|spell| spell.level == 3)
+                    .unwrap_or(false)
+                    && option.reaction_id == ActionId::new("nat20_core", "action.shield")
+            })
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "expected Ok(()) when choosing Shield reaction option, got {:?}",
+            result.err()
+        );
+    }
+
+    #[rstest]
+    fn reaction_builder_option_filter_no_match_returns_error(
+        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+    ) {
+        let (game_state, _fighter, wizard) = game_state_reaction;
+
+        let result = ReactionBuilder::new(&game_state, wizard.id())
+            // Try to choose a non-existent reaction option
+            .option_filter(|option| {
+                option
+                    .context
+                    .spell
+                    .as_ref()
+                    .map(|spell| spell.level == 9)
+                    .unwrap_or(false)
+            })
+            .build();
+
+        assert!(
+            matches!(&result, Err(ReactionBuilderError::NoMatchingOption { options }) if options.len() > 0),
+            "expected NoMatchingOption error, got {:?}",
             result
         );
     }

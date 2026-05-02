@@ -24,7 +24,7 @@ use crate::{
         skill::Skill,
         time::{TimeDuration, TimeStep, TurnBoundary},
     },
-    engine::event::{EventCallback, EventFilter},
+    engine::event::{EventCallback, EventFilter, EventKind},
     registry::{
         registry::EffectsRegistry,
         serialize::effect::{
@@ -378,7 +378,7 @@ impl EffectEventFilter {
                     let entity = entity;
                     let boundary = *boundary;
                     move |event| {
-                        if let crate::engine::event::EventKind::TurnBoundary {
+                        if let EventKind::TurnBoundary {
                             entity: e,
                             boundary: b,
                         } = &event.kind
