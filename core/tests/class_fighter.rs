@@ -3,18 +3,19 @@ extern crate nat20_core;
 mod tests {
     use nat20_core::{
         components::{
-            actions::{action_builder::ActionBuilder, targeting::TargetInstance},
-            damage::{DamageRoll, DamageSource, DamageType},
-            health::hit_points::HitPoints,
-            id::{ActionId, EffectId, ResourceId, SpellId},
-            resource::{RESOURCE_ACTION, ResourceAmount, ResourceMap},
-            time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
+            ability::Ability,
+            d20::{AdvantageType, D20CheckOutcome},
+            damage::AttackSource,
+            items::equipment::weapon::WeaponKind,
+            modifier::ModifierSource,
+            saving_throw::{self, SavingThrowKind},
+            time::TimeMode,
         },
-        systems,
+        engine::event::{EventFilter, EventKind},
+        systems::d20::{D20CheckKind, D20ResultKind},
         test_utils::{
-            creature_builder::CreatureBuilder,
-            creature_probe::{CreatureProbe, Operator},
-            fixtures,
+            creature_builder::CreatureBuilder, creature_probe::Operator, fixtures,
+            scenario::Scenario,
         },
     };
 
@@ -121,5 +122,125 @@ mod tests {
         game_state.update(3.0);
 
         fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(0));
+    }
+
+    #[test]
+    fn fighter_two_extra_attacks() {
+        let mut game_state = fixtures::engine::game_state();
+        let fighter = CreatureBuilder::new("hero.fighter")
+            .level(11)
+            .time_mode(TimeMode::TurnBased { encounter_id: None })
+            .probe(&mut game_state);
+
+        fighter.assert_effect(&game_state, "effect.fighter.two_extra_attacks");
+        fighter.assert_no_resource(&game_state, "resource.extra_attack");
+
+        fighter
+            .act(&mut game_state, "action.melee_attack")
+            .target_point(&mut game_state, [1.0, 0.0, 0.0])
+            .perform_ok(&mut game_state);
+        game_state.update(3.0);
+
+        fighter.assert_resource(&game_state, "resource.action", Operator::Equal(0));
+        fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(2));
+
+        fighter
+            .act(&mut game_state, "action.melee_attack")
+            .target_point(&mut game_state, [1.0, 0.0, 0.0])
+            .perform_ok(&mut game_state);
+        game_state.update(3.0);
+
+        fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(1));
+
+        fighter
+            .act(&mut game_state, "action.melee_attack")
+            .target_point(&mut game_state, [1.0, 0.0, 0.0])
+            .perform_ok(&mut game_state);
+        game_state.update(3.0);
+
+        fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(0));
+    }
+
+    #[test]
+    fn fighter_studied_attacks() {
+        let mut scenario = Scenario::new();
+
+        scenario
+            .spawn("fighter", "hero.fighter")
+            .level(13)
+            .position([0.0, 0.0, 0.0], false)
+            .spawn();
+        scenario
+            .spawn("goblin", "monster.goblin_warrior")
+            .level(5)
+            .position([1.0, 0.0, 0.0], false)
+            .spawn();
+
+        scenario
+            .probe("fighter")
+            .assert_effect("effect.fighter.studied_attacks");
+
+        scenario
+            .encounter()
+            .initiative_order(vec!["fighter", "goblin"])
+            .build();
+
+        // Force the fighter's first attack to miss to trigger Studied Attacks
+        scenario.probe("fighter").d20_force_outcome(
+            D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+            D20CheckOutcome::CriticalFailure,
+        );
+
+        scenario
+            .act("fighter", "action.melee_attack")
+            .target_entity("goblin")
+            .perform();
+
+        // The effect is now applied to the *goblin*, not the fighter, and should
+        // grant advantage on the fighter's next attack against the goblin
+        scenario
+            .probe("goblin")
+            .assert_effect("effect.fighter.studied_attacks_advantage");
+
+        // Prevent next attack from missing on a nat 1
+        scenario.probe("fighter").d20_force_outcome(
+            D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+            D20CheckOutcome::CriticalSuccess,
+        );
+
+        scenario
+            .act("fighter", "action.melee_attack")
+            .target_entity("goblin")
+            .perform();
+
+        let fighter_entity = scenario.creatures.get("fighter").unwrap().creature.id();
+        assert!(
+            scenario
+                .filter_events(EventFilter::new({
+                    move |event| {
+                        if let EventKind::D20CheckResolved(actor, result, _) = &event.kind
+                            && actor.id() == fighter_entity
+                            && let D20ResultKind::AttackRoll { result } = result
+                            && result.roll_result.advantage_tracker.summary().contains(&(
+                                &ModifierSource::Effect(
+                                    "effect.fighter.studied_attacks_advantage".into(),
+                                ),
+                                AdvantageType::Advantage,
+                            ))
+                        {
+                            return true;
+                        } else {
+                            return false;
+                        };
+                    }
+                }))
+                .is_some()
+        );
+
+        // After the attack the effect is consumed (and it's not just because the goblin died)
+        scenario.probe("goblin").is_alive();
+        scenario
+            .probe("goblin")
+            .assert_no_effect("effect.fighter.studied_attacks_advantage");
     }
 }

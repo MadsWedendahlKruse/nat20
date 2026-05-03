@@ -643,7 +643,8 @@ pub mod creatures {
                 name.clone(),
                 registry::ai::RANDOM_CONTROLLER_ID.clone(),
                 ChallengeRating::new(challenge_rating),
-                HitPoints::new(10),
+                // TODO: Figure out proper challenge rating scaling
+                HitPoints::new((10 * challenge_rating) as u32),
                 CreatureSize::Small,
                 CreatureType::Fey,
                 Speed::new(Length::new::<foot>(30.0)),

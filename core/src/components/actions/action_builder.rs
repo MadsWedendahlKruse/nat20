@@ -58,66 +58,69 @@ impl ActionBuilder {
         self.state.as_ref()
     }
 
-    pub fn action(mut self, world: &World, action_id: &ActionId) -> Self {
+    pub fn action(&mut self, world: &World, action_id: &ActionId) -> &mut Self {
         let actor = self.actor.clone();
-        self.state = self.state.and_then(|state| match state {
-            ActionBuilderState::Action { mut actions } => {
-                Self::pick_action(&actor, world, &mut actions, action_id)
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Action { actions }) => {
+                Self::pick_action(&actor, world, actions, action_id)
             }
-            other => Err(ActionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Action",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
-    pub fn variant(mut self, world: &World, variant_id: &ActionId) -> Self {
+    pub fn variant(&mut self, world: &World, variant_id: &ActionId) -> &mut Self {
         let actor = self.actor.clone();
-        self.state = self.state.and_then(|state| match state {
-            ActionBuilderState::Variant { mut variants } => {
-                Self::pick_action(&actor, world, &mut variants, variant_id)
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Variant { variants }) => {
+                Self::pick_action(&actor, world, variants, variant_id)
             }
-            other => Err(ActionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Variant",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
-    pub fn context_index(mut self, world: &World, context_index: usize) -> Self {
+    pub fn context_index(&mut self, world: &World, context_index: usize) -> &mut Self {
         let actor = self.actor.clone();
-        self.state = self.state.and_then(|state| match state {
-            ActionBuilderState::Context {
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Context {
                 action,
                 contexts_and_costs,
-            } => Self::pick_context_and_cost(
+            }) => Self::pick_context_and_cost(
                 &actor,
                 world,
-                &action,
-                &contexts_and_costs,
+                action,
+                contexts_and_costs,
                 context_index,
             ),
-            other => Err(ActionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Context",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
     pub fn context_filter(
-        mut self,
+        &mut self,
         world: &World,
         filter_fn: impl Fn(&ActionContext, &ResourceAmountMap) -> bool,
-    ) -> Self {
+    ) -> &mut Self {
         let actor = self.actor.clone();
-        self.state = self.state.and_then(|state| match state {
-            ActionBuilderState::Context {
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Context {
                 action,
                 contexts_and_costs,
-            } => match contexts_and_costs
+            }) => match contexts_and_costs
                 .iter()
                 .position(|(context, cost)| filter_fn(context, cost))
             {
@@ -125,25 +128,26 @@ impl ActionBuilder {
                     Self::pick_context_and_cost(&actor, world, &action, &contexts_and_costs, index)
                 }
                 None => Err(ActionBuilderError::NoMatchingContext {
-                    options: contexts_and_costs,
+                    options: contexts_and_costs.clone(),
                 }),
             },
-            other => Err(ActionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Context",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
-    pub fn target(mut self, game_state: &mut GameState, target: TargetInstance) -> Self {
-        self.state = match self.state {
-            Ok(ActionBuilderState::Targets { mut action, .. }) => {
+    pub fn target(&mut self, game_state: &mut GameState, target: TargetInstance) -> &mut Self {
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Targets { action, .. }) => {
                 action.targets.push(target.clone());
                 match systems::movement::path_to_target(game_state, &action) {
                     Err(reason) => Err(ActionBuilderError::InvalidTarget { target, reason }),
                     Ok(path_to_target) => Ok(ActionBuilderState::Targets {
-                        action,
+                        action: action.clone(),
                         path_to_target: Some(path_to_target),
                     }),
                 }
@@ -152,52 +156,34 @@ impl ActionBuilder {
                 expected: "Targets",
                 actual: other.kind_name(),
             }),
-            Err(e) => Err(e),
+            Err(_) => return self,
         };
         self
     }
 
     pub fn target_point(
-        mut self,
+        &mut self,
         game_state: &mut GameState,
         point: impl Into<Point3<f32>>,
-    ) -> Self {
+    ) -> &mut Self {
         self.target(game_state, TargetInstance::Point(point.into()))
     }
 
-    pub fn target_entity(mut self, game_state: &mut GameState, entity: Entity) -> Self {
+    pub fn target_entity(&mut self, game_state: &mut GameState, entity: Entity) -> &mut Self {
         let target =
             TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, entity));
         self.target(game_state, target)
     }
 
-    pub fn perform(self, game_state: &mut GameState) -> Result<(), ActionBuilderError> {
-        let activity = self.build(game_state)?;
-        game_state
-            .submit_activity(activity)
-            .map_err(ActionBuilderError::Activity)
-    }
-
-    /// Convenience method for performing an action and panicking if it returns an
-    /// error, to reduce boilerplate in tests where the action is expected to succeed.
-    pub fn perform_ok(self, game_state: &mut GameState) {
-        match self.perform(game_state) {
-            Ok(()) => (),
-            Err(e) => panic!(
-                "Expected perform to succeed, but it returned error: {:?}",
-                e
-            ),
-        }
-    }
-
-    pub fn build(self, game_state: &mut GameState) -> Result<Activity, ActionBuilderError> {
-        let state = self.state?;
-        match state {
-            ActionBuilderState::Targets {
+    pub fn build(&self, game_state: &mut GameState) -> Result<Activity, ActionBuilderError> {
+        match &self.state {
+            Ok(ActionBuilderState::Targets {
                 action,
                 path_to_target,
-            } => {
-                let decision_kind = ActionDecisionKind::Action { action };
+            }) => {
+                let decision_kind = ActionDecisionKind::Action {
+                    action: action.clone(),
+                };
                 let decision = if let Some(prompt_id) = game_state
                     .next_prompt_entity(self.actor.id())
                     .map(|prompt| prompt.id)
@@ -226,10 +212,30 @@ impl ActionBuilder {
 
                 return Ok(activity);
             }
-            other => Err(ActionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Targets",
                 actual: other.kind_name(),
             }),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    pub fn perform(&self, game_state: &mut GameState) -> Result<(), ActionBuilderError> {
+        let activity = self.build(game_state)?;
+        game_state
+            .submit_activity(activity)
+            .map_err(ActionBuilderError::Activity)
+    }
+
+    /// Convenience method for performing an action and panicking if it returns an
+    /// error, to reduce boilerplate in tests where the action is expected to succeed.
+    pub fn perform_ok(&self, game_state: &mut GameState) {
+        match self.perform(game_state) {
+            Ok(()) => (),
+            Err(e) => panic!(
+                "Expected perform to succeed, but it returned error: {:?}",
+                e
+            ),
         }
     }
 
@@ -365,7 +371,7 @@ impl ActionBuilderState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ActionBuilderError {
     ActionNotFound(ActionId),
     ActionIsReaction(ActionId),
@@ -445,26 +451,29 @@ impl ReactionBuilder {
         self.state.as_ref()
     }
 
-    pub fn option_none(mut self) -> Self {
-        self.state = self.state.and_then(|state| match state {
-            ReactionBuilderState::Options { event, .. } => Ok(ReactionBuilderState::Decision {
-                event,
-                decision: None,
-            }),
-            other => Err(ReactionBuilderError::InvalidStateTransition {
+    pub fn option_none(&mut self) -> &mut Self {
+        self.state = match &mut self.state {
+            Ok(ReactionBuilderState::Options { event, options: _ }) => {
+                Ok(ReactionBuilderState::Decision {
+                    event: event.clone(),
+                    decision: None,
+                })
+            }
+            Ok(other) => Err(ReactionBuilderError::InvalidStateTransition {
                 expected: "Options",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
-    pub fn option_index(mut self, option_index: usize) -> Self {
-        self.state = self.state.and_then(|state| match state {
-            ReactionBuilderState::Options { event, options } => {
+    pub fn option_index(&mut self, option_index: usize) -> &mut Self {
+        self.state = match &mut self.state {
+            Ok(ReactionBuilderState::Options { event, options }) => {
                 if let Some(option) = options.get(option_index) {
                     Ok(ReactionBuilderState::Decision {
-                        event,
+                        event: event.clone(),
                         decision: Some(option.clone()),
                     })
                 } else {
@@ -474,59 +483,59 @@ impl ReactionBuilder {
                     })
                 }
             }
-            other => Err(ReactionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ReactionBuilderError::InvalidStateTransition {
                 expected: "Options",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
-    pub fn option_filter(mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> Self {
-        self.state = self.state.and_then(|state| match state {
-            ReactionBuilderState::Options { event, options } => {
-                match options.iter().position(filter_fn) {
-                    Some(index) => {
-                        let option = options.get(index).unwrap().clone();
-                        Ok(ReactionBuilderState::Decision {
-                            event,
-                            decision: Some(option),
-                        })
-                    }
-                    None => Err(ReactionBuilderError::NoMatchingOption {
+    pub fn option_filter(&mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> &mut Self {
+        self.state = match &mut self.state {
+            Ok(ReactionBuilderState::Options { event, options }) => {
+                if let Some(option) = options.iter().find(|option| filter_fn(option)) {
+                    Ok(ReactionBuilderState::Decision {
+                        event: event.clone(),
+                        decision: Some(option.clone()),
+                    })
+                } else {
+                    Err(ReactionBuilderError::NoMatchingOption {
                         options: options.clone(),
-                    }),
+                    })
                 }
             }
-            other => Err(ReactionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ReactionBuilderError::InvalidStateTransition {
                 expected: "Options",
                 actual: other.kind_name(),
             }),
-        });
+            Err(_) => return self,
+        };
         self
     }
 
-    pub fn build(self) -> Result<Activity, ReactionBuilderError> {
-        let state = self.state?;
-        match state {
-            ReactionBuilderState::Decision { event, decision } => Ok(Activity::Act {
+    pub fn build(&self) -> Result<Activity, ReactionBuilderError> {
+        match &self.state {
+            Ok(ReactionBuilderState::Decision { event, decision }) => Ok(Activity::Act {
                 action: ActionDecision {
                     response_to: event.id,
                     kind: ActionDecisionKind::Reaction {
-                        event: event,
+                        event: event.clone(),
                         reactor: self.actor.id(),
-                        choice: decision,
+                        choice: decision.clone(),
                     },
                 },
             }),
-            other => Err(ReactionBuilderError::InvalidStateTransition {
+            Ok(other) => Err(ReactionBuilderError::InvalidStateTransition {
                 expected: "Decision",
                 actual: other.kind_name(),
             }),
+            Err(e) => Err(e.clone()),
         }
     }
 
-    pub fn perform(self, game_state: &mut GameState) -> Result<(), ReactionBuilderError> {
+    pub fn perform(&self, game_state: &mut GameState) -> Result<(), ReactionBuilderError> {
         let activity = self.build()?;
         game_state
             .submit_activity(activity)
@@ -534,7 +543,7 @@ impl ReactionBuilder {
     }
 
     /// See `ActionBuilder::perform_ok`
-    pub fn perform_ok(self, game_state: &mut GameState) {
+    pub fn perform_ok(&self, game_state: &mut GameState) {
         match self.perform(game_state) {
             Ok(()) => (),
             Err(e) => panic!(
@@ -565,7 +574,7 @@ impl ReactionBuilderState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ReactionBuilderError {
     NoPrompt,
     NoReactionPrompt,
@@ -799,7 +808,7 @@ mod tests {
 
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
-            .position([1.0, 0.0, 0.0].into(), false)
+            .position([1.0, 0.0, 0.0], false)
             .spawn(&mut game_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
@@ -823,7 +832,7 @@ mod tests {
 
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
-            .position([3.0, 0.0, 0.0].into(), false)
+            .position([3.0, 0.0, 0.0], false)
             .spawn(&mut game_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
@@ -847,7 +856,7 @@ mod tests {
 
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
-            .position([100.0, 0.0, 0.0].into(), false)
+            .position([100.0, 0.0, 0.0], false)
             .spawn(&mut game_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
@@ -902,11 +911,11 @@ mod tests {
     ) -> (GameState, EntityIdentifier, EntityIdentifier) {
         let fighter = CreatureBuilder::new("hero.fighter")
             .level(5)
-            .position([0.0, 0.0, 0.0].into(), false)
+            .position([0.0, 0.0, 0.0], false)
             .spawn(&mut game_state);
         let wizard = CreatureBuilder::new("hero.wizard")
             .level(5)
-            .position([1.0, 0.0, 0.0].into(), false)
+            .position([1.0, 0.0, 0.0], false)
             .spawn(&mut game_state);
         // Force the fighter to hit the attack so the wizard has a reason to react
         systems::loadout::loadout_mut(&mut game_state.world, fighter.id())

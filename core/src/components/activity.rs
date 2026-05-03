@@ -41,7 +41,7 @@ pub enum Activity {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ActivityError {
     MovementError(MovementError),
     ActionError(ActionError),

@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MovementError {
     InsufficientSpeed,
     NoPathFound,

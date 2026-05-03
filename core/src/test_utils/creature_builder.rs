@@ -54,27 +54,27 @@ impl CreatureBuilder {
         }
     }
 
-    pub fn level(mut self, level: u8) -> Self {
+    pub fn level(&mut self, level: u8) -> &mut Self {
         self.level = level;
         self
     }
 
-    pub fn position(mut self, position: Point3<f32>, on_ground: bool) -> Self {
-        self.position = Some((position, on_ground));
+    pub fn position(&mut self, position: impl Into<Point3<f32>>, on_ground: bool) -> &mut Self {
+        self.position = Some((position.into(), on_ground));
         self
     }
 
-    pub fn time_mode(mut self, time_mode: TimeMode) -> Self {
+    pub fn time_mode(&mut self, time_mode: TimeMode) -> &mut Self {
         self.time_mode = time_mode;
         self
     }
 
-    pub fn with_id(mut self, entity: Entity) -> Self {
+    pub fn with_id(&mut self, entity: Entity) -> &mut Self {
         self.entity_id = Some(entity);
         self
     }
 
-    pub fn spawn(self, game_state: &mut GameState) -> EntityIdentifier {
+    pub fn spawn(&mut self, game_state: &mut GameState) -> EntityIdentifier {
         let entity_id = (self.template)(game_state, self.level, self.entity_id);
         let entity = entity_id.id();
 
@@ -99,7 +99,7 @@ impl CreatureBuilder {
         entity_id
     }
 
-    pub fn probe(self, game_state: &mut GameState) -> CreatureProbe {
+    pub fn probe(&mut self, game_state: &mut GameState) -> CreatureProbe {
         let entity_id = self.spawn(game_state);
         CreatureProbe::new(entity_id)
     }

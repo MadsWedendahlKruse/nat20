@@ -2,12 +2,13 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        d20::{D20CheckDC, D20CheckResult},
-        damage::AttackRollResult,
+        d20::{D20Check, D20CheckDC, D20CheckResult},
+        damage::{AttackRollResult, AttackSource},
         id::EntityIdentifier,
-        items::equipment::armor::ArmorClass,
+        items::equipment::{armor::ArmorClass, loadout::Loadout},
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
+        spells::spellbook::Spellbook,
     },
     engine::{
         event::{Event, EventKind},
@@ -21,7 +22,42 @@ use crate::{
 pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
     Skill(Skill),
-    AttackRoll,
+    AttackRoll(AttackSource),
+}
+
+// The D20Check is a temporary reference, so we can't return it from here
+pub fn get_mut(
+    world: &mut World,
+    entity: Entity,
+    kind: &D20CheckKind,
+    mutator: impl FnOnce(&mut D20Check),
+) {
+    match kind {
+        D20CheckKind::SavingThrow(saving_throw) => mutator(
+            &mut systems::helpers::get_component_mut::<SavingThrowSet>(world, entity)
+                .get_mut(saving_throw),
+        ),
+
+        D20CheckKind::Skill(skill) => mutator(
+            &mut systems::helpers::get_component_mut::<SkillSet>(world, entity).get_mut(skill),
+        ),
+
+        D20CheckKind::AttackRoll(source) => match source {
+            AttackSource::Weapon(weapon_kind) => {
+                mutator(
+                    &mut systems::helpers::get_component_mut::<Loadout>(world, entity)
+                        .attack_roll_template_mut(weapon_kind)
+                        .d20_check,
+                );
+            }
+
+            AttackSource::Spell => mutator(
+                &mut systems::helpers::get_component_mut::<Spellbook>(world, entity)
+                    .attack_roll_template_mut()
+                    .d20_check,
+            ),
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

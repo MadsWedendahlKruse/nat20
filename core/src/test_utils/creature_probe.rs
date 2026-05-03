@@ -1,13 +1,15 @@
 use crate::{
     components::{
         actions::action_builder::ActionBuilder,
+        d20::D20CheckOutcome,
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ResourceId},
+        modifier::ModifierSource,
         resource::{ResourceBudgetKind, ResourceMap},
         time::{TimeStep, TurnBoundary},
     },
     engine::game_state::GameState,
-    systems,
+    systems::{self, d20::D20CheckKind},
 };
 
 // TODO: Not sure about the name
@@ -21,8 +23,9 @@ impl CreatureProbe {
     }
 
     pub fn act(&self, game_state: &mut GameState, action: impl Into<ActionId>) -> ActionBuilder {
-        ActionBuilder::available(&game_state.world, self.creature.id())
-            .action(&game_state.world, &action.into())
+        let mut builder = ActionBuilder::available(&game_state.world, self.creature.id());
+        builder.action(&game_state.world, &action.into());
+        builder
     }
 
     pub fn start_turn(&self, game_state: &mut GameState) {
@@ -49,11 +52,32 @@ impl CreatureProbe {
         hit_points.max()
     }
 
+    pub fn is_alive(&self, game_state: &GameState) -> bool {
+        self.hp(game_state) > 0
+    }
+
     pub fn damage_raw(&mut self, game_state: &mut GameState, amount: u32) {
         // TODO: This technically bypasses the normal damage pipeline, which is
         // quite complex, but I guess it's fine for testing?
         systems::helpers::get_component_mut::<HitPoints>(&mut game_state.world, self.creature.id())
             .damage(amount);
+    }
+
+    pub fn d20_force_outcome(
+        &mut self,
+        game_state: &mut GameState,
+        kind: D20CheckKind,
+        outcome: D20CheckOutcome,
+    ) {
+        systems::d20::get_mut(&mut game_state.world, self.creature.id(), &kind, |check| {
+            check.set_forced_outcome(ModifierSource::Custom("Test outcome".to_string()), outcome);
+        });
+    }
+
+    pub fn d20_clear_forced_outcome(&mut self, game_state: &mut GameState, kind: D20CheckKind) {
+        systems::d20::get_mut(&mut game_state.world, self.creature.id(), &kind, |check| {
+            check.clear_forced_outcome();
+        });
     }
 
     #[track_caller]
