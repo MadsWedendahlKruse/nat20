@@ -58,6 +58,7 @@ fn champion_remarkable_athlete() {
             &source,
             AdvantageType::Advantage,
         )
+        // Force crit to trigger disengage effect
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
             D20CheckOutcome::CriticalSuccess,
@@ -105,19 +106,12 @@ fn champion_superior_critical() {
     fighter.assert_no_effect(&game_state, "effect.fighter.champion.improved_critical");
     fighter.assert_effect(&game_state, "effect.fighter.champion.superior_critical");
 
-    let mut loadout = systems::loadout::loadout_mut(&mut game_state.world, fighter.creature.id());
-
     for weapon_kind in [WeaponKind::Melee, WeaponKind::Ranged, WeaponKind::Unarmed] {
-        assert_eq!(
-            loadout
-                .attack_roll_template_mut(&weapon_kind)
-                .d20_check
-                .crit_threshold_reduction()
-                .get(&ModifierSource::Effect(
-                    "effect.fighter.champion.superior_critical".into()
-                ))
-                .unwrap(),
-            2
+        fighter.assert_d20_crit_threshold_reduction(
+            &game_state,
+            &D20CheckKind::AttackRoll(AttackSource::Weapon(weapon_kind)),
+            &ModifierSource::Effect("effect.fighter.champion.superior_critical".into()),
+            Operator::Equal(2),
         );
     }
 }
