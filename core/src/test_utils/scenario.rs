@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use hecs::Entity;
 use parry3d::{na::Point3, utils::hashmap::HashMap};
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
-        d20::D20CheckOutcome,
+        d20::{AdvantageType, D20CheckOutcome},
         id::{ActionId, EffectId, ResourceId},
         modifier::{Modifiable, ModifierSource},
         resource::ResourceAmountMap,
@@ -19,7 +20,7 @@ use crate::{
     engine::{
         action_prompt::ReactionData,
         encounter::EncounterId,
-        event::{Event, EventCallback, EventFilter},
+        event::{Event, EventCallback, EventFilter, EventKind},
         game_state::GameState,
     },
     systems::{
@@ -135,6 +136,14 @@ impl Scenario {
             .iter()
             .rev()
             .find(|event| event_filter.matches(event))
+    }
+
+    pub fn event_filter(&self) -> ScenarioEventFilterBuilder<'_> {
+        ScenarioEventFilterBuilder {
+            scenario: self,
+            actor: None,
+            kind: None,
+        }
     }
 }
 
@@ -381,5 +390,129 @@ impl ScenarioProbe<'_> {
 
     pub fn react(&mut self) -> ScenarioReactionBuilder<'_> {
         self.scenario.react(&self.handle)
+    }
+}
+
+// TODO: Not sure if this is overkill?
+pub struct ScenarioEventFilterBuilder<'s> {
+    scenario: &'s Scenario,
+    actor: Option<Entity>,
+    kind: Option<EventFilterKind>,
+}
+
+impl ScenarioEventFilterBuilder<'_> {
+    pub fn actor(mut self, handle: impl Into<String>) -> Self {
+        let handle = handle.into();
+        self.actor = Some(
+            self.scenario
+                .creatures
+                .get(&handle)
+                .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
+                .creature
+                .id(),
+        );
+        self
+    }
+
+    pub fn d20_modifier(mut self, kind: D20CheckKind, source: ModifierSource, value: i32) -> Self {
+        self.kind = Some(EventFilterKind::D20Check {
+            kind,
+            modifier: Some((source, value)),
+            advantage: None,
+        });
+        self
+    }
+
+    pub fn d20_advantage(
+        mut self,
+        kind: D20CheckKind,
+        source: ModifierSource,
+        advantage_type: AdvantageType,
+    ) -> Self {
+        self.kind = Some(EventFilterKind::D20Check {
+            kind,
+            modifier: None,
+            advantage: Some((source, advantage_type)),
+        });
+        self
+    }
+
+    fn build(&self) -> EventFilter {
+        EventFilter::new({
+            let actor = self.actor;
+            let kind = self.kind.clone();
+            move |event| {
+                if let Some(actor) = actor
+                    && let Some(event_actor) = event.actor()
+                    && actor != event_actor
+                {
+                    return false;
+                }
+
+                if let Some(kind) = &kind {
+                    return kind.matches(event);
+                } else {
+                    true
+                }
+            }
+        })
+    }
+
+    pub fn filter(&self) -> Option<&Event> {
+        self.scenario.filter_events(self.build())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum EventFilterKind {
+    D20Check {
+        kind: D20CheckKind,
+        modifier: Option<(ModifierSource, i32)>,
+        advantage: Option<(ModifierSource, AdvantageType)>,
+    },
+}
+
+impl EventFilterKind {
+    pub fn matches(&self, event: &Event) -> bool {
+        match (self, &event.kind) {
+            (
+                EventFilterKind::D20Check {
+                    kind,
+                    modifier,
+                    advantage,
+                },
+                EventKind::D20CheckResolved(actor, result, dc),
+            ) => {
+                if *kind != dc.kind() {
+                    return false;
+                }
+
+                if let Some((modifier_source, modifier_value)) = modifier {
+                    let Some(event_modifier) =
+                        result.d20_result().modifier_breakdown.get(modifier_source)
+                    else {
+                        return false;
+                    };
+
+                    if event_modifier != *modifier_value {
+                        return false;
+                    }
+                }
+
+                if let Some((advantage_source, advantage_type)) = advantage
+                    && !result
+                        .d20_result()
+                        .advantage_tracker
+                        .summary()
+                        .contains(&(advantage_source, *advantage_type))
+                {
+                    return false;
+                }
+
+                true
+            }
+
+            _ => false,
+        }
     }
 }

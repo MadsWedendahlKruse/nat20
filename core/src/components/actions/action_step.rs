@@ -273,6 +273,7 @@ impl ActionStepCondition {
                     },
                     D20CheckDCKind::AttackRoll(
                         EntityIdentifier::from_world(&game_state.world, target),
+                        attack_roll_result.source.clone(),
                         armor_class,
                     ),
                 ));
@@ -286,7 +287,7 @@ impl ActionStepCondition {
                 let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
                     EventKind::D20CheckResolved(actor, result, dc) => {
                         let armor_class = match dc {
-                            D20CheckDCKind::AttackRoll(_, armor_class) => armor_class.clone(),
+                            D20CheckDCKind::AttackRoll(_, _, armor_class) => armor_class.clone(),
                             _ => panic!("Expected AttackRoll DC in callback, got {:?}", dc),
                         };
 

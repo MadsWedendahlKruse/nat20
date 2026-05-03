@@ -788,10 +788,10 @@ impl GameState {
                 let dc = match dc_kind {
                     // TODO: Do we ever need to recalculate DCs for saving throws or skills?
                     D20CheckDCKind::SavingThrow(_) | D20CheckDCKind::Skill(_) => dc_kind.clone(),
-                    D20CheckDCKind::AttackRoll(target, _) => {
+                    D20CheckDCKind::AttackRoll(target, source, _) => {
                         // Recalculate AC in case it changed due to reactions
                         let armor_class = systems::loadout::armor_class(&self.world, target.id());
-                        D20CheckDCKind::AttackRoll(target.clone(), armor_class)
+                        D20CheckDCKind::AttackRoll(target.clone(), source.clone(), armor_class)
                     }
                 };
 

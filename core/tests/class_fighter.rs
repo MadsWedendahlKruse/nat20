@@ -194,24 +194,16 @@ mod tests {
             .probe("fighter")
             .assert_resource("resource.fighter.indomitable", Operator::Equal(0));
 
-        let fighter_entity = scenario.creatures.get("fighter").unwrap().creature.id();
         assert!(
             scenario
-                .filter_events(EventFilter::new(move |event| {
-                    if let EventKind::D20CheckResolved(actor, result, _) = &event.kind
-                        && actor.id() == fighter_entity
-                        && let D20ResultKind::SavingThrow { result, .. } = result
-                        && result
-                            .modifier_breakdown
-                            .get(&ModifierSource::Action("action.fighter.indomitable".into()))
-                            .map(|modifier| modifier == 9)
-                            .unwrap_or(false)
-                    {
-                        true
-                    } else {
-                        false
-                    }
-                }))
+                .event_filter()
+                .actor("fighter")
+                .d20_modifier(
+                    D20CheckKind::SavingThrow(saving_throw),
+                    ModifierSource::Action("action.fighter.indomitable".into()),
+                    9,
+                )
+                .filter()
                 .is_some()
         );
     }
@@ -268,27 +260,16 @@ mod tests {
             .target_entity("goblin")
             .perform();
 
-        let fighter_entity = scenario.creatures.get("fighter").unwrap().creature.id();
         assert!(
             scenario
-                .filter_events(EventFilter::new({
-                    move |event| {
-                        if let EventKind::D20CheckResolved(actor, result, _) = &event.kind
-                            && actor.id() == fighter_entity
-                            && let D20ResultKind::AttackRoll { result } = result
-                            && result.roll_result.advantage_tracker.summary().contains(&(
-                                &ModifierSource::Effect(
-                                    "effect.fighter.studied_attacks_advantage".into(),
-                                ),
-                                AdvantageType::Advantage,
-                            ))
-                        {
-                            return true;
-                        } else {
-                            return false;
-                        };
-                    }
-                }))
+                .event_filter()
+                .actor("fighter")
+                .d20_advantage(
+                    D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+                    ModifierSource::Effect("effect.fighter.studied_attacks_advantage".into()),
+                    AdvantageType::Advantage,
+                )
+                .filter()
                 .is_some()
         );
 

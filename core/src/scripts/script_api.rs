@@ -404,7 +404,7 @@ impl ScriptD20CheckDCKind {
                 dc: dc.dc.total(),
                 target: None,
             },
-            D20CheckDCKind::AttackRoll(target_entity, armor_class) => ScriptD20CheckDCKind {
+            D20CheckDCKind::AttackRoll(target_entity, _, armor_class) => ScriptD20CheckDCKind {
                 label: "AttackRoll".to_string(),
                 dc: armor_class.total() as i32,
                 target: Some(ScriptEntity::from(target_entity.id())),
@@ -747,7 +747,7 @@ impl ScriptD20CheckView {
                                 modifier_value,
                             );
                         }
-                        D20CheckDCKind::AttackRoll(_, armor_class) => {
+                        D20CheckDCKind::AttackRoll(_, _, armor_class) => {
                             armor_class.add_modifier(
                                 ModifierSource::Action(reaction_data.reaction_id.clone()),
                                 modifier_value,

@@ -19,7 +19,7 @@ use crate::{
 };
 
 // TODO: Do we even need it without the DC? Does that make sense?
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
     Skill(Skill),
@@ -65,7 +65,7 @@ pub fn get_mut(
 pub enum D20CheckDCKind {
     SavingThrow(D20CheckDC<SavingThrowKind>),
     Skill(D20CheckDC<Skill>),
-    AttackRoll(EntityIdentifier, ArmorClass),
+    AttackRoll(EntityIdentifier, AttackSource, ArmorClass),
 }
 
 impl D20CheckDCKind {
@@ -77,8 +77,20 @@ impl D20CheckDCKind {
         D20CheckDCKind::Skill(D20CheckDC { key: skill, dc })
     }
 
-    pub fn attack_roll(target: EntityIdentifier, armor_class: ArmorClass) -> Self {
-        D20CheckDCKind::AttackRoll(target, armor_class)
+    pub fn attack_roll(
+        target: EntityIdentifier,
+        source: AttackSource,
+        armor_class: ArmorClass,
+    ) -> Self {
+        D20CheckDCKind::AttackRoll(target, source, armor_class)
+    }
+
+    pub fn kind(&self) -> D20CheckKind {
+        match self {
+            D20CheckDCKind::SavingThrow(dc) => D20CheckKind::SavingThrow(dc.key),
+            D20CheckDCKind::Skill(dc) => D20CheckKind::Skill(dc.key),
+            D20CheckDCKind::AttackRoll(_, source, _) => D20CheckKind::AttackRoll(source.clone()),
+        }
     }
 }
 
@@ -106,9 +118,10 @@ impl D20ResultKind {
             (D20ResultKind::Skill { result, .. }, D20CheckDCKind::Skill(dc)) => {
                 result.is_success(dc)
             }
-            (D20ResultKind::AttackRoll { result }, D20CheckDCKind::AttackRoll(_, armor_class)) => {
-                result.is_success(armor_class)
-            }
+            (
+                D20ResultKind::AttackRoll { result },
+                D20CheckDCKind::AttackRoll(_, _, armor_class),
+            ) => result.is_success(armor_class),
             _ => false,
         }
     }
@@ -128,6 +141,14 @@ impl D20ResultKind {
             D20ResultKind::AttackRoll { result } => &mut result.roll_result,
         }
     }
+
+    pub fn kind(&self) -> D20CheckKind {
+        match self {
+            D20ResultKind::SavingThrow { kind, .. } => D20CheckKind::SavingThrow(*kind),
+            D20ResultKind::Skill { skill, .. } => D20CheckKind::Skill(*skill),
+            D20ResultKind::AttackRoll { result } => D20CheckKind::AttackRoll(result.source.clone()),
+        }
+    }
 }
 
 pub fn check_no_event(world: &World, entity: Entity, dc: &D20CheckDCKind) -> D20ResultKind {
@@ -145,7 +166,7 @@ pub fn check_no_event(world: &World, entity: Entity, dc: &D20CheckDCKind) -> D20
         // D20CheckDCKind::AttackRoll(slot, target, armor_class) => D20ResultKind::AttackRoll {
         //     result: systems::combat::attack_roll_against_target(world, entity, slot, target),
         // },
-        D20CheckDCKind::AttackRoll(_, _) => {
+        D20CheckDCKind::AttackRoll(_, _, _) => {
             todo!("systems::d20 attack roll checks are not yet implemented");
         }
     }
