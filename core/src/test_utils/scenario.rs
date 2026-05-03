@@ -5,7 +5,9 @@ use parry3d::{na::Point3, utils::hashmap::HashMap};
 use crate::{
     components::{
         actions::{
-            action::ActionContext, action_builder::ActionBuilder, targeting::TargetInstance,
+            action::ActionContext,
+            action_builder::{ActionBuilder, ReactionBuilder},
+            targeting::TargetInstance,
         },
         d20::D20CheckOutcome,
         id::{ActionId, EffectId, ResourceId},
@@ -15,11 +17,15 @@ use crate::{
         time::TimeMode,
     },
     engine::{
+        action_prompt::ReactionData,
         encounter::EncounterId,
-        event::{Event, EventFilter},
+        event::{Event, EventCallback, EventFilter},
         game_state::GameState,
     },
-    systems::{self, d20::D20CheckKind},
+    systems::{
+        self,
+        d20::{D20CheckDCKind, D20CheckKind},
+    },
     test_utils::{
         creature_builder::CreatureBuilder,
         creature_probe::{CreatureProbe, Operator},
@@ -91,6 +97,19 @@ impl Scenario {
             .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
             .act(&mut self.game_state, action);
         ScenarioActionBuilder {
+            scenario: self,
+            builder,
+        }
+    }
+
+    pub fn react<'s>(&mut self, handle: impl Into<String>) -> ScenarioReactionBuilder<'_> {
+        let handle = handle.into();
+        let builder = self
+            .creatures
+            .get(&handle)
+            .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
+            .react(&mut self.game_state);
+        ScenarioReactionBuilder {
             scenario: self,
             builder,
         }
@@ -277,6 +296,41 @@ impl ScenarioActionBuilder<'_> {
     }
 }
 
+pub struct ScenarioReactionBuilder<'s> {
+    scenario: &'s mut Scenario,
+    builder: ReactionBuilder,
+}
+
+impl ScenarioReactionBuilder<'_> {
+    pub fn option_none(mut self) -> Self {
+        self.builder.option_none();
+        self
+    }
+
+    pub fn option_index(mut self, index: usize) -> Self {
+        self.builder.option_index(index);
+        self
+    }
+
+    pub fn option_filter(mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> Self {
+        self.builder.option_filter(filter_fn);
+        self
+    }
+
+    pub fn option_id(mut self, option_id: impl Into<ActionId>) -> Self {
+        self.builder.option_id(option_id);
+        self
+    }
+
+    pub fn perform(self) {
+        self.builder.perform_ok(&mut self.scenario.game_state);
+        // TODO: Do this in a more elegant way
+        for _ in 0..10 {
+            self.scenario.game_state.update(0.5);
+        }
+    }
+}
+
 macro_rules! delegate_probe_methods {
     ( $( fn $name:ident($($param:ident : $type:ty),*) );* $(;)? ) => {
         $(
@@ -309,6 +363,8 @@ impl ScenarioProbe<'_> {
         fn damage_raw(amount: u32);
         fn d20_force_outcome(kind: D20CheckKind, outcome: D20CheckOutcome);
         fn d20_clear_forced_outcome(kind: D20CheckKind);
+        fn d20_check(dc: &D20CheckDCKind);
+        fn d20_check_with_callback(dc: &D20CheckDCKind, callback: EventCallback);
 
         fn assert_has_action(action: impl Into<ActionId>);
         fn assert_resource(resource: impl Into<ResourceId>, operator: Operator<u8>);
@@ -317,5 +373,13 @@ impl ScenarioProbe<'_> {
         fn assert_no_effect(effect: impl Into<EffectId>);
         fn assert_on_cooldown(action: impl Into<ActionId>);
         fn assert_hp(amount: Operator<u32>);
+    }
+
+    pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {
+        self.scenario.act(&self.handle, action)
+    }
+
+    pub fn react(&mut self) -> ScenarioReactionBuilder<'_> {
+        self.scenario.react(&self.handle)
     }
 }

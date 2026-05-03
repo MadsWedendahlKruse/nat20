@@ -1,6 +1,6 @@
 use crate::{
     components::{
-        actions::action_builder::ActionBuilder,
+        actions::action_builder::{ActionBuilder, ReactionBuilder},
         d20::D20CheckOutcome,
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ResourceId},
@@ -8,8 +8,11 @@ use crate::{
         resource::{ResourceBudgetKind, ResourceMap},
         time::{TimeStep, TurnBoundary},
     },
-    engine::game_state::GameState,
-    systems::{self, d20::D20CheckKind},
+    engine::{event::EventCallback, game_state::GameState},
+    systems::{
+        self,
+        d20::{D20CheckDCKind, D20CheckKind},
+    },
 };
 
 // TODO: Not sure about the name
@@ -26,6 +29,10 @@ impl CreatureProbe {
         let mut builder = ActionBuilder::available(&game_state.world, self.creature.id());
         builder.action(&game_state.world, &action.into());
         builder
+    }
+
+    pub fn react(&self, game_state: &mut GameState) -> ReactionBuilder {
+        ReactionBuilder::new(game_state, self.creature.id())
     }
 
     pub fn start_turn(&self, game_state: &mut GameState) {
@@ -61,6 +68,21 @@ impl CreatureProbe {
         // quite complex, but I guess it's fine for testing?
         systems::helpers::get_component_mut::<HitPoints>(&mut game_state.world, self.creature.id())
             .damage(amount);
+    }
+
+    pub fn d20_check(&mut self, game_state: &mut GameState, dc: &D20CheckDCKind) {
+        let event = systems::d20::check(game_state, self.creature.id(), dc);
+        game_state.process_event(event);
+    }
+
+    pub fn d20_check_with_callback(
+        &mut self,
+        game_state: &mut GameState,
+        dc: &D20CheckDCKind,
+        callback: EventCallback,
+    ) {
+        let event = systems::d20::check(game_state, self.creature.id(), dc);
+        game_state.process_event_with_response_callback(event, callback);
     }
 
     pub fn d20_force_outcome(

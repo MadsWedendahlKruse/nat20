@@ -7,12 +7,12 @@ mod tests {
             d20::{AdvantageType, D20CheckOutcome},
             damage::AttackSource,
             items::equipment::weapon::WeaponKind,
-            modifier::ModifierSource,
-            saving_throw::{self, SavingThrowKind},
+            modifier::{ModifierSet, ModifierSource},
+            saving_throw::SavingThrowKind,
             time::TimeMode,
         },
         engine::event::{EventFilter, EventKind},
-        systems::d20::{D20CheckKind, D20ResultKind},
+        systems::d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
         test_utils::{
             creature_builder::CreatureBuilder, creature_probe::Operator, fixtures,
             scenario::Scenario,
@@ -162,6 +162,61 @@ mod tests {
     }
 
     #[test]
+    fn fighter_indomitable() {
+        // Use Scenario for event log inspection
+        let mut scenario = Scenario::new();
+        scenario.spawn("fighter", "hero.fighter").level(9).spawn();
+
+        let saving_throw = SavingThrowKind::Ability(Ability::Intelligence);
+
+        scenario
+            .probe("fighter")
+            .assert_has_action("action.fighter.indomitable")
+            .assert_resource("resource.fighter.indomitable", Operator::Equal(1))
+            // Force the fighter to fail a saving throw to trigger Indomitable
+            .d20_force_outcome(
+                D20CheckKind::SavingThrow(saving_throw),
+                D20CheckOutcome::CriticalFailure,
+            )
+            .d20_check(&D20CheckDCKind::saving_throw(
+                saving_throw,
+                ModifierSet::from(
+                    ModifierSource::Custom("Test saving throw DC".to_string()),
+                    99,
+                ),
+            ))
+            .react()
+            .option_id("action.fighter.indomitable")
+            .perform();
+
+        // Check that the saving throw is re-rolled and the resource is consumed
+        scenario
+            .probe("fighter")
+            .assert_resource("resource.fighter.indomitable", Operator::Equal(0));
+
+        let fighter_entity = scenario.creatures.get("fighter").unwrap().creature.id();
+        assert!(
+            scenario
+                .filter_events(EventFilter::new(move |event| {
+                    if let EventKind::D20CheckResolved(actor, result, _) = &event.kind
+                        && actor.id() == fighter_entity
+                        && let D20ResultKind::SavingThrow { result, .. } = result
+                        && result
+                            .modifier_breakdown
+                            .get(&ModifierSource::Action("action.fighter.indomitable".into()))
+                            .map(|modifier| modifier == 9)
+                            .unwrap_or(false)
+                    {
+                        true
+                    } else {
+                        false
+                    }
+                }))
+                .is_some()
+        );
+    }
+
+    #[test]
     fn fighter_studied_attacks() {
         let mut scenario = Scenario::new();
 
@@ -238,9 +293,9 @@ mod tests {
         );
 
         // After the attack the effect is consumed (and it's not just because the goblin died)
-        scenario.probe("goblin").is_alive();
         scenario
             .probe("goblin")
+            .is_alive()
             .assert_no_effect("effect.fighter.studied_attacks_advantage");
     }
 }

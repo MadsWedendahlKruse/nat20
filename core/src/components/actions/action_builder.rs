@@ -15,7 +15,8 @@ use crate::{
     },
     engine::{
         action_prompt::{
-            ActionData, ActionDecision, ActionDecisionKind, ActionPromptKind, ReactionData,
+            ActionData, ActionDecision, ActionDecisionKind, ActionPromptId, ActionPromptKind,
+            ReactionData,
         },
         event::Event,
         game_state::GameState,
@@ -233,7 +234,7 @@ impl ActionBuilder {
         match self.perform(game_state) {
             Ok(()) => (),
             Err(e) => panic!(
-                "Expected perform to succeed, but it returned error: {:?}",
+                "Expected perform to succeed, but it returned error: {:#?}",
                 e
             ),
         }
@@ -435,6 +436,7 @@ impl ReactionBuilder {
                 Self {
                     actor,
                     state: Ok(ReactionBuilderState::Options {
+                        prompt_id: prompt.id,
                         event: event.clone(),
                         options: actor_options.clone(),
                     }),
@@ -453,12 +455,15 @@ impl ReactionBuilder {
 
     pub fn option_none(&mut self) -> &mut Self {
         self.state = match &mut self.state {
-            Ok(ReactionBuilderState::Options { event, options: _ }) => {
-                Ok(ReactionBuilderState::Decision {
-                    event: event.clone(),
-                    decision: None,
-                })
-            }
+            Ok(ReactionBuilderState::Options {
+                prompt_id,
+                event,
+                options: _,
+            }) => Ok(ReactionBuilderState::Decision {
+                prompt_id: *prompt_id,
+                event: event.clone(),
+                decision: None,
+            }),
             Ok(other) => Err(ReactionBuilderError::InvalidStateTransition {
                 expected: "Options",
                 actual: other.kind_name(),
@@ -470,9 +475,14 @@ impl ReactionBuilder {
 
     pub fn option_index(&mut self, option_index: usize) -> &mut Self {
         self.state = match &mut self.state {
-            Ok(ReactionBuilderState::Options { event, options }) => {
+            Ok(ReactionBuilderState::Options {
+                prompt_id,
+                event,
+                options,
+            }) => {
                 if let Some(option) = options.get(option_index) {
                     Ok(ReactionBuilderState::Decision {
+                        prompt_id: *prompt_id,
                         event: event.clone(),
                         decision: Some(option.clone()),
                     })
@@ -494,9 +504,14 @@ impl ReactionBuilder {
 
     pub fn option_filter(&mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> &mut Self {
         self.state = match &mut self.state {
-            Ok(ReactionBuilderState::Options { event, options }) => {
+            Ok(ReactionBuilderState::Options {
+                prompt_id,
+                event,
+                options,
+            }) => {
                 if let Some(option) = options.iter().find(|option| filter_fn(option)) {
                     Ok(ReactionBuilderState::Decision {
+                        prompt_id: *prompt_id,
                         event: event.clone(),
                         decision: Some(option.clone()),
                     })
@@ -515,11 +530,20 @@ impl ReactionBuilder {
         self
     }
 
+    pub fn option_id(&mut self, reaction_id: impl Into<ActionId>) -> &mut Self {
+        let reaction_id = reaction_id.into();
+        self.option_filter(|option| option.reaction_id == reaction_id)
+    }
+
     pub fn build(&self) -> Result<Activity, ReactionBuilderError> {
         match &self.state {
-            Ok(ReactionBuilderState::Decision { event, decision }) => Ok(Activity::Act {
+            Ok(ReactionBuilderState::Decision {
+                prompt_id,
+                event,
+                decision,
+            }) => Ok(Activity::Act {
                 action: ActionDecision {
-                    response_to: event.id,
+                    response_to: *prompt_id,
                     kind: ActionDecisionKind::Reaction {
                         event: event.clone(),
                         reactor: self.actor.id(),
@@ -547,7 +571,7 @@ impl ReactionBuilder {
         match self.perform(game_state) {
             Ok(()) => (),
             Err(e) => panic!(
-                "Expected perform to succeed, but it returned error: {:?}",
+                "Expected perform to succeed, but it returned error: {:#?}",
                 e
             ),
         }
@@ -556,10 +580,12 @@ impl ReactionBuilder {
 
 pub enum ReactionBuilderState {
     Options {
+        prompt_id: ActionPromptId,
         event: Event,
         options: Vec<ReactionData>,
     },
     Decision {
+        prompt_id: ActionPromptId,
         event: Event,
         decision: Option<ReactionData>,
     },
