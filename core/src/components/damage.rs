@@ -18,6 +18,7 @@ use crate::{
             weapon::{Weapon, WeaponKind},
         },
         modifier::{Modifiable, ModifierSet, ModifierSource},
+        proficiency::Proficiency,
     },
     systems::{self},
 };
@@ -635,6 +636,14 @@ impl AttackRollTemplate {
 
     pub fn instantiate(&self, source: AttackSource) -> AttackRoll {
         AttackRoll::new(self.d20_check.clone(), source)
+    }
+}
+
+impl Default for AttackRollTemplate {
+    fn default() -> Self {
+        Self {
+            d20_check: D20Check::new(Proficiency::default()),
+        }
     }
 }
 

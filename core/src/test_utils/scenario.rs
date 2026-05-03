@@ -366,9 +366,6 @@ impl ScenarioProbe<'_> {
     delegate_probe_methods! {
         fn start_turn();
 
-        fn hp();
-        fn max_hp();
-        fn is_alive();
         fn damage_raw(amount: u32);
         fn d20_force_outcome(kind: D20CheckKind, outcome: D20CheckOutcome);
         fn d20_clear_forced_outcome(kind: D20CheckKind);
@@ -383,6 +380,27 @@ impl ScenarioProbe<'_> {
         fn assert_on_cooldown(action: impl Into<ActionId>);
         fn assert_hp(amount: Operator<u32>);
         fn assert_free_movement(source: ModifierSource, operator: Operator<f32>);
+        fn assert_d20_advantage(kind: &D20CheckKind, source: &ModifierSource, advantage_type: AdvantageType);
+        fn assert_d20_crit_threshold_reduction(kind: &D20CheckKind, source: &ModifierSource, operator: Operator<i32>);
+    }
+
+    // TODO: Would be nice to avoid this very verbose probe get
+    pub fn hp(&mut self) -> u32 {
+        let probe: &mut CreatureProbe = self
+            .scenario
+            .creatures
+            .get_mut(&self.handle)
+            .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
+        probe.hp(&mut self.scenario.game_state)
+    }
+
+    pub fn max_hp(&mut self) -> u32 {
+        let probe: &mut CreatureProbe = self
+            .scenario
+            .creatures
+            .get_mut(&self.handle)
+            .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
+        probe.max_hp(&mut self.scenario.game_state)
     }
 
     pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {

@@ -325,6 +325,6 @@ fn fighter_studied_attacks() {
     // After the attack the effect is consumed (and it's not just because the goblin died)
     scenario
         .probe("goblin")
-        .is_alive()
+        .assert_hp(Operator::Greater(0))
         .assert_no_effect("effect.fighter.studied_attacks_advantage");
 }

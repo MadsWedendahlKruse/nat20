@@ -9,7 +9,7 @@ use crate::{
         health::hit_points::HitPoints,
         id::EntityIdentifier,
         resource::RechargeRule,
-        time::{EntityClock, TimeMode, TimeStep},
+        time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
     },
     engine::{
         event::{Event, EventKind},
@@ -29,13 +29,8 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
         let mut clock =
             systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, entity);
 
-        if clock.mode() == TimeMode::Paused {
-            return;
-        }
-
         match (clock.mode(), time_step) {
-            (TimeMode::RealTime, TimeStep::TurnBoundary { .. })
-            | (TimeMode::TurnBased { .. }, TimeStep::RealTime { .. }) => {
+            (TimeMode::Paused, _) | (TimeMode::TurnBased { .. }, TimeStep::RealTime { .. }) => {
                 return;
             }
             _ => { /* valid combination, continue */ }
@@ -55,6 +50,11 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
             );
 
             if turn_entity == entity {
+                match boundary {
+                    TurnBoundary::Start => systems::time::on_turn_start(game_state, entity),
+                    TurnBoundary::End => systems::time::on_turn_end(&mut game_state.world, entity),
+                }
+
                 game_state.process_event(Event::new(EventKind::TurnBoundary {
                     entity: EntityIdentifier::from_world(&game_state.world, entity),
                     boundary,

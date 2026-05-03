@@ -241,15 +241,6 @@ impl Encounter {
     }
 
     fn advance_time(&mut self, game_state: &mut GameState, boundary: TurnBoundary) {
-        // TODO: Not sure if this is the correct place to do it?
-        match boundary {
-            TurnBoundary::Start => {
-                systems::time::on_turn_start(game_state, self.current_entity());
-            }
-            TurnBoundary::End => {
-                systems::time::on_turn_end(&mut game_state.world, self.current_entity());
-            }
-        }
         for entity in self.participants.iter() {
             systems::time::advance_time(
                 game_state,

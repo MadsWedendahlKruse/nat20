@@ -1,12 +1,17 @@
 use crate::{
     components::{
         actions::action_builder::{ActionBuilder, ReactionBuilder},
-        d20::D20CheckOutcome,
+        d20::{AdvantageType, D20Check, D20CheckOutcome},
+        damage::AttackSource,
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ResourceId},
+        items::equipment::loadout::Loadout,
         modifier::ModifierSource,
         resource::{ResourceBudgetKind, ResourceMap},
+        saving_throw::SavingThrowSet,
+        skill::SkillSet,
         speed::Speed,
+        spells::spellbook::Spellbook,
         time::{TimeStep, TurnBoundary},
     },
     engine::{event::EventCallback, game_state::GameState},
@@ -229,12 +234,122 @@ impl CreatureProbe {
     ) {
         let speed = systems::helpers::get_component::<Speed>(&game_state.world, self.creature.id());
         assert!(
-            operator.evaluate(speed.free_movement_multipliers().get(&source).unwrap()),
-            "Expected creature {:?} to have free multiplier movement satisfying condition {:?}, but it has {:?}",
+            speed
+                .free_movement_multipliers()
+                .get(&source)
+                .map(|v| operator.evaluate(v))
+                .unwrap_or(false),
+            "Expected creature {:?} to have free multiplier movement from {:?} satisfying condition {:?}, but it has: {:#?}",
             self.creature,
+            source,
             operator,
             speed.free_movement_multipliers()
         );
+    }
+
+    #[track_caller]
+    pub fn assert_d20_advantage(
+        &self,
+        game_state: &GameState,
+        kind: &D20CheckKind,
+        source: &ModifierSource,
+        advantage_type: AdvantageType,
+    ) {
+        self.assert_d20(game_state, kind, {
+            let kind = kind.clone();
+            let source = source.clone();
+            let advantage_type = advantage_type.clone();
+            move |check| {
+            assert!(
+                check.advantage_tracker().summary().contains(&(&source, advantage_type)),
+                "Expected creature {:?} to have {:?} {:?} on {:?} check, but it was not found. Current advantages: {:#?}",
+                self.creature,
+                advantage_type,
+                source,
+                kind,
+                check.advantage_tracker().summary()
+            );
+        }});
+    }
+
+    #[track_caller]
+    pub fn assert_d20_crit_threshold_reduction(
+        &self,
+        game_state: &GameState,
+        kind: &D20CheckKind,
+        source: &ModifierSource,
+        operator: Operator<i32>,
+    ) {
+        self.assert_d20(game_state, kind, {
+            let kind = kind.clone();
+            let source = source.clone();
+            move |check| {
+                let reduction = check.crit_threshold_reduction().get(&source).unwrap_or(0);
+                assert!(
+                    operator.evaluate(&reduction),
+                    "Expected creature {:?} to have critical threshold reduction from {:?} on {:?} check satisfying condition {:?}, but it was {:?}. Current reductions: {:#?}",
+                    self.creature,
+                    source,
+                    kind,
+                    operator,
+                    reduction,
+                    check.crit_threshold_reduction()
+                );
+            }
+        });
+    }
+
+    fn assert_d20(
+        &self,
+        game_state: &GameState,
+        kind: &D20CheckKind,
+        assertor: impl Fn(&D20Check),
+    ) {
+        match kind {
+            D20CheckKind::SavingThrow(saving_throw_kind) => {
+                assertor(
+                    systems::helpers::get_component::<SavingThrowSet>(
+                        &game_state.world,
+                        self.creature.id(),
+                    )
+                    .get(saving_throw_kind),
+                );
+            }
+
+            D20CheckKind::Skill(skill) => {
+                assertor(
+                    systems::helpers::get_component::<SkillSet>(
+                        &game_state.world,
+                        self.creature.id(),
+                    )
+                    .get(skill),
+                );
+            }
+
+            D20CheckKind::AttackRoll(attack_source) => match attack_source {
+                AttackSource::Weapon(weapon_kind) => {
+                    assertor(
+                        &systems::helpers::get_component::<Loadout>(
+                            &game_state.world,
+                            self.creature.id(),
+                        )
+                        .attack_roll_template(weapon_kind)
+                        .d20_check,
+                    );
+                }
+
+                AttackSource::Spell => {
+                    assertor(
+                        &systems::helpers::get_component::<Spellbook>(
+                            &game_state.world,
+                            self.creature.id(),
+                        )
+                        .attack_roll_template()
+                        .d20_check,
+                    );
+                }
+            },
+        }
     }
 }
 

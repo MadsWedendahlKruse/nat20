@@ -26,7 +26,7 @@ use crate::{
         actions::action::{
             ActionContext, ActionMap, ActionProvider, AttackRollProvider, SavingThrowProvider,
         },
-        class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel, SpellcastingRules},
+        class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel},
         d20::{D20Check, D20CheckDC},
         damage::{AttackRoll, AttackRollTemplate, AttackSource},
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
@@ -760,6 +760,10 @@ impl Spellbook {
 
     pub fn saving_throw_modifiers_mut(&mut self) -> &mut ModifierSet {
         &mut self.saving_throw
+    }
+
+    pub fn attack_roll_template(&self) -> &AttackRollTemplate {
+        &self.attack_roll
     }
 
     pub fn attack_roll_template_mut(&mut self) -> &mut AttackRollTemplate {

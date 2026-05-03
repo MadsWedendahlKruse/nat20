@@ -136,23 +136,24 @@ impl Loadout {
     pub fn new() -> Self {
         Self {
             equipment: HashMap::new(),
-            attack_roll_templates: HashMap::new(),
+            attack_roll_templates: HashMap::from_iter(vec![
+                (WeaponKind::Melee, AttackRollTemplate::default()),
+                (WeaponKind::Ranged, AttackRollTemplate::default()),
+                (WeaponKind::Unarmed, AttackRollTemplate::default()),
+            ]),
             saving_throw_modifiers: HashMap::new(),
         }
+    }
+
+    pub fn attack_roll_template(&self, weapon_kind: &WeaponKind) -> &AttackRollTemplate {
+        self.attack_roll_templates.get(weapon_kind).unwrap()
     }
 
     pub fn attack_roll_template_mut(
         &mut self,
         weapon_kind: &WeaponKind,
     ) -> &mut AttackRollTemplate {
-        self.attack_roll_templates
-            .entry(weapon_kind.clone())
-            .or_insert_with(|| {
-                AttackRollTemplate::new(D20Check::new(Proficiency::new(
-                    ProficiencyLevel::None,
-                    ModifierSource::None,
-                )))
-            })
+        self.attack_roll_templates.get_mut(weapon_kind).unwrap()
     }
 
     pub fn saving_throw_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierSet {

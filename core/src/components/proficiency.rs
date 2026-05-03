@@ -58,6 +58,15 @@ impl Proficiency {
     }
 }
 
+impl Default for Proficiency {
+    fn default() -> Self {
+        Self {
+            level: ProficiencyLevel::None,
+            source: ModifierSource::None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
