@@ -1376,7 +1376,7 @@ impl ImguiRenderable for D20CheckDCKind {
         match self {
             D20CheckDCKind::SavingThrow(dc) => dc.render(ui),
             D20CheckDCKind::Skill(dc) => dc.render(ui),
-            D20CheckDCKind::AttackRoll(target, armor_class) => {
+            D20CheckDCKind::AttackRoll(target, source, armor_class) => {
                 armor_class.render(ui);
             }
         }

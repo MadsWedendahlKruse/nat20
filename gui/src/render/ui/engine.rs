@@ -450,7 +450,7 @@ fn get_dc_description(dc_kind: &D20CheckDCKind) -> Vec<(String, TextKind)> {
             (dc.key.to_string(), TextKind::Ability),
             ("check".to_string(), TextKind::Normal),
         ],
-        D20CheckDCKind::AttackRoll(target, _) => {
+        D20CheckDCKind::AttackRoll(target, _, _) => {
             vec![
                 ("attack roll against".to_string(), TextKind::Normal),
                 (target.name().to_string(), TextKind::Actor),
