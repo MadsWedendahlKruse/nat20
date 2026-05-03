@@ -382,6 +382,7 @@ impl ScenarioProbe<'_> {
         fn assert_no_effect(effect: impl Into<EffectId>);
         fn assert_on_cooldown(action: impl Into<ActionId>);
         fn assert_hp(amount: Operator<u32>);
+        fn assert_free_movement(source: ModifierSource, operator: Operator<f32>);
     }
 
     pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {
@@ -414,7 +415,12 @@ impl ScenarioEventFilterBuilder<'_> {
         self
     }
 
-    pub fn d20_modifier(mut self, kind: D20CheckKind, source: ModifierSource, value: i32) -> Self {
+    pub fn d20_modifier(
+        mut self,
+        kind: D20CheckKind,
+        source: ModifierSource,
+        value: Operator<i32>,
+    ) -> Self {
         self.kind = Some(EventFilterKind::D20Check {
             kind,
             modifier: Some((source, value)),
@@ -461,13 +467,21 @@ impl ScenarioEventFilterBuilder<'_> {
     pub fn filter(&self) -> Option<&Event> {
         self.scenario.filter_events(self.build())
     }
+
+    #[track_caller]
+    pub fn assert_event(&self) {
+        assert!(
+            self.filter().is_some(),
+            "Expected event matching filter, but no such event was found"
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum EventFilterKind {
     D20Check {
         kind: D20CheckKind,
-        modifier: Option<(ModifierSource, i32)>,
+        modifier: Option<(ModifierSource, Operator<i32>)>,
         advantage: Option<(ModifierSource, AdvantageType)>,
     },
 }
@@ -494,7 +508,7 @@ impl EventFilterKind {
                         return false;
                     };
 
-                    if event_modifier != *modifier_value {
+                    if !modifier_value.evaluate(&event_modifier) {
                         return false;
                     }
                 }

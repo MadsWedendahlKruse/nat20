@@ -6,6 +6,7 @@ use crate::{
         id::{ActionId, EffectId, EntityIdentifier, ResourceId},
         modifier::ModifierSource,
         resource::{ResourceBudgetKind, ResourceMap},
+        speed::Speed,
         time::{TimeStep, TurnBoundary},
     },
     engine::{event::EventCallback, game_state::GameState},
@@ -216,6 +217,23 @@ impl CreatureProbe {
             self.creature,
             operator,
             hit_points.current()
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_free_movement(
+        &self,
+        game_state: &GameState,
+        source: ModifierSource,
+        operator: Operator<f32>,
+    ) {
+        let speed = systems::helpers::get_component::<Speed>(&game_state.world, self.creature.id());
+        assert!(
+            operator.evaluate(speed.free_movement_multipliers().get(&source).unwrap()),
+            "Expected creature {:?} to have free multiplier movement satisfying condition {:?}, but it has {:?}",
+            self.creature,
+            operator,
+            speed.free_movement_multipliers()
         );
     }
 }

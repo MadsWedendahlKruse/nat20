@@ -9,10 +9,10 @@ mod tests {
             items::equipment::weapon::WeaponKind,
             modifier::{ModifierSet, ModifierSource},
             saving_throw::SavingThrowKind,
+            skill::Skill,
             time::TimeMode,
         },
-        engine::event::{EventFilter, EventKind},
-        systems::d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
+        systems::d20::{D20CheckDCKind, D20CheckKind},
         test_utils::{
             creature_builder::CreatureBuilder, creature_probe::Operator, fixtures,
             scenario::Scenario,
@@ -91,6 +91,63 @@ mod tests {
             "resource.fighter.second_wind",
             Operator::Equal(1),
         );
+    }
+
+    #[test]
+    fn fighter_tactical_mind() {
+        let mut scenario = Scenario::new();
+        scenario.spawn("fighter", "hero.fighter").level(2).spawn();
+
+        scenario
+            .probe("fighter")
+            .assert_has_action("action.fighter.tactical_mind")
+            .assert_resource("resource.fighter.second_wind", Operator::Equal(2))
+            // Force the fighter to fail a skill check to trigger Tactical Mind
+            .d20_force_outcome(
+                D20CheckKind::Skill(Skill::Stealth),
+                D20CheckOutcome::CriticalFailure,
+            )
+            .d20_check(&D20CheckDCKind::skill_check(
+                Skill::Stealth,
+                ModifierSet::from(ModifierSource::Custom("Test skill check".into()), 3),
+            ))
+            .react()
+            .option_id("action.fighter.tactical_mind")
+            .perform();
+
+        scenario
+            .probe("fighter")
+            .assert_resource("resource.fighter.second_wind", Operator::Equal(1))
+            .assert_resource("resource.reaction", Operator::Equal(0));
+        scenario
+            .event_filter()
+            .actor("fighter")
+            .d20_modifier(
+                D20CheckKind::Skill(Skill::Stealth),
+                ModifierSource::Action("action.fighter.tactical_mind".into()),
+                Operator::AtLeast(1), // bonus is 1d10, so it should be at least 1
+            )
+            .assert_event();
+    }
+
+    #[test]
+    fn fighter_tactical_shift() {
+        let mut scenario = Scenario::new();
+        scenario.spawn("fighter", "hero.fighter").level(5).spawn();
+
+        scenario
+            .probe("fighter")
+            .assert_effect("effect.fighter.tactical_shift")
+            .act("action.fighter.second_wind")
+            .perform();
+
+        scenario
+            .probe("fighter")
+            .assert_effect("effect.fighter.tactical_shift_disengage")
+            .assert_free_movement(
+                ModifierSource::Effect("effect.fighter.tactical_shift_disengage".into()),
+                Operator::Equal(0.5),
+            );
     }
 
     #[test]
@@ -194,18 +251,15 @@ mod tests {
             .probe("fighter")
             .assert_resource("resource.fighter.indomitable", Operator::Equal(0));
 
-        assert!(
-            scenario
-                .event_filter()
-                .actor("fighter")
-                .d20_modifier(
-                    D20CheckKind::SavingThrow(saving_throw),
-                    ModifierSource::Action("action.fighter.indomitable".into()),
-                    9,
-                )
-                .filter()
-                .is_some()
-        );
+        scenario
+            .event_filter()
+            .actor("fighter")
+            .d20_modifier(
+                D20CheckKind::SavingThrow(saving_throw),
+                ModifierSource::Action("action.fighter.indomitable".into()),
+                Operator::Equal(9),
+            )
+            .assert_event();
     }
 
     #[test]
@@ -260,18 +314,15 @@ mod tests {
             .target_entity("goblin")
             .perform();
 
-        assert!(
-            scenario
-                .event_filter()
-                .actor("fighter")
-                .d20_advantage(
-                    D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
-                    ModifierSource::Effect("effect.fighter.studied_attacks_advantage".into()),
-                    AdvantageType::Advantage,
-                )
-                .filter()
-                .is_some()
-        );
+        scenario
+            .event_filter()
+            .actor("fighter")
+            .d20_advantage(
+                D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+                ModifierSource::Effect("effect.fighter.studied_attacks_advantage".into()),
+                AdvantageType::Advantage,
+            )
+            .assert_event();
 
         // After the attack the effect is consumed (and it's not just because the goblin died)
         scenario
