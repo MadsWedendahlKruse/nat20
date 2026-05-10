@@ -9,13 +9,15 @@ use nat20_core::{
         geometry::{LineOfSightResult, RaycastMode},
     },
 };
-use tracing::debug;
 use uom::si::{f32::Velocity, velocity::meter_per_second};
 
 use crate::{
-    render::common::{colors::Color, utils::RenderableMutWithContext},
+    render::common::{
+        colors::Color,
+        utils::{Renderable, RenderableMutWithContext},
+    },
     state::{self, gui_state::GuiState},
-    windows::anchor::{self, AUTO_RESIZE},
+    windows::anchor::{self, AUTO_RESIZE, WindowManager},
 };
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -132,7 +134,10 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
             return;
         }
 
-        gui_state.window_manager.render_window(
+        let window_manager_ptr =
+            unsafe { &mut *(&mut gui_state.window_manager as *mut WindowManager) };
+
+        window_manager_ptr.render_window(
             ui,
             "Line of Sight Debug",
             &anchor::CENTER_RIGHT,
@@ -244,36 +249,42 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                 if let Some(result) = &self.result {
                     ui.text(format!("{:#?}", result));
 
-                    let color = if result.has_line_of_sight {
-                        Color::White
-                    } else {
-                        Color::Red
-                    };
-
-                    if self.show_raycast
-                        && let Some(raycast_result) = &result.raycast_result
-                    {
-                        match &raycast_result.mode {
-                            RaycastMode::Ray(ray) => {
-                                let toi = raycast_result
-                                    .closest()
-                                    .map(|hit| hit.toi)
-                                    .unwrap_or(f32::MAX);
-
-                                gui_state.line_renderer.add_ray(
-                                    ray.origin.into(),
-                                    ray.dir.into(),
-                                    toi,
-                                    color,
-                                );
-                            }
-                            RaycastMode::Parabola(parabola) => {
-                                gui_state.line_renderer.add_parabola(parabola, color);
-                            }
-                        }
+                    if self.show_raycast {
+                        result.render(ui, gui_state);
                     }
                 }
             },
         );
+    }
+}
+
+impl Renderable for LineOfSightResult {
+    fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
+        let Some(raycast_result) = &self.raycast_result else {
+            return;
+        };
+
+        let color = if self.has_line_of_sight {
+            Color::White
+        } else {
+            Color::Red
+        };
+
+        match &raycast_result.mode {
+            RaycastMode::Ray(ray) => {
+                gui_state.line_renderer.add_ray(
+                    ray.origin.into(),
+                    ray.dir.into(),
+                    raycast_result
+                        .closest()
+                        .map(|hit| hit.toi)
+                        .unwrap_or(f32::MAX),
+                    color,
+                );
+            }
+            RaycastMode::Parabola(parabola) => {
+                gui_state.line_renderer.add_parabola(parabola, color);
+            }
+        }
     }
 }

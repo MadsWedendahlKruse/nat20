@@ -268,10 +268,8 @@ impl Evaluable for TargetingKindDefinition {
                     .expression
                     .evaluate(world, entity, context, variables)?;
 
-                // Clamp to a sensible range and cast to u8
-                let max_targets_i32 = value.max(0).min(u8::MAX as i32);
                 Ok(TargetingKind::Multiple {
-                    max_targets: max_targets_i32 as u8,
+                    max_targets: value.max(0) as usize,
                     allow_duplicates: *allow_duplicates,
                 })
             }

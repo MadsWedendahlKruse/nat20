@@ -59,29 +59,21 @@ impl ActionBuilder {
         self.state.as_ref()
     }
 
+    pub fn state_mut(&mut self) -> Result<&mut ActionBuilderState, &mut ActionBuilderError> {
+        self.state.as_mut()
+    }
+
     pub fn action(&mut self, world: &World, action_id: &ActionId) -> &mut Self {
         let actor = self.actor.clone();
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Action { actions }) => {
                 Self::pick_action(&actor, world, actions, action_id)
             }
-            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
-                expected: "Action",
-                actual: other.kind_name(),
-            }),
-            Err(_) => return self,
-        };
-        self
-    }
-
-    pub fn variant(&mut self, world: &World, variant_id: &ActionId) -> &mut Self {
-        let actor = self.actor.clone();
-        self.state = match &mut self.state {
             Ok(ActionBuilderState::Variant { variants }) => {
-                Self::pick_action(&actor, world, variants, variant_id)
+                Self::pick_action(&actor, world, variants, action_id)
             }
             Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
-                expected: "Variant",
+                expected: "Action or Variant",
                 actual: other.kind_name(),
             }),
             Err(_) => return self,
@@ -172,8 +164,54 @@ impl ActionBuilder {
 
     pub fn target_entity(&mut self, game_state: &mut GameState, entity: Entity) -> &mut Self {
         let target =
-            TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, entity));
+            TargetInstance::entity(EntityIdentifier::from_world(&game_state.world, entity));
         self.target(game_state, target)
+    }
+
+    pub fn target_entity_point(
+        &mut self,
+        game_state: &mut GameState,
+        entity: Entity,
+        point_on_entity: impl Into<Point3<f32>>,
+    ) -> &mut Self {
+        let target = TargetInstance::Entity {
+            entity: EntityIdentifier::from_world(&game_state.world, entity),
+            point_on_entity: Some(point_on_entity.into()),
+        };
+        self.target(game_state, target)
+    }
+
+    pub fn remove_target(&mut self, target: &TargetInstance) -> &mut Self {
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Targets { action, .. }) => {
+                action.targets.retain(|t| t != target);
+                Ok(ActionBuilderState::Targets {
+                    action: action.clone(),
+                    path_to_target: None,
+                })
+            }
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
+                expected: "Targets",
+                actual: other.kind_name(),
+            }),
+            Err(_) => return self,
+        };
+        self
+    }
+
+    pub fn remove_latest_target(&mut self) -> &mut Self {
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Targets { action, .. }) => {
+                action.targets.pop();
+                return self;
+            }
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
+                expected: "Targets",
+                actual: other.kind_name(),
+            }),
+            Err(_) => return self,
+        };
+        self
     }
 
     pub fn build(&self, game_state: &mut GameState) -> Result<Activity, ActionBuilderError> {
@@ -202,10 +240,23 @@ impl ActionBuilder {
                         TargetPathFindingResult::AlreadyInRange(_) => {
                             Activity::Act { action: decision }
                         }
-                        TargetPathFindingResult::PathFound(path_result) => Activity::MoveAndAct {
-                            goal: path_result.path_result.taken_path.end().unwrap().clone(),
-                            action: decision,
-                        },
+                        TargetPathFindingResult::PathFound(path_result) => {
+                            let goal = path_result.path_result.taken_path.end().unwrap().clone();
+                            if path_result.path_result.reaches_goal() {
+                                Activity::MoveAndAct {
+                                    goal,
+                                    action: decision,
+                                }
+                            } else {
+                                // If we don't reach the goal, there's no point in
+                                // moving and acting, because it will just fail with
+                                // an out of range error
+                                Activity::Move {
+                                    entity: action.actor.id(),
+                                    goal,
+                                }
+                            }
+                        }
                     }
                 } else {
                     Activity::Act { action: decision }
@@ -326,7 +377,7 @@ impl ActionBuilder {
         let targeting = systems::actions::targeting_context(world, actor.id(), action_id, context);
 
         let targets = if TargetingKind::SelfTarget == targeting.kind {
-            vec![TargetInstance::Entity(actor.clone())]
+            vec![TargetInstance::entity(actor.clone())]
         } else {
             Vec::new()
         };
@@ -344,6 +395,7 @@ impl ActionBuilder {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum ActionBuilderState {
     Action {
         actions: ActionMap,
@@ -713,7 +765,7 @@ mod tests {
         // Calling target() before action() should poison the builder with
         // an InvalidStateTransition error that surfaces at perform().
         let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .target(&mut game_state, TargetInstance::Entity(fighter.clone()))
+            .target(&mut game_state, TargetInstance::entity(fighter.clone()))
             .perform(&mut game_state);
 
         assert!(
@@ -747,7 +799,7 @@ mod tests {
         let result = ActionBuilder::available(&game_state.world, wizard.id())
             .action(&game_state.world, &action_id)
             .context_index(&game_state.world, 0)
-            .target(&mut game_state, TargetInstance::Entity(wizard.clone()))
+            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state);
 
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
@@ -763,7 +815,7 @@ mod tests {
         let result = ActionBuilder::available(&game_state.world, wizard.id())
             .action(&game_state.world, &action_id)
             .context_index(&game_state.world, 999) // Invalid index
-            .target(&mut game_state, TargetInstance::Entity(wizard.clone()))
+            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state);
 
         assert!(
@@ -793,7 +845,7 @@ mod tests {
                     .map(|spell| spell.level == 3)
                     .unwrap_or(false)
             })
-            .target(&mut game_state, TargetInstance::Entity(wizard.clone()))
+            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state);
 
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
@@ -816,7 +868,7 @@ mod tests {
                     .map(|spell| spell.level == 9)
                     .unwrap_or(false)
             })
-            .target(&mut game_state, TargetInstance::Entity(wizard.clone()))
+            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state);
 
         assert!(
@@ -840,7 +892,7 @@ mod tests {
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
         let result = ActionBuilder::available(&game_state.world, fighter.id())
             .action(&game_state.world, &action_id)
-            .target(&mut game_state, TargetInstance::Entity(goblin.clone()))
+            .target(&mut game_state, TargetInstance::entity(goblin.clone()))
             .perform(&mut game_state);
 
         assert!(
@@ -864,7 +916,7 @@ mod tests {
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
         let result = ActionBuilder::available(&game_state.world, fighter.id())
             .action(&game_state.world, &action_id)
-            .target(&mut game_state, TargetInstance::Entity(goblin.clone()))
+            .target(&mut game_state, TargetInstance::entity(goblin.clone()))
             .perform(&mut game_state);
 
         assert!(
@@ -888,12 +940,12 @@ mod tests {
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
         let result = ActionBuilder::available(&game_state.world, fighter.id())
             .action(&game_state.world, &action_id)
-            .target(&mut game_state, TargetInstance::Entity(goblin.clone()))
+            .target(&mut game_state, TargetInstance::entity(goblin.clone()))
             .perform(&mut game_state);
 
         assert!(
             matches!(result, Err(ActionBuilderError::InvalidTarget { ref target, ref reason })
-            if target == &TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, goblin.id()))),
+            if target == &TargetInstance::entity(EntityIdentifier::from_world(&game_state.world, goblin.id()))),
             // && matches!(reason, TargetingError::OutOfRange { .. })),
             "expected InvalidTarget with reason OutOfRange, got {:?}",
             result
@@ -958,7 +1010,7 @@ mod tests {
                 &game_state.world,
                 &ActionId::new("nat20_core", "action.melee_attack"),
             )
-            .target(&mut game_state, TargetInstance::Entity(wizard.clone()))
+            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state)
             .expect("Failed to perform action");
         game_state.update(10.0);

@@ -18,6 +18,7 @@ use uom::si::{
 use crate::{
     components::{
         actions::targeting::{LineOfSightMode, TargetInstance},
+        id::EntityIdentifier,
         species::CreatureSize,
     },
     engine::{
@@ -262,6 +263,18 @@ pub struct RaycastHit {
     pub toi: f32,
     /// Point of impact in world space
     pub poi: Point3<f32>,
+}
+
+impl RaycastHit {
+    pub fn target_instance(&self, world: &World) -> TargetInstance {
+        match self.kind {
+            RaycastHitKind::World => TargetInstance::Point(self.poi),
+            RaycastHitKind::Creature(entity) => TargetInstance::Entity {
+                entity: EntityIdentifier::from_world(world, entity),
+                point_on_entity: Some(self.poi),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -509,6 +522,20 @@ pub struct LineOfSightResult {
     pub raycast_result: Option<RaycastResult>,
 }
 
+impl LineOfSightResult {
+    pub fn check_entity_hit(&mut self, entity: Entity) {
+        // If we didn't have line of sight to the point on the entity,
+        // check if we had line of sight to any other part of the entity
+        if !self.has_line_of_sight
+            && let Some(raycast) = &self.raycast_result
+            && let Some(closest) = raycast.closest()
+            && closest.kind == RaycastHitKind::Creature(entity)
+        {
+            self.has_line_of_sight = true;
+        }
+    }
+}
+
 pub fn line_of_sight_point_point(
     world: &World,
     world_geometry: &WorldGeometry,
@@ -652,7 +679,16 @@ pub fn line_of_sight_entity_target(
     mode: &LineOfSightMode,
 ) -> LineOfSightResult {
     match target_instance {
-        TargetInstance::Entity(target_entity) => {
+        TargetInstance::Entity {
+            entity: target_entity,
+            point_on_entity,
+        } => {
+            if let Some(point) = point_on_entity {
+                let mut line_of_sight_result =
+                    line_of_sight_entity_point(world, world_geometry, entity, *point, mode);
+                line_of_sight_result.check_entity_hit(target_entity.id());
+                return line_of_sight_result;
+            }
             line_of_sight_entity_entity(world, world_geometry, entity, target_entity.id(), mode)
         }
         TargetInstance::Point(point) => {
@@ -706,9 +742,9 @@ pub fn distance_between_entities(
     entity_a: Entity,
     entity_b: Entity,
 ) -> Option<Length> {
-    let pos_a = get_foot_position(world, entity_a)?;
-    let pos_b = get_foot_position(world, entity_b)?;
-    let distance = (pos_b - pos_a).magnitude();
+    let (shape_a, pose_a) = get_shape(world, entity_a)?;
+    let (shape_b, pose_b) = get_shape(world, entity_b)?;
+    let distance = parry3d::query::distance(&pose_a, &shape_a, &pose_b, &shape_b).ok()?;
     Some(Length::new::<meter>(distance))
 }
 

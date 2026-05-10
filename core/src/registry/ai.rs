@@ -114,12 +114,9 @@ impl AIController for RandomController {
                             allow_duplicates,
                         } => {
                             let chosen_targets = if allow_duplicates {
-                                possible_targets
-                                    .iter()
-                                    .choose_multiple(rng, max_targets as usize)
+                                possible_targets.iter().choose_multiple(rng, max_targets)
                             } else {
-                                let max_unique_targets =
-                                    max_targets.min(possible_targets.len() as u8) as usize;
+                                let max_unique_targets = max_targets.min(possible_targets.len());
                                 possible_targets[0..max_unique_targets].iter().collect()
                             };
                             targets.extend(chosen_targets);
@@ -139,7 +136,7 @@ impl AIController for RandomController {
                         targets
                             .iter()
                             .map(|entity| {
-                                TargetInstance::Entity(EntityIdentifier::from_world(
+                                TargetInstance::entity(EntityIdentifier::from_world(
                                     &game_state.world,
                                     *entity,
                                 ))

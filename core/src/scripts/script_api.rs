@@ -553,10 +553,10 @@ impl ScriptEventView {
 
                 let mut script_results = Vec::new();
                 for result in results {
-                    if let TargetInstance::Entity(target_entity) = &result.target {
+                    if let TargetInstance::Entity { entity, .. } = &result.target {
                         script_results.push(ScriptActionResultView::from_action_result(
                             action.actor.id(),
-                            target_entity.id(),
+                            entity.id(),
                             &result.kind,
                         ));
                     }
@@ -904,7 +904,7 @@ impl From<&ActionData> for ScriptActionView {
                 .targets
                 .iter()
                 .filter_map(|t| match t {
-                    TargetInstance::Entity(entity) => Some(ScriptEntity::from(entity.id())),
+                    TargetInstance::Entity { entity, .. } => Some(ScriptEntity::from(entity.id())),
                     TargetInstance::Point(_) => None, // TODO: Handle point targets if needed
                 })
                 .collect(),

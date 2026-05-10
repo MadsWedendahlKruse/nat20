@@ -253,7 +253,7 @@ pub struct ScenarioActionBuilder<'s> {
 impl ScenarioActionBuilder<'_> {
     pub fn variant(mut self, variant: impl Into<ActionId>) -> Self {
         self.builder
-            .variant(&self.scenario.game_state.world, &variant.into());
+            .action(&self.scenario.game_state.world, &variant.into());
         self
     }
 

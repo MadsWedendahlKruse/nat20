@@ -92,16 +92,9 @@ impl Event {
 
     pub fn target(&self) -> Option<Entity> {
         match &self.kind {
-            EventKind::ActionRequested { action } => {
-                if let Some(TargetInstance::Entity(target)) = action.targets.first() {
-                    Some(target.id())
-                } else {
-                    None
-                }
-            }
-            EventKind::ActionPerformed { action, .. } => {
-                if let Some(TargetInstance::Entity(target)) = action.targets.first() {
-                    Some(target.id())
+            EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
+                if let Some(TargetInstance::Entity { entity, .. }) = action.targets.first() {
+                    Some(entity.id())
                 } else {
                     None
                 }

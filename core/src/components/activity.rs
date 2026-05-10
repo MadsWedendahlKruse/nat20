@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use hecs::Entity;
 use parry3d::na::Point3;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
@@ -110,6 +110,16 @@ impl ActivityState {
                 action,
                 paused,
             } => {
+                if *current_target >= path.points.len() {
+                    warn!(
+                        "Current target index {} is out of bounds for path with length {}. Target appears to have reached goal, but follow up state was not set correctly. Did the action submission fail? Setting state to idle",
+                        current_target,
+                        path.points.len()
+                    );
+                    *self = Self::Idle;
+                    return commands;
+                }
+
                 let target_point = path.points[*current_target];
                 let position =
                     systems::geometry::get_foot_position(&game_state.world, entity).unwrap();
@@ -339,9 +349,10 @@ impl ActivityGameStateCommand {
         match self {
             Self::ProcessEvent(event) => game_state.process_event(event),
 
-            Self::SubmitAction(action) => game_state
-                .submit_decision(action)
-                .expect("Failed to submit action from activity"),
+            Self::SubmitAction(action) => match game_state.submit_decision(action) {
+                Ok(_) => {}
+                Err(error) => error!("Failed to submit action decision: {:?}", error),
+            },
 
             Self::PerformActionPhase { entity, mut phase } => {
                 phase.perform(game_state);

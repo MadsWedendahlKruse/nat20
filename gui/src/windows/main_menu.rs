@@ -210,7 +210,7 @@ impl MainMenuWindow {
                 );
 
                 if let Some(entity) = gui_state.selected_entity {
-                    if (action_bar.is_some() && action_bar.as_ref().unwrap().entity != entity)
+                    if (action_bar.is_some() && action_bar.as_ref().unwrap().actor() != entity)
                         || action_bar.is_none()
                     {
                         action_bar.replace(ActionBarWindow::new(game_state, entity));

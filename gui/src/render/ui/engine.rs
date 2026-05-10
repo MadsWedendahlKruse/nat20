@@ -199,7 +199,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
 
                 if action.is_self_target() {
                     let target = match &action.targets[0] {
-                        TargetInstance::Entity(entity) => entity.name().as_str(),
+                        TargetInstance::Entity { entity, .. } => entity.name().as_str(),
                         TargetInstance::Point(point) => {
                             &format!("point ({:.1}, {:.1}, {:.1})", point.x, point.y, point.z)
                         }
@@ -473,7 +473,7 @@ impl ImguiRenderableWithContext<&World> for ActionData {
                 .targets
                 .iter()
                 .filter_map(|t| match t {
-                    TargetInstance::Entity(entity) => Some(entity.clone()),
+                    TargetInstance::Entity { entity, .. } => Some(entity.clone()),
                     TargetInstance::Point(point) => None,
                 })
                 .collect::<Vec<_>>();

@@ -183,9 +183,7 @@ impl GameState {
             entity,
             &goal,
             true,
-            false,
             self.in_combat.contains_key(&entity),
-            false,
         )?;
 
         if systems::helpers::get_component::<Speed>(&self.world, entity).remaining_movement()
@@ -625,7 +623,7 @@ impl GameState {
         }
     }
 
-    fn get_potential_reactors(&self, actor: Entity) -> Vec<Entity> {
+    pub fn get_potential_reactors(&self, actor: Entity) -> Vec<Entity> {
         // If in combat, only consider participants. Otherwise, consider all entities
         // that are nearby
         if let Some(encounter_id) = self.in_combat.get(&actor)

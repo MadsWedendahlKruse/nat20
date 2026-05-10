@@ -277,7 +277,7 @@ impl ActionData {
 
     pub fn is_self_target(&self) -> bool {
         self.targets.len() == 1
-            && matches!(&self.targets[0], TargetInstance::Entity(entity) if entity.id() == self.actor.id())
+            && matches!(&self.targets[0], TargetInstance::Entity { entity, ..} if entity.id() == self.actor.id())
     }
 }
 

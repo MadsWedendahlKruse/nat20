@@ -229,7 +229,7 @@ pub fn get_targeted_entities(
         TargetingKind::SelfTarget | TargetingKind::Single | TargetingKind::Multiple { .. } => {
             for target in &targets {
                 match target {
-                    TargetInstance::Entity(entity) => entities.push(entity.id()),
+                    TargetInstance::Entity { entity, .. } => entities.push(entity.id()),
                     TargetInstance::Point(point) => {
                         if let Some(entity) =
                             systems::geometry::get_entity_at_point(&game_state.world, *point)
@@ -251,7 +251,7 @@ pub fn get_targeted_entities(
 
             for target in &targets {
                 let point = match target {
-                    TargetInstance::Entity(entity) => {
+                    TargetInstance::Entity { entity, .. } => {
                         &systems::geometry::get_foot_position(&game_state.world, entity.id())
                             .unwrap()
                     }
@@ -365,9 +365,9 @@ pub fn available_reactions_to_event(
                         TargetingKind::SelfTarget
                     );
                     let target = if self_target {
-                        TargetInstance::Entity(EntityIdentifier::from_world(world, reactor))
+                        TargetInstance::entity(EntityIdentifier::from_world(world, reactor))
                     } else {
-                        TargetInstance::Entity(EntityIdentifier::from_world(
+                        TargetInstance::entity(EntityIdentifier::from_world(
                             world,
                             event.actor().unwrap(),
                         ))

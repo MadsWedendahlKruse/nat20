@@ -88,16 +88,82 @@ impl TargetingContext {
             return Err(TargetingError::NoTargetsProvided);
         }
 
+        for target in targets {
+            // Check allowed targets
+            match target {
+                TargetInstance::Entity { entity, .. } => {
+                    if let Err(violated_filters) =
+                        self.allowed_target(world, entity.id(), Some(actor))
+                    {
+                        return Err(TargetingError::InvalidTarget {
+                            target: target.clone(),
+                            violated_filters,
+                        });
+                    }
+                }
+                TargetInstance::Point(_) => {
+                    // Points are always allowed
+                }
+            }
+
+            // Check range
+            if self.kind.check_range() {
+                let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
+
+                let distance = match target {
+                    TargetInstance::Entity { entity, .. } => {
+                        systems::geometry::distance_between_entities(world, actor, entity.id())
+                            .unwrap()
+                    }
+
+                    TargetInstance::Point(point) => {
+                        Length::new::<meter>((point - actor_position).norm())
+                    }
+                };
+
+                if !self.range.in_range(distance) {
+                    return Err(TargetingError::OutOfRange {
+                        target: target.clone(),
+                        distance,
+                        max_range: self.range.max(),
+                    });
+                }
+            }
+
+            // Check line of sight
+            if self.kind.check_line_of_sight() {
+                let line_of_sight_result = systems::geometry::line_of_sight_entity_target(
+                    world,
+                    world_geometry,
+                    actor,
+                    target,
+                    &self.line_of_sight,
+                );
+
+                if !line_of_sight_result.has_line_of_sight {
+                    return Err(TargetingError::NoLineOfSight {
+                        target: target.clone(),
+                    });
+                }
+            }
+        }
+
         match self.kind {
             TargetingKind::SelfTarget => {
                 if targets.len() > 1 {
                     return Err(TargetingError::ExceedsMaxTargets);
                 }
-                if targets[0] != TargetInstance::Entity(EntityIdentifier::from_world(world, actor))
-                {
+                let actor = EntityIdentifier::from_world(world, actor);
+                let TargetInstance::Entity { entity, .. } = &targets[0] else {
                     return Err(TargetingError::NotSelf {
                         target: targets[0].clone(),
-                        actor: EntityIdentifier::from_world(world, actor),
+                        actor,
+                    });
+                };
+                if *entity != actor {
+                    return Err(TargetingError::NotSelf {
+                        target: targets[0].clone(),
+                        actor,
                     });
                 }
             }
@@ -112,7 +178,7 @@ impl TargetingContext {
                 max_targets,
                 allow_duplicates,
             } => {
-                if targets.len() as u8 > max_targets {
+                if targets.len() > max_targets {
                     return Err(TargetingError::ExceedsMaxTargets);
                 }
                 if !allow_duplicates {
@@ -133,61 +199,6 @@ impl TargetingContext {
             }
         }
 
-        for target in targets {
-            // Check range
-            let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
-
-            let distance = match target {
-                TargetInstance::Entity(entity) => {
-                    systems::geometry::distance_between_entities(world, actor, entity.id()).unwrap()
-                }
-
-                TargetInstance::Point(point) => {
-                    Length::new::<meter>((point - actor_position).norm())
-                }
-            };
-
-            if !self.range.in_range(distance) {
-                return Err(TargetingError::OutOfRange {
-                    target: target.clone(),
-                    distance,
-                    max_range: self.range.max(),
-                });
-            }
-
-            // Check line of sight
-            let line_of_sight_result = systems::geometry::line_of_sight_entity_target(
-                world,
-                world_geometry,
-                actor,
-                target,
-                &self.line_of_sight,
-            );
-
-            if !line_of_sight_result.has_line_of_sight {
-                return Err(TargetingError::NoLineOfSight {
-                    target: target.clone(),
-                });
-            }
-
-            // Check allowed targets
-            match target {
-                TargetInstance::Entity(entity) => {
-                    if let Err(violated_filters) =
-                        self.allowed_target(world, entity.id(), Some(actor))
-                    {
-                        return Err(TargetingError::InvalidTarget {
-                            target: target.clone(),
-                            violated_filters,
-                        });
-                    }
-                }
-                TargetInstance::Point(_) => {
-                    // Points are always allowed
-                }
-            }
-        }
-
         Ok(())
     }
 }
@@ -205,13 +216,31 @@ pub enum TargetingKind {
     SelfTarget, // e.g. Second Wind
     Single,
     Multiple {
-        max_targets: u8,
+        max_targets: usize,
         allow_duplicates: bool,
     },
     Area {
         shape: AreaShape,
         fixed_on_actor: bool,
     },
+}
+
+impl TargetingKind {
+    pub fn check_line_of_sight(&self) -> bool {
+        match self {
+            TargetingKind::SelfTarget => false,
+            TargetingKind::Area { fixed_on_actor, .. } => !*fixed_on_actor,
+            _ => true,
+        }
+    }
+
+    pub fn check_range(&self) -> bool {
+        match self {
+            TargetingKind::SelfTarget => false,
+            TargetingKind::Area { fixed_on_actor, .. } => !*fixed_on_actor,
+            _ => true,
+        }
+    }
 }
 
 // TODO: parry3d shapes?
@@ -424,8 +453,38 @@ impl EntityFilter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetInstance {
-    Entity(EntityIdentifier),
+    Entity {
+        entity: EntityIdentifier,
+        point_on_entity: Option<Point3<f32>>,
+    },
     Point(Point3<f32>),
+}
+
+impl TargetInstance {
+    pub fn entity(entity: EntityIdentifier) -> Self {
+        TargetInstance::Entity {
+            entity,
+            point_on_entity: None,
+        }
+    }
+
+    pub fn position(&self, world: &World) -> Option<Point3<f32>> {
+        match self {
+            TargetInstance::Entity {
+                entity,
+                point_on_entity,
+            } => {
+                if let Some(point_on_entity) = point_on_entity {
+                    Some(*point_on_entity)
+                } else {
+                    let (_, shape_pose) =
+                        systems::geometry::get_shape(&world, entity.id()).unwrap();
+                    Some(shape_pose.translation.vector.into())
+                }
+            }
+            TargetInstance::Point(point) => Some(*point),
+        }
+    }
 }
 
 // TODO: Slightly more descriptive errors

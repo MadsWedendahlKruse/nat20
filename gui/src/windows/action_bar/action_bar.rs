@@ -1,56 +1,44 @@
-use core::f32;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use hecs::{Entity, World};
+use hecs::Entity;
 use imgui::{ChildFlags, MouseButton};
 use nat20_core::{
     components::{
         ability::AbilityScoreMap,
         actions::{
-            action::{
-                ActionCondition, ActionContext, ActionKind, ActionMap, AttackRollFunction,
-                SavingThrowFunction,
-            },
-            targeting::{AreaShape, TargetInstance, TargetingContext, TargetingKind},
+            action::{ActionCondition, ActionKind, AttackRollFunction, SavingThrowFunction},
+            action_builder::{ActionBuilder, ActionBuilderState},
+            targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
         },
         activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
-        id::{ActionId, EntityIdentifier, Name, ResourceId},
         modifier::{Modifiable, ModifierSource},
-        resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
+        resource::ResourceMap,
         saving_throw::SavingThrowSet,
         speed::Speed,
     },
     engine::{
-        action_prompt::{ActionData, ActionDecision, ActionDecisionKind, ActionPromptKind},
+        action_prompt::{ActionData, ActionPromptKind},
         game_state::GameState,
     },
-    systems::{
-        self,
-        geometry::{LineOfSightResult, RaycastHit, RaycastHitKind, RaycastMode},
-        movement::{PathResult, TargetPathFindingResult},
-    },
+    systems::{self, geometry::RaycastHitKind, movement::TargetPathFindingResult},
 };
-use parry3d::{na::Point3, shape::ShapeType};
-use tracing::{info, trace};
+use parry3d::shape::ShapeType;
+use tracing::{debug, error, info};
 use uom::si::length::meter;
 
 use crate::{
     render::{
         common::{
             colors::Color,
-            utils::{RenderableMutWithContext, RenderableWithContext},
+            utils::{Renderable, RenderableMutWithContext, RenderableWithContext},
         },
         ui::{
-            components::{
-                LOW_HEALTH_BG_COLOR, LOW_HEALTH_COLOR, ModifierSetRenderMode, SPEED_COLOR,
-                SPEED_COLOR_BG,
-            },
+            components::ModifierSetRenderMode,
             text::{TextKind, TextSegment, TextSegments},
             utils::{
-                ImguiRenderable, ImguiRenderableWithContext, ProgressBarColor,
-                render_button_disabled_conditionally, render_button_with_padding,
-                render_capacity_meter, render_progress_bar, roman_numeral, signed_value,
+                ImguiRenderable, ImguiRenderableWithContext, render_button_disabled_conditionally,
+                render_button_with_padding, render_capacity_meter, roman_numeral, signed_value,
             },
         },
         world::mesh::MeshRenderMode,
@@ -70,62 +58,9 @@ const MAX_ACTIONS: usize = 8;
 const ACTION_HEIGHT: f32 = 25.0;
 const ACTION_LIST_HEIGHT: f32 = MAX_ACTIONS as f32 * ACTION_HEIGHT;
 
-#[derive(Debug, Clone)]
-pub enum ActionBarState {
-    Action {
-        actions: ActionMap,
-    },
-    Variant {
-        variants: ActionMap,
-    },
-    Context {
-        action: ActionId,
-        contexts_and_costs: Vec<(ActionContext, ResourceAmountMap)>,
-    },
-    Targets {
-        action: ActionData,
-        potential_target: Option<PotentialTarget>,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub struct PotentialTarget {
-    pub target_instance: TargetInstance,
-    pub path_finding_result: TargetPathFindingResult,
-}
-
 pub struct ActionBarWindow {
-    pub state: ActionBarState,
-    pub entity: Entity,
+    pub builder: ActionBuilder,
     pub movement_preview: MovementPreview,
-}
-
-impl ActionBarWindow {
-    pub fn new(game_state: &mut GameState, entity: Entity) -> Self {
-        Self {
-            state: ActionBarState::Action {
-                actions: systems::actions::all_actions(&game_state.world, entity),
-            },
-            entity,
-            movement_preview: MovementPreview::new(entity),
-        }
-    }
-
-    pub fn is_disabled(&self, game_state: &GameState) -> bool {
-        if let Some(encounter_id) = game_state.in_combat.get(&self.entity)
-            && let Some(encounter) = game_state.encounters.get(encounter_id)
-        {
-            if encounter.current_entity() != self.entity {
-                return true;
-            }
-            if let Some(prompt) = game_state.next_prompt_entity(self.entity)
-                && matches!(prompt.kind, ActionPromptKind::Reactions { .. })
-            {
-                return true;
-            }
-        }
-        false
-    }
 }
 
 impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
@@ -144,70 +79,84 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
 
         window_manager_ptr.render_window(
             ui,
-            format!(
-                "Actions - {}",
-                systems::helpers::get_component::<Name>(&game_state.world, self.entity).as_str()
-            )
-            .as_str(),
+            &self.builder.actor().name().to_string(),
             &BOTTOM_CENTER,
             AUTO_RESIZE,
             &mut opened,
             || {
-                let mut new_state = None;
+                let mut move_on_click = true;
 
-                match &mut self.state {
-                    ActionBarState::Action { actions } => {
-                        render_actions(ui, game_state, self.entity, &mut new_state, actions);
-                        ui.same_line();
-                        render_resources(ui, game_state, self.entity);
-                        ui.separator();
-                        render_end_turn(ui, game_state, self.entity);
-                        self.movement_preview
-                            .render_mut_with_context(ui, gui_state, game_state);
-                    }
+                match self.builder.state() {
+                    Ok(state) => match state {
+                        ActionBuilderState::Action { .. } => {
+                            self.render_actions(ui, game_state);
+                            ui.same_line();
+                            self.render_resources(ui, game_state);
+                            ui.separator();
+                            self.render_end_turn(ui, game_state);
+                            self.movement_preview
+                                .update(ui, gui_state, game_state, None);
+                            self.movement_preview
+                                .render_with_context(ui, gui_state, game_state);
+                        }
 
-                    ActionBarState::Variant { variants } => {
-                        render_actions(ui, game_state, self.entity, &mut new_state, variants);
-                        ui.separator();
-                        right_click_cancel(ui, gui_state, game_state, &mut new_state, self.entity);
-                        self.movement_preview
-                            .render_mut_with_context(ui, gui_state, game_state);
-                    }
+                        ActionBuilderState::Variant { .. } => {
+                            self.render_actions(ui, game_state);
+                            ui.separator();
+                            self.right_click_cancel(ui, gui_state, game_state);
+                            self.movement_preview
+                                .update(ui, gui_state, game_state, None);
+                            self.movement_preview
+                                .render_with_context(ui, gui_state, game_state);
+                        }
 
-                    ActionBarState::Context {
-                        action,
-                        contexts_and_costs,
-                    } => {
-                        render_context_selection(
-                            ui,
-                            gui_state,
-                            game_state,
-                            &mut new_state,
-                            action,
-                            self.entity,
-                            contexts_and_costs,
-                        );
-                        self.movement_preview
-                            .render_mut_with_context(ui, gui_state, game_state);
-                    }
+                        ActionBuilderState::Context { .. } => {
+                            self.render_context_selection(ui, gui_state, game_state);
+                            self.movement_preview
+                                .update(ui, gui_state, game_state, None);
+                            self.movement_preview
+                                .render_with_context(ui, gui_state, game_state);
+                        }
 
-                    ActionBarState::Targets {
-                        action,
-                        potential_target,
-                    } => {
-                        render_target_selection(
-                            ui,
-                            gui_state,
-                            game_state,
-                            &mut new_state,
-                            action,
-                            potential_target,
-                        );
+                        ActionBuilderState::Targets { .. } => {
+                            move_on_click = false;
+                            self.render_target_selection(ui, gui_state, game_state);
+                        }
+                    },
+
+                    Err(error) => {
+                        // TODO: Would be cool if this was a pop up?
+                        error!("Error building action: {:#?}", error);
+                        self.builder =
+                            ActionBuilder::all(&game_state.world, self.builder.actor().id());
                     }
                 }
 
-                if let Some(state) = new_state {
-                    self.state = state;
+                if move_on_click
+                    && ui.is_mouse_clicked(MouseButton::Left)
+                    && let Some(cursor_ray_result) = &gui_state.cursor_ray_result
+                    && let Some(closest) = cursor_ray_result.closest()
+                    && closest.kind == RaycastHitKind::World
+                {
+                    let movement_result = game_state.submit_activity(Activity::Move {
+                        entity: self.actor(),
+                        goal: closest.poi,
+                    });
+
+                    match movement_result {
+                        Ok(()) => {
+                            debug!(
+                                "Submitted movement for entity {:?} to point {:?}",
+                                self.actor(),
+                                closest.poi
+                            );
+                        }
+                        Err(err) => {
+                            error!("Failed to submit movement: {:?}", err);
+                        }
+                    }
+
+                    gui_state.cursor_ray_result.take();
                 }
             },
         );
@@ -220,494 +169,724 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
     }
 }
 
-fn render_actions(
-    ui: &imgui::Ui,
-    game_state: &mut GameState,
-    entity: Entity,
-    new_state: &mut Option<ActionBarState>,
-    actions: &mut ActionMap,
-) {
-    ui.child_window("Actions")
-        .child_flags(
-            ChildFlags::ALWAYS_AUTO_RESIZE | ChildFlags::AUTO_RESIZE_X | ChildFlags::AUTO_RESIZE_Y,
-        )
-        .build(|| {
-            ui.separator_with_text("Actions");
-
-            render_actions_list(ui, game_state, entity, new_state, actions);
-        });
-}
-
-fn render_actions_list(
-    ui: &imgui::Ui,
-    game_state: &mut GameState,
-    entity: Entity,
-    new_state: &mut Option<ActionBarState>,
-    actions: &mut ActionMap,
-) {
-    ui.child_window("Actions")
-        .child_flags(
-            ChildFlags::ALWAYS_AUTO_RESIZE | ChildFlags::AUTO_RESIZE_X | ChildFlags::BORDERS,
-        )
-        .size([0.0, ACTION_LIST_HEIGHT])
-        .build(|| {
-            for (action_id, contexts_and_costs) in actions {
-                // Don't render actions that either:
-                // 1. Can only be used as reactions
-                // 2. Cost a resource which never recharges and which is the entity
-                //    currently doesn't have any of. This probably means the action
-                //    is only usable under certain conditions which aren't currently
-                //    met.
-                if let Some(action) = systems::actions::get_action(action_id)
-                    && action.is_reaction()
-                {
-                    continue;
-                }
-
-                let mut action_usable = false;
-                for (context, cost) in contexts_and_costs.iter_mut() {
-                    systems::effects::effects(&game_state.world, entity).resource_cost(
-                        &game_state.world,
-                        entity,
-                        action_id,
-                        context,
-                        cost,
-                    );
-                    if systems::actions::action_usable(
-                        &game_state.world,
-                        entity,
-                        action_id,
-                        context,
-                        cost,
-                    )
-                    .is_ok()
-                    {
-                        // Note to self: *don't* break here! We need to update
-                        // the costs for all contexts even if one is usable
-                        action_usable = true;
-                    } else {
-                        continue;
-                    }
-                }
-
-                let disabled_token = ui.begin_disabled(!action_usable);
-
-                if ui.button(&action_id.to_string()) {
-                    let action = systems::actions::get_action(action_id).unwrap();
-
-                    match action.kind() {
-                        ActionKind::Variant { variants } => {
-                            *new_state = Some(ActionBarState::Variant {
-                                variants: variants
-                                    .iter()
-                                    // Assume all variants have the same contexts and costs
-                                    .map(|variant_action_id| {
-                                        (variant_action_id.clone(), contexts_and_costs.clone())
-                                    })
-                                    .collect(),
-                            });
-                        }
-
-                        _ => {
-                            select_action(
-                                EntityIdentifier::from_world(&game_state.world, entity),
-                                new_state,
-                                action_id,
-                                contexts_and_costs,
-                            );
-                        }
-                    }
-                }
-
-                disabled_token.end();
-
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        let (context, cost) = &contexts_and_costs[0];
-                        (action_id, context, cost)
-                            .render_with_context(ui, (&game_state.world, entity));
-                    });
-                }
-            }
-        });
-}
-
-fn render_end_turn(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) {
-    if game_state.in_combat.contains_key(&entity) {
-        if ui.button("End Turn") {
-            game_state.end_turn(entity);
+impl ActionBarWindow {
+    pub fn new(game_state: &mut GameState, entity: Entity) -> Self {
+        Self {
+            builder: ActionBuilder::all(&game_state.world, entity),
+            movement_preview: MovementPreview::new(entity),
         }
     }
-}
 
-fn select_action(
-    entity: EntityIdentifier,
-    new_state: &mut Option<ActionBarState>,
-    action_id: &ActionId,
-    contexts_and_costs: &mut Vec<(ActionContext, HashMap<ResourceId, ResourceAmount>)>,
-) {
-    if contexts_and_costs.len() == 1 {
-        *new_state = Some(ActionBarState::Targets {
-            action: ActionData::new(
-                entity,
-                action_id.clone(),
-                contexts_and_costs[0].0.clone(),
-                contexts_and_costs[0].1.clone(),
-                Vec::new(),
-            ),
-            potential_target: None,
-        });
-    } else {
-        *new_state = Some(ActionBarState::Context {
-            action: action_id.clone(),
-            contexts_and_costs: contexts_and_costs.clone(),
-        });
+    pub fn actor(&self) -> Entity {
+        self.builder.actor().id()
     }
-}
 
-fn render_resources(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) {
-    ui.child_window("Resources")
-        .child_flags(
-            ChildFlags::ALWAYS_AUTO_RESIZE | ChildFlags::AUTO_RESIZE_X | ChildFlags::AUTO_RESIZE_Y,
-        )
-        .build(|| {
-            ui.separator_with_text("Resources");
-            systems::helpers::get_component::<ResourceMap>(&game_state.world, entity).render(ui);
+    pub fn is_disabled(&self, game_state: &GameState) -> bool {
+        if let Some(encounter_id) = game_state.in_combat.get(&self.builder.actor().id())
+            && let Some(encounter) = game_state.encounters.get(encounter_id)
+        {
+            if encounter.current_entity() != self.builder.actor().id() {
+                return true;
+            }
+            if let Some(prompt) = game_state.next_prompt_entity(self.builder.actor().id())
+                && matches!(prompt.kind, ActionPromptKind::Reactions { .. })
+            {
+                return true;
+            }
+        }
+        false
+    }
 
-            ui.separator_with_text("Speed");
-            let speed = systems::helpers::get_component::<Speed>(&game_state.world, entity);
+    fn render_actions(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+        ui.child_window("Actions")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y,
+            )
+            .build(|| {
+                ui.separator_with_text("Actions");
 
-            let total_speed = speed.total_speed();
-            let remaining_speed = speed.remaining_movement();
-            render_progress_bar(
-                ui,
-                remaining_speed.value,
-                total_speed.value,
-                None,
-                remaining_speed.value / total_speed.value,
-                150.0,
-                "Speed",
-                Some("m"),
-                Some(ProgressBarColor {
-                    color_full: SPEED_COLOR,
-                    color_empty: LOW_HEALTH_COLOR,
-                    color_full_bg: SPEED_COLOR_BG,
-                    color_empty_bg: LOW_HEALTH_BG_COLOR,
-                }),
-            );
+                ui.child_window("ActionsList")
+                    .child_flags(
+                        ChildFlags::ALWAYS_AUTO_RESIZE
+                            | ChildFlags::AUTO_RESIZE_X
+                            | ChildFlags::BORDERS,
+                    )
+                    .size([0.0, ACTION_LIST_HEIGHT])
+                    .build(|| {
+                        self.render_actions_list(ui, game_state);
+                    });
+            });
+    }
+
+    fn render_actions_list(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+        let actor = self.builder.actor().id();
+
+        let actions = match self.builder.state_mut().ok().unwrap() {
+            ActionBuilderState::Action { actions } => actions,
+            ActionBuilderState::Variant { variants } => variants,
+            _ => panic!("Invalid state for rendering actions list"),
+        };
+
+        let mut selected_action = None;
+
+        for (action_id, contexts_and_costs) in actions {
+            // Don't render actions that either:
+            // 1. Can only be used as reactions
+            // 2. Cost a resource which never recharges and which is the entity
+            //    currently doesn't have any of. This probably means the action
+            //    is only usable under certain conditions which aren't currently
+            //    met.
+            if let Some(action) = systems::actions::get_action(action_id)
+                && action.is_reaction()
+            {
+                continue;
+            }
+
+            let mut action_usable = false;
+            for (context, cost) in contexts_and_costs.iter_mut() {
+                systems::effects::effects(&game_state.world, actor).resource_cost(
+                    &game_state.world,
+                    actor,
+                    action_id,
+                    context,
+                    cost,
+                );
+                if systems::actions::action_usable(
+                    &game_state.world,
+                    actor,
+                    action_id,
+                    context,
+                    cost,
+                )
+                .is_ok()
+                {
+                    // Note to self: *don't* break here! We need to update
+                    // the costs for all contexts even if one is usable
+                    action_usable = true;
+                } else {
+                    continue;
+                }
+            }
+
+            let disabled_token = ui.begin_disabled(!action_usable);
+
+            if ui.button(&action_id.to_string()) {
+                selected_action = Some(action_id.clone());
+            }
+
+            disabled_token.end();
 
             if ui.is_item_hovered() {
                 ui.tooltip(|| {
-                    TextSegments::new(vec![
-                        ("Total speed:".to_string(), TextKind::Details),
-                        (format!("{:.1} m", total_speed.value), TextKind::Normal),
-                    ])
-                    .render(ui);
-
-                    ui.separator_with_text("Flat bonus");
-                    let flat_bonuses = speed.flat_bonuses();
-                    TextSegments::new(vec![
-                        ("Total:".to_string(), TextKind::Details),
-                        (
-                            format!("{:.1} m", flat_bonuses.values().sum::<f32>()),
-                            TextKind::Normal,
-                        ),
-                    ])
-                    .render(ui);
-                    for (source, flat_bonus) in flat_bonuses {
-                        TextSegments::new(vec![
-                            (format!("{:.1} m", flat_bonus), TextKind::Normal),
-                            (source.to_string(), TextKind::Details),
-                        ])
-                        .with_indent(1)
-                        .render(ui);
-                    }
-
-                    let multipliers = speed.multipliers();
-                    if !multipliers.is_empty() {
-                        ui.separator_with_text("Multipliers");
-                        TextSegments::new(vec![
-                            ("Total:".to_string(), TextKind::Details),
-                            (
-                                format!("x{:.2}", multipliers.values().product::<f32>()),
-                                TextKind::Normal,
-                            ),
-                        ])
-                        .render(ui);
-                        for (source, multiplier) in speed.multipliers() {
-                            TextSegments::new(vec![
-                                (format!("x{:.2}", multiplier), TextKind::Normal),
-                                (source.to_string(), TextKind::Details),
-                            ])
-                            .with_indent(1)
-                            .render(ui);
-                        }
-                    }
-
-                    let free_movement_multipliers = speed.free_movement_multipliers();
-                    if !free_movement_multipliers.is_empty() {
-                        ui.separator_with_text("Free movement");
-                        TextSegments::new(vec![
-                            ("Remaining:".to_string(), TextKind::Details),
-                            (
-                                format!("{:.1} m", speed.free_movement_remaining().get::<meter>()),
-                                TextKind::Normal,
-                            ),
-                        ])
-                        .render(ui);
-                        for (source, multiplier) in speed.free_movement_multipliers() {
-                            TextSegments::new(vec![
-                                (format!("x{:.2}", multiplier), TextKind::Normal),
-                                (source.to_string(), TextKind::Details),
-                            ])
-                            .with_indent(1)
-                            .render(ui);
-                        }
-                    }
+                    let (context, cost) = &contexts_and_costs[0];
+                    (action_id, context, cost).render_with_context(ui, (&game_state.world, actor));
                 });
             }
-        });
-}
-
-fn render_context_selection(
-    ui: &imgui::Ui,
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    new_state: &mut Option<ActionBarState>,
-    action: &ActionId,
-    actor: Entity,
-    contexts_and_costs: &mut Vec<(ActionContext, ResourceAmountMap)>,
-) {
-    ui.text(format!("Select context for action: {}", action));
-
-    for (i, (context, cost)) in contexts_and_costs.iter().enumerate() {
-        if i > 0 {
-            ui.same_line();
         }
 
-        let disabled_token = ui.begin_disabled(
-            systems::resources::can_afford(&game_state.world, actor, cost).is_err(),
-        );
+        if let Some(action_id) = selected_action {
+            self.builder.action(&game_state.world, &action_id);
+        }
+    }
 
-        let clicked = if let Some(spell) = &context.spell {
-            let level = spell.level;
-            {
-                let style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([0.5, 0.5]));
-                let clicked = ui.button_with_size(roman_numeral(level), [30.0, 30.0]);
-                style.pop();
-                clicked
+    fn render_end_turn(&self, ui: &imgui::Ui, game_state: &mut GameState) {
+        let entity = self.builder.actor().id();
+        if game_state.in_combat.contains_key(&entity) {
+            if ui.button("End Turn") {
+                game_state.end_turn(entity);
             }
-        } else if let Some(attack) = &context.attack {
-            let label = if let Some(slot) = attack.slot {
-                format!("{}", slot)
+        }
+    }
+
+    fn render_resources(&self, ui: &imgui::Ui, game_state: &mut GameState) {
+        ui.child_window("Resources")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y,
+            )
+            .build(|| {
+                let entity = self.builder.actor().id();
+
+                ui.separator_with_text("Resources");
+                systems::helpers::get_component::<ResourceMap>(&game_state.world, entity)
+                    .render(ui);
+
+                ui.separator_with_text("Speed");
+                systems::helpers::get_component::<Speed>(&game_state.world, entity).render(ui);
+            });
+    }
+
+    fn render_context_selection(
+        &mut self,
+        ui: &imgui::Ui,
+        gui_state: &mut GuiState,
+        game_state: &mut GameState,
+    ) {
+        let actor = self.builder.actor().id();
+
+        let (action, contexts_and_costs) = match self.builder.state().ok().unwrap() {
+            ActionBuilderState::Context {
+                action,
+                contexts_and_costs,
+            } => (action, contexts_and_costs),
+            _ => panic!("Invalid state for rendering context selection"),
+        };
+
+        TextSegments::new(vec![
+            ("Select context for action:".to_string(), TextKind::Normal),
+            (action.to_string(), TextKind::Action),
+        ])
+        .render(ui);
+
+        let mut selected_context = None;
+
+        for (i, (context, cost)) in contexts_and_costs.iter().enumerate() {
+            if i > 0 {
+                ui.same_line();
+            }
+
+            let disabled_token = ui.begin_disabled(
+                systems::resources::can_afford(&game_state.world, actor, cost).is_err(),
+            );
+
+            let clicked = if let Some(spell) = &context.spell {
+                let level = spell.level;
+                {
+                    let style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([0.5, 0.5]));
+                    let clicked = ui.button_with_size(roman_numeral(level), [30.0, 30.0]);
+                    style.pop();
+                    clicked
+                }
+            } else if let Some(attack) = &context.attack {
+                let label = if let Some(slot) = attack.slot {
+                    format!("{}", slot)
+                } else {
+                    "Unarmed".to_string()
+                };
+                render_button_with_padding(ui, label.as_str(), [10.0, 10.0])
             } else {
-                "Unarmed".to_string()
+                render_button_with_padding(ui, "Default", [10.0, 10.0])
             };
-            render_button_with_padding(ui, label.as_str(), [10.0, 10.0])
-        } else {
-            render_button_with_padding(ui, "Default", [10.0, 10.0])
-        };
 
-        if clicked {
-            *new_state = Some(ActionBarState::Targets {
-                action: ActionData::new(
-                    EntityIdentifier::from_world(&game_state.world, actor),
-                    action.clone(),
-                    context.clone(),
-                    cost.clone(),
-                    Vec::new(),
-                ),
-                potential_target: None,
-            });
+            if clicked {
+                selected_context = Some(i);
+            }
+
+            disabled_token.end();
+
+            if ui.is_item_hovered() {
+                ui.tooltip(|| {
+                    (action, context, cost).render_with_context(ui, (&game_state.world, actor));
+                });
+            }
         }
 
-        disabled_token.end();
+        ui.separator();
 
-        if ui.is_item_hovered() {
-            ui.tooltip(|| {
-                (action, context, cost).render_with_context(ui, (&game_state.world, actor));
-            });
+        if let Some(context_index) = selected_context {
+            self.builder.context_index(&game_state.world, context_index);
+        }
+
+        self.right_click_cancel(ui, gui_state, game_state);
+    }
+
+    fn right_click_cancel(
+        &mut self,
+        ui: &imgui::Ui,
+        gui_state: &mut GuiState,
+        game_state: &mut GameState,
+    ) {
+        let right_click_cancel =
+            if gui_state.cursor_ray_result.is_some() && ui.is_mouse_clicked(MouseButton::Right) {
+                gui_state.cursor_ray_result.take();
+                true
+            } else {
+                false
+            };
+
+        if ui.button("Cancel") || right_click_cancel {
+            self.builder = ActionBuilder::all(&game_state.world, self.builder.actor().id());
         }
     }
 
-    ui.separator();
-
-    right_click_cancel(ui, gui_state, game_state, new_state, actor);
-}
-
-fn right_click_cancel(
-    ui: &imgui::Ui,
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    new_state: &mut Option<ActionBarState>,
-    actor: Entity,
-) {
-    let right_click_cancel =
-        if gui_state.cursor_ray_result.is_some() && ui.is_mouse_clicked(MouseButton::Right) {
-            gui_state.cursor_ray_result.take();
-            true
-        } else {
-            false
+    fn render_target_selection(
+        &mut self,
+        ui: &imgui::Ui,
+        gui_state: &mut GuiState,
+        game_state: &mut GameState,
+    ) {
+        let action = match self.builder.state().ok().unwrap() {
+            ActionBuilderState::Targets { action, .. } => action,
+            _ => panic!("Invalid state for rendering target selection"),
         };
+        let num_targets = action.targets.len();
 
-    if ui.button("Cancel") || right_click_cancel {
-        *new_state = Some(ActionBarState::Action {
-            actions: systems::actions::all_actions(&game_state.world, actor),
-        });
-    }
-}
+        let targeting_context = systems::actions::targeting_context_data(&game_state.world, action);
 
-fn render_target_selection(
-    ui: &imgui::Ui,
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    new_state: &mut Option<ActionBarState>,
-    action: &mut ActionData,
-    potential_target: &mut Option<PotentialTarget>,
-) {
-    ui.tooltip(|| {
-        ui.separator_with_text(action.action_id.to_string());
-    });
+        let mut submit = Self::render_targeting_ui(ui, action, &targeting_context);
 
-    let targeting_context = systems::actions::targeting_context(
-        &game_state.world,
-        action.actor.id(),
-        &action.action_id,
-        &action.context,
-    );
+        Self::render_range_preview(gui_state, game_state, action, &targeting_context);
 
-    // Always show range rings while selecting targets.
-    render_range_preview(gui_state, game_state, action, &targeting_context);
-
-    // Confirm button can also trigger submit.
-    let mut submit_action = render_button_disabled_conditionally(
-        ui,
-        "Confirm Targets",
-        [0.0, 0.0],
-        action.targets.is_empty(),
-        "Must select at least one target",
-    );
-
-    let path_to_target = match hovered_target_from_cursor(gui_state) {
-        Some(hovered) => {
-            update_potential_target(
-                potential_target,
-                game_state,
-                action,
-                &targeting_context,
-                hovered.raycast_hit,
-            );
-
-            let hovered_target_instance =
-                target_instance_from_raycast(&game_state.world, hovered.raycast_hit);
-
-            let preview = compute_and_render_target_preview(
-                gui_state,
-                game_state,
-                action,
-                &targeting_context,
-                potential_target,
-                &hovered_target_instance,
-            );
-            let potential_target = &preview
-                .as_ref()
-                .map(|preview| preview.target_instance.clone());
-
-            submit_action = apply_targeting_click_logic(
+        if !ui.io().want_capture_mouse {
+            self.handle_cursor_targeting(
                 ui,
                 gui_state,
                 game_state,
-                action,
-                &targeting_context,
-                potential_target,
+                num_targets,
+                targeting_context,
+                &mut submit,
             );
-
-            render_target_chance_tooltips(ui, game_state, action, potential_target);
-
-            preview.map(|preview| preview.path_to_target).flatten()
         }
-        None => None,
-    };
 
-    if submit_action {
-        submit_action_decision(game_state, action, &path_to_target);
-    }
-
-    // Footer handles cancel / right-click cancel etc.
-    handle_target_selection_footer(ui, gui_state, game_state, new_state, action, submit_action);
-}
-
-/// Data extracted from cursor raycast so we can avoid re-peeking everywhere.
-struct HoveredWorldTarget<'a> {
-    raycast_hit: &'a RaycastHit,
-}
-
-/// If we have a cursor raycast hit, return it. Does not consume.
-fn hovered_target_from_cursor<'a>(gui_state: &'a GuiState) -> Option<HoveredWorldTarget<'a>> {
-    let raycast = gui_state.cursor_ray_result.as_ref()?;
-    let closest = raycast.closest()?;
-    Some(HoveredWorldTarget {
-        raycast_hit: closest,
-    })
-}
-
-fn target_instance_from_raycast(world: &World, raycast_hit: &RaycastHit) -> TargetInstance {
-    match &raycast_hit.kind {
-        RaycastHitKind::Creature(entity) => {
-            TargetInstance::Entity(EntityIdentifier::from_world(world, *entity))
+        if submit {
+            gui_state.cursor_ray_result.take();
+            // TODO: Could be cleaner
+            let action = match self.builder.state() {
+                Ok(ActionBuilderState::Targets { action, .. }) => action.clone(),
+                other => panic!("Invalid state for submitting action: {:#?}", other),
+            };
+            let result = self.builder.perform(game_state);
+            match result {
+                Ok(()) => {
+                    info!("Successfully submitted action: {:?}", action);
+                }
+                Err(err) => {
+                    error!("Failed to submit action: {:?}", err);
+                }
+            }
+            self.builder = ActionBuilder::all(&game_state.world, self.builder.actor().id());
         }
-        RaycastHitKind::World => TargetInstance::Point(raycast_hit.poi),
+
+        self.right_click_cancel(ui, gui_state, game_state);
+    }
+
+    fn handle_cursor_targeting(
+        &mut self,
+        ui: &imgui::Ui,
+        gui_state: &mut GuiState,
+        game_state: &mut GameState,
+        num_targets: usize,
+        targeting_context: TargetingContext,
+        submit: &mut bool,
+    ) {
+        // TODO: Avoid cloning every frame
+        let Some(cursor_ray_result) = &gui_state.cursor_ray_result.clone() else {
+            return;
+        };
+
+        match &targeting_context.kind {
+            TargetingKind::SelfTarget => {
+                if ui.is_mouse_clicked(MouseButton::Left) {
+                    *submit = true;
+                }
+            }
+
+            TargetingKind::Single => {
+                self.handle_single_target(
+                    ui,
+                    gui_state,
+                    game_state,
+                    &targeting_context,
+                    submit,
+                    cursor_ray_result,
+                );
+            }
+
+            TargetingKind::Multiple { max_targets, .. } => {
+                ui.tooltip(|| {
+                    ui.text("Targets:");
+                    ui.same_line();
+                    render_capacity_meter(
+                        ui,
+                        "action_bar_target_capacity",
+                        num_targets,
+                        *max_targets,
+                    );
+                });
+
+                if num_targets > 0 && ui.is_mouse_clicked(MouseButton::Right) {
+                    gui_state.cursor_ray_result.take();
+                    self.builder.remove_latest_target();
+                    return;
+                }
+
+                let Some(closest) = cursor_ray_result.closest() else {
+                    return;
+                };
+
+                let target = closest.target_instance(&game_state.world);
+                let action = match self.builder.state().ok().unwrap() {
+                    ActionBuilderState::Targets { action, .. } => action.clone(),
+                    _ => panic!("Invalid state for single target selection"),
+                };
+                render_target_chance_tooltips(ui, game_state, &action, &target);
+
+                // Calculate line of sight manually so we can render the raycast
+                let line_of_sight = systems::geometry::line_of_sight_entity_target(
+                    &game_state.world,
+                    &game_state.geometry,
+                    self.actor(),
+                    &target,
+                    &targeting_context.line_of_sight,
+                );
+                line_of_sight.render(ui, gui_state);
+
+                let targeting_result = targeting_context.validate_targets(
+                    &game_state.world,
+                    &game_state.geometry,
+                    self.actor(),
+                    &[target.clone()],
+                );
+
+                match targeting_result {
+                    Ok(()) => {}
+                    Err(err) => match err {
+                        // Allow removing the duplicate target
+                        TargetingError::DuplicateTargetNotAllowed { target } => {
+                            if ui.is_mouse_clicked(MouseButton::Left) {
+                                self.builder.remove_target(&target);
+                                gui_state.cursor_ray_result.take();
+                            }
+                        }
+
+                        other => {
+                            ui.tooltip(|| {
+                                other.render(ui);
+                            });
+                            return;
+                        }
+                    },
+                };
+
+                if ui.is_mouse_clicked(MouseButton::Left) {
+                    self.builder.target(game_state, target);
+                    gui_state.cursor_ray_result.take();
+                    if num_targets + 1 == *max_targets {
+                        *submit = true;
+                    }
+                }
+            }
+
+            TargetingKind::Area {
+                shape,
+                fixed_on_actor,
+            } => {
+                let Some(closest) = cursor_ray_result.closest() else {
+                    return;
+                };
+
+                let shape_transform = shape.parry3d_shape(
+                    &game_state.world,
+                    self.actor(),
+                    *fixed_on_actor,
+                    &closest.poi,
+                );
+
+                match shape_transform.shape.shape_type() {
+                    ShapeType::Ball => {
+                        let ball = shape_transform.shape.as_ball().unwrap();
+                        let mut center: [f32; 3] = shape_transform.transform.translation.into();
+                        center[1] += 0.1; // Lift the center slightly above the ground to avoid z-fighting
+                        gui_state
+                            .line_renderer
+                            .add_circle(center, ball.radius, Color::White);
+                    }
+
+                    _ => {
+                        shape_transform.render_with_context(
+                            ui,
+                            gui_state,
+                            (
+                                Color::White.into(),
+                                &MeshRenderMode::WireFrameOnly {
+                                    color: Color::White.into(),
+                                    width: 0.1,
+                                },
+                            ),
+                        );
+                    }
+                }
+
+                let action = match self.builder.state().ok().unwrap() {
+                    ActionBuilderState::Targets { action, .. } => action,
+                    _ => panic!("Invalid state for area targeting"),
+                };
+
+                let target = closest.target_instance(&game_state.world);
+
+                render_target_chance_tooltips(ui, game_state, action, &target);
+
+                let affected_entities = systems::actions::get_targeted_entities(
+                    game_state,
+                    action,
+                    Some(vec![target.clone()]),
+                );
+
+                for entity in affected_entities {
+                    gui_state.creature_render_mode.insert(
+                        entity,
+                        MeshRenderMode::MeshWithWireFrame {
+                            color: [0.0, 1.0, 0.0, 0.5],
+                            width: 3.0,
+                        },
+                    );
+                }
+
+                if *fixed_on_actor {
+                    if ui.is_mouse_clicked(MouseButton::Left) {
+                        self.builder.target(game_state, target);
+                        *submit = true;
+                    }
+                } else {
+                    self.handle_single_target(
+                        ui,
+                        gui_state,
+                        game_state,
+                        &targeting_context,
+                        submit,
+                        cursor_ray_result,
+                    );
+                }
+            }
+        }
+    }
+
+    fn handle_single_target(
+        &mut self,
+        ui: &imgui::Ui,
+        gui_state: &mut GuiState,
+        game_state: &mut GameState,
+        targeting_context: &TargetingContext,
+        submit: &mut bool,
+        cursor_ray_result: &systems::geometry::RaycastResult,
+    ) {
+        let Some(closest) = cursor_ray_result.closest() else {
+            return;
+        };
+
+        let target = closest.target_instance(&game_state.world);
+        let targeting_result = targeting_context.validate_targets(
+            &game_state.world,
+            &game_state.geometry,
+            self.actor(),
+            &[target.clone()],
+        );
+
+        match targeting_result {
+            Ok(()) => {}
+            Err(err) => match err {
+                // We can recover from these two (hopefully) with path_to_target
+                TargetingError::OutOfRange { .. } | TargetingError::NoLineOfSight { .. } => {}
+
+                other => {
+                    ui.tooltip(|| {
+                        other.render(ui);
+                    });
+                    return;
+                }
+            },
+        };
+
+        let mut action = match self.builder.state().ok().unwrap() {
+            ActionBuilderState::Targets { action, .. } => action.clone(),
+            _ => panic!("Invalid state for single target selection"),
+        };
+        render_target_chance_tooltips(ui, game_state, &action, &target);
+        action.targets.push(target.clone());
+
+        match systems::movement::path_to_target(game_state, &action) {
+            Ok(path_result) => {
+                match path_result {
+                    TargetPathFindingResult::AlreadyInRange(line_of_sight_result) => {
+                        line_of_sight_result.render(ui, gui_state);
+                    }
+
+                    TargetPathFindingResult::PathFound(path_in_range_of_point_result) => {
+                        let Some(goal) = path_in_range_of_point_result.path_result.taken_path.end()
+                        else {
+                            return;
+                        };
+
+                        self.movement_preview
+                            .update(ui, gui_state, game_state, Some(*goal));
+                        self.movement_preview
+                            .render_with_context(ui, gui_state, game_state);
+
+                        if let Some((shape, shape_pose_at_preview)) =
+                            systems::geometry::get_shape_at_point(
+                                &game_state.world,
+                                &game_state.geometry,
+                                action.actor.id(),
+                                goal,
+                            )
+                            && let Some(mesh) = gui_state.mesh_cache.get(&format!("{:#?}", shape))
+                        {
+                            let color = Color::White.with_alpha(0.75);
+                            mesh.draw(
+                                gui_state.ig_renderer.gl_context(),
+                                &gui_state.program,
+                                &shape_pose_at_preview.to_homogeneous(),
+                                color,
+                                &MeshRenderMode::WireFrameOnly { color, width: 2.0 },
+                            );
+                        }
+
+                        if path_in_range_of_point_result.path_result.reaches_goal() {
+                            path_in_range_of_point_result
+                                .line_of_sight_result
+                                .render(ui, gui_state);
+                        } else {
+                            ui.tooltip(|| {
+                                TextSegment::new("Cannot reach target".to_string(), TextKind::Red)
+                                    .render(ui);
+                            });
+                            return;
+                        }
+                    }
+                }
+
+                if ui.is_mouse_clicked(MouseButton::Left) {
+                    self.builder.target(game_state, target);
+                    *submit = true;
+                }
+            }
+
+            Err(path_error) => {
+                ui.tooltip(|| {
+                    TextSegment::new(format!("Cannot target: {path_error:#?}"), TextKind::Red)
+                        .render(ui);
+                });
+            }
+        }
+    }
+
+    fn render_targeting_ui(
+        ui: &imgui::Ui,
+        action: &ActionData,
+        targeting_context: &TargetingContext,
+    ) -> bool {
+        if !ui.io().want_capture_mouse {
+            ui.tooltip(|| {
+                ui.separator_with_text(action.action_id.to_string());
+            });
+        }
+
+        TextSegments::new(vec![
+            ("Select targets for action:".to_string(), TextKind::Normal),
+            (action.action_id.to_string(), TextKind::Action),
+        ])
+        .render(ui);
+
+        ui.separator();
+
+        targeting_context.kind.render(ui);
+
+        ui.separator();
+
+        return render_button_disabled_conditionally(
+            ui,
+            "Confirm Targets",
+            [0.0, 0.0],
+            action.targets.is_empty(),
+            "Must select at least one target",
+        );
+    }
+
+    fn render_range_preview(
+        gui_state: &mut GuiState,
+        game_state: &mut GameState,
+        action: &ActionData,
+        targeting_context: &TargetingContext,
+    ) {
+        let normal_range = targeting_context.range.normal().get::<meter>();
+        let max_range = targeting_context.range.max().get::<meter>();
+        // Take the size of the actor into account when rendering the range.
+        // This is mostly relevant for melee attacks
+        let Some((actor_shape, actor_pose)) =
+            systems::geometry::get_shape(&game_state.world, action.actor.id())
+        else {
+            return;
+        };
+        let actor_radius = actor_shape.radius;
+        let mut actor_position: [f32; 3] = actor_pose.translation.into();
+        // Put the circle on the ground, but avoid z-fighting
+        actor_position[1] -= actor_shape.height() + 0.1;
+
+        gui_state.line_renderer.add_circle(
+            actor_position,
+            actor_radius + normal_range,
+            Color::White,
+        );
+        if normal_range < max_range {
+            gui_state.line_renderer.add_circle(
+                actor_position,
+                actor_radius + max_range,
+                Color::Gray,
+            );
+        }
     }
 }
 
-/// Result of preview computation for the current frame.
-struct TargetPreviewResult {
-    target_instance: TargetInstance,
-    path_to_target: Option<PathResult>,
-}
+impl ImguiRenderable for TargetingError {
+    fn render(&self, ui: &imgui::Ui) {
+        match self {
+            TargetingError::NoTargetsProvided => {
+                TextSegment::new("No targets provided".to_string(), TextKind::Red).render(ui)
+            }
 
-/// Computes + renders the targeting preview. Also includes the “move-into-range on click” behavior
-/// (left click while path reaches goal triggers submit_movement).
-fn compute_and_render_target_preview(
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    action: &mut ActionData,
-    targeting_context: &TargetingContext,
-    potential_target: &mut Option<PotentialTarget>,
-    hovered_target_instance: &TargetInstance,
-) -> Option<TargetPreviewResult> {
-    // If we don't render target preview for this targeting kind, then don't treat hover as selectable.
-    if !should_render_target_preview(targeting_context) {
-        return None;
+            TargetingError::ExceedsMaxTargets => TextSegment::new(
+                "Exceeds maximum number of targets".to_string(),
+                TextKind::Red,
+            )
+            .render(ui),
+
+            TargetingError::NotSelf { .. } => {
+                TextSegment::new("Must target self".to_string(), TextKind::Red).render(ui)
+            }
+
+            TargetingError::DuplicateTargetNotAllowed { target } => TextSegment::new(
+                format!("Duplicate target not allowed: {target:?}"),
+                TextKind::Red,
+            )
+            .render(ui),
+
+            TargetingError::OutOfRange {
+                distance,
+                max_range,
+                ..
+            } => TextSegments::new(vec![(
+                format!(
+                    "Out of range ({:.1} m/{:.1} m)",
+                    distance.get::<meter>(),
+                    max_range.get::<meter>()
+                ),
+                TextKind::Red,
+            )])
+            .render(ui),
+
+            TargetingError::NoLineOfSight { .. } => {
+                TextSegment::new("No line of sight".to_string(), TextKind::Red).render(ui)
+            }
+
+            TargetingError::InvalidTarget {
+                violated_filters, ..
+            } => TextSegment::new(
+                format!(
+                    "Invalid target: {}",
+                    violated_filters
+                        .iter()
+                        .map(|f| format!("{f:?}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                TextKind::Red,
+            )
+            .render(ui),
+        }
     }
-
-    // Require potential_target cache to exist and match the current hovered instance.
-    let Some(cached_target) = potential_target.as_mut() else {
-        return None;
-    };
-
-    if cached_target.target_instance != *hovered_target_instance {
-        // Stale cache; wait for update_potential_target to recompute next frame.
-        return None;
-    }
-
-    let (preview_position, path_to_target, line_of_sight_result) =
-        get_target_path_preview(game_state, action, &mut cached_target.path_finding_result);
-
-    // Draw visuals for preview.
-    render_target_path_preview(
-        gui_state,
-        game_state,
-        action,
-        preview_position,
-        &path_to_target,
-        &line_of_sight_result,
-    );
-
-    Some(TargetPreviewResult {
-        target_instance: cached_target.target_instance.clone(),
-        path_to_target,
-    })
 }
 
 /// Renders “hit chance” or “success chance” tooltips depending on action condition.
@@ -715,10 +894,10 @@ fn compute_and_render_target_preview(
 fn render_target_chance_tooltips(
     ui: &imgui::Ui,
     game_state: &mut GameState,
-    action: &mut ActionData,
-    potential_target_instance: &Option<TargetInstance>,
+    action: &ActionData,
+    target: &TargetInstance,
 ) {
-    let Some(TargetInstance::Entity(target_entity)) = potential_target_instance else {
+    let TargetInstance::Entity { entity, .. } = target else {
         return;
     };
 
@@ -732,22 +911,10 @@ fn render_target_chance_tooltips(
 
     match condition {
         ActionCondition::AttackRoll(attack_roll) => {
-            render_attack_hit_chance_tooltip(
-                ui,
-                game_state,
-                action,
-                target_entity.id(),
-                attack_roll,
-            );
+            render_attack_hit_chance_tooltip(ui, game_state, action, entity.id(), attack_roll);
         }
         ActionCondition::SavingThrow(saving_throw) => {
-            render_save_success_chance_tooltip(
-                ui,
-                game_state,
-                action,
-                target_entity.id(),
-                saving_throw,
-            );
+            render_save_success_chance_tooltip(ui, game_state, action, entity.id(), saving_throw);
         }
         _ => {}
     }
@@ -1022,461 +1189,5 @@ fn reverse_text_kind(text_kind: TextKind) -> TextKind {
         TextKind::Green => TextKind::Red,
         TextKind::Red => TextKind::Green,
         other => other,
-    }
-}
-
-/// Applies click logic per TargetingKind. Mutates `action.targets`.
-/// Returns whether the action should be submitted this frame.
-fn apply_targeting_click_logic(
-    ui: &imgui::Ui,
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    action: &mut ActionData,
-    targeting_context: &TargetingContext,
-    potential_target_instance: &Option<TargetInstance>,
-) -> bool {
-    let left_clicked = ui.is_mouse_clicked(MouseButton::Left);
-    let right_clicked = ui.is_mouse_clicked(MouseButton::Right);
-
-    match &targeting_context.kind {
-        TargetingKind::SelfTarget => {
-            if left_clicked {
-                action.targets.clear();
-                action
-                    .targets
-                    .push(TargetInstance::Entity(EntityIdentifier::from_world(
-                        &game_state.world,
-                        action.actor.id(),
-                    )));
-                gui_state.cursor_ray_result.take();
-                return true;
-            }
-            false
-        }
-
-        TargetingKind::Single => {
-            if left_clicked {
-                if let Some(target) = potential_target_instance {
-                    action.targets.clear();
-                    action.targets.push(target.clone());
-                    gui_state.cursor_ray_result.take();
-                    return true;
-                }
-            }
-            false
-        }
-
-        TargetingKind::Multiple {
-            max_targets,
-            allow_duplicates,
-        } => {
-            let max_targets = *max_targets as usize;
-
-            // Right click pops last target
-            if right_clicked {
-                action.targets.pop();
-                if !action.targets.is_empty() {
-                    gui_state.cursor_ray_result.take();
-                }
-            }
-
-            if left_clicked {
-                if let Some(target) = potential_target_instance {
-                    if action.targets.len() < max_targets {
-                        if !allow_duplicates && action.targets.contains(target) {
-                            action.targets.retain(|t| t != target);
-                        } else {
-                            action.targets.push(target.clone());
-                        }
-                        gui_state.cursor_ray_result.take();
-                    }
-                }
-            }
-
-            // Status tooltip
-            ui.tooltip(|| {
-                ui.text("Targets:");
-                ui.same_line();
-                render_capacity_meter(
-                    ui,
-                    action.action_id.to_string().as_str(),
-                    action.targets.len(),
-                    max_targets,
-                );
-            });
-
-            action.targets.len() == max_targets
-        }
-
-        TargetingKind::Area {
-            shape,
-            fixed_on_actor,
-        } => {
-            // Preview + highlighting is purely visual and can happen even without click
-            if let Some(target) = potential_target_instance {
-                let center_point = match target {
-                    TargetInstance::Entity(entity) => {
-                        systems::geometry::get_foot_position(&game_state.world, entity.id())
-                            .unwrap()
-                    }
-                    TargetInstance::Point(point) => *point,
-                };
-
-                render_area_shape(
-                    ui,
-                    gui_state,
-                    game_state,
-                    action,
-                    shape,
-                    *fixed_on_actor,
-                    center_point,
-                );
-
-                if left_clicked {
-                    action.targets.clear();
-                    action.targets.push(target.clone());
-                    gui_state.cursor_ray_result.take();
-                    return true;
-                }
-            }
-            false
-        }
-    }
-}
-
-fn render_area_shape(
-    ui: &imgui::Ui,
-    gui_state: &mut GuiState,
-    game_state: &GameState,
-    action: &ActionData,
-    shape: &AreaShape,
-    fixed_on_actor: bool,
-    center: Point3<f32>,
-) {
-    let shape_transform = shape.parry3d_shape(
-        &game_state.world,
-        action.actor.id(),
-        fixed_on_actor,
-        &center,
-    );
-
-    match shape_transform.shape.shape_type() {
-        ShapeType::Ball => {
-            let ball = shape_transform.shape.as_ball().unwrap();
-            gui_state.line_renderer.add_circle(
-                [
-                    shape_transform.transform.translation.x,
-                    shape_transform.transform.translation.y + 0.1, // Lift the circle slightly above the ground to avoid z-fighting
-                    shape_transform.transform.translation.z,
-                ],
-                ball.radius,
-                Color::White,
-            );
-        }
-
-        _ => {
-            shape_transform.render_with_context(
-                ui,
-                gui_state,
-                (
-                    Color::White.into(),
-                    &MeshRenderMode::WireFrameOnly {
-                        color: Color::White.into(),
-                        width: 0.1,
-                    },
-                ),
-            );
-        }
-    }
-
-    let affected_entities = systems::actions::get_targeted_entities(
-        game_state,
-        action,
-        Some(vec![TargetInstance::Point(center)]),
-    );
-
-    for entity in affected_entities {
-        gui_state.creature_render_mode.insert(
-            entity,
-            MeshRenderMode::MeshWithWireFrame {
-                color: [0.0, 1.0, 0.0, 0.5],
-                width: 3.0,
-            },
-        );
-    }
-}
-
-fn submit_action_decision(
-    game_state: &mut GameState,
-    action: &ActionData,
-    path_to_target: &Option<PathResult>,
-) {
-    let response_to = if let Some(prompt) = game_state.next_prompt_entity(action.actor.id())
-        && prompt.actors().contains(&action.actor.id())
-    {
-        info!("Submitting action in response to prompt: {:#?}", prompt);
-        Some(prompt.id)
-    } else {
-        None
-    };
-
-    let action_kind = ActionDecisionKind::Action {
-        action: action.clone(),
-    };
-
-    let decision = if let Some(response_to) = response_to {
-        ActionDecision {
-            response_to,
-            kind: action_kind,
-        }
-    } else {
-        ActionDecision::without_response_to(action_kind)
-    };
-
-    let activity = if let Some(path_to_target) = path_to_target {
-        Activity::MoveAndAct {
-            goal: *path_to_target.taken_path.end().unwrap(),
-            action: decision,
-        }
-    } else {
-        Activity::Act { action: decision }
-    };
-    let result = game_state.submit_activity(activity);
-    info!("Submitted activity with result: {:#?}", result);
-}
-
-/// Handles Cancel button + right-click cancel rules and state transition back to Actions.
-/// `submit_action` also returns to Action state.
-fn handle_target_selection_footer(
-    ui: &imgui::Ui,
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    new_state: &mut Option<ActionBarState>,
-    action: &ActionData,
-    submit_action: bool,
-) {
-    let right_click_cancel = gui_state.cursor_ray_result.is_some()
-        && ui.is_mouse_clicked(MouseButton::Right)
-        && action.targets.is_empty();
-
-    if right_click_cancel {
-        gui_state.cursor_ray_result.take();
-    }
-
-    if ui.button("Cancel") || right_click_cancel || submit_action {
-        *new_state = Some(ActionBarState::Action {
-            actions: systems::actions::all_actions(&game_state.world, action.actor.id()),
-        });
-    }
-}
-
-fn should_render_target_preview(targeting_context: &TargetingContext) -> bool {
-    match &targeting_context.kind {
-        TargetingKind::SelfTarget => false,
-        _ => true,
-    }
-}
-
-fn get_target_path_preview(
-    game_state: &mut GameState,
-    action: &mut ActionData,
-    path_result: &mut TargetPathFindingResult,
-) -> (Point3<f32>, Option<PathResult>, LineOfSightResult) {
-    match path_result {
-        TargetPathFindingResult::AlreadyInRange(line_of_sight) => (
-            systems::geometry::get_eye_position(&game_state.world, action.actor.id()).unwrap(),
-            None,
-            line_of_sight.clone(),
-        ),
-
-        TargetPathFindingResult::PathFound(result) => {
-            if let Some(end) = result.path_result.taken_path.end()
-                && let Some(end_at_ground) =
-                    systems::geometry::ground_position(&game_state.geometry, &end)
-                && let Some(eye_pos) = systems::geometry::get_eye_position_at_point(
-                    &game_state.world,
-                    action.actor.id(),
-                    &end_at_ground,
-                )
-            {
-                (
-                    eye_pos,
-                    Some(result.path_result.clone()),
-                    result.line_of_sight_result.clone(),
-                )
-            } else {
-                (
-                    systems::geometry::get_eye_position(&game_state.world, action.actor.id())
-                        .unwrap(),
-                    None,
-                    systems::geometry::line_of_sight_entity_first_target(
-                        &game_state.world,
-                        &game_state.geometry,
-                        action,
-                    ),
-                )
-            }
-        }
-    }
-}
-
-fn render_target_path_preview(
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    action: &mut ActionData,
-    preview_position: Point3<f32>,
-    path_to_target: &Option<PathResult>,
-    line_of_sight: &LineOfSightResult,
-) {
-    if let Some((shape, shape_pose_at_preview)) = systems::geometry::get_shape_at_point(
-        &game_state.world,
-        &game_state.geometry,
-        action.actor.id(),
-        &preview_position,
-    ) && let Some(mesh) = gui_state.mesh_cache.get(&format!("{:#?}", shape))
-    {
-        if let Some(path_to_target) = path_to_target {
-            gui_state
-                .line_renderer
-                .add_path_result(path_to_target, Color::White, Color::Red);
-            let color = Color::White.with_alpha(0.75);
-            mesh.draw(
-                gui_state.ig_renderer.gl_context(),
-                &gui_state.program,
-                &shape_pose_at_preview.to_homogeneous(),
-                color,
-                &MeshRenderMode::WireFrameOnly { color, width: 2.0 },
-            );
-        }
-
-        if let Some(raycast_result) = &line_of_sight.raycast_result {
-            let color = if line_of_sight.has_line_of_sight {
-                Color::White
-            } else {
-                Color::Red
-            };
-
-            match &raycast_result.mode {
-                RaycastMode::Ray(ray) => {
-                    gui_state.line_renderer.add_ray(
-                        ray.origin.into(),
-                        ray.dir.into(),
-                        raycast_result
-                            .closest()
-                            .map(|hit| hit.toi)
-                            .unwrap_or(f32::MAX),
-                        color,
-                    );
-                }
-                RaycastMode::Parabola(parabola) => {
-                    gui_state.line_renderer.add_parabola(parabola, color);
-                }
-            }
-        }
-    }
-}
-
-fn render_range_preview(
-    gui_state: &mut GuiState,
-    game_state: &mut GameState,
-    action: &mut ActionData,
-    targeting_context: &nat20_core::components::actions::targeting::TargetingContext,
-) {
-    let normal_range = targeting_context.range.normal().get::<meter>();
-    let max_range = targeting_context.range.max().get::<meter>();
-    let actor_position = systems::geometry::get_foot_position(&game_state.world, action.actor.id())
-        .map(|point| [point.x, point.y, point.z])
-        .unwrap();
-    gui_state
-        .line_renderer
-        .add_circle(actor_position, normal_range, Color::White);
-    if normal_range < max_range {
-        gui_state
-            .line_renderer
-            .add_circle(actor_position, max_range, Color::Gray);
-    }
-}
-
-fn update_potential_target(
-    potential_target: &mut Option<PotentialTarget>,
-    game_state: &mut GameState,
-    action: &ActionData,
-    targeting_context: &TargetingContext,
-    closest: &RaycastHit,
-) {
-    if !should_render_target_preview(targeting_context) {
-        // No point in computing potential target if we won't render the preview
-        return;
-    }
-
-    let closest_target = match &closest.kind {
-        RaycastHitKind::Creature(entity) => {
-            TargetInstance::Entity(EntityIdentifier::from_world(&game_state.world, *entity))
-        }
-        RaycastHitKind::World => TargetInstance::Point(closest.poi),
-    };
-
-    let mut potential_action = action.clone();
-    potential_action.targets.clear();
-    potential_action.targets.push(closest_target.clone());
-
-    let is_new_target = if let Some(target) = potential_target {
-        target.target_instance != closest_target
-    } else {
-        true
-    };
-
-    if is_new_target {
-        // When using an action that can target multiple targets, we can't guarantee
-        // that all other targets can be reached from the path to the new target, so
-        // in this case we won't perform any pathfinding
-        match &targeting_context.kind {
-            TargetingKind::Multiple { .. } => {
-                match targeting_context.validate_targets(
-                    &game_state.world,
-                    &game_state.geometry,
-                    action.actor.id(),
-                    &[closest_target.clone()],
-                ) {
-                    Ok(_) => {
-                        *potential_target = Some(PotentialTarget {
-                            target_instance: closest_target.clone(),
-                            path_finding_result: TargetPathFindingResult::AlreadyInRange(
-                                systems::geometry::line_of_sight_entity_target(
-                                    &game_state.world,
-                                    &game_state.geometry,
-                                    action.actor.id(),
-                                    &closest_target.clone(),
-                                    &targeting_context.line_of_sight,
-                                ),
-                            ),
-                        });
-                    }
-                    Err(error) => {
-                        trace!("New target {:?} is not valid: {:?}", closest_target, error);
-                        *potential_target = None;
-                    }
-                }
-            }
-            _ => {
-                trace!("Finding path to new target {:?}", closest_target);
-                match systems::movement::path_to_target(game_state, &potential_action) {
-                    Ok(result) => {
-                        trace!("Found path to target {:?}: {:?}", closest_target, result);
-                        *potential_target = Some(PotentialTarget {
-                            target_instance: closest_target,
-                            path_finding_result: result,
-                        });
-                    }
-                    Err(err) => {
-                        trace!(
-                            "Error finding path to target {:?}: {:?}",
-                            closest_target, err
-                        );
-                        *potential_target = None;
-                    }
-                }
-            }
-        }
     }
 }

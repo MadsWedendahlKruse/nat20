@@ -1006,10 +1006,10 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                         let script_results: Vec<ScriptActionResultView> = results
                             .iter()
                             .filter_map(|result| {
-                                if let TargetInstance::Entity(target_entity) = &result.target {
+                                if let TargetInstance::Entity { entity, .. } = &result.target {
                                     Some(ScriptActionResultView::from_action_result(
                                         action_data.actor.id(),
-                                        target_entity.id(),
+                                        entity.id(),
                                         &result.kind,
                                     ))
                                 } else {

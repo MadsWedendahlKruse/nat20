@@ -698,7 +698,7 @@ impl ActionResult {
     ) -> Self {
         ActionResult {
             performer,
-            target: TargetInstance::Entity(target),
+            target: TargetInstance::entity(target),
             kind,
         }
     }

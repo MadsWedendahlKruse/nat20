@@ -977,7 +977,7 @@ impl ImguiRenderable for DamageComponentMitigation {
 impl ImguiRenderableWithContext<u8> for ActionResult {
     fn render_with_context(&self, ui: &imgui::Ui, indent_level: u8) {
         let target_name = match &self.target {
-            TargetInstance::Entity(entity) => {
+            TargetInstance::Entity{entity, ..} => {
                 entity.name().as_str()
             }
             TargetInstance::Point(point) => todo!(),
@@ -1711,16 +1711,97 @@ pub static SPEED_COLOR_BG: [f32; 4] = [0.15, 0.35, 0.4, 1.0];
 impl ImguiRenderable for Speed {
     fn render(&self, ui: &imgui::Ui) {
         let total_speed = self.total_speed();
-        let text = if self.moved_this_turn().value == 0.0 {
-            format!("Speed: {} meters", total_speed.value)
-        } else {
-            format!(
-                "Speed: {} / {} meters",
-                total_speed.value - self.moved_this_turn().value,
-                total_speed.value
-            )
-        };
-        TextSegment::new(text, TextKind::Details).render(ui);
+        let remaining_speed = self.remaining_movement();
+        render_progress_bar(
+            ui,
+            remaining_speed.value,
+            total_speed.value,
+            None,
+            remaining_speed.value / total_speed.value,
+            150.0,
+            "Speed",
+            Some("m"),
+            Some(ProgressBarColor {
+                color_full: SPEED_COLOR,
+                color_empty: LOW_HEALTH_COLOR,
+                color_full_bg: SPEED_COLOR_BG,
+                color_empty_bg: LOW_HEALTH_BG_COLOR,
+            }),
+        );
+
+        if ui.is_item_hovered() {
+            ui.tooltip(|| {
+                TextSegments::new(vec![
+                    ("Total speed:".to_string(), TextKind::Details),
+                    (format!("{:.1} m", total_speed.value), TextKind::Normal),
+                ])
+                .render(ui);
+
+                ui.separator_with_text("Flat bonus");
+                let flat_bonuses = self.flat_bonuses();
+                TextSegments::new(vec![
+                    ("Total:".to_string(), TextKind::Details),
+                    (
+                        format!("{:.1} m", flat_bonuses.values().sum::<f32>()),
+                        TextKind::Normal,
+                    ),
+                ])
+                .render(ui);
+                for (source, flat_bonus) in flat_bonuses {
+                    TextSegments::new(vec![
+                        (format!("{:.1} m", flat_bonus), TextKind::Normal),
+                        (source.to_string(), TextKind::Details),
+                    ])
+                    .with_indent(1)
+                    .render(ui);
+                }
+
+                let multipliers = self.multipliers();
+                if !multipliers.is_empty() {
+                    ui.separator_with_text("Multipliers");
+                    TextSegments::new(vec![
+                        ("Total:".to_string(), TextKind::Details),
+                        (
+                            format!("x{:.2}", multipliers.values().product::<f32>()),
+                            TextKind::Normal,
+                        ),
+                    ])
+                    .render(ui);
+                    for (source, multiplier) in self.multipliers() {
+                        TextSegments::new(vec![
+                            (format!("x{:.2}", multiplier), TextKind::Normal),
+                            (source.to_string(), TextKind::Details),
+                        ])
+                        .with_indent(1)
+                        .render(ui);
+                    }
+                }
+
+                let free_movement_multipliers = self.free_movement_multipliers();
+                if !free_movement_multipliers.is_empty() {
+                    ui.separator_with_text("Free movement");
+                    TextSegments::new(vec![
+                        ("Remaining:".to_string(), TextKind::Details),
+                        (
+                            format!(
+                                "{:.1} m",
+                                self.free_movement_remaining().get::<meter>()
+                            ),
+                            TextKind::Normal,
+                        ),
+                    ])
+                    .render(ui);
+                    for (source, multiplier) in self.free_movement_multipliers() {
+                        TextSegments::new(vec![
+                            (format!("x{:.2}", multiplier), TextKind::Normal),
+                            (source.to_string(), TextKind::Details),
+                        ])
+                        .with_indent(1)
+                        .render(ui);
+                    }
+                }
+            });
+        }
     }
 }
 
@@ -1831,3 +1912,4 @@ impl ImguiRenderable for ModifierSource {
         }
     }
 }
+
