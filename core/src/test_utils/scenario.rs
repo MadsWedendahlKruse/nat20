@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, u32};
 
 use hecs::Entity;
 use parry3d::{na::Point3, utils::hashmap::HashMap};
+use uom::si::f32::Length;
 
 use crate::{
     components::{
@@ -11,6 +12,7 @@ use crate::{
             targeting::TargetInstance,
         },
         d20::{AdvantageType, D20CheckOutcome},
+        damage::{DamageComponent, DamageSource},
         id::{ActionId, EffectId, ResourceId},
         modifier::{Modifiable, ModifierSource},
         resource::ResourceAmountMap,
@@ -176,20 +178,6 @@ impl ScenarioCreatureBuilder<'_> {
         );
     }
 }
-
-// impl Deref for ScenarioCreatureBuilder<'_> {
-//     type Target = CreatureBuilder;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.builder
-//     }
-// }
-
-// impl DerefMut for ScenarioCreatureBuilder<'_> {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.builder
-//     }
-// }
 
 pub struct ScenarioEncounterBuilder<'s> {
     scenario: &'s mut Scenario,
@@ -379,9 +367,18 @@ impl ScenarioProbe<'_> {
         fn assert_no_effect(effect: impl Into<EffectId>);
         fn assert_on_cooldown(action: impl Into<ActionId>);
         fn assert_hp(amount: Operator<u32>);
+        fn assert_movement_speed(operator: Operator<Length>);
         fn assert_free_movement(source: ModifierSource, operator: Operator<f32>);
         fn assert_d20_advantage(kind: &D20CheckKind, source: &ModifierSource, advantage_type: AdvantageType);
         fn assert_d20_crit_threshold_reduction(kind: &D20CheckKind, source: &ModifierSource, operator: Operator<i32>);
+    }
+
+    pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {
+        self.scenario.act(&self.handle, action)
+    }
+
+    pub fn react(&mut self) -> ScenarioReactionBuilder<'_> {
+        self.scenario.react(&self.handle)
     }
 
     // TODO: Would be nice to avoid this very verbose probe get
@@ -403,12 +400,13 @@ impl ScenarioProbe<'_> {
         probe.max_hp(&mut self.scenario.game_state)
     }
 
-    pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {
-        self.scenario.act(&self.handle, action)
-    }
-
-    pub fn react(&mut self) -> ScenarioReactionBuilder<'_> {
-        self.scenario.react(&self.handle)
+    pub fn movement_speed(&mut self) -> Length {
+        let probe: &mut CreatureProbe = self
+            .scenario
+            .creatures
+            .get_mut(&self.handle)
+            .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
+        probe.movement_speed(&mut self.scenario.game_state)
     }
 }
 
@@ -461,6 +459,11 @@ impl ScenarioEventFilterBuilder<'_> {
         self
     }
 
+    pub fn damage(mut self, damage: Option<DamageComponent>, source: Option<DamageSource>) -> Self {
+        self.kind = Some(EventFilterKind::DamageRoll { damage, source });
+        self
+    }
+
     fn build(&self) -> EventFilter {
         EventFilter::new({
             let actor = self.actor;
@@ -490,7 +493,8 @@ impl ScenarioEventFilterBuilder<'_> {
     pub fn assert_event(&self) {
         assert!(
             self.filter().is_some(),
-            "Expected event matching filter, but no such event was found"
+            "Expected event matching filter, but no such event was found. Events: {:#?}",
+            self.scenario.game_state.event_log.events
         );
     }
 }
@@ -501,6 +505,10 @@ pub enum EventFilterKind {
         kind: D20CheckKind,
         modifier: Option<(ModifierSource, Operator<i32>)>,
         advantage: Option<(ModifierSource, AdvantageType)>,
+    },
+    DamageRoll {
+        damage: Option<DamageComponent>,
+        source: Option<DamageSource>,
     },
 }
 
@@ -513,7 +521,7 @@ impl EventFilterKind {
                     modifier,
                     advantage,
                 },
-                EventKind::D20CheckResolved(actor, result, dc),
+                EventKind::D20CheckResolved(_actor, result, dc),
             ) => {
                 if *kind != dc.kind() {
                     return false;
@@ -539,6 +547,38 @@ impl EventFilterKind {
                         .contains(&(advantage_source, *advantage_type))
                 {
                     return false;
+                }
+
+                true
+            }
+
+            (
+                EventFilterKind::DamageRoll { damage, source },
+                EventKind::DamageRollResolved(_actor, result),
+            ) => {
+                if let Some(expected_damage) = damage {
+                    let mut found_matching_component = false;
+
+                    for component in &result.components {
+                        let expected_dice = &expected_damage.dice_roll.dice;
+                        if component.damage_type == expected_damage.damage_type
+                            && expected_dice.die_size == component.result.die_size
+                            && expected_dice.num_dice == component.result.rolls.len() as u32
+                        {
+                            found_matching_component = true;
+                            break;
+                        }
+                    }
+
+                    if !found_matching_component {
+                        return false;
+                    }
+                }
+
+                if let Some(expected_source) = source {
+                    if &result.source != expected_source {
+                        return false;
+                    }
                 }
 
                 true

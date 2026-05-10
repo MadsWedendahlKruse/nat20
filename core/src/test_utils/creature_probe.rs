@@ -1,3 +1,5 @@
+use uom::si::f32::Length;
+
 use crate::{
     components::{
         actions::action_builder::{ActionBuilder, ReactionBuilder},
@@ -106,6 +108,11 @@ impl CreatureProbe {
         systems::d20::get_mut(&mut game_state.world, self.creature.id(), &kind, |check| {
             check.clear_forced_outcome();
         });
+    }
+
+    pub fn movement_speed(&self, game_state: &GameState) -> Length {
+        let speed = systems::helpers::get_component::<Speed>(&game_state.world, self.creature.id());
+        speed.total_speed()
     }
 
     #[track_caller]
@@ -222,6 +229,18 @@ impl CreatureProbe {
             self.creature,
             operator,
             hit_points.current()
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_movement_speed(&self, game_state: &GameState, operator: Operator<Length>) {
+        let speed = systems::helpers::get_component::<Speed>(&game_state.world, self.creature.id());
+        assert!(
+            operator.evaluate(&speed.total_speed()),
+            "Expected creature {:?} to have movement speed satisfying condition {:?}, but it was {:?}",
+            self.creature,
+            operator,
+            speed.total_speed()
         );
     }
 
