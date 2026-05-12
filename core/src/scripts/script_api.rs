@@ -17,8 +17,8 @@ use crate::{
             targeting::TargetInstance,
         },
         damage::{
-            DamageComponentResult, DamageMitigationEffect, DamageMitigationResult,
-            DamageRollResult, DamageType, MitigationOperation,
+            CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
+            DamageMitigationResult, DamageRollResult, DamageType, MitigationOperation,
         },
         dice::{DiceSet, DiceSetRoll},
         effects::effect::{EffectEntiyReference, EffectInstance, EffectLifetimeTemplate},
@@ -298,8 +298,11 @@ impl ScriptDamageRollResult {
                 // TODO: Not sure how to add a flat bonus properly here.
             }
             ScriptDiceRollBonus::Dice(dice_expression) => {
-                let (num_dice, die_size, modifier) =
+                let (mut num_dice, die_size, modifier) =
                     dice_expression.evaluate_without_variables().unwrap();
+                if inner.crit {
+                    num_dice *= CRIT_DICE_MULTIPLIER as i32; // Double the number of dice on a crit
+                }
                 let result = DiceSetRoll {
                     dice: DiceSet::from_str(format!("{}d{}", num_dice, die_size).as_str()).unwrap(),
                     modifiers: ModifierSet::from(ModifierSource::Base, modifier),

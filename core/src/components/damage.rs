@@ -23,6 +23,8 @@ use crate::{
     systems::{self},
 };
 
+pub const CRIT_DICE_MULTIPLIER: u32 = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageType {
@@ -195,23 +197,17 @@ impl DamageRoll {
     }
 
     pub fn roll(&self, crit: bool) -> DamageRollResult {
-        if crit {
-            self.roll_internal(2)
-        } else {
-            self.roll_internal(1)
-        }
-    }
-
-    fn roll_internal(&self, repeat: u32) -> DamageRollResult {
         let mut results = Vec::new();
         let mut total = 0;
 
         let mut damage_components = vec![self.primary.clone()];
         damage_components.extend(self.bonus.iter().cloned());
 
+        let dice_multiplier = if crit { CRIT_DICE_MULTIPLIER } else { 1 };
+
         for component in damage_components {
             let mut component_dice_roll = component.dice_roll.clone();
-            component_dice_roll.dice.num_dice *= repeat;
+            component_dice_roll.dice.num_dice *= dice_multiplier;
             let result = component_dice_roll.roll();
             total += result.subtotal;
             results.push(DamageComponentResult {
@@ -225,6 +221,7 @@ impl DamageRoll {
             total,
             source: self.source.clone(),
             action: None,
+            crit,
         }
     }
 
@@ -264,6 +261,7 @@ pub struct DamageRollResult {
     // TODO: I don't think a full `ActionData` is necessary here, so let's just
     // store the actor and action id for now
     pub action: Option<(Entity, ActionId)>,
+    pub crit: bool,
 }
 
 impl DamageRollResult {
@@ -301,6 +299,7 @@ impl Default for DamageRollResult {
             total: 0,
             source: DamageSource::Weapon(WeaponKind::Melee),
             action: None,
+            crit: false,
         }
     }
 }
@@ -1071,6 +1070,7 @@ mod tests {
             total: 9,
             source: DamageSource::Weapon(WeaponKind::Melee),
             action: None,
+            crit: false,
         }
     }
 }

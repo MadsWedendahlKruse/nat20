@@ -6,8 +6,8 @@ use tracing::debug;
 use crate::{
     components::{
         ability::{Ability, AbilityScoreMap},
-        d20::{D20CheckDC, D20CheckOutcome},
-        damage::{AttackRollResult, DamageMitigationResult, DamageResistances, DamageRollResult},
+        d20::D20CheckDC,
+        damage::{DamageMitigationResult, DamageResistances, DamageRollResult},
         health::{hit_points::HitPoints, life_state::LifeState},
         level::CharacterLevels,
         modifier::{Modifiable, ModifierSet, ModifierSource},
@@ -53,8 +53,7 @@ pub fn heal_full(world: &mut World, target: Entity) -> Option<LifeState> {
 pub fn damage(
     game_state: &mut GameState,
     target: Entity,
-    damage_roll_result: &DamageRollResult,
-    attack_roll: Option<&AttackRollResult>,
+    damage_roll_result: &mut DamageRollResult,
 ) -> (Option<DamageMitigationResult>, Option<LifeState>) {
     let resistances =
         if let Ok(resistances) = game_state.world.get::<&mut DamageResistances>(target) {
@@ -63,12 +62,10 @@ pub fn damage(
             DamageResistances::new()
         };
 
-    let mut damage_roll_result = damage_roll_result.clone();
-
     systems::effects::effects(&game_state.world, target).pre_damage_mitigation(
         &game_state.world,
         target,
-        &mut damage_roll_result,
+        damage_roll_result,
     );
 
     let mut mitigation_result = resistances.apply(&damage_roll_result);
@@ -95,15 +92,8 @@ pub fn damage(
                     }
 
                     LifeState::Unconscious(death_saving_throws) => {
-                        if let Some(attack_roll) = attack_roll {
-                            if matches!(
-                                attack_roll.roll_result.outcome,
-                                Some(D20CheckOutcome::CriticalSuccess)
-                            ) {
-                                death_saving_throws.record_failure(2);
-                            } else {
-                                death_saving_throws.record_failure(1);
-                            }
+                        if damage_roll_result.crit {
+                            death_saving_throws.record_failure(2);
                         } else {
                             death_saving_throws.record_failure(1);
                         }

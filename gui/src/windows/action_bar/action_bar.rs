@@ -534,11 +534,13 @@ impl ActionBarWindow {
                 );
                 line_of_sight.render(ui, gui_state);
 
+                let mut targets = action.targets.clone();
+                targets.push(target.clone());
                 let targeting_result = targeting_context.validate_targets(
                     &game_state.world,
                     &game_state.geometry,
                     self.actor(),
-                    &[target.clone()],
+                    &targets,
                 );
 
                 match targeting_result {
@@ -549,6 +551,7 @@ impl ActionBarWindow {
                             if ui.is_mouse_clicked(MouseButton::Left) {
                                 self.builder.remove_target(&target);
                                 gui_state.cursor_ray_result.take();
+                                return;
                             }
                         }
 

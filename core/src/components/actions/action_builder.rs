@@ -184,7 +184,13 @@ impl ActionBuilder {
     pub fn remove_target(&mut self, target: &TargetInstance) -> &mut Self {
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Targets { action, .. }) => {
-                action.targets.retain(|t| t != target);
+                action.targets.retain(|t| match (t, target) {
+                    (
+                        TargetInstance::Entity { entity: e1, .. },
+                        TargetInstance::Entity { entity: e2, .. },
+                    ) => e1 != e2,
+                    _ => t != target,
+                });
                 Ok(ActionBuilderState::Targets {
                     action: action.clone(),
                     path_to_target: None,

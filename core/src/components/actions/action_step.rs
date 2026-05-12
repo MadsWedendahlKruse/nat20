@@ -709,32 +709,34 @@ impl StepPayloadComponent for StepPayloadDamage {
         target: Entity,
         condition_resolution: &ActionConditionResolution,
     ) {
-        let damage_result = match self {
+        let mut damage_result = match self {
             Self::Unresolved { .. } | Self::PendingResolution { .. } => return,
-            Self::Resolved { damage } => damage.clone(),
+            Self::Resolved { damage } => damage,
             Self::Applied { .. } => return, // Already applied
         };
 
         let damage_outcome = match condition_resolution {
             ActionConditionResolution::Unconditional => {
-                let (damage_taken, new_life_state) = if let Some(damage_result) = &damage_result {
-                    systems::health::damage(game_state, target, &damage_result, None)
+                let (damage_taken, new_life_state) = if let Some(damage_result) = &mut damage_result
+                {
+                    systems::health::damage(game_state, target, damage_result)
                 } else {
                     (None, None)
                 };
-                DamageOutcome::unconditional(damage_result, damage_taken, new_life_state)
+                DamageOutcome::unconditional(damage_result.clone(), damage_taken, new_life_state)
             }
             ActionConditionResolution::AttackRoll {
                 attack_roll,
                 armor_class,
             } => {
-                let (damage_taken, new_life_state) = if let Some(damage_result) = &damage_result {
-                    systems::health::damage(game_state, target, &damage_result, Some(attack_roll))
+                let (damage_taken, new_life_state) = if let Some(damage_result) = &mut damage_result
+                {
+                    systems::health::damage(game_state, target, damage_result)
                 } else {
                     (None, None)
                 };
                 DamageOutcome::attack_roll(
-                    damage_result,
+                    damage_result.clone(),
                     damage_taken,
                     new_life_state,
                     attack_roll.clone(),
@@ -745,13 +747,14 @@ impl StepPayloadComponent for StepPayloadDamage {
                 saving_throw_dc,
                 saving_throw_result,
             } => {
-                let (damage_taken, new_life_state) = if let Some(damage_result) = &damage_result {
-                    systems::health::damage(game_state, target, &damage_result, None)
+                let (damage_taken, new_life_state) = if let Some(damage_result) = &mut damage_result
+                {
+                    systems::health::damage(game_state, target, damage_result)
                 } else {
                     (None, None)
                 };
                 DamageOutcome::saving_throw(
-                    damage_result,
+                    damage_result.clone(),
                     damage_taken,
                     new_life_state,
                     saving_throw_dc.clone(),
