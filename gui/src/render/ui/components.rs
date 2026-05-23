@@ -1614,12 +1614,12 @@ impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind
 
 impl ImguiRenderable for ResourceAmountMap {
     fn render(&self, ui: &imgui::Ui) {
-        if self.is_empty() {
+        if self.map.is_empty() {
             ui.text("No cost");
             return;
         }
 
-        for (resource, amount) in self.iter() {
+        for (resource, amount) in self.map.iter() {
             let amount_text = match amount {
                 ResourceAmount::Flat(amount) => amount.to_string(),
                 ResourceAmount::Tiered { tier, amount } => format!("{} Level {}", amount, tier),
