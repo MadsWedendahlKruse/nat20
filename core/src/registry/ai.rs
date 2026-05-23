@@ -46,7 +46,7 @@ impl AIController for RandomController {
 
         match &prompt.kind {
             ActionPromptKind::Action { actor } => {
-                let mut actions = systems::actions::available_actions(&game_state.world, *actor);
+                let mut actions = systems::actions::available_actions(game_state, *actor);
 
                 // Pick a random action
                 if actions.is_empty() {

@@ -161,7 +161,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 
                             entity.render_with_context(
                                 ui,
-                                (&self.game_state.world, &CreatureRenderMode::Full),
+                                (&self.game_state, &CreatureRenderMode::Full),
                             );
 
                             if updated_level {

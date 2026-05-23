@@ -3,10 +3,7 @@ use nat20_core::{
     components::{
         ability::AbilityScoreMap,
         damage::DamageResistances,
-        effects::{
-            effect::{EffectLifetime, EffectsMap},
-            effect_manager::EffectManager,
-        },
+        effects::{effect::EffectLifetime, effect_manager::EffectManager},
         health::{hit_points::HitPoints, life_state::LifeState},
         id::{FeatId, Name, SpeciesId, SubspeciesId},
         level::{ChallengeRating, CharacterLevels},
@@ -49,8 +46,12 @@ impl From<usize> for CreatureRenderMode {
     }
 }
 
-impl ImguiRenderableWithContext<(&World, &CreatureRenderMode)> for Entity {
-    fn render_with_context(&self, ui: &imgui::Ui, (world, mode): (&World, &CreatureRenderMode)) {
+impl ImguiRenderableWithContext<(&GameState, &CreatureRenderMode)> for Entity {
+    fn render_with_context(
+        &self,
+        ui: &imgui::Ui,
+        (game_state, mode): (&GameState, &CreatureRenderMode),
+    ) {
         match mode {
             CreatureRenderMode::Full => {
                 let entity = *self;
@@ -58,38 +59,41 @@ impl ImguiRenderableWithContext<(&World, &CreatureRenderMode)> for Entity {
 
                 if let Some(tab_bar) = ui.tab_bar(format!("CharacterTabs{:?}", entity)) {
                     if let Some(tab) = ui.tab_item("Overview") {
-                        render_overview(ui, world, entity, mode);
+                        render_overview(ui, game_state, entity, mode);
                         tab.end();
                     }
 
                     if let Some(tab) = ui.tab_item("Effects") {
-                        render_effects(ui, world, entity);
-                        render_if_present::<Vec<FeatId>>(ui, world, entity);
+                        render_effects(ui, &game_state.world, entity);
+                        render_if_present::<Vec<FeatId>>(ui, &game_state.world, entity);
                         tab.end();
                     }
 
                     if let Some(tab) = ui.tab_item("Skills") {
-                        systems::helpers::get_component::<SkillSet>(world, entity)
-                            .render_with_context(ui, (world, entity));
+                        systems::helpers::get_component::<SkillSet>(&game_state.world, entity)
+                            .render_with_context(ui, (&game_state.world, entity));
                         tab.end();
                     }
 
                     if let Some(tab) = ui.tab_item("Inventory") {
-                        render_loadout(ui, world, entity);
+                        render_loadout(ui, &game_state.world, entity);
                         tab.end();
                     }
 
                     if let Some(tab) = ui.tab_item("Spellbook") {
-                        systems::helpers::get_component::<Spellbook>(world, entity)
+                        systems::helpers::get_component::<Spellbook>(&game_state.world, entity)
                             .render_with_context(
                                 ui,
-                                &systems::helpers::get_component::<ResourceMap>(world, entity),
+                                &systems::helpers::get_component::<ResourceMap>(
+                                    &game_state.world,
+                                    entity,
+                                ),
                             );
                         tab.end();
                     }
 
                     if let Some(tab) = ui.tab_item("Resources") {
-                        render_if_present::<ResourceMap>(ui, world, entity);
+                        render_if_present::<ResourceMap>(ui, &game_state.world, entity);
                         tab.end();
                     }
 
@@ -99,17 +103,17 @@ impl ImguiRenderableWithContext<(&World, &CreatureRenderMode)> for Entity {
 
             CreatureRenderMode::Inspect => {
                 let entity = *self;
-                render_if_present::<Name>(ui, world, *self);
+                render_if_present::<Name>(ui, &game_state.world, *self);
 
                 if let Some(tab_bar) = ui.tab_bar(format!("CharacterTabs{:?}", entity)) {
                     if let Some(tab) = ui.tab_item("Overview") {
-                        render_overview(ui, world, entity, mode);
+                        render_overview(ui, game_state, entity, mode);
                         tab.end();
                     }
 
                     if let Some(tab) = ui.tab_item("Effects") {
-                        render_effects(ui, world, entity);
-                        render_if_present::<Vec<FeatId>>(ui, world, entity);
+                        render_effects(ui, &game_state.world, entity);
+                        render_if_present::<Vec<FeatId>>(ui, &game_state.world, entity);
                         tab.end();
                     }
 
@@ -118,12 +122,12 @@ impl ImguiRenderableWithContext<(&World, &CreatureRenderMode)> for Entity {
             }
 
             CreatureRenderMode::Compact => {
-                render_if_present::<Name>(ui, world, *self);
-                render_if_present::<CharacterLevels>(ui, world, *self);
-                render_if_present::<ChallengeRating>(ui, world, *self);
-                render_if_present::<LifeState>(ui, world, *self);
-                render_if_present::<HitPoints>(ui, world, *self);
-                render_effects_compact(ui, world, *self);
+                render_if_present::<Name>(ui, &game_state.world, *self);
+                render_if_present::<CharacterLevels>(ui, &game_state.world, *self);
+                render_if_present::<ChallengeRating>(ui, &game_state.world, *self);
+                render_if_present::<LifeState>(ui, &game_state.world, *self);
+                render_if_present::<HitPoints>(ui, &game_state.world, *self);
+                render_effects_compact(ui, &game_state.world, *self);
             }
         }
     }
@@ -147,9 +151,15 @@ pub fn render_species_if_present(ui: &imgui::Ui, world: &World, entity: Entity) 
     }
 }
 
-fn render_overview(ui: &imgui::Ui, world: &World, entity: Entity, mode: &CreatureRenderMode) {
+fn render_overview(
+    ui: &imgui::Ui,
+    game_state: &GameState,
+    entity: Entity,
+    mode: &CreatureRenderMode,
+) {
     match mode {
         CreatureRenderMode::Full | CreatureRenderMode::Inspect => {
+            let world = &game_state.world;
             render_species_if_present(ui, world, entity);
 
             render_if_present::<CreatureSize>(ui, world, entity);
@@ -164,7 +174,7 @@ fn render_overview(ui: &imgui::Ui, world: &World, entity: Entity, mode: &Creatur
             render_if_present::<Speed>(ui, world, entity);
 
             ui.separator_with_text("Armor Class");
-            systems::loadout::armor_class(world, entity).render(ui);
+            systems::loadout::armor_class(game_state, entity).render(ui);
             systems::helpers::get_component::<AbilityScoreMap>(world, entity)
                 .render_with_context(ui, (world, entity));
             render_if_present::<DamageResistances>(ui, world, entity);
@@ -214,7 +224,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for Entity {
 
         if let Some(tab_bar) = ui.tab_bar(format!("CharacterTabs{:?}", entity)) {
             if let Some(tab) = ui.tab_item("Overview") {
-                render_overview(ui, &game_state.world, entity, &CreatureRenderMode::Full);
+                render_overview(ui, game_state, entity, &CreatureRenderMode::Full);
                 tab.end();
             }
 

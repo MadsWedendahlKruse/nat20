@@ -75,7 +75,7 @@ impl Action {
         let hooks = systems::effects::effects(&game_state.world, action_data.actor.id())
             .collect_hooks(|effect| effect.on_action.as_ref());
         for hook in hooks {
-            hook(&mut game_state.world, action_data);
+            hook(game_state, action_data);
         }
 
         self.kind.perform(game_state, action_data)
@@ -107,6 +107,7 @@ impl Action {
         self.kind.is_reaction()
             || self
                 .resource_cost
+                .map
                 .contains_key(&ResourceId::new("nat20_core", "resource.reaction"))
     }
 }

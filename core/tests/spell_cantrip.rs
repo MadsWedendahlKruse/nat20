@@ -32,7 +32,7 @@ fn acid_splash() {
     for handle in ["goblin_1", "goblin_2"] {
         scenario.probe(handle).d20_force_outcome(
             D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
-            D20CheckOutcome::Failure,
+            D20CheckOutcome::CriticalFailure,
         );
         goblin_hp.push(scenario.probe(handle).hp());
     }

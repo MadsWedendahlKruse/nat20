@@ -6,33 +6,42 @@ use crate::{
         damage::{AttackRoll, AttackRollResult, DamageRoll, DamageRollResult},
         effects::{effect::EffectInstance, hooks::AttackedHook},
     },
+    engine::game_state::GameState,
     systems,
 };
 
 pub fn damage_roll(
     mut damage_roll: DamageRoll,
-    world: &World,
+    game_state: &GameState,
     entity: Entity,
     crit: bool,
 ) -> DamageRollResult {
-    systems::effects::effects(world, entity).pre_damage_roll(world, entity, &mut damage_roll);
+    systems::effects::effects(&game_state.world, entity).pre_damage_roll(
+        &game_state.world,
+        entity,
+        &mut damage_roll,
+    );
 
     let mut result = damage_roll.roll(crit);
 
-    systems::effects::effects(world, entity).post_damage_roll(world, entity, &mut result);
+    systems::effects::effects(&game_state.world, entity).post_damage_roll(
+        game_state,
+        entity,
+        &mut result,
+    );
 
     result
 }
 
 pub fn damage_roll_fn(
     damage_roll_fn: &DamageFunction,
-    world: &World,
+    game_state: &GameState,
     entity: Entity,
     context: &ActionContext,
     crit: bool,
 ) -> DamageRollResult {
-    let roll = damage_roll_fn(world, entity, context);
-    damage_roll(roll, world, entity, crit)
+    let roll = damage_roll_fn(&game_state.world, entity, context);
+    damage_roll(roll, game_state, entity, crit)
 }
 
 pub fn attack_roll(

@@ -34,8 +34,8 @@ impl CreatureProbe {
     }
 
     pub fn act(&self, game_state: &mut GameState, action: impl Into<ActionId>) -> ActionBuilder {
-        let mut builder = ActionBuilder::available(&game_state.world, self.creature.id());
-        builder.action(&game_state.world, &action.into());
+        let mut builder = ActionBuilder::available(game_state, self.creature.id());
+        builder.action(game_state, &action.into());
         builder
     }
 
@@ -118,7 +118,7 @@ impl CreatureProbe {
     #[track_caller]
     pub fn assert_has_action(&self, game_state: &GameState, action: impl Into<ActionId>) {
         let action: ActionId = action.into();
-        let actions = systems::actions::available_actions(&game_state.world, self.creature.id());
+        let actions = systems::actions::available_actions(game_state, self.creature.id());
         assert!(
             actions.contains_key(&action),
             "Expected creature {:?} to have action {:?}, but it was not found. Available actions: {:#?}",

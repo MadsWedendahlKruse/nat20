@@ -177,10 +177,10 @@ impl EffectManager {
         );
     }
 
-    pub fn armor_class(&self, world: &World, entity: Entity, ac: &mut ArmorClass) {
+    pub fn armor_class(&self, game_state: &GameState, entity: Entity, ac: &mut ArmorClass) {
         self.for_each(
             |effect| effect.on_armor_class.as_ref(),
-            |hook| hook(world, entity, ac),
+            |hook| hook(game_state, entity, ac),
         );
     }
 
@@ -191,16 +191,21 @@ impl EffectManager {
         );
     }
 
-    pub fn post_damage_roll(&self, world: &World, entity: Entity, result: &mut DamageRollResult) {
+    pub fn post_damage_roll(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        result: &mut DamageRollResult,
+    ) {
         self.for_each(
             |effect| effect.post_damage_roll.as_ref(),
-            |hook| hook(world, entity, result),
+            |hook| hook(game_state, entity, result),
         );
     }
 
     pub fn resource_cost(
         &self,
-        world: &World,
+        game_state: &GameState,
         entity: Entity,
         id: &ActionId,
         ctx: &ActionContext,
@@ -208,31 +213,31 @@ impl EffectManager {
     ) {
         self.for_each(
             |effect| effect.on_resource_cost.as_ref(),
-            |hook| hook(world, entity, id, ctx, costs),
+            |hook| hook(game_state, entity, id, ctx, costs),
         );
     }
 
     pub fn post_damage_mitigation(
         &self,
-        world: &World,
+        game_state: &GameState,
         entity: Entity,
         result: &mut DamageMitigationResult,
     ) {
         self.for_each(
             |effect| effect.post_damage_mitigation.as_ref(),
-            |hook| hook(world, entity, result),
+            |hook| hook(game_state, entity, result),
         );
     }
 
     pub fn pre_damage_mitigation(
         &self,
-        world: &World,
+        game_state: &GameState,
         entity: Entity,
         result: &mut DamageRollResult,
     ) {
         self.for_each_with_instance(
             |effect| effect.pre_damage_mitigation.as_ref(),
-            |hook, inst| hook(world, inst, entity, result),
+            |hook, inst| hook(game_state, inst, entity, result),
         );
     }
 

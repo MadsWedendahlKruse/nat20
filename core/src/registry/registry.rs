@@ -38,7 +38,7 @@ use crate::{
             spell::SpellDefinition,
         },
     },
-    scripts::script::{Script, ScriptError},
+    scripts::script::{LUA_FILE_EXTENSION, Script, ScriptError},
 };
 
 pub static REGISTRIES_FOLDER: &str = "registries";
@@ -492,10 +492,9 @@ impl RegistrySet {
                 continue;
             }
 
-            // Scripts are "non-json" files in registry folders.
-            if path.extension().is_none()
-                || path.extension().and_then(|ext| ext.to_str()) == Some("json")
-            {
+            // Skip non-lua files (assuming scripts are lua files).
+            let ext = path.extension().and_then(|e| e.to_str());
+            if ext.is_none() || ext != Some(LUA_FILE_EXTENSION) {
                 continue;
             }
 

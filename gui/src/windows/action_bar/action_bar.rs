@@ -246,13 +246,8 @@ impl ActionBarWindow {
 
             let mut action_usable = false;
             for (context, cost) in contexts_and_costs.iter_mut() {
-                systems::effects::effects(&game_state.world, actor).resource_cost(
-                    &game_state.world,
-                    actor,
-                    action_id,
-                    context,
-                    cost,
-                );
+                systems::effects::effects(&game_state.world, actor)
+                    .resource_cost(game_state, actor, action_id, context, cost);
                 if systems::actions::action_usable(
                     &game_state.world,
                     actor,
@@ -287,7 +282,7 @@ impl ActionBarWindow {
         }
 
         if let Some(action_id) = selected_action {
-            self.builder.action(&game_state.world, &action_id);
+            self.builder.action(&game_state, &action_id);
         }
     }
 
@@ -945,7 +940,7 @@ fn render_attack_hit_chance_tooltip(
         &mut attack_roll,
     );
 
-    let target_ac = systems::loadout::armor_class(&game_state.world, target);
+    let target_ac = systems::loadout::armor_class(&game_state, target);
 
     let hit_chance = attack_roll.hit_chance(
         &game_state.world,

@@ -484,50 +484,56 @@ impl GameState {
     }
 
     fn validate_or_refill_prompt_queue(&mut self, scope: InteractionScopeId) {
-        let session = self.interaction_engine.session_mut(scope);
-
-        if let Some(front) = session.next_prompt_mut() {
-            let mut invalid = false;
-
-            match &mut front.kind {
+        let new_options = if let Some(session) = self.interaction_engine.session(scope)
+            && let Some(front) = session.next_prompt()
+        {
+            match &front.kind {
                 ActionPromptKind::Reactions { event, options } => {
                     let mut new_options = HashMap::new();
                     for reactor in options.keys() {
-                        let reactions = systems::actions::available_reactions_to_event(
-                            &self.world,
-                            &self.geometry,
-                            *reactor,
-                            event,
-                        );
+                        let reactions =
+                            systems::actions::available_reactions_to_event(self, *reactor, event);
                         if !reactions.is_empty() {
                             new_options.insert(*reactor, reactions);
                         }
                     }
-                    if new_options.is_empty() {
-                        invalid = true;
-                    }
-                    *options = new_options;
+                    Some(new_options)
                 }
-                ActionPromptKind::Action { .. } => { /* nothing */ }
+                ActionPromptKind::Action { .. } => None,
             }
+        } else {
+            None
+        };
 
-            if invalid {
+        let session = self.interaction_engine.session_mut(scope);
+
+        if let Some(new_options) = new_options {
+            if new_options.is_empty() {
+                // No valid reactions remain; clear the prompt to skip the reaction window.
                 session.pop_prompt();
+            } else {
+                // Update the prompt with the new options.
+                if let Some(front) = session.next_prompt_mut() {
+                    if let ActionPromptKind::Reactions { options, .. } = &mut front.kind {
+                        *options = new_options;
+                    }
+                }
             }
         }
 
         match scope {
             InteractionScopeId::Global => { /* don't auto-refill */ }
             InteractionScopeId::Encounter(encounter_id) => {
-                let encounter = self
+                let current_entity = self
                     .encounters
-                    .get_mut(&encounter_id)
-                    .expect("Inconsistent state: encounter not found");
+                    .get(&encounter_id)
+                    .expect("Inconsistent state: encounter not found")
+                    .current_entity();
 
                 if session.pending_prompts().is_empty() {
                     session.queue_prompt(
                         ActionPrompt::new(ActionPromptKind::Action {
-                            actor: encounter.current_entity(),
+                            actor: current_entity,
                         }),
                         false,
                     );
@@ -598,12 +604,7 @@ impl GameState {
                 continue;
             }
 
-            let reactions = systems::actions::available_reactions_to_event(
-                &self.world,
-                &self.geometry,
-                *reactor,
-                event,
-            );
+            let reactions = systems::actions::available_reactions_to_event(self, *reactor, event);
 
             if !reactions.is_empty() {
                 reaction_options.insert(*reactor, reactions);
@@ -788,7 +789,7 @@ impl GameState {
                     D20CheckDCKind::SavingThrow(_) | D20CheckDCKind::Skill(_) => dc_kind.clone(),
                     D20CheckDCKind::AttackRoll(target, source, _) => {
                         // Recalculate AC in case it changed due to reactions
-                        let armor_class = systems::loadout::armor_class(&self.world, target.id());
+                        let armor_class = systems::loadout::armor_class(self, target.id());
                         D20CheckDCKind::AttackRoll(target.clone(), source.clone(), armor_class)
                     }
                 };

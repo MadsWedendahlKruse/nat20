@@ -1,5 +1,4 @@
 use std::{
-    fmt::Debug,
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -8,26 +7,18 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        ability::AbilityScoreMap,
         actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
-                ActionKindResult, ActionOutcomeBundle, DamageOutcome,
+                ActionConditionResolution, ActionContext, ActionKindResult, ActionOutcomeBundle,
+                DamageOutcome,
             },
             targeting::TargetInstance,
         },
-        damage::{
-            CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
-            DamageMitigationResult, DamageRollResult, DamageType, MitigationOperation,
-        },
+        damage::{DamageMitigationResult, DamageRollResult},
         dice::{DiceSet, DiceSetRoll},
-        effects::effect::{EffectEntiyReference, EffectInstance, EffectLifetimeTemplate},
-        health::hit_points::HitPoints,
-        id::{ActionId, EffectId, EntityIdentifier, ResourceId},
-        items::equipment::loadout::Loadout,
+        id::{ActionId, EntityIdentifier, ResourceId},
         modifier::{Modifiable, ModifierSet, ModifierSource},
-        resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
-        time::{TimeDuration, TurnBoundary},
+        resource::ResourceAmountMap,
     },
     engine::{
         action_prompt::{ActionData, ReactionData},
@@ -43,133 +34,6 @@ use crate::{
         d20::{D20CheckDCKind, D20ResultKind},
     },
 };
-
-/// Thread-safe shared wrapper for script-exposed data. The primary purpose is to
-/// allow the scripts to mutate data without cloning it back and forth, e.g.
-/// exposing a resource cost map that the script can modify in place.
-///
-/// However, note that sometimes we want to expose data as immutable (read-only).
-/// This is due to the following reasons:
-///     1. There are different types of scripts, and not all of them are supposed
-///        to modify data. For example, a reaction trigger script should only inspect
-///        the event which triggerd it, and then decide whether to react or not. It
-///        should not be able to modify the event data itself.
-///     2. To avoid duplicating structs/enums for mutable vs immutable variants,
-///        we use a single `ScriptShared<T>` type with a flag indicating mutability.
-///        This simplifies the API and reduces code duplication.
-/// The `mutable` flag indicates whether the data can be mutated via `write()`.
-/// Only data created for mutable script flows (e.g. via `take_from()` or `new_mut()`)
-/// is intended to be mutable.
-#[derive(Debug, Clone)]
-pub struct ScriptShared<T> {
-    inner: Arc<RwLock<T>>,
-    mutable: bool,
-}
-
-impl<T> ScriptShared<T> {
-    pub fn new(value: T) -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(value)),
-            mutable: false,
-        }
-    }
-
-    pub fn new_mut(value: T) -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(value)),
-            mutable: true,
-        }
-    }
-
-    /// Moves the value out of `target` and replaces it with `T::default()`.
-    pub fn take_from(target: &mut T) -> Self
-    where
-        T: Default,
-    {
-        Self {
-            inner: Arc::new(RwLock::new(std::mem::take(target))),
-            mutable: true,
-        }
-    }
-
-    pub fn is_mutable(&self) -> bool {
-        self.mutable
-    }
-
-    /// Moves the value out of this shared wrapper.
-    /// Panics if the handle was cloned and is still shared.
-    pub fn into_inner(self) -> T
-    where
-        T: Debug,
-    {
-        Arc::try_unwrap(self.inner)
-            .expect("Shared value leaked (extra Arc clones exist)")
-            .into_inner()
-            .expect("RwLock poisoned")
-    }
-
-    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, T> {
-        self.inner.read().expect("RwLock poisoned")
-    }
-
-    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, T> {
-        if !self.mutable {
-            panic!("Attempted to get mutable access to an immutable ScriptShared value");
-        }
-        self.inner.write().expect("RwLock poisoned")
-    }
-}
-
-macro_rules! impl_script_shared_methods {
-    ($wrapper:ty, $inner:ty) => {
-        impl $wrapper {
-            pub fn new(value: $inner) -> Self {
-                Self {
-                    inner: ScriptShared::new(value),
-                }
-            }
-
-            pub fn take_from(target: &mut $inner) -> Self {
-                Self {
-                    inner: ScriptShared::take_from(target),
-                }
-            }
-
-            pub fn into_inner(self) -> $inner {
-                self.inner.into_inner()
-            }
-        }
-    };
-}
-
-macro_rules! impl_take_replace_world {
-    ($wrapper:ty, $inner:ty) => {
-        impl $wrapper {
-            pub fn new_from_world(world: &World, entity: Entity) -> Self {
-                let component = systems::helpers::get_component_clone::<$inner>(world, entity);
-                Self::new(component)
-            }
-
-            pub fn take_from_world(world: &mut World, entity: Entity) -> Self {
-                if let Ok(component) = world.query_one_mut::<&mut $inner>(entity) {
-                    Self::take_from(component)
-                } else {
-                    panic!(
-                        "Entity {:?} does not have component {}",
-                        entity,
-                        std::any::type_name::<$inner>()
-                    );
-                }
-            }
-
-            pub fn replace_in_world(self, world: &mut World, entity: Entity) {
-                if let Ok(component) = world.query_one_mut::<&mut $inner>(entity) {
-                    *component = self.into_inner();
-                }
-            }
-        }
-    };
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptEntity {
@@ -203,194 +67,9 @@ impl From<u64> for ScriptEntity {
 }
 
 #[derive(Clone)]
-pub struct ScriptEffectView {
-    pub effect_id: String,
-    pub source: String,
-    pub applier: Option<ScriptEntity>,
-}
-
-impl ScriptEffectView {
-    pub fn has_applier(&self) -> bool {
-        self.applier.is_some()
-    }
-
-    pub fn get_applier(&self) -> &ScriptEntity {
-        self.applier
-            .as_ref()
-            .expect("No applier associated with this effect")
-    }
-}
-
-impl From<&EffectInstance> for ScriptEffectView {
-    fn from(instance: &EffectInstance) -> Self {
-        ScriptEffectView {
-            effect_id: instance.effect_id.to_string(),
-            source: instance.source.to_string(),
-            applier: instance.applier.map(ScriptEntity::from),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct ScriptDamageRollResult {
-    inner: ScriptShared<DamageRollResult>,
-}
-
-impl ScriptDamageRollResult {
-    pub fn source(&self) -> String {
-        self.inner.read().source.to_string()
-    }
-
-    pub fn clamp_damage_dice_min(&mut self, minimum_roll: u32) {
-        let mut inner = self.inner.write();
-
-        for component in &mut inner.components {
-            // This assumes DamageComponentResult has `result: DiceSetRollResult` etc.
-            for roll in &mut component.result.rolls {
-                if *roll < minimum_roll {
-                    *roll = minimum_roll;
-                }
-            }
-            component.result.recalculate_total();
-        }
-
-        inner.recalculate_total();
-    }
-
-    pub fn has_actor(&self) -> bool {
-        self.inner.read().action.is_some()
-    }
-
-    pub fn get_actor(&self) -> ScriptEntity {
-        let inner = self.inner.read();
-        let (actor_entity, _) = inner
-            .action
-            .as_ref()
-            .expect("No action associated with this damage roll result");
-        ScriptEntity::from(*actor_entity)
-    }
-
-    pub fn is_action_attack_roll(&self) -> bool {
-        self.is_action_condition_type(|cond| matches!(cond, ActionCondition::AttackRoll { .. }))
-    }
-
-    pub fn is_action_saving_throw(&self) -> bool {
-        self.is_action_condition_type(|cond| matches!(cond, ActionCondition::SavingThrow { .. }))
-    }
-
-    pub fn is_action_unconditional(&self) -> bool {
-        self.is_action_condition_type(|cond| matches!(cond, ActionCondition::None))
-    }
-
-    fn is_action_condition_type(&self, predicate: fn(&ActionCondition) -> bool) -> bool {
-        let inner = self.inner.read();
-        if let Some((_, action_id)) = &inner.action {
-            return is_action_condition_type(action_id, predicate);
-        }
-        false
-    }
-
-    pub fn add_damage(&mut self, bonus: ScriptDiceRollBonus, damage_type: DamageType) {
-        let mut inner = self.inner.write();
-        match bonus {
-            ScriptDiceRollBonus::Flat(int_expression) => {
-                let flat_bonus = int_expression.evaluate_without_variables().unwrap();
-                // TODO: Not sure how to add a flat bonus properly here.
-            }
-            ScriptDiceRollBonus::Dice(dice_expression) => {
-                let (mut num_dice, die_size, modifier) =
-                    dice_expression.evaluate_without_variables().unwrap();
-                if inner.crit {
-                    num_dice *= CRIT_DICE_MULTIPLIER as i32; // Double the number of dice on a crit
-                }
-                let result = DiceSetRoll {
-                    dice: DiceSet::from_str(format!("{}d{}", num_dice, die_size).as_str()).unwrap(),
-                    modifiers: ModifierSet::from(ModifierSource::Base, modifier),
-                }
-                .roll();
-                inner.add_component(DamageComponentResult {
-                    result,
-                    damage_type,
-                });
-            }
-        }
-    }
-}
-
-impl_script_shared_methods!(ScriptDamageRollResult, DamageRollResult);
-
-#[derive(Clone)]
-pub struct ScriptDamageMitigationResult {
-    inner: ScriptShared<DamageMitigationResult>,
-}
-
-impl ScriptDamageMitigationResult {
-    pub fn source(&self) -> String {
-        self.inner.read().source.to_string()
-    }
-
-    pub fn add_immunity(&mut self) {
-        let mut inner = self.inner.write();
-        for component in &mut inner.components {
-            component.modifiers.push(DamageMitigationEffect {
-                source: ModifierSource::Custom(
-                    "TODO: Figure out how to propagate the source".to_string(),
-                ),
-                operation: MitigationOperation::Immunity,
-            });
-        }
-        inner.recalculate_total();
-    }
-
-    pub fn has_action(&self) -> bool {
-        self.inner.read().action.is_some()
-    }
-
-    pub fn get_actor(&self) -> ScriptEntity {
-        let inner = self.inner.read();
-        let (actor_entity, _) = inner
-            .action
-            .as_ref()
-            .expect("No action associated with this damage mitigation result");
-        ScriptEntity::from(*actor_entity)
-    }
-
-    pub fn is_action_attack_roll(&self) -> bool {
-        self.is_action_condition_type(|cond| matches!(cond, ActionCondition::AttackRoll { .. }))
-    }
-
-    pub fn is_action_saving_throw(&self) -> bool {
-        self.is_action_condition_type(|cond| matches!(cond, ActionCondition::SavingThrow { .. }))
-    }
-
-    pub fn is_action_unconditional(&self) -> bool {
-        self.is_action_condition_type(|cond| matches!(cond, ActionCondition::None))
-    }
-
-    pub fn is_action_condition_type(&self, predicate: fn(&ActionCondition) -> bool) -> bool {
-        let inner = self.inner.read();
-        if let Some((_, action_id)) = &inner.action {
-            return is_action_condition_type(action_id, predicate);
-        }
-        false
-    }
-}
-
-impl_script_shared_methods!(ScriptDamageMitigationResult, DamageMitigationResult);
-
-fn is_action_condition_type(action_id: &ActionId, predicate: fn(&ActionCondition) -> bool) -> bool {
-    let action = systems::actions::get_action(action_id).unwrap();
-    match &action.kind {
-        ActionKind::Standard { condition, .. } => predicate(condition),
-        _ => false,
-    }
-}
-
-#[derive(Clone)]
 pub struct ScriptD20CheckDCKind {
     pub label: String,
     pub dc: i32,
-    // Currently only used for AttackRoll
     pub target: Option<ScriptEntity>,
 }
 
@@ -461,184 +140,19 @@ pub(crate) struct ScriptD20Check {
     pub modifications: Vec<ScriptD20CheckModification>,
 }
 
-#[derive(Clone)]
-pub(crate) struct ScriptMovingOutOfReach {
-    pub mover: ScriptEntity,
-    pub entity: ScriptEntity,
-    pub continue_movement: bool,
-}
-
-#[derive(Clone)]
-pub struct ScriptMovingOutOfReachView {
-    pub(crate) inner: ScriptShared<ScriptMovingOutOfReach>,
-}
-
-impl ScriptMovingOutOfReachView {
-    pub fn new(mover: ScriptEntity, entity: ScriptEntity, continue_movement: bool) -> Self {
-        Self {
-            inner: ScriptShared::new(ScriptMovingOutOfReach {
-                mover,
-                entity,
-                continue_movement,
-            }),
-        }
-    }
-
-    pub fn new_mut(mover: ScriptEntity, entity: ScriptEntity, continue_movement: bool) -> Self {
-        Self {
-            inner: ScriptShared::new_mut(ScriptMovingOutOfReach {
-                mover,
-                entity,
-                continue_movement,
-            }),
-        }
-    }
-
-    pub fn apply_to_event(&self, world: &World, event: &mut Event) {
-        if let EventKind::MovingOutOfReach {
-            mover,
-            entity,
-            continue_movement,
-        } = &mut event.kind
-        {
-            let inner = self.inner.read();
-            *mover = EntityIdentifier::from_world(world, inner.mover.clone().into());
-            *entity = EntityIdentifier::from_world(world, inner.entity.clone().into());
-            *continue_movement = inner.continue_movement;
-        } else {
-            panic!(
-                "ScriptMovingOutOfReachView applied to wrong event type: {:?}",
-                event
-            );
-        }
-    }
-}
-
-/// High-level event view that scripts can work with.
-#[derive(Clone)]
-pub enum ScriptEventView {
-    ActionRequested(ScriptActionView),
-    ActionPerformed(ScriptActionPerformedView),
-    D20CheckPerformed(ScriptD20CheckView),
-    MovingOutOfReach(ScriptMovingOutOfReachView),
-}
-
-impl ScriptEventView {
-    pub fn from_event(event: &Event) -> Option<Self> {
-        Self::from_event_with_mutability(event, false)
-    }
-
-    pub fn from_event_mut(event: &Event) -> Option<Self> {
-        Self::from_event_with_mutability(event, true)
-    }
-
-    fn from_event_with_mutability(event: &Event, mutable: bool) -> Option<Self> {
-        match &event.kind {
-            EventKind::D20CheckPerformed(performer, result_kind, dc_kind) => {
-                Some(ScriptEventView::D20CheckPerformed(
-                    ScriptD20CheckView::from_parts(performer.id(), result_kind, dc_kind, mutable),
-                ))
-            }
-
-            EventKind::ActionRequested { action } => Some(ScriptEventView::ActionRequested(
-                ScriptActionView::from(action),
-            )),
-
-            EventKind::ReactionRequested { reaction } => {
-                let action = ActionData::from(reaction);
-                Some(ScriptEventView::ActionRequested(ScriptActionView::from(
-                    &action,
-                )))
-            }
-
-            EventKind::ActionPerformed { action, results } => {
-                let action_view = ScriptActionView::from(action);
-
-                let mut script_results = Vec::new();
-                for result in results {
-                    if let TargetInstance::Entity { entity, .. } = &result.target {
-                        script_results.push(ScriptActionResultView::from_action_result(
-                            action.actor.id(),
-                            entity.id(),
-                            &result.kind,
-                        ));
-                    }
-                }
-
-                Some(ScriptEventView::ActionPerformed(
-                    ScriptActionPerformedView::new(action_view, script_results),
-                ))
-            }
-
-            EventKind::MovingOutOfReach {
-                mover,
-                entity,
-                continue_movement,
-            } => Some(ScriptEventView::MovingOutOfReach(if mutable {
-                ScriptMovingOutOfReachView::new_mut(
-                    ScriptEntity::from(mover.clone()),
-                    ScriptEntity::from(entity.clone()),
-                    *continue_movement,
-                )
-            } else {
-                ScriptMovingOutOfReachView::new(
-                    ScriptEntity::from(mover.clone()),
-                    ScriptEntity::from(entity.clone()),
-                    *continue_movement,
-                )
-            })),
-
-            _ => None,
-        }
-    }
-
-    pub fn apply_to_event(&self, world: &World, reaction_data: &ReactionData, event: &mut Event) {
-        match self {
-            ScriptEventView::D20CheckPerformed(view) => {
-                view.apply_to_event(world, reaction_data, event)
-            }
-            ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(world, event),
-            // Other event view variants are currently read-only.
-            _ => {}
-        }
-    }
-}
-
-macro_rules! impl_event_accessors {
-    ($enum_name:ident {
-        $(
-            $is_name:ident => $as_name:ident : $variant:ident ( $ty:ty )
-        ),+ $(,)?
-    }) => {
-        impl $enum_name {
-            $(
-                pub fn $is_name(&self) -> bool {
-                    matches!(self, Self::$variant(_))
-                }
-
-                pub fn $as_name(&self) -> &$ty {
-                    if let Self::$variant(value) = self {
-                        value
-                    } else {
-                        panic!(concat!("Not a ", stringify!($variant), " event view"));
-                    }
-                }
-            )+
-        }
-    };
-}
-
-impl_event_accessors!(ScriptEventView {
-    is_d20_check_performed => as_d20_check_performed: D20CheckPerformed(ScriptD20CheckView),
-    is_action_requested    => as_action_requested:    ActionRequested(ScriptActionView),
-    is_action_performed    => as_action_performed:    ActionPerformed(ScriptActionPerformedView),
-    is_moving_out_of_reach => as_moving_out_of_reach: MovingOutOfReach(ScriptMovingOutOfReachView),
-});
-
-/// View of a "D20CheckPerformed" event.
+/// View of a "D20CheckPerformed" event. Holds the modifications the script
+/// asked for; the engine applies them back to the actual event after the hook
+/// returns.
+///
+/// The inner data is wrapped in `Arc<RwLock<_>>` so that *clones share state*.
+/// This is essential because Lua field/method access returns owned clones —
+/// without sharing, mutations to one clone would be invisible to the original.
+/// Pattern: script calls `event:as_d20_check_performed():modify_result(...)`
+/// and then `return event`; the engine reads back the modifications from the
+/// returned event's view, which sees the same `Arc` storage.
 #[derive(Clone)]
 pub struct ScriptD20CheckView {
-    pub(crate) inner: ScriptShared<ScriptD20Check>,
+    pub(crate) inner: Arc<RwLock<ScriptD20Check>>,
 }
 
 impl ScriptD20CheckView {
@@ -646,36 +160,30 @@ impl ScriptD20CheckView {
         performer: Entity,
         result_kind: &D20ResultKind,
         dc_kind: &D20CheckDCKind,
-        mutable: bool,
     ) -> Self {
-        let inner = ScriptD20Check {
-            performer: ScriptEntity::from(performer),
-            result_kind: result_kind.clone(),
-            dc_kind: dc_kind.clone(),
-            modifications: Vec::new(),
-        };
-
         ScriptD20CheckView {
-            inner: if mutable {
-                ScriptShared::new_mut(inner)
-            } else {
-                ScriptShared::new(inner)
-            },
+            inner: Arc::new(RwLock::new(ScriptD20Check {
+                performer: ScriptEntity::from(performer),
+                result_kind: result_kind.clone(),
+                dc_kind: dc_kind.clone(),
+                modifications: Vec::new(),
+            })),
         }
     }
 
     pub fn performer(&self) -> ScriptEntity {
-        self.inner.read().performer.clone()
+        self.inner.read().unwrap().performer.clone()
     }
 
     pub fn result(&self) -> ScriptD20Result {
-        let inner = self.inner.read();
+        let inner = self.inner.read().unwrap();
         ScriptD20Result::from(&inner.result_kind, &inner.dc_kind)
     }
 
     pub fn modify_result(&mut self, bonus: ScriptDiceRollBonus) {
         self.inner
             .write()
+            .unwrap()
             .modifications
             .push(ScriptD20CheckModification::ModifyResult { bonus });
     }
@@ -683,6 +191,7 @@ impl ScriptD20CheckView {
     pub fn modify_dc(&mut self, modifier: ScriptDiceRollBonus) {
         self.inner
             .write()
+            .unwrap()
             .modifications
             .push(ScriptD20CheckModification::ModifyDC { modifier });
     }
@@ -690,6 +199,7 @@ impl ScriptD20CheckView {
     pub fn reroll_result(&mut self, bonus: Option<ScriptDiceRollBonus>, force_use_new: bool) {
         self.inner
             .write()
+            .unwrap()
             .modifications
             .push(ScriptD20CheckModification::RerollResult {
                 bonus,
@@ -706,7 +216,7 @@ impl ScriptD20CheckView {
             );
         };
 
-        let inner = self.inner.read();
+        let inner = self.inner.read().unwrap();
         for modification in &inner.modifications {
             match modification {
                 ScriptD20CheckModification::ModifyResult { bonus } => {
@@ -794,6 +304,170 @@ impl ScriptD20CheckView {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Moving-out-of-reach event view
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub(crate) struct ScriptMovingOutOfReach {
+    pub mover: ScriptEntity,
+    pub entity: ScriptEntity,
+    pub continue_movement: bool,
+}
+
+/// View of a "MovingOutOfReach" event. Reactions like Opportunity Attack can
+/// mutate `continue_movement`, and the engine reads it back after the hook
+/// returns. The inner data is `Arc<RwLock<_>>` so clones share state (see
+/// [`ScriptD20CheckView`] for the rationale).
+#[derive(Clone)]
+pub struct ScriptMovingOutOfReachView {
+    pub(crate) inner: Arc<RwLock<ScriptMovingOutOfReach>>,
+}
+
+impl ScriptMovingOutOfReachView {
+    pub fn new(mover: ScriptEntity, entity: ScriptEntity, continue_movement: bool) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(ScriptMovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            })),
+        }
+    }
+
+    pub fn apply_to_event(&self, world: &World, event: &mut Event) {
+        if let EventKind::MovingOutOfReach {
+            mover,
+            entity,
+            continue_movement,
+        } = &mut event.kind
+        {
+            let inner = self.inner.read().unwrap();
+            *mover = EntityIdentifier::from_world(world, inner.mover.clone().into());
+            *entity = EntityIdentifier::from_world(world, inner.entity.clone().into());
+            *continue_movement = inner.continue_movement;
+        } else {
+            panic!(
+                "ScriptMovingOutOfReachView applied to wrong event type: {:?}",
+                event
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ScriptEventView — top-level "what kind of event triggered this hook" enum.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub enum ScriptEventView {
+    ActionRequested(ScriptActionView),
+    ActionPerformed(ScriptActionPerformedView),
+    D20CheckPerformed(ScriptD20CheckView),
+    MovingOutOfReach(ScriptMovingOutOfReachView),
+}
+
+impl ScriptEventView {
+    pub fn from_event(event: &Event) -> Option<Self> {
+        match &event.kind {
+            EventKind::D20CheckPerformed(performer, result_kind, dc_kind) => {
+                Some(ScriptEventView::D20CheckPerformed(
+                    ScriptD20CheckView::from_parts(performer.id(), result_kind, dc_kind),
+                ))
+            }
+
+            EventKind::ActionRequested { action } => Some(ScriptEventView::ActionRequested(
+                ScriptActionView::from(action),
+            )),
+
+            EventKind::ReactionRequested { reaction } => {
+                let action = ActionData::from(reaction);
+                Some(ScriptEventView::ActionRequested(ScriptActionView::from(
+                    &action,
+                )))
+            }
+
+            EventKind::ActionPerformed { action, results } => {
+                let action_view = ScriptActionView::from(action);
+
+                let mut script_results = Vec::new();
+                for result in results {
+                    if let TargetInstance::Entity { entity, .. } = &result.target {
+                        script_results.push(ScriptActionResultView::from_action_result(
+                            action.actor.id(),
+                            entity.id(),
+                            &result.kind,
+                        ));
+                    }
+                }
+
+                Some(ScriptEventView::ActionPerformed(
+                    ScriptActionPerformedView::new(action_view, script_results),
+                ))
+            }
+
+            EventKind::MovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            } => Some(ScriptEventView::MovingOutOfReach(
+                ScriptMovingOutOfReachView::new(
+                    ScriptEntity::from(mover.clone()),
+                    ScriptEntity::from(entity.clone()),
+                    *continue_movement,
+                ),
+            )),
+
+            _ => None,
+        }
+    }
+
+    pub fn apply_to_event(&self, world: &World, reaction_data: &ReactionData, event: &mut Event) {
+        match self {
+            ScriptEventView::D20CheckPerformed(view) => {
+                view.apply_to_event(world, reaction_data, event)
+            }
+            ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(world, event),
+            _ => {}
+        }
+    }
+}
+
+macro_rules! impl_event_accessors {
+    ($enum_name:ident {
+        $(
+            $is_name:ident => $as_name:ident : $variant:ident ( $ty:ty )
+        ),+ $(,)?
+    }) => {
+        impl $enum_name {
+            $(
+                pub fn $is_name(&self) -> bool {
+                    matches!(self, Self::$variant(_))
+                }
+
+                pub fn $as_name(&self) -> &$ty {
+                    if let Self::$variant(value) = self {
+                        value
+                    } else {
+                        panic!(concat!("Not a ", stringify!($variant), " event view"));
+                    }
+                }
+            )+
+        }
+    };
+}
+
+impl_event_accessors!(ScriptEventView {
+    is_d20_check_performed => as_d20_check_performed: D20CheckPerformed(ScriptD20CheckView),
+    is_action_requested    => as_action_requested:    ActionRequested(ScriptActionView),
+    is_action_performed    => as_action_performed:    ActionPerformed(ScriptActionPerformedView),
+    is_moving_out_of_reach => as_moving_out_of_reach: MovingOutOfReach(ScriptMovingOutOfReachView),
+});
+
+// ---------------------------------------------------------------------------
+// Action views
+// ---------------------------------------------------------------------------
+
 #[derive(Clone)]
 pub struct ScriptActionContext {
     pub inner: ActionContext,
@@ -834,48 +508,16 @@ impl From<&ActionContext> for ScriptActionContext {
 }
 
 #[derive(Clone)]
-pub struct ScriptResourceCost {
-    inner: ScriptShared<ResourceAmountMap>,
-}
-
-impl ScriptResourceCost {
-    pub fn costs_resource(&self, resource_id: &ResourceId) -> bool {
-        self.inner.read().contains_key(resource_id)
-    }
-
-    pub fn replace_resource(&mut self, from: &ResourceId, to: &ResourceId, amount: ResourceAmount) {
-        let mut cost = self.inner.write();
-
-        if let Some(from_amount) = cost.get(from) {
-            if &amount >= from_amount {
-                cost.remove(from);
-            } else {
-                cost.entry(from.clone())
-                    .and_modify(|e| *e -= amount.clone());
-            }
-            cost.entry(to.clone())
-                .and_modify(|e| *e += amount.clone())
-                .or_insert(amount);
-        }
-    }
-}
-
-impl_script_shared_methods!(ScriptResourceCost, ResourceAmountMap);
-
-impl From<&ResourceAmountMap> for ScriptResourceCost {
-    fn from(cost: &ResourceAmountMap) -> Self {
-        ScriptResourceCost::new(cost.clone())
-    }
-}
-
-/// Script-facing view of an action (or a reaction treated as an action).
-#[derive(Clone)]
 pub struct ScriptActionView {
     pub action_id: String,
     pub actor: ScriptEntity,
     pub action_context: ScriptActionContext,
-    pub resource_cost: ScriptResourceCost,
     pub targets: Vec<ScriptEntity>,
+    /// Snapshot of the action's resource cost at the time the view was built.
+    /// Scripts use this (via `action:costs_resource(id)`) to distinguish e.g.
+    /// "the action originally cost an action resource and that wasn't yet
+    /// substituted" from "the cost was substituted (so this is an extra attack)".
+    pub resource_cost: ResourceAmountMap,
 }
 
 impl ScriptActionView {
@@ -883,16 +525,20 @@ impl ScriptActionView {
         action_id: &ActionId,
         actor: Entity,
         action_context: &ActionContext,
-        resource_cost: ScriptResourceCost,
         targets: Vec<ScriptEntity>,
+        resource_cost: ResourceAmountMap,
     ) -> Self {
         ScriptActionView {
             action_id: action_id.to_string(),
             actor: ScriptEntity::from(actor),
             action_context: ScriptActionContext::from(action_context),
-            resource_cost,
             targets,
+            resource_cost,
         }
+    }
+
+    pub fn costs_resource(&self, resource_id: &ResourceId) -> bool {
+        self.resource_cost.map.contains_key(resource_id)
     }
 }
 
@@ -902,15 +548,15 @@ impl From<&ActionData> for ScriptActionView {
             action_id: action.action_id.to_string(),
             actor: ScriptEntity::from(action.actor.id()),
             action_context: ScriptActionContext::from(&action.context),
-            resource_cost: ScriptResourceCost::new(action.resource_cost.clone()),
             targets: action
                 .targets
                 .iter()
                 .filter_map(|t| match t {
                     TargetInstance::Entity { entity, .. } => Some(ScriptEntity::from(entity.id())),
-                    TargetInstance::Point(_) => None, // TODO: Handle point targets if needed
+                    TargetInstance::Point(_) => None,
                 })
                 .collect(),
+            resource_cost: action.resource_cost.clone(),
         }
     }
 }
@@ -924,10 +570,6 @@ pub struct ScriptActionPerformedView {
 impl ScriptActionPerformedView {
     pub fn new(action: ScriptActionView, results: Vec<ScriptActionResultView>) -> Self {
         Self { action, results }
-    }
-
-    pub fn results_len(&self) -> i32 {
-        self.results.len() as i32
     }
 
     pub fn results(&self) -> &Vec<ScriptActionResultView> {
@@ -961,10 +603,6 @@ impl ScriptActionResultView {
             kind: ScriptActionKindResultView::from(kind),
         }
     }
-
-    pub fn is_against(&self, entity: &ScriptEntity) -> bool {
-        self.target.id == entity.id
-    }
 }
 
 #[derive(Clone)]
@@ -989,36 +627,6 @@ impl ScriptActionKindResultView {
                     .collect(),
             },
             ActionKindResult::Reaction { .. } => ScriptActionKindResultView::Reaction,
-        }
-    }
-
-    pub fn has_attack_hit(&self) -> bool {
-        match self {
-            ScriptActionKindResultView::Standard(bundle) => bundle.has_attack_hit(),
-            ScriptActionKindResultView::Composite { actions } => {
-                actions.iter().any(|action| action.has_attack_hit())
-            }
-            ScriptActionKindResultView::Reaction => false,
-        }
-    }
-
-    pub fn has_attack_critical_hit(&self) -> bool {
-        match self {
-            ScriptActionKindResultView::Standard(bundle) => bundle.has_attack_critical_hit(),
-            ScriptActionKindResultView::Composite { actions } => actions
-                .iter()
-                .any(|action| action.has_attack_critical_hit()),
-            ScriptActionKindResultView::Reaction => false,
-        }
-    }
-
-    pub fn has_attack_miss(&self) -> bool {
-        match self {
-            ScriptActionKindResultView::Standard(bundle) => bundle.has_attack_miss(),
-            ScriptActionKindResultView::Composite { actions } => {
-                actions.iter().any(|action| action.has_attack_miss())
-            }
-            ScriptActionKindResultView::Reaction => false,
         }
     }
 }
@@ -1049,13 +657,11 @@ macro_rules! impl_action_kind_result_accessors {
 
 impl_action_kind_result_accessors!(ScriptActionKindResultView {
     is_standard => as_standard: Standard(ScriptActionOutcomeBundleView),
-    // if you later add more payload for composite, you can extend similarly
 });
 
 #[derive(Clone)]
 pub struct ScriptActionOutcomeBundleView {
     damage: Option<ScriptDamageOutcomeView>,
-    // effect/healing can be added the same way when you need them
 }
 
 impl ScriptActionOutcomeBundleView {
@@ -1096,23 +702,22 @@ impl ScriptActionOutcomeBundleView {
     }
 }
 
+/// View of a damage outcome inside an action result. The script can read
+/// totals/details but does not get to mutate `DamageRollResult` /
+/// `DamageMitigationResult` from this context — those are already finalized.
 #[derive(Clone)]
 pub struct ScriptDamageOutcomeView {
     resolution: ScriptActionConditionResolution,
-    damage_roll: Option<ScriptDamageRollResult>,
-    damage_taken: Option<ScriptDamageMitigationResult>,
-    // If you want: new_life_state: Option<ScriptLifeStateView>
+    damage_roll: Option<DamageRollResult>,
+    damage_taken: Option<DamageMitigationResult>,
 }
 
 impl ScriptDamageOutcomeView {
     pub fn from(outcome: &DamageOutcome) -> Self {
         Self {
             resolution: ScriptActionConditionResolution::from(&outcome.resolution),
-            damage_roll: outcome.damage_roll.clone().map(ScriptDamageRollResult::new),
-            damage_taken: outcome
-                .damage_taken
-                .clone()
-                .map(ScriptDamageMitigationResult::new),
+            damage_roll: outcome.damage_roll.clone(),
+            damage_taken: outcome.damage_taken.clone(),
         }
     }
 
@@ -1124,7 +729,7 @@ impl ScriptDamageOutcomeView {
         self.damage_roll.is_some()
     }
 
-    pub fn get_damage_roll(&self) -> &ScriptDamageRollResult {
+    pub fn get_damage_roll(&self) -> &DamageRollResult {
         self.damage_roll.as_ref().expect("No damage roll")
     }
 
@@ -1132,24 +737,16 @@ impl ScriptDamageOutcomeView {
         self.damage_taken.is_some()
     }
 
-    pub fn get_damage_taken(&self) -> &ScriptDamageMitigationResult {
+    pub fn get_damage_taken(&self) -> &DamageMitigationResult {
         self.damage_taken.as_ref().expect("No damage taken")
     }
 
-    /// Total damage rolled (pre-mitigation). Returns 0 if absent.
     pub fn damage_roll_total(&self) -> i32 {
-        self.damage_roll
-            .as_ref()
-            .map(|v| v.inner.read().total)
-            .unwrap_or(0)
+        self.damage_roll.as_ref().map(|v| v.total).unwrap_or(0)
     }
 
-    /// Total damage taken (post-mitigation). Returns 0 if absent.
     pub fn damage_taken_total(&self) -> i32 {
-        self.damage_taken
-            .as_ref()
-            .map(|v| v.inner.read().total)
-            .unwrap_or(0)
+        self.damage_taken.as_ref().map(|v| v.total).unwrap_or(0)
     }
 }
 
@@ -1202,16 +799,10 @@ impl From<ScriptActionConditionResolution> for ActionConditionResolution {
     }
 }
 
-/// Which entity are we talking about? We keep this abstract so scripts do
-/// not need entity IDs, only roles.
 #[derive(Clone)]
 pub enum ScriptEntityRole {
-    /// The entity performing the action. For a reaction, this would be the
-    /// entity which performed the event that triggered the reaction.
     Actor,
-    /// The entity reacting to the event (only for reactions).
     Reactor,
-    /// The target of the action/event.
     Target,
 }
 
@@ -1228,22 +819,17 @@ impl FromStr for ScriptEntityRole {
     }
 }
 
-/// Which event are we referring to?
 #[derive(Clone)]
 pub enum ScriptEventRef {
-    TriggerEvent, // the event that caused this reaction
-                  // later: SomeOtherEventById(EventId) if needed
+    TriggerEvent,
 }
 
-/// How to compute a saving throw DC.
 #[derive(Clone)]
 pub struct ScriptSavingThrow {
-    /// Entity role where the saving throw originates
     pub entity: ScriptEntityRole,
     pub saving_throw: SavingThrowDefinition,
 }
 
-/// Bonus to apply to a D20 roll.
 #[derive(Clone)]
 pub enum ScriptDiceRollBonus {
     Flat(IntExpression),
@@ -1291,34 +877,23 @@ impl FromStr for ScriptDiceRollBonus {
     }
 }
 
-/// Plan/description of what the reaction actually does.
-/// This is interpreted by Rust; scripts only *describe* the behaviour.
+// TODO: Can this be replaced with GameState methods inside the scripts?
 #[derive(Clone)]
 pub enum ScriptReactionPlan {
-    /// Do nothing.
     None,
-
-    /// Execute multiple steps in order.
     Sequence(Vec<ScriptReactionPlan>),
-
-    /// Ask an entity to make a saving throw against a DC.
-    /// Then branch into `on_success` or `on_failure`.
     RequireSavingThrow {
         target: ScriptEntityRole,
         dc: ScriptSavingThrow,
         on_success: Box<ScriptReactionPlan>,
         on_failure: Box<ScriptReactionPlan>,
     },
-
-    /// Cancel a specific event (usually the trigger) and maybe refund resources.
     CancelEvent {
         event: ScriptEventRef,
-        resources_to_refund: Vec<ResourceId>, // e.g. spell slots
+        resources_to_refund: Vec<ResourceId>,
     },
 }
 
-/// Result of a reaction body. Scripts can either return the traditional
-/// `ScriptReactionPlan` or provide a modified trigger event view.
 #[derive(Clone)]
 pub enum ScriptReactionBodyResult {
     Plan(ScriptReactionPlan),
@@ -1331,297 +906,29 @@ impl ScriptReactionBodyResult {
     }
 }
 
-/// Snapshot of a loadout for scripts to inspect.
-#[derive(Debug, Clone)]
-pub struct ScriptLoadoutView {
-    pub loadout: Loadout,
-}
-
-impl From<&Loadout> for ScriptLoadoutView {
-    fn from(loadout: &Loadout) -> Self {
-        ScriptLoadoutView {
-            loadout: loadout.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ScriptResourceView {
-    pub inner: ScriptShared<ResourceMap>,
-}
-
-impl ScriptResourceView {
-    pub fn can_afford_resource(&self, resource_id: &ResourceId, amount: &ResourceAmount) -> bool {
-        return self.inner.read().can_afford(resource_id, amount);
-    }
-
-    pub fn add_resource(&mut self, resource_id: &ResourceId, amount: &ResourceAmount) {
-        self.inner.write().add(
-            resource_id.clone(),
-            ResourceBudgetKind::from(amount.clone()),
-            true,
-        );
-    }
-}
-
-impl_script_shared_methods!(ScriptResourceView, ResourceMap);
-impl_take_replace_world!(ScriptResourceView, ResourceMap);
-
-#[derive(Debug, Clone)]
-pub enum ScriptGameCommand {
-    ApplyEffect {
-        applier: ScriptEntity,
-        target: ScriptEntity,
-        effect_id: EffectId,
-        lifetime: EffectLifetimeTemplate,
-        one_shot: bool,
-        // TODO: Not sure about these fields
-        action_id: ActionId,
-        action_context: ActionContext,
-        action_resolution: ActionConditionResolution,
-    },
-    RemoveEffect {
-        target: ScriptEntity,
-        effect_id: EffectId,
-    },
-    Heal {
-        target: ScriptEntity,
-        healing: DiceSetRoll,
-        source: ModifierSource,
-    },
-}
-
-#[derive(Clone)]
-pub struct ScriptCommandBuffer {
-    pub inner: ScriptShared<Vec<ScriptGameCommand>>,
-}
-
-impl ScriptCommandBuffer {
-    pub fn new() -> Self {
-        Self {
-            inner: ScriptShared::new(Vec::new()),
-        }
-    }
-
-    pub fn new_mut() -> Self {
-        Self {
-            inner: ScriptShared::new_mut(Vec::new()),
-        }
-    }
-
-    pub fn apply_effect(
-        &mut self,
-        applier: ScriptEntity,
-        target: ScriptEntity,
-        effect_id: &EffectId,
-        action: ScriptActionPerformedView,
-    ) {
-        self.inner.write().push(ScriptGameCommand::ApplyEffect {
-            applier,
-            target,
-            effect_id: effect_id.clone(),
-            lifetime: EffectLifetimeTemplate::Permanent,
-            one_shot: false,
-
-            action_id: ActionId::from_str(&action.action.action_id).unwrap(),
-            action_context: action.action.action_context.inner.clone(),
-            action_resolution: action
-                .resolution()
-                .map(|r| r.into())
-                .unwrap_or(ActionConditionResolution::Unconditional),
-        });
-    }
-
-    pub fn apply_effect_for_turns(
-        &mut self,
-        applier: ScriptEntity,
-        target: ScriptEntity,
-        effect_id: &EffectId,
-        turns: u32,
-        one_shot: bool,
-        action: ScriptActionPerformedView,
-    ) {
-        self.inner.write().push(ScriptGameCommand::ApplyEffect {
-            applier,
-            target,
-            effect_id: effect_id.clone(),
-            lifetime: EffectLifetimeTemplate::TurnBoundary {
-                entity: EffectEntiyReference::Applier,
-                boundary: TurnBoundary::Start,
-                duration: TimeDuration::from_turns(turns),
-            },
-            one_shot,
-
-            action_id: ActionId::from_str(&action.action.action_id).unwrap(),
-            action_context: action.action.action_context.inner.clone(),
-            action_resolution: action
-                .resolution()
-                .map(|r| r.into())
-                .unwrap_or(ActionConditionResolution::Unconditional),
-        });
-    }
-
-    pub fn remove_effect(&mut self, target: ScriptEntity, effect_id: &EffectId) {
-        self.inner.write().push(ScriptGameCommand::RemoveEffect {
-            target,
-            effect_id: effect_id.clone(),
-        });
-    }
-
-    pub fn heal(
-        &mut self,
-        target: ScriptEntity,
-        dice: String,
-        bonus: ModifierSet,
-        source: ModifierSource,
-    ) {
-        let mut dice_roll: DiceSetRoll = dice.parse().expect("Invalid dice expression for healing");
-        dice_roll.modifiers.add_modifier_set(&bonus);
-        self.inner.write().push(ScriptGameCommand::Heal {
-            target,
-            healing: dice_roll,
-            source,
-        });
-    }
-
-    pub fn take_commands(&mut self) -> Vec<ScriptGameCommand> {
-        std::mem::take(&mut *self.inner.write())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ScriptEntityView {
-    pub entity: ScriptEntity,
-    pub resources: ScriptResourceView,
-    pub loadout: ScriptLoadoutView,
-    pub hp_current: u32,
-    pub hp_max: u32,
-    pub ability_scores: AbilityScoreMap,
-}
-
-impl ScriptEntityView {
-    pub fn new_from_world(world: &World, entity: Entity) -> Self {
-        let hit_points = systems::helpers::get_component_clone::<HitPoints>(world, entity);
-        let ability_scores =
-            systems::helpers::get_component_clone::<AbilityScoreMap>(world, entity);
-        ScriptEntityView {
-            entity: ScriptEntity::from(entity),
-            resources: ScriptResourceView::new_from_world(world, entity),
-            loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
-            hp_current: hit_points.current(),
-            hp_max: hit_points.max(),
-            ability_scores,
-        }
-    }
-
-    pub fn take_from_world(world: &mut World, entity: Entity) -> Self {
-        let hit_points = systems::helpers::get_component_clone::<HitPoints>(world, entity);
-        let ability_scores =
-            systems::helpers::get_component_clone::<AbilityScoreMap>(world, entity);
-        ScriptEntityView {
-            entity: ScriptEntity::from(entity),
-            resources: ScriptResourceView::take_from_world(world, entity),
-            loadout: ScriptLoadoutView::from(&*systems::loadout::loadout(world, entity)),
-            hp_current: hit_points.current(),
-            hp_max: hit_points.max(),
-            ability_scores,
-        }
-    }
-
-    pub fn replace_in_world(self, world: &mut World) {
-        let entity: Entity = self.entity.clone().into();
-        self.resources.replace_in_world(world, entity);
-    }
-}
-
-#[derive(Clone)]
-pub struct ScriptOptionalEntityView {
-    pub inner: Option<ScriptEntityView>,
-}
-
-impl ScriptOptionalEntityView {
-    pub fn empty() -> Self {
-        ScriptOptionalEntityView { inner: None }
-    }
-
-    pub fn new_from_world(world: &World, entity: Option<Entity>) -> Self {
-        if let Some(e) = entity {
-            ScriptOptionalEntityView {
-                inner: Some(ScriptEntityView::new_from_world(world, e)),
-            }
-        } else {
-            ScriptOptionalEntityView { inner: None }
-        }
-    }
-
-    pub fn take_from_world(world: &mut World, entity: Option<Entity>) -> Self {
-        if let Some(e) = entity {
-            ScriptOptionalEntityView {
-                inner: Some(ScriptEntityView::take_from_world(world, e)),
-            }
-        } else {
-            ScriptOptionalEntityView { inner: None }
-        }
-    }
-
-    pub fn replace_in_world(self, world: &mut World) {
-        if let Some(view) = self.inner {
-            view.replace_in_world(world);
-        }
-    }
-
-    pub fn is_some(&self) -> bool {
-        self.inner.is_some()
-    }
-
-    pub fn get(&self) -> &ScriptEntityView {
-        self.inner
-            .as_ref()
-            .expect("No entity in ScriptOptionalEntityView")
-    }
-}
-
-impl From<&ScriptEntityView> for ScriptOptionalEntityView {
-    fn from(view: &ScriptEntityView) -> Self {
-        ScriptOptionalEntityView {
-            inner: Some(view.clone()),
-        }
-    }
-}
-
-impl From<Option<&ScriptEntityView>> for ScriptOptionalEntityView {
-    fn from(view: Option<&ScriptEntityView>) -> Self {
-        ScriptOptionalEntityView {
-            inner: view.cloned(),
-        }
-    }
-}
-
-/// What the trigger function logically receives.
 #[derive(Clone)]
 pub struct ScriptReactionTriggerContext {
     pub reactor: ScriptEntity,
     pub event: ScriptEventView,
 }
 
-/// What the reaction body function logically receives
 #[derive(Clone)]
 pub struct ScriptReactionBodyContext {
     pub reactor: ScriptEntity,
     pub event: ScriptEventView,
     pub reaction_id: String,
     pub context: ScriptActionContext,
-    pub resource_cost: ScriptResourceCost,
+    pub resource_cost: ResourceAmountMap,
 }
 
 impl From<&ReactionData> for ScriptReactionBodyContext {
     fn from(data: &ReactionData) -> Self {
         ScriptReactionBodyContext {
             reactor: ScriptEntity::from(data.reactor.id()),
-            event: ScriptEventView::from_event_mut(&data.event).unwrap(),
+            event: ScriptEventView::from_event(&data.event).unwrap(),
             reaction_id: data.reaction_id.to_string(),
             context: ScriptActionContext::from(&data.context),
-            resource_cost: ScriptResourceCost::new(data.resource_cost.clone()),
+            resource_cost: data.resource_cost.clone(),
         }
     }
 }

@@ -43,7 +43,7 @@ pub struct ActionDefinition {
 impl RegistryReferenceCollector for ActionDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         self.kind.collect_registry_references(collector);
-        for resource in self.resource_cost.keys() {
+        for resource in self.resource_cost.map.keys() {
             collector.add(RegistryReference::Resource(resource.clone()));
         }
         if let Some(reaction_trigger) = &self.reaction_trigger

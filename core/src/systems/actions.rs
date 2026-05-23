@@ -165,19 +165,26 @@ pub fn action_usable_on_targets(
     Ok(())
 }
 
-pub fn available_actions(world: &World, entity: Entity) -> ActionMap {
-    let mut actions = all_actions(world, entity);
+pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
+    let mut actions = all_actions(&game_state.world, entity);
 
     actions.retain(|action_id, action_data| {
         action_data.retain_mut(|(action_context, resource_cost)| {
-            systems::effects::effects(world, entity).resource_cost(
-                world,
+            systems::effects::effects(&game_state.world, entity).resource_cost(
+                game_state,
                 entity,
                 action_id,
                 action_context,
                 resource_cost,
             );
-            action_usable(world, entity, action_id, &action_context, resource_cost).is_ok()
+            action_usable(
+                &game_state.world,
+                entity,
+                action_id,
+                &action_context,
+                resource_cost,
+            )
+            .is_ok()
         });
 
         !action_data.is_empty() // Keep the action if there's at least one usable context
@@ -343,14 +350,16 @@ pub fn targeting_context_data(world: &World, action_data: &ActionData) -> Target
 }
 
 pub fn available_reactions_to_event(
-    world: &World,
-    world_geometry: &WorldGeometry,
+    game_state: &GameState,
     reactor: Entity,
     event: &Event,
 ) -> Vec<ReactionData> {
     let mut reactions = Vec::new();
 
-    for (reaction_id, contexts_and_costs) in systems::actions::available_actions(world, reactor) {
+    let available = systems::actions::available_actions(game_state, reactor);
+    let world = &game_state.world;
+    let world_geometry = &game_state.geometry;
+    for (reaction_id, contexts_and_costs) in available {
         let reaction = systems::actions::get_action(&reaction_id);
         if reaction.is_none() {
             continue;

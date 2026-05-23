@@ -115,8 +115,8 @@ pub fn unequip(
     unequipped_item
 }
 
-pub fn armor_class(world: &World, entity: Entity) -> ArmorClass {
-    loadout(world, entity).armor_class(world, entity)
+pub fn armor_class(game_state: &GameState, entity: Entity) -> ArmorClass {
+    loadout(&game_state.world, entity).armor_class(game_state, entity)
 }
 
 pub fn can_equip(world: &World, entity: Entity, equipment: &EquipmentInstance) -> bool {

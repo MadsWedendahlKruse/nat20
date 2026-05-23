@@ -66,8 +66,7 @@ mod tests {
                 false, // not wielding with both hands
             )
         };
-        let damage_result =
-            systems::damage::damage_roll(damage_roll, &game_state.world, entity, false);
+        let damage_result = systems::damage::damage_roll(damage_roll, &game_state, entity, false);
 
         println!("{:?}", damage_result);
         assert!(

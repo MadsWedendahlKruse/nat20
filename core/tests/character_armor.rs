@@ -27,7 +27,7 @@ mod tests {
                 .clone(),
         );
 
-        let armor_class = systems::loadout::armor_class(&game_state.world, character);
+        let armor_class = systems::loadout::armor_class(&game_state, character);
         assert_eq!(16, armor_class.total());
         println!("{:?}", armor_class);
 
@@ -73,7 +73,7 @@ mod tests {
         );
 
         {
-            let armor_class = systems::loadout::armor_class(&game_state.world, character);
+            let armor_class = systems::loadout::armor_class(&game_state, character);
             // Armour Class
             // Dex: 15 + 2 (item) = 17
             // 12 (armor) + 3 (Dex mod) = 15
@@ -84,7 +84,7 @@ mod tests {
         // Un-equip the armor
         let armor =
             systems::loadout::unequip(&mut game_state, character, &EquipmentSlot::Armor).unwrap();
-        let armor_class = systems::loadout::armor_class(&game_state.world, character);
+        let armor_class = systems::loadout::armor_class(&game_state, character);
         println!("Un-equipped {:?}", armor);
         // Check if the armor class is updated
         println!("{:?}", armor_class);

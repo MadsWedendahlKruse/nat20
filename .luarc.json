@@ -1,0 +1,16 @@
+{
+    "runtime.version": "Lua 5.4",
+    "workspace.library": ["assets/registries/.luastubs"],
+    "workspace.checkThirdParty": false,
+    "diagnostics.globals": ["ReactionPlan", "SavingThrow", "ModifierSet", "ModifierSource"],
+    "diagnostics.disable": ["lowercase-global"],
+
+    "type.weakNilCheck": false,
+
+    "diagnostics.severity": {
+        "need-check-nil":         "Error",
+        "param-type-mismatch":    "Error",
+        "assign-type-mismatch":   "Error",
+        "return-type-mismatch":   "Error"
+    }
+}

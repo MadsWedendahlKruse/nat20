@@ -63,7 +63,7 @@ pub fn damage(
         };
 
     systems::effects::effects(&game_state.world, target).pre_damage_mitigation(
-        &game_state.world,
+        game_state,
         target,
         damage_roll_result,
     );
@@ -71,7 +71,7 @@ pub fn damage(
     let mut mitigation_result = resistances.apply(&damage_roll_result);
 
     systems::effects::effects(&game_state.world, target).post_damage_mitigation(
-        &game_state.world,
+        game_state,
         target,
         &mut mitigation_result,
     );
@@ -148,7 +148,7 @@ pub fn damage(
         let killer = damage_roll_result
             .action
             .as_ref()
-            .and_then(|(actor, _)| Some(actor));
+            .and_then(|(actor, _)| Some(*actor));
 
         let death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
             .values()
@@ -161,7 +161,7 @@ pub fn damage(
             })
             .collect();
         for (hook, applier) in death_hooks {
-            hook(&mut game_state.world, target, killer.cloned(), applier);
+            hook(game_state, target, killer, applier);
         }
 
         let temporary_effects = systems::effects::remove_temporary_effects(game_state, target);

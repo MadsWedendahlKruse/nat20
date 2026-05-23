@@ -441,6 +441,15 @@ pub enum ResourceAmount {
     Tiered { tier: u8, amount: u8 },
 }
 
+impl ResourceAmount {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ResourceAmount::Flat(amt) => *amt == 0,
+            ResourceAmount::Tiered { amount, .. } => *amount == 0,
+        }
+    }
+}
+
 impl Add for ResourceAmount {
     type Output = ResourceAmount;
 
@@ -573,7 +582,65 @@ impl From<ResourceAmount> for String {
     }
 }
 
-pub type ResourceAmountMap = HashMap<ResourceId, ResourceAmount>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResourceAmountMap {
+    pub map: HashMap<ResourceId, ResourceAmount>,
+}
+
+impl ResourceAmountMap {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn replace_resource(
+        &mut self,
+        from: &ResourceId,
+        to: &ResourceId,
+        amount: &ResourceAmount,
+    ) {
+        if let Some(from_amount) = self.map.get(&from) {
+            if amount >= from_amount {
+                self.map.remove(&from);
+            } else {
+                self.map
+                    .entry(from.clone())
+                    .and_modify(|e| *e -= amount.clone());
+            }
+            self.map
+                .entry(to.clone())
+                .and_modify(|e| *e += amount.clone())
+                .or_insert(amount.clone());
+        }
+    }
+}
+
+impl FromIterator<(ResourceId, ResourceAmount)> for ResourceAmountMap {
+    fn from_iter<T: IntoIterator<Item = (ResourceId, ResourceAmount)>>(iter: T) -> Self {
+        let map = iter.into_iter().collect();
+        Self { map }
+    }
+}
+
+impl Serialize for ResourceAmountMap {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.map.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ResourceAmountMap {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map = HashMap::deserialize(deserializer)?;
+        Ok(ResourceAmountMap { map })
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMap {
@@ -700,7 +767,7 @@ impl ResourceMap {
 
     pub fn can_afford_all(&self, cost: &ResourceAmountMap) -> Result<(), Vec<ResourceId>> {
         let mut lacking_resources = Vec::new();
-        for (res_id, res_cost) in cost {
+        for (res_id, res_cost) in &cost.map {
             if !self.can_afford(res_id, res_cost) {
                 lacking_resources.push(res_id.clone());
             }
@@ -730,7 +797,7 @@ impl ResourceMap {
         match self.can_afford_all(cost) {
             Ok(()) => {
                 let mut spend_errors = Vec::new();
-                for (id, res_cost) in cost {
+                for (id, res_cost) in &cost.map {
                     if let Err(e) = self.spend(id, res_cost) {
                         spend_errors.push(e);
                     }
@@ -746,7 +813,7 @@ impl ResourceMap {
                     .into_iter()
                     .map(|id| ResourceError::InsufficientResource {
                         id: id.clone(),
-                        needed: cost.get(&id).unwrap().clone(),
+                        needed: cost.map.get(&id).unwrap().clone(),
                         available: self
                             .get(&id)
                             .unwrap()
@@ -777,7 +844,7 @@ impl ResourceMap {
     }
 
     pub fn restore_all(&mut self, restoration: &ResourceAmountMap) -> Result<(), ResourceError> {
-        for (id, res_restoration) in restoration {
+        for (id, res_restoration) in &restoration.map {
             self.restore(id, res_restoration)?;
         }
 
@@ -1054,7 +1121,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
@@ -1072,7 +1139,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
@@ -1090,7 +1157,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Spell Slot"),
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
@@ -1108,7 +1175,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Spell Slot"),
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
@@ -1126,7 +1193,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
@@ -1146,7 +1213,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
@@ -1177,7 +1244,7 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Spell Slot"),
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
@@ -1211,11 +1278,11 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Spell Slot"),
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );
@@ -1238,11 +1305,11 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Rage"),
             ResourceAmount::Flat(1),
         );
@@ -1269,11 +1336,11 @@ mod tests {
         );
 
         let mut cost = ResourceAmountMap::new();
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Ki Point"),
             ResourceAmount::Flat(2),
         );
-        cost.insert(
+        cost.map.insert(
             ResourceId::new("nat20_core", "Spell Slot"),
             ResourceAmount::Tiered { tier: 1, amount: 2 },
         );

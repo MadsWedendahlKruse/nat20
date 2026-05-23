@@ -1,7 +1,6 @@
 use std::{
     fmt::Display,
     fs::{self, DirEntry},
-    str::FromStr,
 };
 
 use strum::EnumIter;
@@ -11,13 +10,12 @@ use crate::{
     registry::registry::REGISTRIES_FOLDER,
 };
 
+pub const LUA_FILE_EXTENSION: &str = "lua";
+
 #[derive(Debug)]
 pub enum ScriptError {
     MissingFileExtension,
-    UnknownLanguage {
-        full_path: String,
-        extension: String,
-    },
+    InvalidFileExtension(String),
     MissingFunction {
         function_name: String,
         script_id: ScriptId,
@@ -32,14 +30,11 @@ impl Display for ScriptError {
             ScriptError::MissingFileExtension => {
                 write!(f, "Script file is missing a file extension")
             }
-            ScriptError::UnknownLanguage {
-                full_path,
-                extension,
-            } => {
+            ScriptError::InvalidFileExtension(ext) => {
                 write!(
                     f,
-                    "Unknown script language '{}' for script file '{}'",
-                    extension, full_path
+                    "Invalid script file extension: {}, expected '{}'",
+                    ext, LUA_FILE_EXTENSION
                 )
             }
             ScriptError::MissingFunction {
@@ -58,42 +53,11 @@ impl Display for ScriptError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
-pub enum ScriptLanguage {
-    // Lua,
-    Rhai,
-}
-
-impl ScriptLanguage {
-    pub fn file_extension(&self) -> &str {
-        match self {
-            // ScriptLanguage::Lua => "lua",
-            ScriptLanguage::Rhai => "rhai",
-        }
-    }
-}
-
-impl FromStr for ScriptLanguage {
-    type Err = ScriptError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            // "lua" => Ok(ScriptLanguage::Lua),
-            "rhai" => Ok(ScriptLanguage::Rhai),
-            _ => Err(ScriptError::LoadError(format!(
-                "Unknown script language: {}",
-                s
-            ))),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Script {
     pub id: ScriptId,
     pub file_path: String,
     pub content: String,
-    pub language: ScriptLanguage,
 }
 
 impl TryFrom<DirEntry> for Script {
@@ -116,11 +80,12 @@ impl TryFrom<DirEntry> for Script {
             .extension()
             .and_then(|s| s.to_str())
             .ok_or_else(|| ScriptError::MissingFileExtension)?;
-        let language =
-            ScriptLanguage::from_str(file_extension).map_err(|_| ScriptError::UnknownLanguage {
-                full_path: full_file_path.to_string_lossy().to_string(),
-                extension: file_extension.to_string(),
-            })?;
+
+        if file_extension != LUA_FILE_EXTENSION {
+            return Err(ScriptError::InvalidFileExtension(
+                file_extension.to_string(),
+            ));
+        }
 
         // Keep visiting parent folders until we reach the registry root
         let mut script_id = file_name.to_string();
@@ -142,7 +107,6 @@ impl TryFrom<DirEntry> for Script {
             id,
             file_path: full_file_path.to_string_lossy().to_string(),
             content,
-            language,
         })
     }
 }
@@ -161,12 +125,12 @@ pub enum ScriptFunction {
     ActionResultHook,
     ArmorClassHook,
     DamageRollResultHook,
-    PreDamageMitigationHook,
+    DeathHook,
     PostDamageMitigationHook,
+    PreDamageMitigationHook,
     ReactionBody,
     ReactionTrigger,
     ResourceCostHook,
-    DeathHook,
     TurnStartHook,
 }
 
@@ -177,21 +141,19 @@ impl ScriptFunction {
             ScriptFunction::ActionResultHook => "action_result_hook",
             ScriptFunction::ArmorClassHook => "armor_class_hook",
             ScriptFunction::DamageRollResultHook => "damage_roll_result_hook",
-            ScriptFunction::PreDamageMitigationHook => "pre_damage_mitigation_hook",
+            ScriptFunction::DeathHook => "death_hook",
             ScriptFunction::PostDamageMitigationHook => "post_damage_mitigation_hook",
+            ScriptFunction::PreDamageMitigationHook => "pre_damage_mitigation_hook",
             ScriptFunction::ReactionBody => "reaction_body",
             ScriptFunction::ReactionTrigger => "reaction_trigger",
             ScriptFunction::ResourceCostHook => "resource_cost_hook",
-            ScriptFunction::DeathHook => "death_hook",
             ScriptFunction::TurnStartHook => "turn_start_hook",
         }
     }
 
     pub fn defined_in_script(&self, script: &Script) -> bool {
-        match script.language {
-            ScriptLanguage::Rhai => script
-                .content
-                .contains(format!("fn {}", self.fn_name()).as_str()),
-        }
+        script
+            .content
+            .contains(&format!("function {}", self.fn_name()))
     }
 }

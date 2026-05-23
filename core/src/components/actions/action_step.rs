@@ -264,7 +264,7 @@ impl ActionStepCondition {
                     &action.context,
                 );
 
-                let armor_class = systems::loadout::armor_class(&game_state.world, target);
+                let armor_class = systems::loadout::armor_class(game_state, target);
 
                 let attack_event = Event::new(EventKind::D20CheckPerformed(
                     action.actor.clone(),
@@ -634,7 +634,7 @@ impl StepPayloadComponent for StepPayloadDamage {
 
         let mut damage_roll = systems::damage::damage_roll_fn(
             damage_fn.as_ref(),
-            &game_state.world,
+            game_state,
             action.actor.id(),
             &action.context,
             condition_resolution.is_crit(),

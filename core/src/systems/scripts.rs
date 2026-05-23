@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use hecs::World;
+use hecs::{Entity, World};
 use tracing::error;
 
 use crate::{
     components::{
-        actions::action::{ActionKindResult, ReactionResult},
-        effects::effect::EffectInstanceTemplate,
-        id::{EntityIdentifier, ScriptId},
-        modifier::ModifierSource,
+        actions::action::{ActionContext, ActionKindResult, ActionResult, ReactionResult},
+        damage::{DamageMitigationResult, DamageRollResult},
+        effects::effect::EffectInstance,
+        id::{ActionId, EntityIdentifier, ScriptId},
         resource::ResourceAmountMap,
     },
     engine::{
@@ -19,19 +19,19 @@ use crate::{
     registry::registry::ScriptsRegistry,
     scripts::{
         script_api::{
-            ScriptActionPerformedView, ScriptActionView, ScriptCommandBuffer,
-            ScriptDamageMitigationResult, ScriptDamageRollResult, ScriptEffectView,
-            ScriptEntityRole, ScriptEntityView, ScriptEventRef, ScriptGameCommand,
-            ScriptOptionalEntityView, ScriptReactionBodyContext, ScriptReactionBodyResult,
+            ScriptEntityRole, ScriptEventRef, ScriptReactionBodyContext, ScriptReactionBodyResult,
             ScriptReactionPlan, ScriptReactionTriggerContext,
         },
-        script_engine::SCRIPT_ENGINES,
+        script_engine::SCRIPT_ENGINE,
     },
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
     },
 };
+
+// TODO: Since we only have single languauge support, do we still need all these
+// evaluate_* functions?
 
 pub fn evaluate_reaction_trigger(
     reaction_trigger: &ScriptId,
@@ -44,11 +44,7 @@ pub fn evaluate_reaction_trigger(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_reaction_trigger(script, &context) {
+    match SCRIPT_ENGINE.evaluate_reaction_trigger(script, context) {
         Ok(result) => result,
         Err(err) => {
             error!(
@@ -66,11 +62,7 @@ pub fn evaluate_reaction_body(
 ) -> ScriptReactionBodyResult {
     let script = ScriptsRegistry::get(reaction_body)
         .expect(format!("Reaction script not found in registry: {:?}", reaction_body).as_str());
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_reaction_body(script, &context) {
+    match SCRIPT_ENGINE.evaluate_reaction_body(script, context) {
         Ok(result) => result,
         Err(err) => {
             error!(
@@ -84,8 +76,11 @@ pub fn evaluate_reaction_body(
 
 pub fn evaluate_resource_cost_hook(
     resource_cost_hook: &ScriptId,
-    action_view: &ScriptActionView,
-    entity_view: &ScriptEntityView,
+    game_state: &GameState,
+    entity: Entity,
+    action_id: &ActionId,
+    action_context: &ActionContext,
+    resource_cost: &mut ResourceAmountMap,
 ) {
     let script = ScriptsRegistry::get(resource_cost_hook).expect(
         format!(
@@ -94,25 +89,25 @@ pub fn evaluate_resource_cost_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_resource_cost_hook(script, action_view, entity_view) {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating resource cost hook script {:?} for entity {:?}: {:?}",
-                resource_cost_hook, entity_view.entity, err
-            );
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_resource_cost_hook(
+        script,
+        game_state,
+        entity,
+        action_id,
+        action_context,
+        resource_cost,
+    ) {
+        error!(
+            "Error evaluating resource cost hook script {:?} for entity {:?}: {:?}",
+            resource_cost_hook, entity, err
+        );
     }
 }
 
-pub fn evalute_action_hook(
+pub fn evaluate_action_hook(
     action_hook: &ScriptId,
-    action_view: &ScriptActionView,
-    entity_view: &ScriptEntityView,
+    game_state: &mut GameState,
+    action: &ActionData,
 ) {
     let script = ScriptsRegistry::get(action_hook).expect(
         format!(
@@ -121,26 +116,19 @@ pub fn evalute_action_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_action_hook(script, action_view, entity_view) {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating action hook script {:?} for entity {:?}: {:?}",
-                action_hook, entity_view.entity, err
-            );
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_action_hook(script, game_state, action) {
+        error!(
+            "Error evaluating action hook script {:?}: {:?}",
+            action_hook, err
+        );
     }
 }
 
-pub fn evalute_action_result_hook(
+pub fn evaluate_action_result_hook(
     action_result_hook: &ScriptId,
-    action_performed_view: &ScriptActionPerformedView,
-    entity_view: &ScriptEntityView,
-    commands: &ScriptCommandBuffer,
+    game_state: &mut GameState,
+    action: &ActionData,
+    results: &[ActionResult],
 ) {
     let script = ScriptsRegistry::get(action_result_hook).expect(
         format!(
@@ -149,24 +137,19 @@ pub fn evalute_action_result_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_action_result_hook(script, action_performed_view, entity_view, commands) {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating action result hook script {:?} for entity {:?}: {:?}",
-                action_result_hook, entity_view.entity, err
-            );
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_action_result_hook(script, game_state, action, results)
+    {
+        error!(
+            "Error evaluating action result hook script {:?}: {:?}",
+            action_result_hook, err
+        );
     }
 }
 
 pub fn evaluate_armor_class_hook(
     armor_class_hook: &ScriptId,
-    entity_view: &ScriptEntityView,
+    game_state: &GameState,
+    entity: Entity,
 ) -> i32 {
     let script = ScriptsRegistry::get(armor_class_hook).expect(
         format!(
@@ -175,16 +158,12 @@ pub fn evaluate_armor_class_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_armor_class_hook(script, entity_view) {
+    match SCRIPT_ENGINE.evaluate_armor_class_hook(script, game_state, entity) {
         Ok(modifier) => modifier,
         Err(err) => {
             error!(
                 "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
-                armor_class_hook, entity_view.entity, err
+                armor_class_hook, entity, err
             );
             0
         }
@@ -193,8 +172,9 @@ pub fn evaluate_armor_class_hook(
 
 pub fn evaluate_damage_roll_result_hook(
     damage_roll_result_hook: &ScriptId,
-    entity_view: &ScriptEntityView,
-    damage_roll_result: &ScriptDamageRollResult,
+    game_state: &GameState,
+    entity: Entity,
+    damage_roll_result: &mut DamageRollResult,
 ) {
     let script = ScriptsRegistry::get(damage_roll_result_hook).expect(
         format!(
@@ -203,26 +183,25 @@ pub fn evaluate_damage_roll_result_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_damage_roll_result_hook(script, entity_view, damage_roll_result) {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating damage roll result hook script {:?} for entity {:?}: {:?}",
-                damage_roll_result_hook, entity_view.entity, err
-            );
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_damage_roll_result_hook(
+        script,
+        game_state,
+        entity,
+        damage_roll_result,
+    ) {
+        error!(
+            "Error evaluating damage roll result hook script {:?} for entity {:?}: {:?}",
+            damage_roll_result_hook, entity, err
+        );
     }
 }
 
 pub fn evaluate_pre_damage_mitigation_hook(
     pre_damage_mitigation_hook: &ScriptId,
-    entity_view: &ScriptEntityView,
-    effect: &ScriptEffectView,
-    damage_roll_result: &ScriptDamageRollResult,
+    game_state: &GameState,
+    entity: Entity,
+    effect: &EffectInstance,
+    damage_roll_result: &mut DamageRollResult,
 ) {
     let script = ScriptsRegistry::get(pre_damage_mitigation_hook).expect(
         format!(
@@ -231,30 +210,25 @@ pub fn evaluate_pre_damage_mitigation_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_pre_damage_mitigation_hook(
+    if let Err(err) = SCRIPT_ENGINE.evaluate_pre_damage_mitigation_hook(
         script,
-        entity_view,
+        game_state,
+        entity,
         effect,
         damage_roll_result,
     ) {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating pre-damage taken hook script {:?} for entity {:?}: {:?}",
-                pre_damage_mitigation_hook, entity_view.entity, err
-            );
-        }
+        error!(
+            "Error evaluating pre-damage mitigation hook script {:?} for entity {:?}: {:?}",
+            pre_damage_mitigation_hook, entity, err
+        );
     }
 }
 
 pub fn evaluate_post_damage_mitigation_hook(
     damage_mitigation_hook: &ScriptId,
-    entity_view: &ScriptEntityView,
-    damage_mitigation_result: &ScriptDamageMitigationResult,
+    game_state: &GameState,
+    entity: Entity,
+    damage_mitigation_result: &mut DamageMitigationResult,
 ) {
     let script = ScriptsRegistry::get(damage_mitigation_hook).expect(
         format!(
@@ -263,65 +237,44 @@ pub fn evaluate_post_damage_mitigation_hook(
         )
         .as_str(),
     );
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_post_damage_mitigation_hook(script, entity_view, damage_mitigation_result)
-    {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating damage taken hook script {:?} for entity {:?}: {:?}",
-                damage_mitigation_hook, entity_view.entity, err
-            );
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_post_damage_mitigation_hook(
+        script,
+        game_state,
+        entity,
+        damage_mitigation_result,
+    ) {
+        error!(
+            "Error evaluating post-damage mitigation hook script {:?} for entity {:?}: {:?}",
+            damage_mitigation_hook, entity, err
+        );
     }
 }
 
 pub fn evaluate_death_hook(
     death_hook: &ScriptId,
-    victim_entity_view: &ScriptEntityView,
-    killer_entity_view: &ScriptOptionalEntityView,
-    applier_entity_view: &ScriptOptionalEntityView,
+    game_state: &mut GameState,
+    victim: Entity,
+    killer: Option<Entity>,
+    applier: Option<Entity>,
 ) {
     let script = ScriptsRegistry::get(death_hook)
         .expect(format!("Death hook script not found in registry: {:?}", death_hook).as_str());
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    match engine.evaluate_death_hook(
-        script,
-        victim_entity_view,
-        killer_entity_view,
-        applier_entity_view,
-    ) {
-        Ok(()) => {}
-        Err(err) => {
-            error!(
-                "Error evaluating death hook script {:?} for entity {:?}: {:?}",
-                death_hook, victim_entity_view.entity, err
-            );
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_death_hook(script, game_state, victim, killer, applier)
+    {
+        error!(
+            "Error evaluating death hook script {:?} for entity {:?}: {:?}",
+            death_hook, victim, err
+        );
     }
 }
 
-pub fn evaluate_turn_start_hook(
-    script_id: &ScriptId,
-    entity_view: &ScriptEntityView,
-    commands: &ScriptCommandBuffer,
-) {
+pub fn evaluate_turn_start_hook(script_id: &ScriptId, game_state: &mut GameState, entity: Entity) {
     let script = ScriptsRegistry::get(script_id)
         .expect(format!("Turn start hook script not found: {:?}", script_id).as_str());
-    let mut engine_lock = SCRIPT_ENGINES.lock().unwrap();
-    let engine = engine_lock
-        .get_mut(&script.language)
-        .expect(format!("No script engine found for language: {:?}", script.language).as_str());
-    if let Err(err) = engine.evaluate_turn_start_hook(script, entity_view, commands) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_turn_start_hook(script, game_state, entity) {
         error!(
-            "Error evaluating turn start hook script {:?}: {:?}",
-            script_id, err
+            "Error evaluating turn start hook script {:?} for entity {:?}: {:?}",
+            script_id, entity, err
         );
     }
 }
@@ -381,11 +334,11 @@ pub fn apply_reaction_plan(
 
             let mut resources_refunded = ResourceAmountMap::new();
             for resource_id in &resources_to_refund {
-                // TODO: Which resources should we refund if it's *not* the trigger event?
-                resources_refunded.insert(
+                resources_refunded.map.insert(
                     resource_id.clone(),
                     reaction_data
                         .resource_cost
+                        .map
                         .get(resource_id)
                         .cloned()
                         .unwrap(),
@@ -412,26 +365,24 @@ pub fn apply_reaction_plan(
             on_success,
             on_failure,
         } => {
-            // Resolve the target entity
             let target_entity = match target {
                 ScriptEntityRole::Reactor => reaction_data.reactor.id(),
                 ScriptEntityRole::Actor => reaction_data
                     .event
                     .actor()
                     .expect("Trigger event has no actor"),
-                ScriptEntityRole::Target => reaction_data.event.target().expect(
-                    "RequireSavingThrow reaction target role 'Target' but trigger event has no target",
-                ),
+                ScriptEntityRole::Target => reaction_data
+                    .event
+                    .target()
+                    .expect("RequireSavingThrow reaction target role 'Target' but trigger event has no target"),
             };
 
-            // Resolve the DC spec to a real D20CheckDCKind
             let dc_kind = D20CheckDCKind::SavingThrow((dc.saving_throw.function)(
                 &game_state.world,
                 target_entity,
                 &reaction_data.context,
             ));
 
-            // Emit the check event and attach callback to continue the plan.
             let check_event = systems::d20::check(game_state, target_entity, &dc_kind);
 
             let context_clone = reaction_data.clone();
@@ -451,7 +402,6 @@ pub fn apply_reaction_plan(
                         on_failure_plan.clone()
                     };
 
-                    // Continue interpreting the reaction plan
                     apply_reaction_plan(game_state, &context_clone, next_plan);
 
                     CallbackResult::None
@@ -461,66 +411,6 @@ pub fn apply_reaction_plan(
             });
 
             let _ = game_state.process_event_with_response_callback(check_event, callback);
-        }
-    }
-}
-
-pub fn process_script_commands(game_state: &mut GameState, commands: Vec<ScriptGameCommand>) {
-    for command in commands {
-        match command {
-            ScriptGameCommand::ApplyEffect {
-                applier,
-                target,
-                effect_id,
-                lifetime,
-                one_shot,
-                action_id,
-                action_context,
-                action_resolution,
-            } => {
-                let target_entity = target.into();
-
-                game_state.process_event(Event::new(EventKind::GainedEffect {
-                    entity: EntityIdentifier::from_world(&game_state.world, target_entity),
-                    effect: effect_id.clone(),
-                }));
-
-                systems::effects::add_effect_template(
-                    game_state,
-                    applier.into(),
-                    target_entity,
-                    ModifierSource::Action(action_id),
-                    &EffectInstanceTemplate {
-                        effect_id,
-                        lifetime,
-                        end_condition: None,
-                        one_shot,
-                    },
-                    Some(&action_context),
-                    action_resolution,
-                );
-            }
-
-            ScriptGameCommand::RemoveEffect { target, effect_id } => {
-                systems::effects::remove_effects_by_id(game_state, target.into(), &effect_id);
-            }
-
-            ScriptGameCommand::Heal {
-                target,
-                healing,
-                source,
-            } => {
-                // TODO: Should it always be the target rolling their own healing dice?
-                let healing = healing.roll();
-                let target = target.into();
-                systems::health::heal(&mut game_state.world, target, healing.subtotal as u32);
-                let event = Event::new(EventKind::Healing {
-                    entity: EntityIdentifier::from_world(&game_state.world, target),
-                    amount: healing,
-                    source,
-                });
-                game_state.process_event(event);
-            }
         }
     }
 }

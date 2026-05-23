@@ -35,6 +35,7 @@ use crate::{
         proficiency::{Proficiency, ProficiencyLevel},
         saving_throw::{SavingThrowDC, SavingThrowKind},
     },
+    engine::game_state::GameState,
     registry::registry::ItemsRegistry,
     systems::{self},
 };
@@ -287,11 +288,16 @@ impl Loadout {
         }
     }
 
-    pub fn armor_class(&self, world: &World, entity: Entity) -> ArmorClass {
+    pub fn armor_class(&self, game_state: &GameState, entity: Entity) -> ArmorClass {
         if let Some(armor) = &self.armor() {
-            let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
+            let ability_scores =
+                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
             let mut armor_class = armor.armor_class(&ability_scores);
-            systems::effects::effects(world, entity).armor_class(world, entity, &mut armor_class);
+            systems::effects::effects(&game_state.world, entity).armor_class(
+                game_state,
+                entity,
+                &mut armor_class,
+            );
             armor_class
         } else {
             // TODO: Not sure if this is the right way to handle unarmored characters

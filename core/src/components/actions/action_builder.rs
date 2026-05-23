@@ -42,11 +42,11 @@ impl ActionBuilder {
         }
     }
 
-    pub fn available(world: &World, entity: Entity) -> Self {
+    pub fn available(game_state: &GameState, entity: Entity) -> Self {
         Self {
-            actor: EntityIdentifier::from_world(world, entity),
+            actor: EntityIdentifier::from_world(&game_state.world, entity),
             state: Ok(ActionBuilderState::Action {
-                actions: systems::actions::available_actions(world, entity),
+                actions: systems::actions::available_actions(game_state, entity),
             }),
         }
     }
@@ -63,14 +63,14 @@ impl ActionBuilder {
         self.state.as_mut()
     }
 
-    pub fn action(&mut self, world: &World, action_id: &ActionId) -> &mut Self {
+    pub fn action(&mut self, game_state: &GameState, action_id: &ActionId) -> &mut Self {
         let actor = self.actor.clone();
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Action { actions }) => {
-                Self::pick_action(&actor, world, actions, action_id)
+                Self::pick_action(&actor, game_state, actions, action_id)
             }
             Ok(ActionBuilderState::Variant { variants }) => {
-                Self::pick_action(&actor, world, variants, action_id)
+                Self::pick_action(&actor, game_state, variants, action_id)
             }
             Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Action or Variant",
@@ -299,7 +299,7 @@ impl ActionBuilder {
 
     fn pick_action(
         actor: &EntityIdentifier,
-        world: &World,
+        game_state: &GameState,
         actions: &mut ActionMap,
         action_id: &ActionId,
     ) -> Result<ActionBuilderState, ActionBuilderError> {
@@ -321,8 +321,8 @@ impl ActionBuilder {
 
         // TODO: Could it ever cause problems to apply this twice?
         for (context, cost) in contexts_and_costs.iter_mut() {
-            systems::effects::effects(world, actor.id()).resource_cost(
-                world,
+            systems::effects::effects(&game_state.world, actor.id()).resource_cost(
+                game_state,
                 actor.id(),
                 &action_id,
                 context,
@@ -334,7 +334,7 @@ impl ActionBuilder {
             ActionKind::Variant { variants } => {
                 if variants.len() == 1 {
                     // If there's only one variant, skip the variant selection step and go straight to context selection
-                    return Self::pick_action(actor, world, actions, &variants[0]);
+                    return Self::pick_action(actor, game_state, actions, &variants[0]);
                 }
 
                 // Assume all variants have the same contexts and costs
@@ -350,7 +350,7 @@ impl ActionBuilder {
                     // If there's only one context, skip the context selection step
                     return Self::pick_context_and_cost(
                         actor,
-                        world,
+                        &game_state.world,
                         action_id,
                         contexts_and_costs,
                         0,
@@ -714,8 +714,8 @@ mod tests {
         let (mut game_state, fighter) = game_state_fighter;
 
         let action_id = ActionId::new("nat20_core", "action.fighter.action_surge");
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, fighter.id())
+            .action(&game_state, &action_id)
             .perform(&mut game_state);
 
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
@@ -728,8 +728,8 @@ mod tests {
         let (mut game_state, fighter) = game_state_fighter;
 
         let bogus = ActionId::new("nat20_core", "action.does_not_exist");
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .action(&game_state.world, &bogus)
+        let result = ActionBuilder::available(&game_state, fighter.id())
+            .action(&game_state, &bogus)
             .perform(&mut game_state);
 
         assert!(
@@ -747,8 +747,8 @@ mod tests {
 
         // Fighter doesn't know any spells, so this should return an ActionNotAvailable error, not ActionNotFound
         let action_id = ActionId::new("nat20_core", "spell.magic_missile");
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, fighter.id())
+            .action(&game_state, &action_id)
             .perform(&mut game_state);
 
         assert!(
@@ -770,7 +770,7 @@ mod tests {
 
         // Calling target() before action() should poison the builder with
         // an InvalidStateTransition error that surfaces at perform().
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
+        let result = ActionBuilder::available(&game_state, fighter.id())
             .target(&mut game_state, TargetInstance::entity(fighter.clone()))
             .perform(&mut game_state);
 
@@ -802,8 +802,8 @@ mod tests {
         let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state.world, wizard.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, wizard.id())
+            .action(&game_state, &action_id)
             .context_index(&game_state.world, 0)
             .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state);
@@ -818,8 +818,8 @@ mod tests {
         let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state.world, wizard.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, wizard.id())
+            .action(&game_state, &action_id)
             .context_index(&game_state.world, 999) // Invalid index
             .target(&mut game_state, TargetInstance::entity(wizard.clone()))
             .perform(&mut game_state);
@@ -841,8 +841,8 @@ mod tests {
         let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state.world, wizard.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, wizard.id())
+            .action(&game_state, &action_id)
             .context_filter(&game_state.world, |context, _cost| {
                 context
                     .spell
@@ -864,8 +864,8 @@ mod tests {
         let (mut game_state, wizard) = game_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state.world, wizard.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, wizard.id())
+            .action(&game_state, &action_id)
             .context_filter(&game_state.world, |context, _cost| {
                 context
                     .spell
@@ -896,8 +896,8 @@ mod tests {
             .spawn(&mut game_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, fighter.id())
+            .action(&game_state, &action_id)
             .target(&mut game_state, TargetInstance::entity(goblin.clone()))
             .perform(&mut game_state);
 
@@ -920,8 +920,8 @@ mod tests {
             .spawn(&mut game_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, fighter.id())
+            .action(&game_state, &action_id)
             .target(&mut game_state, TargetInstance::entity(goblin.clone()))
             .perform(&mut game_state);
 
@@ -944,8 +944,8 @@ mod tests {
             .spawn(&mut game_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        let result = ActionBuilder::available(&game_state.world, fighter.id())
-            .action(&game_state.world, &action_id)
+        let result = ActionBuilder::available(&game_state, fighter.id())
+            .action(&game_state, &action_id)
             .target(&mut game_state, TargetInstance::entity(goblin.clone()))
             .perform(&mut game_state);
 
@@ -1011,9 +1011,9 @@ mod tests {
             );
 
         // Fighter attacking wizard triggers shield reaction
-        ActionBuilder::available(&game_state.world, fighter.id())
+        ActionBuilder::available(&game_state, fighter.id())
             .action(
-                &game_state.world,
+                &game_state,
                 &ActionId::new("nat20_core", "action.melee_attack"),
             )
             .target(&mut game_state, TargetInstance::entity(wizard.clone()))

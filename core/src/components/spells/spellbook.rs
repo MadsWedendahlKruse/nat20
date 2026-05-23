@@ -908,7 +908,7 @@ impl ActionProvider for Spellbook {
                         let mut resource_cost: ResourceAmountMap =
                             spell.action().resource_cost().clone();
 
-                        resource_cost.insert(
+                        resource_cost.map.insert(
                             spellcasting_rules.spellcasting_resource.clone(),
                             ResourceAmount::Tiered {
                                 tier: cast_level,

@@ -1,0 +1,11 @@
+# Serialize test execution. `SCRIPT_ENGINE` wraps a single `mlua::Lua` state
+# whose send-mode lock isn't reentrant, and our hooks re-enter the engine on
+# the same thread (e.g. `apply_effect` -> `available_reactions_to_event` ->
+# `resource_cost_hook`). Concurrent test threads share that Lua state and
+# deadlock. See [core/src/scripts/script_engine.rs] for the longer
+# explanation.
+#
+# Override with `RUST_TEST_THREADS=N cargo test` if you have a specific reason
+# (e.g. measuring serial overhead).
+[env]
+RUST_TEST_THREADS = "1"

@@ -55,14 +55,7 @@ use crate::{
             quantity::{LengthExpressionDefinition, TimeExpressionDefinition},
         },
     },
-    scripts::{
-        script::ScriptFunction,
-        script_api::{
-            ScriptActionPerformedView, ScriptActionResultView, ScriptActionView,
-            ScriptCommandBuffer, ScriptDamageMitigationResult, ScriptDamageRollResult,
-            ScriptEffectView, ScriptEntityView, ScriptOptionalEntityView, ScriptResourceCost,
-        },
-    },
+    scripts::script::ScriptFunction,
     systems::{self, d20::D20CheckDCKind},
 };
 
@@ -861,22 +854,16 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
         match self {
             DamageRollResultHookDefinition::Script { script } => {
                 let script_id = script.clone();
-
                 Arc::new(
-                    move |world: &World,
+                    move |game_state: &GameState,
                           entity: Entity,
                           damage_roll_result: &mut DamageRollResult| {
-                        let entity_view = ScriptEntityView::new_from_world(world, entity);
-                        let script_damage_roll_result =
-                            ScriptDamageRollResult::take_from(damage_roll_result);
-
                         systems::scripts::evaluate_damage_roll_result_hook(
                             &script_id,
-                            &entity_view,
-                            &script_damage_roll_result,
+                            game_state,
+                            entity,
+                            damage_roll_result,
                         );
-
-                        *damage_roll_result = script_damage_roll_result.into_inner();
                     },
                 )
             }
@@ -885,9 +872,11 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
 
     fn combine_hooks(hooks: Vec<DamageRollResultHook>) -> DamageRollResultHook {
         Arc::new(
-            move |world: &World, entity: Entity, damage_roll_result: &mut DamageRollResult| {
+            move |game_state: &GameState,
+                  entity: Entity,
+                  damage_roll_result: &mut DamageRollResult| {
                 for hook in &hooks {
-                    hook(world, entity, damage_roll_result);
+                    hook(game_state, entity, damage_roll_result);
                 }
             },
         )
@@ -911,7 +900,7 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
             ArmorClassHookDefinition::Modifier { modifier } => Arc::new({
                 let modifier = modifier.clone();
                 let effect = effect.clone();
-                move |_world, _entity, armor_class| {
+                move |_game_state, _entity, armor_class| {
                     armor_class
                         .add_modifier(ModifierSource::Effect(effect.clone()), modifier.delta);
                 }
@@ -921,11 +910,10 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
                 let effect_id = effect.clone();
                 let script_id = script.clone();
                 Arc::new(
-                    move |world: &World, entity: Entity, armor_class: &mut ArmorClass| {
-                        let entity_view = ScriptEntityView::new_from_world(world, entity);
-
-                        let modifier =
-                            systems::scripts::evaluate_armor_class_hook(&script_id, &entity_view);
+                    move |game_state: &GameState, entity: Entity, armor_class: &mut ArmorClass| {
+                        let modifier = systems::scripts::evaluate_armor_class_hook(
+                            &script_id, game_state, entity,
+                        );
                         armor_class
                             .add_modifier(ModifierSource::Effect(effect_id.clone()), modifier);
                     },
@@ -935,9 +923,9 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
     }
 
     fn combine_hooks(hooks: Vec<ArmorClassHook>) -> ArmorClassHook {
-        Arc::new(move |world, entity, armor_class| {
+        Arc::new(move |game_state, entity, armor_class| {
             for hook in &hooks {
-                hook(world, entity, armor_class);
+                hook(game_state, entity, armor_class);
             }
         })
     }
@@ -954,27 +942,23 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
         match self {
             ActionHookDefinition::Script { script } => {
                 let script_id = script.clone();
-                Arc::new(move |world: &mut World, action_data: &ActionData| {
-                    let action_view = ScriptActionView::from(action_data);
-
-                    let entity_view =
-                        ScriptEntityView::take_from_world(world, action_data.actor.id());
-
-                    systems::scripts::evalute_action_hook(&script_id, &action_view, &entity_view);
-
-                    // Replace the entity in the world with the modified one
-                    entity_view.replace_in_world(world);
-                })
+                Arc::new(
+                    move |game_state: &mut GameState, action_data: &ActionData| {
+                        systems::scripts::evaluate_action_hook(&script_id, game_state, action_data);
+                    },
+                )
             }
         }
     }
 
     fn combine_hooks(hooks: Vec<ActionHook>) -> ActionHook {
-        Arc::new(move |world: &mut World, action_data: &ActionData| {
-            for hook in &hooks {
-                hook(world, action_data);
-            }
-        })
+        Arc::new(
+            move |game_state: &mut GameState, action_data: &ActionData| {
+                for hook in &hooks {
+                    hook(game_state, action_data);
+                }
+            },
+        )
     }
 }
 
@@ -1003,50 +987,19 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                     move |game_state: &mut GameState,
                           action_data: &ActionData,
                           results: &[ActionResult]| {
-                        let script_results: Vec<ScriptActionResultView> = results
+                        // Skip if no entity targets — script has nothing to iterate over.
+                        let has_entity_target = results
                             .iter()
-                            .filter_map(|result| {
-                                if let TargetInstance::Entity { entity, .. } = &result.target {
-                                    Some(ScriptActionResultView::from_action_result(
-                                        action_data.actor.id(),
-                                        entity.id(),
-                                        &result.kind,
-                                    ))
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                        if script_results.is_empty() {
-                            // If there are no results, don't run the script
+                            .any(|r| matches!(&r.target, TargetInstance::Entity { .. }));
+                        if !has_entity_target {
                             return;
                         }
-
-                        let action_performed_view = ScriptActionPerformedView::new(
-                            ScriptActionView::from(action_data),
-                            script_results,
-                        );
-
-                        let entity_view = ScriptEntityView::take_from_world(
-                            &mut game_state.world,
-                            action_data.actor.id(),
-                        );
-                        let mut commands = ScriptCommandBuffer::new_mut();
-
-                        systems::scripts::evalute_action_result_hook(
+                        systems::scripts::evaluate_action_result_hook(
                             &script_id,
-                            &action_performed_view,
-                            &entity_view,
-                            &commands,
-                        );
-
-                        systems::scripts::process_script_commands(
                             game_state,
-                            commands.take_commands(),
+                            action_data,
+                            results,
                         );
-
-                        entity_view.replace_in_world(&mut game_state.world);
                     },
                 )
             }
@@ -1078,32 +1031,19 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
             ResourceCostHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |world: &World,
+                    move |game_state: &GameState,
                           entity: Entity,
                           action: &ActionId,
                           context: &ActionContext,
                           resource_costs: &mut ResourceAmountMap| {
-                        // Evaluate the script, which can modify the shared resource costs.
-                        let action_view = ScriptActionView::new(
-                            action,
-                            entity,
-                            context,
-                            // Move out (no clone), leaving an empty map behind temporarily
-                            ScriptResourceCost::take_from(resource_costs),
-                            // TODO: Not sure what to do about targets here
-                            Vec::new(),
-                        );
-
-                        let entity_view = ScriptEntityView::new_from_world(world, entity);
-
                         systems::scripts::evaluate_resource_cost_hook(
                             &script_id,
-                            &action_view,
-                            &entity_view,
+                            game_state,
+                            entity,
+                            action,
+                            context,
+                            resource_costs,
                         );
-
-                        // Move back out (no clone)
-                        *resource_costs = action_view.resource_cost.into_inner();
                     },
                 )
             }
@@ -1112,13 +1052,13 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
 
     fn combine_hooks(hooks: Vec<ResourceCostHook>) -> ResourceCostHook {
         Arc::new(
-            move |world: &World,
+            move |game_state: &GameState,
                   entity: Entity,
                   action: &ActionId,
                   context: &ActionContext,
                   resource_costs: &mut ResourceAmountMap| {
                 for hook in &hooks {
-                    hook(world, entity, action, context, resource_costs);
+                    hook(game_state, entity, action, context, resource_costs);
                 }
             },
         )
@@ -1137,23 +1077,17 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
             PreDamageMitigationHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |world: &World,
+                    move |game_state: &GameState,
                           effect: &EffectInstance,
                           entity: Entity,
                           damage_roll_result: &mut DamageRollResult| {
-                        let entity_view = ScriptEntityView::new_from_world(world, entity);
-                        let effect_view = ScriptEffectView::from(effect);
-                        let script_damage_roll_result =
-                            ScriptDamageRollResult::take_from(damage_roll_result);
-
                         systems::scripts::evaluate_pre_damage_mitigation_hook(
                             &script_id,
-                            &entity_view,
-                            &effect_view,
-                            &script_damage_roll_result,
+                            game_state,
+                            entity,
+                            effect,
+                            damage_roll_result,
                         );
-
-                        *damage_roll_result = script_damage_roll_result.into_inner();
                     },
                 )
             }
@@ -1162,12 +1096,12 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
 
     fn combine_hooks(hooks: Vec<PreDamageMitigationHook>) -> PreDamageMitigationHook {
         Arc::new(
-            move |world: &World,
+            move |game_state: &GameState,
                   effect: &EffectInstance,
                   entity: Entity,
                   damage_roll_result: &mut DamageRollResult| {
                 for hook in &hooks {
-                    hook(world, effect, entity, damage_roll_result);
+                    hook(game_state, effect, entity, damage_roll_result);
                 }
             },
         )
@@ -1186,20 +1120,15 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
             PostDamageMitigationHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |world: &World,
+                    move |game_state: &GameState,
                           entity: Entity,
                           damage_mitigation_result: &mut DamageMitigationResult| {
-                        let entity_view = ScriptEntityView::new_from_world(world, entity);
-                        let script_damage_mitigation_result =
-                            ScriptDamageMitigationResult::take_from(damage_mitigation_result);
-
                         systems::scripts::evaluate_post_damage_mitigation_hook(
                             &script_id,
-                            &entity_view,
-                            &script_damage_mitigation_result,
+                            game_state,
+                            entity,
+                            damage_mitigation_result,
                         );
-
-                        *damage_mitigation_result = script_damage_mitigation_result.into_inner();
                     },
                 )
             }
@@ -1208,11 +1137,11 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
 
     fn combine_hooks(hooks: Vec<PostDamageMitigationHook>) -> PostDamageMitigationHook {
         Arc::new(
-            move |world: &World,
+            move |game_state: &GameState,
                   entity: Entity,
                   damage_mitigation_result: &mut DamageMitigationResult| {
                 for hook in &hooks {
-                    hook(world, entity, damage_mitigation_result);
+                    hook(game_state, entity, damage_mitigation_result);
                 }
             },
         )
@@ -1231,48 +1160,13 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
             DeathHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |world: &mut World,
+                    move |game_state: &mut GameState,
                           victim: Entity,
                           killer: Option<Entity>,
                           applier: Option<Entity>| {
-                        // 1) Take each distinct entity exactly once.
-                        let mut taken: HashMap<Entity, ScriptEntityView> = HashMap::new();
-
-                        take_entity_view_once(world, &mut taken, victim);
-                        if let Some(killer_entity) = killer {
-                            take_entity_view_once(world, &mut taken, killer_entity);
-                        }
-                        if let Some(applier_entity) = applier {
-                            take_entity_view_once(world, &mut taken, applier_entity);
-                        }
-
-                        // 2) Build script inputs as temporary views (clones are OK here),
-                        //    but ensure they drop before we replace back into the world.
-                        {
-                            let victim_view: &ScriptEntityView =
-                                taken.get(&victim).expect("Victim must be taken");
-
-                            let killer_view =
-                                ScriptOptionalEntityView::from(killer.and_then(|e| taken.get(&e)));
-
-                            let applier_view =
-                                ScriptOptionalEntityView::from(applier.and_then(|e| taken.get(&e)));
-
-                            systems::scripts::evaluate_death_hook(
-                                &script_id,
-                                victim_view,
-                                &killer_view,
-                                &applier_view,
-                            );
-
-                            // killer_view and applier_view drop at the end of this scope.
-                        }
-
-                        // 3) Replace back exactly once per entity (no aliasing ambiguity).
-                        //    Drain ensures we move the owned ScriptEntityView out.
-                        for (_entity, view) in taken.drain() {
-                            view.replace_in_world(world);
-                        }
+                        systems::scripts::evaluate_death_hook(
+                            &script_id, game_state, victim, killer, applier,
+                        );
                     },
                 )
             }
@@ -1281,26 +1175,16 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
 
     fn combine_hooks(hooks: Vec<DeathHook>) -> DeathHook {
         Arc::new(
-            move |world: &mut World,
+            move |game_state: &mut GameState,
                   victim: Entity,
                   killer: Option<Entity>,
                   applier: Option<Entity>| {
                 for hook in &hooks {
-                    hook(world, victim, killer, applier);
+                    hook(game_state, victim, killer, applier);
                 }
             },
         )
     }
-}
-
-fn take_entity_view_once(
-    world: &mut World,
-    taken: &mut HashMap<Entity, ScriptEntityView>,
-    entity: Entity,
-) {
-    taken
-        .entry(entity)
-        .or_insert_with(|| ScriptEntityView::take_from_world(world, entity));
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1315,24 +1199,16 @@ impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
             TurnStartHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(move |game_state: &mut GameState, entity: Entity| {
-                    let entity_view =
-                        ScriptEntityView::take_from_world(&mut game_state.world, entity);
-                    let mut commands = ScriptCommandBuffer::new_mut();
-
-                    systems::scripts::evaluate_turn_start_hook(&script_id, &entity_view, &commands);
-
-                    entity_view.replace_in_world(&mut game_state.world);
-
-                    systems::scripts::process_script_commands(game_state, commands.take_commands());
+                    systems::scripts::evaluate_turn_start_hook(&script_id, game_state, entity);
                 })
             }
         }
     }
 
     fn combine_hooks(hooks: Vec<TurnStartHook>) -> TurnStartHook {
-        Arc::new(move |world, entity| {
+        Arc::new(move |game_state, entity| {
             for hook in &hooks {
-                hook(world, entity);
+                hook(game_state, entity);
             }
         })
     }

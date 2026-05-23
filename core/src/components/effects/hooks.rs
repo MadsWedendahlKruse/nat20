@@ -24,21 +24,24 @@ pub type AttackRollResultHook = Arc<dyn Fn(&World, Entity, &mut AttackRollResult
 /// Hook for when an entity is attacked. Parameters are: world, victim, attacker, attack roll result.
 pub type AttackedHook =
     Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut AttackRoll) + Send + Sync>;
-pub type ArmorClassHook = Arc<dyn Fn(&World, Entity, &mut ArmorClass) + Send + Sync>;
+pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&World, Entity, &mut D20Check) + Send + Sync>;
 pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + Send + Sync>;
 pub type DamageRollHook = Arc<dyn Fn(&World, Entity, &mut DamageRoll) + Send + Sync>;
-pub type DamageRollResultHook = Arc<dyn Fn(&World, Entity, &mut DamageRollResult) + Send + Sync>;
-pub type ActionHook = Arc<dyn Fn(&mut World, &ActionData) + Send + Sync>;
+pub type DamageRollResultHook =
+    Arc<dyn Fn(&GameState, Entity, &mut DamageRollResult) + Send + Sync>;
+pub type ActionHook = Arc<dyn Fn(&mut GameState, &ActionData) + Send + Sync>;
 pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &[ActionResult]) + Send + Sync>;
-pub type ResourceCostHook =
-    Arc<dyn Fn(&World, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync>;
+pub type ResourceCostHook = Arc<
+    dyn Fn(&GameState, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync,
+>;
 pub type PreDamageMitigationHook =
-    Arc<dyn Fn(&World, &EffectInstance, Entity, &mut DamageRollResult) + Send + Sync>;
+    Arc<dyn Fn(&GameState, &EffectInstance, Entity, &mut DamageRollResult) + Send + Sync>;
 pub type PostDamageMitigationHook =
-    Arc<dyn Fn(&World, Entity, &mut DamageMitigationResult) + Send + Sync>;
+    Arc<dyn Fn(&GameState, Entity, &mut DamageMitigationResult) + Send + Sync>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)
-pub type DeathHook = Arc<dyn Fn(&mut World, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
+pub type DeathHook =
+    Arc<dyn Fn(&mut GameState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
 pub type TurnStartHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 
 #[derive(Clone)]
