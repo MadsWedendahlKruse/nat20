@@ -22,12 +22,16 @@
 local DamageRollResult = {}
 ---@param min integer
 function DamageRollResult:clamp_damage_dice_min(min) end
+
 ---@return boolean
 function DamageRollResult:is_action_attack_roll() end
+
 ---@return boolean
 function DamageRollResult:is_action_saving_throw() end
+
 ---@return boolean
 function DamageRollResult:is_action_unconditional() end
+
 ---@param dice string         -- e.g. "1d6"
 ---@param damage_type string  -- e.g. "necrotic", "fire"
 function DamageRollResult:add_damage(dice, damage_type) end
@@ -37,20 +41,19 @@ function DamageRollResult:add_damage(dice, damage_type) end
 local DamageMitigationResult = {}
 function DamageMitigationResult:add_immunity() end
 
----@class ScriptDamageOutcomeView
-local ScriptDamageOutcomeView = {}
----@return boolean
-function ScriptDamageOutcomeView:has_damage_roll() end
----@return DamageRollResult
-function ScriptDamageOutcomeView:get_damage_roll() end
----@return boolean
-function ScriptDamageOutcomeView:has_damage_taken() end
----@return DamageMitigationResult
-function ScriptDamageOutcomeView:get_damage_taken() end
+---@class DamageOutcome
+local DamageOutcome = {}
+---@return DamageRollResult?
+function DamageOutcome:damage_roll() end
+
+---@return DamageMitigationResult?
+function DamageOutcome:damage_taken() end
+
 ---@return integer
-function ScriptDamageOutcomeView:damage_roll_total() end
+function DamageOutcome:damage_roll_total() end
+
 ---@return integer
-function ScriptDamageOutcomeView:damage_taken_total() end
+function DamageOutcome:damage_taken_total() end
 
 ------------------------------------------------------------
 -- Effects
@@ -69,14 +72,19 @@ function ScriptDamageOutcomeView:damage_taken_total() end
 local ActionContext = {}
 ---@return boolean
 function ActionContext:is_spell() end
+
 ---@return boolean
 function ActionContext:is_attack_action() end
+
 ---@return boolean
 function ActionContext:is_weapon_attack() end
+
 ---@return boolean
 function ActionContext:is_unarmed_attack() end
+
 ---@return boolean
 function ActionContext:is_melee_attack() end
+
 ---@return boolean
 function ActionContext:is_ranged_attack() end
 
@@ -94,56 +102,51 @@ local ResourceAmountMap = {}
 ---@param resource_id string
 ---@return boolean
 function ResourceAmountMap:costs_resource(resource_id) end
+
 ---@param from string
 ---@param to string
 ---@param new_amount string|integer
 function ResourceAmountMap:replace_resource(from, to, new_amount) end
 
----@class ScriptActionConditionResolution
-local ScriptActionConditionResolution = {}
+---@class ActionConditionResolution
+local ActionConditionResolution = {}
 ---@return boolean
-function ScriptActionConditionResolution:is_unconditional() end
----@return boolean
-function ScriptActionConditionResolution:is_attack_roll() end
----@return boolean
-function ScriptActionConditionResolution:is_saving_throw() end
----@return boolean
-function ScriptActionConditionResolution:is_attack_roll_hit() end
----@return boolean
-function ScriptActionConditionResolution:is_attack_roll_critical_hit() end
----@return boolean
-function ScriptActionConditionResolution:is_saving_throw_success() end
+function ActionConditionResolution:is_unconditional() end
 
----@class ScriptActionOutcomeBundleView
-local ScriptActionOutcomeBundleView = {}
 ---@return boolean
-function ScriptActionOutcomeBundleView:has_damage() end
----@return ScriptDamageOutcomeView
-function ScriptActionOutcomeBundleView:get_damage() end
----@return boolean
-function ScriptActionOutcomeBundleView:has_attack_hit() end
----@return boolean
-function ScriptActionOutcomeBundleView:has_attack_critical_hit() end
----@return boolean
-function ScriptActionOutcomeBundleView:has_attack_miss() end
+function ActionConditionResolution:is_attack_roll() end
 
----@class ScriptActionKindResultView
-local ScriptActionKindResultView = {}
 ---@return boolean
-function ScriptActionKindResultView:is_standard() end
----@return ScriptActionOutcomeBundleView
-function ScriptActionKindResultView:as_standard() end
+function ActionConditionResolution:is_saving_throw() end
 
----@class ScriptActionResultView
+---@return boolean
+function ActionConditionResolution:is_success() end
+
+---@return boolean
+function ActionConditionResolution:is_crit() end
+
+---@class ActionOutcomeBundle
+local ActionOutcomeBundle = {}
+---@return DamageOutcome?
+function ActionOutcomeBundle:damage() end
+
+---@return ActionConditionResolution
+function ActionOutcomeBundle:resolution() end
+
+---@class ActionKindResult
+local ActionKindResult = {}
+---@return ActionOutcomeBundle?
+function ActionKindResult:as_standard() end
+
+---@class ActionResult
 ---@field performer ScriptEntity
----@field target ScriptEntity
----@field kind ScriptActionKindResultView
+---@field target TargetInstance
+---@field kind ActionKindResult
 
----@class ScriptActionPerformedView
----@field action ActionData
-local ScriptActionPerformedView = {}
----@return ScriptActionResultView[]
-function ScriptActionPerformedView:results() end
+---@class TargetInstance
+local TargetInstance = {}
+---@return ScriptEntity?
+function TargetInstance:entity() end
 
 ------------------------------------------------------------
 -- D20 / event views
@@ -165,8 +168,10 @@ function ScriptActionPerformedView:results() end
 local ScriptD20CheckView = {}
 ---@param bonus string
 function ScriptD20CheckView:modify_result(bonus) end
+
 ---@param modifier string
 function ScriptD20CheckView:modify_dc(modifier) end
+
 ---@param bonus string
 ---@param force_use_new boolean
 function ScriptD20CheckView:reroll_result(bonus, force_use_new) end
@@ -180,18 +185,25 @@ function ScriptD20CheckView:reroll_result(bonus, force_use_new) end
 local ScriptEventView = {}
 ---@return boolean
 function ScriptEventView:is_d20_check_performed() end
+
 ---@return ScriptD20CheckView
 function ScriptEventView:as_d20_check_performed() end
+
 ---@return boolean
 function ScriptEventView:is_action_requested() end
+
 ---@return ActionData
 function ScriptEventView:as_action_requested() end
+
 ---@return boolean
 function ScriptEventView:is_action_performed() end
----@return ScriptActionPerformedView
+
+---@return ActionData?, ActionResult[]?
 function ScriptEventView:as_action_performed() end
+
 ---@return boolean
 function ScriptEventView:is_moving_out_of_reach() end
+
 ---@return ScriptMovingOutOfReachView
 function ScriptEventView:as_moving_out_of_reach() end
 
@@ -221,6 +233,7 @@ local GameState = {}
 ---@param amount string|integer
 ---@return boolean
 function GameState:can_afford_resource(entity, resource_id, amount) end
+
 ---@param entity ScriptEntity
 ---@param resource_id string
 ---@param amount string|integer
@@ -229,6 +242,7 @@ function GameState:add_resource(entity, resource_id, amount) end
 ---@param entity ScriptEntity
 ---@return integer
 function GameState:hp_current(entity) end
+
 ---@param entity ScriptEntity
 ---@return integer
 function GameState:hp_max(entity) end
@@ -250,18 +264,22 @@ function GameState:wielding_with_both_hands(entity, weapon_kind) end
 ---@param applier ScriptEntity
 ---@param target ScriptEntity
 ---@param effect_id string
----@param action ScriptActionPerformedView
-function GameState:apply_effect(applier, target, effect_id, action) end
+---@param source_effect string
+---@param context ActionContext
+function GameState:apply_effect(applier, target, effect_id, source_effect, context) end
 
 ---@param applier ScriptEntity
 ---@param target ScriptEntity
 ---@param effect_id string
 ---@param turns integer
 ---@param one_shot boolean
----@param action ScriptActionPerformedView
+---@param source_effect string
+---@param context ActionContext
+---@param resolution ActionConditionResolution
 function GameState:apply_effect_for_turns(
-    applier, target, effect_id, turns, one_shot, action
-) end
+    applier, target, effect_id, turns, one_shot, source_effect, context, resolution
+)
+end
 
 ---@param target ScriptEntity
 ---@param effect_id string
@@ -296,15 +314,18 @@ function ModifierSet_instance:add_modifier(source, value) end
 ReactionPlan = {}
 ---@return ScriptReactionPlan
 function ReactionPlan.none() end
+
 ---@vararg ScriptReactionPlan
 ---@return ScriptReactionPlan
 function ReactionPlan.sequence(...) end
+
 ---@param target_role string  -- "actor" | "reactor" | "target"
 ---@param dc ScriptSavingThrow
 ---@param on_success ScriptReactionPlan
 ---@param on_failure ScriptReactionPlan
 ---@return ScriptReactionPlan
 function ReactionPlan.require_saving_throw(target_role, dc, on_success, on_failure) end
+
 ---@vararg string  -- resource IDs to refund
 ---@return ScriptReactionPlan
 function ReactionPlan.cancel_trigger_event(...) end
@@ -318,6 +339,7 @@ function SavingThrow.dc(entity_role, saving_throw) end
 ModifierSet = {}
 ---@return ModifierSet
 function ModifierSet.empty() end
+
 ---@param source ModifierSource
 ---@param value integer
 ---@return ModifierSet
@@ -327,8 +349,10 @@ ModifierSource = {}
 ---@param ability_name string
 ---@return ModifierSource
 function ModifierSource.ability(ability_name) end
+
 ---@return ModifierSource
 function ModifierSource.base() end
+
 ---@param effect_id string
 ---@return ModifierSource
 function ModifierSource.effect(effect_id) end
@@ -341,7 +365,7 @@ function ModifierSource.effect(effect_id) end
 
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity): integer
 ---@alias ActionHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData)
----@alias ActionResultHookFn fun(game_state: GameState, entity: ScriptEntity, action: ScriptActionPerformedView)
+---@alias ActionResultHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, results: ActionResult[])
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)

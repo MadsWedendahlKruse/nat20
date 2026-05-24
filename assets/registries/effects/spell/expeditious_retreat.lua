@@ -1,6 +1,9 @@
 ---@type ResourceCostHookFn
 local function resource_cost_hook(game_state, entity, action, cost)
-    -- Convert the action cost from an action to a bonus action
+    if action.action_id ~= "nat20_core::action.dash" then
+        return
+    end
+
     if cost:costs_resource("nat20_core::resource.action") then
         cost:replace_resource(
             "nat20_core::resource.action",

@@ -128,7 +128,7 @@ pub fn evaluate_action_result_hook(
     action_result_hook: &ScriptId,
     game_state: &mut GameState,
     action: &ActionData,
-    results: &[ActionResult],
+    results: &Vec<ActionResult>,
 ) {
     let script = ScriptsRegistry::get(action_result_hook).expect(
         format!(

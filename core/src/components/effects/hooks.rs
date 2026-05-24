@@ -31,7 +31,8 @@ pub type DamageRollHook = Arc<dyn Fn(&World, Entity, &mut DamageRoll) + Send + S
 pub type DamageRollResultHook =
     Arc<dyn Fn(&GameState, Entity, &mut DamageRollResult) + Send + Sync>;
 pub type ActionHook = Arc<dyn Fn(&mut GameState, &ActionData) + Send + Sync>;
-pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &[ActionResult]) + Send + Sync>;
+pub type ActionResultHook =
+    Arc<dyn Fn(&mut GameState, &ActionData, &Vec<ActionResult>) + Send + Sync>;
 pub type ResourceCostHook = Arc<
     dyn Fn(&GameState, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync,
 >;

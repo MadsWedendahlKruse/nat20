@@ -60,8 +60,8 @@ use crate::{
         lua::lua_types::{self},
         script::{Script, ScriptError, ScriptFunction},
         script_api::{
-            ScriptActionPerformedView, ScriptEntity, ScriptEventView, ScriptReactionBodyContext,
-            ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
+            ScriptEntity, ScriptEventView, ScriptReactionBodyContext, ScriptReactionBodyResult,
+            ScriptReactionPlan, ScriptReactionTriggerContext,
         },
     },
 };
@@ -263,37 +263,22 @@ impl ScriptEngine {
         script: &Script,
         game_state: &mut GameState,
         action: &ActionData,
-        results: &[ActionResult],
+        results: &Vec<ActionResult>,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionResultHook)?;
 
-        let mut script_results = Vec::new();
-        for result in results {
-            if let TargetInstance::Entity { entity, .. } = &result.target {
-                script_results.push(
-                    crate::scripts::script_api::ScriptActionResultView::from_action_result(
-                        action.actor.id(),
-                        entity.id(),
-                        &result.kind,
-                    ),
-                );
-            }
-        }
-        let performed = ScriptActionPerformedView::new(action.clone(), script_results);
-        let entity = action.actor.id();
-
-        let ent = self
+        let entity = self
             .lua
-            .create_userdata(ScriptEntity::from(entity))
-            .map_err(Self::runtime_error)?;
-        let p = self
-            .lua
-            .create_userdata(performed)
+            .create_userdata(ScriptEntity::from(action.actor.id()))
             .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref_mut(game_state)?;
-                func.call::<()>((gs, ent, p))
+                func.call::<()>((
+                    scope.create_userdata_ref_mut(game_state)?,
+                    entity,
+                    scope.create_userdata_ref(action)?,
+                    results.clone(),
+                ))
             })
             .map_err(Self::runtime_error)
     }

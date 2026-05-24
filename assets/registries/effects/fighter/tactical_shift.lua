@@ -1,14 +1,25 @@
 ---@type ActionResultHookFn
-local function action_result_hook(game_state, entity, action_performed_view)
-    if action_performed_view.action.action_id == "nat20_core::action.fighter.second_wind" then
-        local actor = action_performed_view.action.actor
+local function action_result_hook(game_state, entity, action, results)
+    if action.action_id == "nat20_core::action.fighter.second_wind" then
+        local result = results[0] or results[1]
+        if not result then
+            return
+        end
+
+        local standard_kind = result.kind:as_standard()
+        if not standard_kind then
+            return
+        end
+
         game_state:apply_effect_for_turns(
-            actor,
-            actor,
+            action.actor,
+            action.actor,
             "nat20_core::effect.fighter.tactical_shift_disengage",
             1,
             false,
-            action_performed_view
+            "nat20_core::effect.fighter.tactical_shift",
+            action.action_context,
+            standard_kind:resolution()
         )
     end
 end

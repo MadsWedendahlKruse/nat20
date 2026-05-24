@@ -532,13 +532,13 @@ impl ActionOutcomeBundle {
         self.damage.is_none() && self.effect.is_none() && self.healing.is_none()
     }
 
-    pub fn resolution(&self) -> Option<&ActionConditionResolution> {
+    pub fn resolution(&self) -> &ActionConditionResolution {
         if let Some(damage) = &self.damage {
-            Some(&damage.resolution)
+            &damage.resolution
         } else if let Some(effect) = &self.effect {
-            Some(&effect.resolution)
+            &effect.resolution
         } else {
-            None
+            &ActionConditionResolution::Unconditional
         }
     }
 }

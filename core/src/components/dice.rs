@@ -345,8 +345,8 @@ mod tests {
         assert_eq!(min_roll, 7);
         assert_eq!(max_roll, 26);
 
-        assert!(result.total >= 10 && result.total <= 31);
         println!("{}", result);
+        assert!(result.total >= 7 && result.total <= 26);
     }
 
     #[test]

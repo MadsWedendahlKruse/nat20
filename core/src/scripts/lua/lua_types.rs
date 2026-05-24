@@ -9,33 +9,44 @@
 
 use std::str::FromStr;
 
+use hecs::Entity;
 use mlua::{
-    FromLua, Lua, Result as LuaResult, UserData, UserDataFields, UserDataMethods, Value, Variadic,
+    FromLua, Lua, MetaMethod, Result as LuaResult, UserData, UserDataFields, UserDataMethods,
+    Value, Variadic,
 };
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionCondition, ActionConditionResolution, ActionContext, ActionKind},
+        actions::{
+            action::{
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
+                ActionKindResult, ActionOutcomeBundle, ActionResult, DamageOutcome,
+            },
+            targeting::TargetInstance,
+        },
         damage::{
             CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageRollResult, MitigationOperation,
         },
         dice::{DiceSet, DiceSetRoll},
         effects::effect::{
-            EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
+            self, EffectEntiyReference, EffectInstance, EffectInstanceTemplate,
+            EffectLifetimeTemplate,
         },
         health::hit_points::HitPoints,
-        id::{ActionId, EffectId, ResourceId},
+        id::{EffectId, EntityIdentifier, ResourceId},
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         time::{TimeDuration, TurnBoundary},
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::{
+        action_prompt::ActionData,
+        event::{Event, EventKind},
+        game_state::GameState,
+    },
     scripts::script_api::{
-        ScriptActionConditionResolution, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
-        ScriptActionPerformedView, ScriptActionResultView, ScriptD20CheckDCKind,
-        ScriptD20CheckView, ScriptD20Result, ScriptDamageOutcomeView, ScriptDiceRollBonus,
+        ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result, ScriptDiceRollBonus,
         ScriptEntity, ScriptEventRef, ScriptEventView, ScriptMovingOutOfReachView,
         ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
         ScriptReactionTriggerContext, ScriptSavingThrow,
@@ -114,12 +125,11 @@ impl_from_lua_userdata!(
     ScriptReactionBodyResult,
     ActionContext,
     ActionData,
-    ScriptActionConditionResolution,
-    ScriptDamageOutcomeView,
-    ScriptActionOutcomeBundleView,
-    ScriptActionKindResultView,
-    ScriptActionResultView,
-    ScriptActionPerformedView,
+    ActionConditionResolution,
+    DamageOutcome,
+    ActionOutcomeBundle,
+    ActionResult,
+    ActionKindResult,
     ScriptEventView,
     ScriptReactionTriggerContext,
     ScriptReactionBodyContext,
@@ -141,9 +151,7 @@ impl UserData for ScriptEntity {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(mlua::MetaMethod::Eq, |_, a, b: ScriptEntity| {
-            Ok(a.id == b.id)
-        });
+        methods.add_meta_method(MetaMethod::Eq, |_, a, b: ScriptEntity| Ok(a.id == b.id));
     }
 }
 
@@ -428,82 +436,82 @@ impl UserData for ActionData {
     }
 }
 
-impl UserData for ScriptActionConditionResolution {
+impl UserData for ActionConditionResolution {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method(
-            "is_unconditional",
-            |_, this, ()| Ok(this.is_unconditional()),
-        );
-        methods.add_method("is_attack_roll", |_, this, ()| Ok(this.is_attack_roll()));
-        methods.add_method("is_saving_throw", |_, this, ()| Ok(this.is_saving_throw()));
-        methods.add_method("is_attack_roll_hit", |_, this, ()| {
-            Ok(this.is_attack_roll_hit())
+        methods.add_method("is_unconditional", |_, this, ()| {
+            Ok(matches!(this, ActionConditionResolution::Unconditional))
         });
-        methods.add_method("is_attack_roll_critical_hit", |_, this, ()| {
-            Ok(this.is_attack_roll_critical_hit())
+        methods.add_method("is_attack_roll", |_, this, ()| {
+            Ok(matches!(this, ActionConditionResolution::AttackRoll { .. }))
         });
-        methods.add_method("is_saving_throw_success", |_, this, ()| {
-            Ok(this.is_saving_throw_success())
+        methods.add_method("is_saving_throw", |_, this, ()| {
+            Ok(matches!(
+                this,
+                ActionConditionResolution::SavingThrow { .. }
+            ))
         });
+        methods.add_method("is_success", |_, this, ()| Ok(this.is_success()));
+        methods.add_method("is_crit", |_, this, ()| Ok(this.is_crit()));
     }
 }
 
-impl UserData for ScriptDamageOutcomeView {
+impl UserData for DamageOutcome {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("has_damage_roll", |_, this, ()| Ok(this.has_damage_roll()));
-        methods.add_method("get_damage_roll", |_, this, ()| {
-            Ok(this.get_damage_roll().clone())
-        });
-        methods.add_method(
-            "has_damage_taken",
-            |_, this, ()| Ok(this.has_damage_taken()),
-        );
-        methods.add_method("get_damage_taken", |_, this, ()| {
-            Ok(this.get_damage_taken().clone())
-        });
+        methods.add_method("damage_roll", |_, this, ()| Ok(this.damage_roll.clone()));
+        methods.add_method("damage_taken", |_, this, ()| Ok(this.damage_taken.clone()));
         methods.add_method("damage_roll_total", |_, this, ()| {
-            Ok(this.damage_roll_total())
+            Ok(this
+                .damage_roll
+                .as_ref()
+                .map(|damage_roll| damage_roll.total)
+                .unwrap_or(0))
         });
         methods.add_method("damage_taken_total", |_, this, ()| {
-            Ok(this.damage_taken_total())
+            Ok(this
+                .damage_taken
+                .as_ref()
+                .map(|mitigation| mitigation.total)
+                .unwrap_or(0))
         });
     }
 }
 
-impl UserData for ScriptActionOutcomeBundleView {
+impl UserData for ActionOutcomeBundle {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("has_damage", |_, this, ()| Ok(this.has_damage()));
-        methods.add_method("get_damage", |_, this, ()| Ok(this.get_damage().clone()));
-        methods.add_method("has_attack_hit", |_, this, ()| Ok(this.has_attack_hit()));
-        methods.add_method("has_attack_critical_hit", |_, this, ()| {
-            Ok(this.has_attack_critical_hit())
+        methods.add_method("damage", |_, this, ()| Ok(this.damage.clone()));
+        methods.add_method("resolution", |_, this, ()| Ok(this.resolution().clone()));
+    }
+}
+
+impl UserData for ActionKindResult {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("as_standard", |_, this, ()| {
+            Ok(match this {
+                ActionKindResult::Standard(outcome) => Some(outcome.clone()),
+                _ => None,
+            })
         });
-        methods.add_method("has_attack_miss", |_, this, ()| Ok(this.has_attack_miss()));
     }
 }
 
-impl UserData for ScriptActionKindResultView {
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_standard", |_, this, ()| Ok(this.is_standard()));
-        methods.add_method("as_standard", |_, this, ()| Ok(this.as_standard().clone()));
-    }
-}
-
-impl UserData for ScriptActionResultView {
+impl UserData for ActionResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("performer", |_, this| Ok(this.performer.clone()));
+        fields.add_field_method_get("performer", |_, this| {
+            Ok(ScriptEntity::from(this.performer.id()))
+        });
         fields.add_field_method_get("target", |_, this| Ok(this.target.clone()));
         fields.add_field_method_get("kind", |_, this| Ok(this.kind.clone()));
     }
 }
 
-impl UserData for ScriptActionPerformedView {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("action", |_, this| Ok(this.action.clone()));
-    }
-
+impl UserData for TargetInstance {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("results", |_, this, ()| Ok(this.results().clone()));
+        methods.add_method("entity", |_, this, ()| {
+            Ok(match this {
+                TargetInstance::Entity { entity, .. } => Some(ScriptEntity::from(entity.id())),
+                TargetInstance::Point { .. } => None,
+            })
+        });
     }
 }
 
@@ -525,7 +533,7 @@ impl UserData for ScriptEventView {
             Ok(this.is_action_performed())
         });
         methods.add_method("as_action_performed", |_, this, ()| {
-            Ok(this.as_action_performed().clone())
+            Ok(this.as_action_performed())
         });
         methods.add_method("is_moving_out_of_reach", |_, this, ()| {
             Ok(this.is_moving_out_of_reach())
@@ -646,14 +654,24 @@ impl UserData for GameState {
             "apply_effect",
             |_,
              this,
-             (applier, target, effect_id, action): (
+             (applier, target, effect_id, source_effect, context): (
                 ScriptEntity,
                 ScriptEntity,
                 String,
-                ScriptActionPerformedView,
+                String,
+                ActionContext,
             )| {
-                let effect_id = parse_effect_id(&effect_id)?;
-                apply_effect_impl(this, applier, target, effect_id, None, false, action);
+                apply_effect_impl(
+                    this,
+                    applier,
+                    target,
+                    parse_effect_id(&effect_id)?,
+                    None,
+                    false,
+                    parse_effect_id(&source_effect)?,
+                    context,
+                    ActionConditionResolution::Unconditional,
+                );
                 Ok(())
             },
         );
@@ -662,28 +680,31 @@ impl UserData for GameState {
             "apply_effect_for_turns",
             |_,
              this,
-             (applier, target, effect_id, turns, one_shot, action): (
+             (applier, target, effect_id, turns, one_shot, source_effect, context, resolution): (
                 ScriptEntity,
                 ScriptEntity,
                 String,
                 i64,
                 bool,
-                ScriptActionPerformedView,
+                String,
+                ActionContext,
+                ActionConditionResolution,
             )| {
                 if turns <= 0 {
                     return Err(mlua::Error::RuntimeError(
                         "turns must be greater than 0".into(),
                     ));
                 }
-                let effect_id = parse_effect_id(&effect_id)?;
                 apply_effect_impl(
                     this,
                     applier,
                     target,
-                    effect_id,
+                    parse_effect_id(&effect_id)?,
                     Some(turns as u32),
                     one_shot,
-                    action,
+                    parse_effect_id(&source_effect)?,
+                    context,
+                    resolution,
                 );
                 Ok(())
             },
@@ -740,7 +761,9 @@ fn apply_effect_impl(
     effect_id: EffectId,
     turns: Option<u32>,
     one_shot: bool,
-    action: ScriptActionPerformedView,
+    source: EffectId,
+    context: ActionContext,
+    resolution: ActionConditionResolution,
 ) {
     let lifetime = match turns {
         Some(t) => EffectLifetimeTemplate::TurnBoundary {
@@ -751,38 +774,26 @@ fn apply_effect_impl(
         None => EffectLifetimeTemplate::Permanent,
     };
 
-    let action_id = action.action.action_id.clone();
-    let action_context = action.action.context.clone();
-    let action_resolution = action
-        .resolution()
-        .map(|r| r.into())
-        .unwrap_or(ActionConditionResolution::Unconditional);
+    let target_entity: Entity = target.into();
 
-    let target_entity: hecs::Entity = target.into();
-
-    game_state.process_event(crate::engine::event::Event::new(
-        crate::engine::event::EventKind::GainedEffect {
-            entity: crate::components::id::EntityIdentifier::from_world(
-                &game_state.world,
-                target_entity,
-            ),
-            effect: effect_id.clone(),
-        },
-    ));
+    game_state.process_event(Event::new(EventKind::GainedEffect {
+        entity: EntityIdentifier::from_world(&game_state.world, target_entity),
+        effect: effect_id.clone(),
+    }));
 
     systems::effects::add_effect_template(
         game_state,
         applier.into(),
         target_entity,
-        ModifierSource::Action(action_id),
+        ModifierSource::Effect(source),
         &EffectInstanceTemplate {
             effect_id,
             lifetime,
             end_condition: None,
             one_shot,
         },
-        Some(&action_context),
-        action_resolution,
+        Some(&context),
+        resolution,
     );
 }
 

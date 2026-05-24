@@ -2,6 +2,8 @@ use std::{collections::HashSet, u32};
 
 use hecs::Entity;
 use parry3d::{na::Point3, utils::hashmap::HashMap};
+use tracing::subscriber::DefaultGuard;
+use tracing_subscriber::{EnvFilter, util::SubscriberInitExt};
 use uom::si::f32::Length;
 
 use crate::{
@@ -40,6 +42,7 @@ pub struct Scenario {
     pub game_state: GameState,
     pub creatures: HashMap<String, CreatureProbe>,
     pub encounter_id: Option<EncounterId>,
+    log_guard: DefaultGuard,
 }
 
 impl Scenario {
@@ -48,11 +51,25 @@ impl Scenario {
             game_state,
             creatures: HashMap::default(),
             encounter_id: None,
+            log_guard: Self::init_test_logging(),
         }
     }
 
     pub fn new() -> Self {
         Self::from_game_state(fixtures::engine::game_state())
+    }
+
+    fn init_test_logging() -> DefaultGuard {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
+            )
+            .with_test_writer() // print!() — cargo captures, shows on failure only
+            .with_target(true)
+            .with_level(true)
+            .with_ansi(true) // ANSI escapes look ugly in cargo's captured output
+            .finish()
+            .set_default()
     }
 
     pub fn probe(&mut self, handle: impl Into<String>) -> ScenarioProbe<'_> {

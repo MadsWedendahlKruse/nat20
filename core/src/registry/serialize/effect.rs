@@ -986,7 +986,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                 Arc::new(
                     move |game_state: &mut GameState,
                           action_data: &ActionData,
-                          results: &[ActionResult]| {
+                          results: &Vec<ActionResult>| {
                         // Skip if no entity targets — script has nothing to iterate over.
                         let has_entity_target = results
                             .iter()
@@ -1010,7 +1010,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
         Arc::new(
             move |game_state: &mut GameState,
                   action_data: &ActionData,
-                  results: &[ActionResult]| {
+                  results: &Vec<ActionResult>| {
                 for hook in &hooks {
                     hook(game_state, action_data, results);
                 }

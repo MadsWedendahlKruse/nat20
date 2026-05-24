@@ -7,16 +7,9 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::{
-            action::{
-                ActionConditionResolution, ActionContext, ActionKindResult, ActionOutcomeBundle,
-                DamageOutcome,
-            },
-            targeting::TargetInstance,
-        },
-        damage::{DamageMitigationResult, DamageRollResult},
+        actions::action::{ActionContext, ActionResult},
         dice::{DiceSet, DiceSetRoll},
-        id::{ActionId, EntityIdentifier, ResourceId},
+        id::{EntityIdentifier, ResourceId},
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::ResourceAmountMap,
     },
@@ -362,7 +355,7 @@ impl ScriptMovingOutOfReachView {
 #[derive(Clone)]
 pub enum ScriptEventView {
     ActionRequested(ActionData),
-    ActionPerformed(ScriptActionPerformedView),
+    ActionPerformed(ActionData, Vec<ActionResult>),
     D20CheckPerformed(ScriptD20CheckView),
     MovingOutOfReach(ScriptMovingOutOfReachView),
 }
@@ -385,22 +378,9 @@ impl ScriptEventView {
                 Some(ScriptEventView::ActionRequested(action.clone()))
             }
 
-            EventKind::ActionPerformed { action, results } => {
-                let mut script_results = Vec::new();
-                for result in results {
-                    if let TargetInstance::Entity { entity, .. } = &result.target {
-                        script_results.push(ScriptActionResultView::from_action_result(
-                            action.actor.id(),
-                            entity.id(),
-                            &result.kind,
-                        ));
-                    }
-                }
-
-                Some(ScriptEventView::ActionPerformed(
-                    ScriptActionPerformedView::new(action.clone(), script_results),
-                ))
-            }
+            EventKind::ActionPerformed { action, results } => Some(
+                ScriptEventView::ActionPerformed(action.clone(), results.clone()),
+            ),
 
             EventKind::MovingOutOfReach {
                 mover,
@@ -418,6 +398,54 @@ impl ScriptEventView {
         }
     }
 
+    pub fn is_action_requested(&self) -> bool {
+        matches!(self, ScriptEventView::ActionRequested(_))
+    }
+
+    pub fn as_action_requested(&self) -> &ActionData {
+        if let ScriptEventView::ActionRequested(action) = self {
+            action
+        } else {
+            panic!("Not an ActionRequested event view");
+        }
+    }
+
+    pub fn is_action_performed(&self) -> bool {
+        matches!(self, ScriptEventView::ActionPerformed(_, _))
+    }
+
+    pub fn as_action_performed(&self) -> (ActionData, Vec<ActionResult>) {
+        if let ScriptEventView::ActionPerformed(action, results) = self {
+            (action.clone(), results.clone())
+        } else {
+            panic!("Not an ActionPerformed event view");
+        }
+    }
+
+    pub fn is_d20_check_performed(&self) -> bool {
+        matches!(self, ScriptEventView::D20CheckPerformed(_))
+    }
+
+    pub fn as_d20_check_performed(&self) -> &ScriptD20CheckView {
+        if let ScriptEventView::D20CheckPerformed(view) = self {
+            view
+        } else {
+            panic!("Not a D20CheckPerformed event view");
+        }
+    }
+
+    pub fn is_moving_out_of_reach(&self) -> bool {
+        matches!(self, ScriptEventView::MovingOutOfReach(_))
+    }
+
+    pub fn as_moving_out_of_reach(&self) -> &ScriptMovingOutOfReachView {
+        if let ScriptEventView::MovingOutOfReach(view) = self {
+            view
+        } else {
+            panic!("Not a MovingOutOfReach event view");
+        }
+    }
+
     pub fn apply_to_event(&self, world: &World, reaction_data: &ReactionData, event: &mut Event) {
         match self {
             ScriptEventView::D20CheckPerformed(view) => {
@@ -426,275 +454,6 @@ impl ScriptEventView {
             ScriptEventView::MovingOutOfReach(view) => view.apply_to_event(world, event),
             _ => {}
         }
-    }
-}
-
-macro_rules! impl_event_accessors {
-    ($enum_name:ident {
-        $(
-            $is_name:ident => $as_name:ident : $variant:ident ( $ty:ty )
-        ),+ $(,)?
-    }) => {
-        impl $enum_name {
-            $(
-                pub fn $is_name(&self) -> bool {
-                    matches!(self, Self::$variant(_))
-                }
-
-                pub fn $as_name(&self) -> &$ty {
-                    if let Self::$variant(value) = self {
-                        value
-                    } else {
-                        panic!(concat!("Not a ", stringify!($variant), " event view"));
-                    }
-                }
-            )+
-        }
-    };
-}
-
-impl_event_accessors!(ScriptEventView {
-    is_d20_check_performed => as_d20_check_performed: D20CheckPerformed(ScriptD20CheckView),
-    is_action_requested    => as_action_requested:    ActionRequested(ActionData),
-    is_action_performed    => as_action_performed:    ActionPerformed(ScriptActionPerformedView),
-    is_moving_out_of_reach => as_moving_out_of_reach: MovingOutOfReach(ScriptMovingOutOfReachView),
-});
-
-#[derive(Clone)]
-pub struct ScriptActionPerformedView {
-    pub action: ActionData,
-    pub results: Vec<ScriptActionResultView>,
-}
-
-impl ScriptActionPerformedView {
-    pub fn new(action: ActionData, results: Vec<ScriptActionResultView>) -> Self {
-        Self { action, results }
-    }
-
-    pub fn results(&self) -> &Vec<ScriptActionResultView> {
-        &self.results
-    }
-
-    pub fn resolution(&self) -> Option<ScriptActionConditionResolution> {
-        for result in &self.results {
-            if let ScriptActionKindResultView::Standard(bundle) = &result.kind {
-                if let Some(resolution) = bundle.get_resolution() {
-                    return Some(resolution.clone());
-                }
-            }
-        }
-        None
-    }
-}
-
-#[derive(Clone)]
-pub struct ScriptActionResultView {
-    pub performer: ScriptEntity,
-    pub target: ScriptEntity,
-    pub kind: ScriptActionKindResultView,
-}
-
-impl ScriptActionResultView {
-    pub fn from_action_result(performer: Entity, target: Entity, kind: &ActionKindResult) -> Self {
-        Self {
-            performer: ScriptEntity::from(performer),
-            target: ScriptEntity::from(target),
-            kind: ScriptActionKindResultView::from(kind),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum ScriptActionKindResultView {
-    Standard(ScriptActionOutcomeBundleView),
-    Composite {
-        actions: Vec<ScriptActionKindResultView>,
-    },
-    Reaction,
-}
-
-impl ScriptActionKindResultView {
-    pub fn from(kind: &ActionKindResult) -> Self {
-        match kind {
-            ActionKindResult::Standard(bundle) => {
-                ScriptActionKindResultView::Standard(ScriptActionOutcomeBundleView::from(bundle))
-            }
-            ActionKindResult::Composite { actions } => ScriptActionKindResultView::Composite {
-                actions: actions
-                    .iter()
-                    .map(ScriptActionKindResultView::from)
-                    .collect(),
-            },
-            ActionKindResult::Reaction { .. } => ScriptActionKindResultView::Reaction,
-        }
-    }
-}
-
-macro_rules! impl_action_kind_result_accessors {
-    ($enum_name:ident {
-        $(
-            $is_name:ident => $as_name:ident : $variant:ident ( $ty:ty )
-        ),+ $(,)?
-    }) => {
-        impl $enum_name {
-            $(
-                pub fn $is_name(&self) -> bool {
-                    matches!(self, Self::$variant(_))
-                }
-
-                pub fn $as_name(&self) -> &$ty {
-                    if let Self::$variant(value) = self {
-                        value
-                    } else {
-                        panic!(concat!("Not a ", stringify!($variant), " result"));
-                    }
-                }
-            )+
-        }
-    };
-}
-
-impl_action_kind_result_accessors!(ScriptActionKindResultView {
-    is_standard => as_standard: Standard(ScriptActionOutcomeBundleView),
-});
-
-#[derive(Clone)]
-pub struct ScriptActionOutcomeBundleView {
-    damage: Option<ScriptDamageOutcomeView>,
-}
-
-impl ScriptActionOutcomeBundleView {
-    pub fn from(bundle: &ActionOutcomeBundle) -> Self {
-        Self {
-            damage: bundle.damage.as_ref().map(ScriptDamageOutcomeView::from),
-        }
-    }
-
-    pub fn has_damage(&self) -> bool {
-        self.damage.is_some()
-    }
-
-    pub fn get_damage(&self) -> &ScriptDamageOutcomeView {
-        self.damage.as_ref().expect("No damage outcome")
-    }
-
-    pub fn get_resolution(&self) -> Option<&ScriptActionConditionResolution> {
-        self.damage.as_ref().map(|damage| damage.get_resolution())
-    }
-
-    pub fn has_attack_hit(&self) -> bool {
-        self.damage
-            .as_ref()
-            .is_some_and(|damage| damage.resolution.is_attack_roll_hit())
-    }
-
-    pub fn has_attack_critical_hit(&self) -> bool {
-        self.damage
-            .as_ref()
-            .is_some_and(|damage| damage.resolution.is_attack_roll_critical_hit())
-    }
-
-    pub fn has_attack_miss(&self) -> bool {
-        self.damage.as_ref().is_some_and(|damage| {
-            damage.resolution.is_attack_roll() && !damage.resolution.is_attack_roll_hit()
-        })
-    }
-}
-
-/// View of a damage outcome inside an action result. The script can read
-/// totals/details but does not get to mutate `DamageRollResult` /
-/// `DamageMitigationResult` from this context — those are already finalized.
-#[derive(Clone)]
-pub struct ScriptDamageOutcomeView {
-    resolution: ScriptActionConditionResolution,
-    damage_roll: Option<DamageRollResult>,
-    damage_taken: Option<DamageMitigationResult>,
-}
-
-impl ScriptDamageOutcomeView {
-    pub fn from(outcome: &DamageOutcome) -> Self {
-        Self {
-            resolution: ScriptActionConditionResolution::from(&outcome.resolution),
-            damage_roll: outcome.damage_roll.clone(),
-            damage_taken: outcome.damage_taken.clone(),
-        }
-    }
-
-    pub fn get_resolution(&self) -> &ScriptActionConditionResolution {
-        &self.resolution
-    }
-
-    pub fn has_damage_roll(&self) -> bool {
-        self.damage_roll.is_some()
-    }
-
-    pub fn get_damage_roll(&self) -> &DamageRollResult {
-        self.damage_roll.as_ref().expect("No damage roll")
-    }
-
-    pub fn has_damage_taken(&self) -> bool {
-        self.damage_taken.is_some()
-    }
-
-    pub fn get_damage_taken(&self) -> &DamageMitigationResult {
-        self.damage_taken.as_ref().expect("No damage taken")
-    }
-
-    pub fn damage_roll_total(&self) -> i32 {
-        self.damage_roll.as_ref().map(|v| v.total).unwrap_or(0)
-    }
-
-    pub fn damage_taken_total(&self) -> i32 {
-        self.damage_taken.as_ref().map(|v| v.total).unwrap_or(0)
-    }
-}
-
-#[derive(Clone)]
-pub struct ScriptActionConditionResolution {
-    inner: ActionConditionResolution,
-}
-
-impl ScriptActionConditionResolution {
-    pub fn is_unconditional(&self) -> bool {
-        matches!(self.inner, ActionConditionResolution::Unconditional)
-    }
-
-    pub fn is_attack_roll(&self) -> bool {
-        matches!(self.inner, ActionConditionResolution::AttackRoll { .. })
-    }
-
-    pub fn is_saving_throw(&self) -> bool {
-        matches!(self.inner, ActionConditionResolution::SavingThrow { .. })
-    }
-
-    pub fn is_success(&self) -> bool {
-        self.inner.is_success()
-    }
-
-    pub fn is_attack_roll_hit(&self) -> bool {
-        self.is_attack_roll() && self.is_success()
-    }
-
-    pub fn is_attack_roll_critical_hit(&self) -> bool {
-        self.is_attack_roll() && self.inner.is_crit()
-    }
-
-    pub fn is_saving_throw_success(&self) -> bool {
-        self.is_saving_throw() && self.is_success()
-    }
-}
-
-impl From<&ActionConditionResolution> for ScriptActionConditionResolution {
-    fn from(resolution: &ActionConditionResolution) -> Self {
-        ScriptActionConditionResolution {
-            inner: resolution.clone(),
-        }
-    }
-}
-
-impl From<ScriptActionConditionResolution> for ActionConditionResolution {
-    fn from(script_resolution: ScriptActionConditionResolution) -> Self {
-        script_resolution.inner
     }
 }
 

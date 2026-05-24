@@ -5,20 +5,22 @@ local function reaction_trigger(context)
         return false
     end
 
-    local performed = event:as_action_performed()
-    -- Cannot target yourself
-    if performed.action.actor == context.reactor then
+    local action, results = event:as_action_performed()
+    if not action or not results then
         return false
     end
 
-    for _, result in ipairs(performed:results()) do
-        if result.target == context.reactor and result.kind:is_standard() then
-            local standard_kind = result.kind:as_standard()
-            if standard_kind:has_damage() then
-                local damage = standard_kind:get_damage()
-                if damage:damage_taken_total() > 0 then
-                    return true
-                end
+    -- Cannot target yourself
+    if action.actor == context.reactor then
+        return false
+    end
+
+    for _, result in ipairs(results) do
+        local standard_kind = result.kind:as_standard()
+        if result.target:entity() == context.reactor and standard_kind then
+            local damage = standard_kind:damage()
+            if damage and damage:damage_taken_total() > 0 then
+                return true
             end
         end
     end
