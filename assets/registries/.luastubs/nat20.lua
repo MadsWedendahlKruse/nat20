@@ -65,44 +65,39 @@ function ScriptDamageOutcomeView:damage_taken_total() end
 -- Action context / views
 ------------------------------------------------------------
 
----@class ScriptActionContext
-local ScriptActionContext = {}
+---@class ActionContext
+local ActionContext = {}
 ---@return boolean
-function ScriptActionContext:is_spell() end
+function ActionContext:is_spell() end
 ---@return boolean
-function ScriptActionContext:is_attack_action() end
+function ActionContext:is_attack_action() end
 ---@return boolean
-function ScriptActionContext:is_weapon_attack() end
+function ActionContext:is_weapon_attack() end
 ---@return boolean
-function ScriptActionContext:is_unarmed_attack() end
+function ActionContext:is_unarmed_attack() end
 ---@return boolean
-function ScriptActionContext:is_melee_attack() end
+function ActionContext:is_melee_attack() end
 ---@return boolean
-function ScriptActionContext:is_ranged_attack() end
+function ActionContext:is_ranged_attack() end
 
----@class ScriptActionView
+---@class ActionData
 ---@field action_id string
 ---@field actor ScriptEntity
----@field action_context ScriptActionContext
-local ScriptActionView = {}
----@param entity_id integer
----@return boolean
-function ScriptActionView:is_targetting_entity(entity_id) end
----@return integer[]
-function ScriptActionView:targets() end
+---@field action_context ActionContext
+local ActionData = {}
 ---@param resource_id string
 ---@return boolean
-function ScriptActionView:costs_resource(resource_id) end
+function ActionData:costs_resource(resource_id) end
 
----@class ResourceCost
-local ResourceCost = {}
+---@class ResourceAmountMap
+local ResourceAmountMap = {}
 ---@param resource_id string
 ---@return boolean
-function ResourceCost:costs_resource(resource_id) end
+function ResourceAmountMap:costs_resource(resource_id) end
 ---@param from string
 ---@param to string
 ---@param new_amount string|integer
-function ResourceCost:replace_resource(from, to, new_amount) end
+function ResourceAmountMap:replace_resource(from, to, new_amount) end
 
 ---@class ScriptActionConditionResolution
 local ScriptActionConditionResolution = {}
@@ -145,7 +140,7 @@ function ScriptActionKindResultView:as_standard() end
 ---@field kind ScriptActionKindResultView
 
 ---@class ScriptActionPerformedView
----@field action ScriptActionView
+---@field action ActionData
 local ScriptActionPerformedView = {}
 ---@return ScriptActionResultView[]
 function ScriptActionPerformedView:results() end
@@ -189,7 +184,7 @@ function ScriptEventView:is_d20_check_performed() end
 function ScriptEventView:as_d20_check_performed() end
 ---@return boolean
 function ScriptEventView:is_action_requested() end
----@return ScriptActionView
+---@return ActionData
 function ScriptEventView:as_action_requested() end
 ---@return boolean
 function ScriptEventView:is_action_performed() end
@@ -212,7 +207,7 @@ function ScriptReactionTriggerContext:is_own_failed_d20_check(dc_kind) end
 ---@field reactor ScriptEntity
 ---@field event ScriptEventView
 ---@field reaction_id string
----@field context ScriptActionContext
+---@field context ActionContext
 
 ------------------------------------------------------------
 -- GameState — the main script-facing world handle
@@ -345,9 +340,9 @@ function ModifierSource.effect(effect_id) end
 ------------------------------------------------------------
 
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity): integer
----@alias ActionHookFn fun(game_state: GameState, entity: ScriptEntity, action: ScriptActionView)
+---@alias ActionHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData)
 ---@alias ActionResultHookFn fun(game_state: GameState, entity: ScriptEntity, action: ScriptActionPerformedView)
----@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ScriptActionView, cost: ResourceCost)
+---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult)

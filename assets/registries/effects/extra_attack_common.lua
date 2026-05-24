@@ -6,7 +6,7 @@ local M = {}
 M.EXTRA_ATTACK_RESOURCE_ID = "nat20_core::resource.extra_attack"
 M.ACTION_RESOURCE_ID = "nat20_core::resource.action"
 
----@param action ScriptActionView
+---@param action ActionData
 ---@return boolean
 local function should_apply(action)
     -- 1) Only weapon attacks

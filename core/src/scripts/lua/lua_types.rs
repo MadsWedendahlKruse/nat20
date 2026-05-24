@@ -31,10 +31,10 @@ use crate::{
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         time::{TimeDuration, TurnBoundary},
     },
-    engine::game_state::GameState,
+    engine::{action_prompt::ActionData, game_state::GameState},
     scripts::script_api::{
         ScriptActionConditionResolution, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
-        ScriptActionPerformedView, ScriptActionResultView, ScriptActionView, ScriptD20CheckDCKind,
+        ScriptActionPerformedView, ScriptActionResultView, ScriptD20CheckDCKind,
         ScriptD20CheckView, ScriptD20Result, ScriptDamageOutcomeView, ScriptDiceRollBonus,
         ScriptEntity, ScriptEventRef, ScriptEventView, ScriptMovingOutOfReachView,
         ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
@@ -113,7 +113,7 @@ impl_from_lua_userdata!(
     ScriptReactionPlan,
     ScriptReactionBodyResult,
     ActionContext,
-    ScriptActionView,
+    ActionData,
     ScriptActionConditionResolution,
     ScriptDamageOutcomeView,
     ScriptActionOutcomeBundleView,
@@ -413,23 +413,17 @@ impl UserData for ActionContext {
     }
 }
 
-impl UserData for ScriptActionView {
+impl UserData for ActionData {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("action_id", |_, this| Ok(this.action_id.clone()));
-        fields.add_field_method_get("actor", |_, this| Ok(this.actor.clone()));
-        fields.add_field_method_get("action_context", |_, this| Ok(this.action_context.clone()));
+        fields.add_field_method_get("action_id", |_, this| Ok(this.action_id.to_string()));
+        fields.add_field_method_get("actor", |_, this| Ok(ScriptEntity::from(this.actor.id())));
+        fields.add_field_method_get("action_context", |_, this| Ok(this.context.clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_targetting_entity", |_, this, entity_id: u64| {
-            Ok(this.targets.iter().any(|t| t.id == entity_id))
-        });
-        methods.add_method("targets", |_, this, ()| {
-            Ok(this.targets.iter().cloned().collect::<Vec<ScriptEntity>>())
-        });
         methods.add_method("costs_resource", |_, this, resource_id: String| {
             let id = parse_resource_id(&resource_id)?;
-            Ok(this.costs_resource(&id))
+            Ok(this.resource_cost.map.contains_key(&id))
         });
     }
 }
@@ -757,8 +751,8 @@ fn apply_effect_impl(
         None => EffectLifetimeTemplate::Permanent,
     };
 
-    let action_id = ActionId::from_str(&action.action.action_id).unwrap();
-    let action_context = action.action.action_context.clone();
+    let action_id = action.action.action_id.clone();
+    let action_context = action.action.context.clone();
     let action_resolution = action
         .resolution()
         .map(|r| r.into())

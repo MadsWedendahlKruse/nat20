@@ -361,7 +361,7 @@ impl ScriptMovingOutOfReachView {
 
 #[derive(Clone)]
 pub enum ScriptEventView {
-    ActionRequested(ScriptActionView),
+    ActionRequested(ActionData),
     ActionPerformed(ScriptActionPerformedView),
     D20CheckPerformed(ScriptD20CheckView),
     MovingOutOfReach(ScriptMovingOutOfReachView),
@@ -376,20 +376,16 @@ impl ScriptEventView {
                 ))
             }
 
-            EventKind::ActionRequested { action } => Some(ScriptEventView::ActionRequested(
-                ScriptActionView::from(action),
-            )),
+            EventKind::ActionRequested { action } => {
+                Some(ScriptEventView::ActionRequested(action.clone()))
+            }
 
             EventKind::ReactionRequested { reaction } => {
                 let action = ActionData::from(reaction);
-                Some(ScriptEventView::ActionRequested(ScriptActionView::from(
-                    &action,
-                )))
+                Some(ScriptEventView::ActionRequested(action.clone()))
             }
 
             EventKind::ActionPerformed { action, results } => {
-                let action_view = ScriptActionView::from(action);
-
                 let mut script_results = Vec::new();
                 for result in results {
                     if let TargetInstance::Entity { entity, .. } = &result.target {
@@ -402,7 +398,7 @@ impl ScriptEventView {
                 }
 
                 Some(ScriptEventView::ActionPerformed(
-                    ScriptActionPerformedView::new(action_view, script_results),
+                    ScriptActionPerformedView::new(action.clone(), script_results),
                 ))
             }
 
@@ -459,73 +455,19 @@ macro_rules! impl_event_accessors {
 
 impl_event_accessors!(ScriptEventView {
     is_d20_check_performed => as_d20_check_performed: D20CheckPerformed(ScriptD20CheckView),
-    is_action_requested    => as_action_requested:    ActionRequested(ScriptActionView),
+    is_action_requested    => as_action_requested:    ActionRequested(ActionData),
     is_action_performed    => as_action_performed:    ActionPerformed(ScriptActionPerformedView),
     is_moving_out_of_reach => as_moving_out_of_reach: MovingOutOfReach(ScriptMovingOutOfReachView),
 });
 
 #[derive(Clone)]
-pub struct ScriptActionView {
-    pub action_id: String,
-    pub actor: ScriptEntity,
-    pub action_context: ActionContext,
-    pub targets: Vec<ScriptEntity>,
-    /// Snapshot of the action's resource cost at the time the view was built.
-    /// Scripts use this (via `action:costs_resource(id)`) to distinguish e.g.
-    /// "the action originally cost an action resource and that wasn't yet
-    /// substituted" from "the cost was substituted (so this is an extra attack)".
-    pub resource_cost: ResourceAmountMap,
-}
-
-impl ScriptActionView {
-    pub fn new(
-        action_id: &ActionId,
-        actor: Entity,
-        action_context: &ActionContext,
-        targets: Vec<ScriptEntity>,
-        resource_cost: ResourceAmountMap,
-    ) -> Self {
-        ScriptActionView {
-            action_id: action_id.to_string(),
-            actor: ScriptEntity::from(actor),
-            action_context: action_context.clone(),
-            targets,
-            resource_cost,
-        }
-    }
-
-    pub fn costs_resource(&self, resource_id: &ResourceId) -> bool {
-        self.resource_cost.map.contains_key(resource_id)
-    }
-}
-
-impl From<&ActionData> for ScriptActionView {
-    fn from(action: &ActionData) -> Self {
-        ScriptActionView {
-            action_id: action.action_id.to_string(),
-            actor: ScriptEntity::from(action.actor.id()),
-            action_context: action.context.clone(),
-            targets: action
-                .targets
-                .iter()
-                .filter_map(|t| match t {
-                    TargetInstance::Entity { entity, .. } => Some(ScriptEntity::from(entity.id())),
-                    TargetInstance::Point(_) => None,
-                })
-                .collect(),
-            resource_cost: action.resource_cost.clone(),
-        }
-    }
-}
-
-#[derive(Clone)]
 pub struct ScriptActionPerformedView {
-    pub action: ScriptActionView,
+    pub action: ActionData,
     pub results: Vec<ScriptActionResultView>,
 }
 
 impl ScriptActionPerformedView {
-    pub fn new(action: ScriptActionView, results: Vec<ScriptActionResultView>) -> Self {
+    pub fn new(action: ActionData, results: Vec<ScriptActionResultView>) -> Self {
         Self { action, results }
     }
 

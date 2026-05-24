@@ -51,7 +51,7 @@ use crate::{
         },
         damage::{DamageMitigationResult, DamageRollResult},
         effects::effect::EffectInstance,
-        id::{ActionId, ScriptId},
+        id::{ActionId, EntityIdentifier, ScriptId},
         resource::ResourceAmountMap,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
@@ -60,9 +60,8 @@ use crate::{
         lua::lua_types::{self},
         script::{Script, ScriptError, ScriptFunction},
         script_api::{
-            ScriptActionPerformedView, ScriptActionView, ScriptEntity, ScriptEventView,
-            ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
-            ScriptReactionTriggerContext,
+            ScriptActionPerformedView, ScriptEntity, ScriptEventView, ScriptReactionBodyContext,
+            ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
         },
     },
 };
@@ -212,12 +211,12 @@ impl ScriptEngine {
         resource_cost: &mut ResourceAmountMap,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ResourceCostHook)?;
-        let action_view = ScriptActionView::new(
-            action_id,
-            entity,
-            action_context,
-            Vec::new(),
+        let action_view = ActionData::new(
+            EntityIdentifier::from_world(&game_state.world, entity),
+            action_id.clone(),
+            action_context.clone(),
             resource_cost.clone(),
+            Vec::new(),
         );
         // For some reason the entity has to be passed in like this, otherwise the
         // unit tests fail
@@ -244,20 +243,17 @@ impl ScriptEngine {
         action: &ActionData,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionHook)?;
-        let action_view = ScriptActionView::from(action);
-        let entity = action.actor.id();
-        let ent = self
+        let entity = self
             .lua
-            .create_userdata(ScriptEntity::from(entity))
-            .map_err(Self::runtime_error)?;
-        let av = self
-            .lua
-            .create_userdata(action_view)
+            .create_userdata(ScriptEntity::from(action.actor.id()))
             .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref_mut(game_state)?;
-                func.call::<()>((gs, ent, av))
+                func.call::<()>((
+                    scope.create_userdata_ref_mut(game_state)?,
+                    entity,
+                    scope.create_userdata_ref(action)?,
+                ))
             })
             .map_err(Self::runtime_error)
     }
@@ -271,7 +267,6 @@ impl ScriptEngine {
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionResultHook)?;
 
-        let action_view = ScriptActionView::from(action);
         let mut script_results = Vec::new();
         for result in results {
             if let TargetInstance::Entity { entity, .. } = &result.target {
@@ -284,7 +279,7 @@ impl ScriptEngine {
                 );
             }
         }
-        let performed = ScriptActionPerformedView::new(action_view, script_results);
+        let performed = ScriptActionPerformedView::new(action.clone(), script_results);
         let entity = action.actor.id();
 
         let ent = self
