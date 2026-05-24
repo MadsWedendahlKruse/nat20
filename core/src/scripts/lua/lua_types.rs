@@ -16,7 +16,7 @@ use mlua::{
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::action::{ActionCondition, ActionConditionResolution, ActionKind},
+        actions::action::{ActionCondition, ActionConditionResolution, ActionContext, ActionKind},
         damage::{
             CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageRollResult, MitigationOperation,
@@ -33,13 +33,12 @@ use crate::{
     },
     engine::game_state::GameState,
     scripts::script_api::{
-        ScriptActionConditionResolution, ScriptActionContext, ScriptActionKindResultView,
-        ScriptActionOutcomeBundleView, ScriptActionPerformedView, ScriptActionResultView,
-        ScriptActionView, ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result,
-        ScriptDamageOutcomeView, ScriptDiceRollBonus, ScriptEntity, ScriptEventRef,
-        ScriptEventView, ScriptMovingOutOfReachView, ScriptReactionBodyContext,
-        ScriptReactionBodyResult, ScriptReactionPlan, ScriptReactionTriggerContext,
-        ScriptSavingThrow,
+        ScriptActionConditionResolution, ScriptActionKindResultView, ScriptActionOutcomeBundleView,
+        ScriptActionPerformedView, ScriptActionResultView, ScriptActionView, ScriptD20CheckDCKind,
+        ScriptD20CheckView, ScriptD20Result, ScriptDamageOutcomeView, ScriptDiceRollBonus,
+        ScriptEntity, ScriptEventRef, ScriptEventView, ScriptMovingOutOfReachView,
+        ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
+        ScriptReactionTriggerContext, ScriptSavingThrow,
     },
     systems,
 };
@@ -113,7 +112,7 @@ impl_from_lua_userdata!(
     ScriptSavingThrow,
     ScriptReactionPlan,
     ScriptReactionBodyResult,
-    ScriptActionContext,
+    ActionContext,
     ScriptActionView,
     ScriptActionConditionResolution,
     ScriptDamageOutcomeView,
@@ -392,7 +391,7 @@ impl UserData for ModifierSet {
 // Action context / view
 // ---------------------------------------------------------------------------
 
-impl UserData for ScriptActionContext {
+impl UserData for ActionContext {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("is_spell", |_, this, ()| Ok(this.is_spell()));
         methods.add_method(
@@ -759,7 +758,7 @@ fn apply_effect_impl(
     };
 
     let action_id = ActionId::from_str(&action.action.action_id).unwrap();
-    let action_context = action.action.action_context.inner.clone();
+    let action_context = action.action.action_context.clone();
     let action_resolution = action
         .resolution()
         .map(|r| r.into())

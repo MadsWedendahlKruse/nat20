@@ -1,11 +1,13 @@
-# Serialize test execution. `SCRIPT_ENGINE` wraps a single `mlua::Lua` state
-# whose send-mode lock isn't reentrant, and our hooks re-enter the engine on
-# the same thread (e.g. `apply_effect` -> `available_reactions_to_event` ->
-# `resource_cost_hook`). Concurrent test threads share that Lua state and
-# deadlock. See [core/src/scripts/script_engine.rs] for the longer
-# explanation.
+# Serialize test execution. `SCRIPT_ENGINE` is a single shared `mlua::Lua`
+# state (plus a shared `module_cache`). Parallel tests sharing that single
+# state hang under contention — empirically not a clean two-thread deadlock,
+# but reproducible whenever 4+ scripted tests run on multiple threads.
+# Single-threaded execution sidesteps the issue entirely.
 #
-# Override with `RUST_TEST_THREADS=N cargo test` if you have a specific reason
+# Long-term fix: thread-local Lua state (each test thread gets its own
+# engine). See the comment in `core/src/scripts/script_engine.rs` for context.
+#
+# Override with `RUST_TEST_THREADS=N cargo test` if you have a reason
 # (e.g. measuring serial overhead).
 [env]
 RUST_TEST_THREADS = "1"

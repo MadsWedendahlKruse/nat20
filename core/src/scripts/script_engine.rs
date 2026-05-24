@@ -14,22 +14,34 @@ use std::{
 use hecs::Entity;
 use mlua::{Function, Lua, RegistryKey, Table, Value};
 
-// mlua's `Lua` is `Send + Sync` with the `send` feature, but its internal
-// state lock is *not* reentrant: a thread that's already inside Lua and then
-// re-enters via a UserData method (e.g. `game_state:apply_effect(...)` calls
-// back into Rust, which calls into another script for a reaction hook) will
-// deadlock on itself. Same-thread reentry is exactly what our hooks do, so we
-// can't put an outer `Mutex<ScriptEngine>` either — that lock would also
-// deadlock the same way.
+// `SCRIPT_ENGINE` exposes `&ScriptEngine` directly — no outer `Mutex`.
+// mlua's `Lua` is internally `Send + Sync` (with the `send` feature) and
+// uses a `parking_lot::ReentrantMutex` internally, so:
 //
-// We rely instead on mlua's own serialization and expose `&ScriptEngine`.
-// Only the `module_cache` needs explicit sync; it's behind a short-lived
-// `Mutex` and isn't held across script execution.
+// - Same-thread reentry works. Our hooks reliably do this:
+//   `apply_effect` → `process_event(GainedEffect)` →
+//   `available_reactions_to_event` → another script's `resource_cost_hook`.
+//   An outer `std::sync::Mutex<ScriptEngine>` would deadlock the same thread
+//   here; mlua's reentrant lock handles it.
+// - Cross-thread access is *documented* to serialize via that same reentrant
+//   lock. Empirically, however, multiple OS threads pounding on the same
+//   `Lua` state from `cargo test` reliably hang once you cross ~4 concurrent
+//   scripted tests. The cause is somewhere in mlua-with-vendored-Lua-under-
+//   contention rather than in our locking; we can't reproduce it as a clean
+//   two-thread deadlock.
 //
-// **Important**: this means **only one OS thread may use `SCRIPT_ENGINE` at a
-// time**. For `cargo test`, that means running with `--test-threads=1`. If
-// you ever need parallel scripted tests, switch to a thread-local Lua state
-// (each thread gets its own engine; no sharing, no contention).
+// **Workaround**: `.cargo/config.toml` sets `RUST_TEST_THREADS=1`, so
+// `cargo test` is single-threaded by default. Tests run in ~0.5s total
+// either way, so serializing is essentially free.
+//
+// **Long-term fix** (if you ever care about parallel scripted tests): make
+// the engine thread-local. Each thread gets its own `Lua` state, no shared
+// `module_cache`, no contention. Costs a per-thread init pass through the
+// scripts; for tests that's microseconds.
+//
+// Only the `module_cache` itself needs explicit sync within `ScriptEngine`;
+// it lives behind a short-lived `Mutex` that's never held across script
+// execution.
 
 use crate::{
     components::{
@@ -207,24 +219,20 @@ impl ScriptEngine {
             Vec::new(),
             resource_cost.clone(),
         );
-        // TODO: What if everything is passed as a reference?
-        // Owned-and-static args go through `lua.create_userdata` so their
-        // metatable carries the correct TypeId — required for `FromLua` when
-        // scripts pass them into other UserData methods. Scope is only needed
-        // for borrowed (`game_state`) values
-        let ent = self
+        // For some reason the entity has to be passed in like this, otherwise the
+        // unit tests fail
+        let entity = self
             .lua
             .create_userdata(ScriptEntity::from(entity))
             .map_err(Self::runtime_error)?;
-        let action_ud = self
-            .lua
-            .create_userdata(action_view)
-            .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref(game_state)?;
-                let cost = scope.create_userdata_ref_mut(resource_cost)?;
-                func.call::<()>((gs, ent, action_ud, cost))
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    entity,
+                    scope.create_userdata_ref(&action_view)?,
+                    scope.create_userdata_ref_mut(resource_cost)?,
+                ))
             })
             .map_err(Self::runtime_error)
     }

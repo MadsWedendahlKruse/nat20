@@ -464,54 +464,11 @@ impl_event_accessors!(ScriptEventView {
     is_moving_out_of_reach => as_moving_out_of_reach: MovingOutOfReach(ScriptMovingOutOfReachView),
 });
 
-// ---------------------------------------------------------------------------
-// Action views
-// ---------------------------------------------------------------------------
-
-#[derive(Clone)]
-pub struct ScriptActionContext {
-    pub inner: ActionContext,
-}
-
-impl ScriptActionContext {
-    pub fn is_spell(&self) -> bool {
-        self.inner.is_spell()
-    }
-
-    pub fn is_attack_action(&self) -> bool {
-        self.inner.is_attack_action()
-    }
-
-    pub fn is_weapon_attack(&self) -> bool {
-        self.inner.is_weapon_attack()
-    }
-
-    pub fn is_unarmed_attack(&self) -> bool {
-        self.inner.is_unarmed_attack()
-    }
-
-    pub fn is_melee_attack(&self) -> bool {
-        self.inner.is_melee_attack()
-    }
-
-    pub fn is_ranged_attack(&self) -> bool {
-        self.inner.is_ranged_attack()
-    }
-}
-
-impl From<&ActionContext> for ScriptActionContext {
-    fn from(context: &ActionContext) -> Self {
-        ScriptActionContext {
-            inner: context.clone(),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct ScriptActionView {
     pub action_id: String,
     pub actor: ScriptEntity,
-    pub action_context: ScriptActionContext,
+    pub action_context: ActionContext,
     pub targets: Vec<ScriptEntity>,
     /// Snapshot of the action's resource cost at the time the view was built.
     /// Scripts use this (via `action:costs_resource(id)`) to distinguish e.g.
@@ -531,7 +488,7 @@ impl ScriptActionView {
         ScriptActionView {
             action_id: action_id.to_string(),
             actor: ScriptEntity::from(actor),
-            action_context: ScriptActionContext::from(action_context),
+            action_context: action_context.clone(),
             targets,
             resource_cost,
         }
@@ -547,7 +504,7 @@ impl From<&ActionData> for ScriptActionView {
         ScriptActionView {
             action_id: action.action_id.to_string(),
             actor: ScriptEntity::from(action.actor.id()),
-            action_context: ScriptActionContext::from(&action.context),
+            action_context: action.context.clone(),
             targets: action
                 .targets
                 .iter()
@@ -917,7 +874,7 @@ pub struct ScriptReactionBodyContext {
     pub reactor: ScriptEntity,
     pub event: ScriptEventView,
     pub reaction_id: String,
-    pub context: ScriptActionContext,
+    pub context: ActionContext,
     pub resource_cost: ResourceAmountMap,
 }
 
@@ -927,7 +884,7 @@ impl From<&ReactionData> for ScriptReactionBodyContext {
             reactor: ScriptEntity::from(data.reactor.id()),
             event: ScriptEventView::from_event(&data.event).unwrap(),
             reaction_id: data.reaction_id.to_string(),
-            context: ScriptActionContext::from(&data.context),
+            context: data.context.clone(),
             resource_cost: data.resource_cost.clone(),
         }
     }
