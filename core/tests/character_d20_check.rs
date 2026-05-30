@@ -42,7 +42,7 @@ mod tests {
             &world,
             entity,
         );
-        assert_eq!(result.modifier_breakdown.total(), 4);
+        assert_eq!(result.total_modifier(), 4);
     }
 
     #[test]
@@ -68,7 +68,7 @@ mod tests {
                 &game_state.world,
                 entity,
             );
-        assert_eq!(result.modifier_breakdown.total(), 6);
+        assert_eq!(result.total_modifier(), 6);
     }
 
     #[test]
@@ -94,7 +94,7 @@ mod tests {
                 &game_state.world,
                 entity,
             );
-        assert_eq!(result.modifier_breakdown.total(), 9);
+        assert_eq!(result.total_modifier(), 9);
     }
 
     #[test]
@@ -112,6 +112,6 @@ mod tests {
 
         let result = systems::helpers::get_component::<SkillSet>(&game_state.world, character)
             .check(&Skill::Stealth, &game_state.world, character);
-        assert!(result.advantage_tracker.roll_mode() == RollMode::Disadvantage);
+        assert!(result.advantage_tracker().roll_mode() == RollMode::Disadvantage);
     }
 }

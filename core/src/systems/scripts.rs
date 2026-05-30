@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hecs::{Entity, World};
-use tracing::error;
+use tracing::{error, event};
 
 use crate::{
     components::{
@@ -19,8 +19,7 @@ use crate::{
     registry::registry::ScriptsRegistry,
     scripts::{
         script_api::{
-            ScriptEntityRole, ScriptEventRef, ScriptReactionBodyContext, ScriptReactionBodyResult,
-            ScriptReactionPlan, ScriptReactionTriggerContext,
+            ScriptEntityRole, ScriptEventRef, ScriptReactionBodyResult, ScriptReactionPlan,
         },
         script_engine::SCRIPT_ENGINE,
     },
@@ -35,7 +34,9 @@ use crate::{
 
 pub fn evaluate_reaction_trigger(
     reaction_trigger: &ScriptId,
-    context: &ScriptReactionTriggerContext,
+    game_state: &GameState,
+    reactor: Entity,
+    event: &Event,
 ) -> bool {
     let script = ScriptsRegistry::get(reaction_trigger).expect(
         format!(
@@ -44,12 +45,12 @@ pub fn evaluate_reaction_trigger(
         )
         .as_str(),
     );
-    match SCRIPT_ENGINE.evaluate_reaction_trigger(script, context) {
+    match SCRIPT_ENGINE.evaluate_reaction_trigger(script, game_state, reactor, event) {
         Ok(result) => result,
         Err(err) => {
             error!(
                 "Error evaluating reaction trigger script {:?} for reactor {:?}: {:?}",
-                reaction_trigger, context.reactor, err
+                reaction_trigger, reactor, err
             );
             false
         }
@@ -58,16 +59,18 @@ pub fn evaluate_reaction_trigger(
 
 pub fn evaluate_reaction_body(
     reaction_body: &ScriptId,
-    context: &ScriptReactionBodyContext,
+    game_state: &mut GameState,
+    reaction: &ReactionData,
+    event: &mut Event,
 ) -> ScriptReactionBodyResult {
     let script = ScriptsRegistry::get(reaction_body)
         .expect(format!("Reaction script not found in registry: {:?}", reaction_body).as_str());
-    match SCRIPT_ENGINE.evaluate_reaction_body(script, context) {
+    match SCRIPT_ENGINE.evaluate_reaction_body(script, game_state, reaction, event) {
         Ok(result) => result,
         Err(err) => {
             error!(
                 "Error evaluating reaction body script {:?} for reactor {:?}: {:?}",
-                reaction_body, context.reactor, err
+                reaction_body, reaction.reactor, err
             );
             ScriptReactionBodyResult::none()
         }
@@ -287,26 +290,25 @@ pub fn apply_reaction_body_result(
     match result {
         ScriptReactionBodyResult::Plan(plan) => {
             apply_reaction_plan(game_state, reaction_data, plan);
-        }
-        ScriptReactionBodyResult::TriggerEvent(event_view) => {
-            let reaction_data = reaction_data.clone();
-            let reaction_data_for_modification = reaction_data.clone();
-            let reaction_result = ReactionResult::ModifyEvent {
-                modification: Arc::new(move |world: &World, event: &mut Event| {
-                    event_view.apply_to_event(world, &reaction_data_for_modification, event);
-                }),
-            };
+        } // ScriptReactionBodyResult::TriggerEvent(event_view) => {
+          //     let reaction_data = reaction_data.clone();
+          //     let reaction_data_for_modification = reaction_data.clone();
+          //     let reaction_result = ReactionResult::ModifyEvent {
+          //         modification: Arc::new(move |world: &World, event: &mut Event| {
+          //             event_view.apply_to_event(world, &reaction_data_for_modification, event);
+          //         }),
+          //     };
 
-            game_state.process_event(Event::action_performed_event(
-                &ActionData::from(&reaction_data),
-                vec![(
-                    reaction_data.reactor,
-                    ActionKindResult::Reaction {
-                        result: reaction_result,
-                    },
-                )],
-            ));
-        }
+          //     game_state.process_event(Event::action_performed_event(
+          //         &ActionData::from(&reaction_data),
+          //         vec![(
+          //             reaction_data.reactor,
+          //             ActionKindResult::Reaction {
+          //                 result: reaction_result,
+          //             },
+          //         )],
+          //     ));
+          // }
     }
 }
 

@@ -1,18 +1,11 @@
-//! Lua bindings for the script-facing types.
-//!
-//! Domain types (`DamageRollResult`, `DamageMitigationResult`, `EffectInstance`,
-//! `GameState`) implement `UserData` directly. Reaction-shaped types live in
-//! [`crate::scripts::script_api`] and have their `UserData` impls here.
-//!
-//! Method calls in Lua use colon syntax (`obj:method(args)`); fields use dot
-//! syntax (`obj.field`). Mutating methods register with `add_method_mut`.
-
 use std::str::FromStr;
 
 use hecs::Entity;
 use mlua::{
-    FromLua, Lua, MetaMethod, Result as LuaResult, UserData, UserDataFields, UserDataMethods,
-    Value, Variadic,
+    FromLua, Function, Lua, MetaMethod, Result as LuaResult, UserData, UserDataFields,
+    UserDataMethods,
+    Value::{self},
+    Variadic,
 };
 
 use crate::{
@@ -26,32 +19,34 @@ use crate::{
             targeting::TargetInstance,
         },
         damage::{
-            CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
+            AttackSource, CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageRollResult, MitigationOperation,
         },
         dice::{DiceSet, DiceSetRoll},
         effects::effect::{
-            self, EffectEntiyReference, EffectInstance, EffectInstanceTemplate,
-            EffectLifetimeTemplate,
+            EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
         },
         health::hit_points::HitPoints,
-        id::{EffectId, EntityIdentifier, ResourceId},
+        id::{ClassId, EffectId, EntityIdentifier, ResourceId},
+        level::CharacterLevels,
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         time::{TimeDuration, TurnBoundary},
     },
     engine::{
-        action_prompt::ActionData,
+        action_prompt::{ActionData, ReactionData},
         event::{Event, EventKind},
         game_state::GameState,
     },
+    registry::serialize::parser::Parser,
     scripts::script_api::{
-        ScriptD20CheckDCKind, ScriptD20CheckView, ScriptD20Result, ScriptDiceRollBonus,
-        ScriptEntity, ScriptEventRef, ScriptEventView, ScriptMovingOutOfReachView,
-        ScriptReactionBodyContext, ScriptReactionBodyResult, ScriptReactionPlan,
-        ScriptReactionTriggerContext, ScriptSavingThrow,
+        ScriptDiceRollBonus, ScriptEntity, ScriptEventRef, ScriptReactionBodyResult,
+        ScriptReactionPlan, ScriptSavingThrow,
     },
-    systems,
+    systems::{
+        self,
+        d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -116,10 +111,8 @@ macro_rules! impl_from_lua_userdata {
 
 impl_from_lua_userdata!(
     ScriptEntity,
-    ScriptD20CheckDCKind,
-    ScriptD20Result,
-    ScriptD20CheckView,
-    ScriptMovingOutOfReachView,
+    D20CheckDCKind,
+    D20ResultKind,
     ScriptSavingThrow,
     ScriptReactionPlan,
     ScriptReactionBodyResult,
@@ -130,9 +123,7 @@ impl_from_lua_userdata!(
     ActionOutcomeBundle,
     ActionResult,
     ActionKindResult,
-    ScriptEventView,
-    ScriptReactionTriggerContext,
-    ScriptReactionBodyContext,
+    Event,
     DamageRollResult,
     DamageMitigationResult,
     EffectInstance,
@@ -294,78 +285,121 @@ impl UserData for EffectInstance {
 // D20 check views
 // ---------------------------------------------------------------------------
 
-impl UserData for ScriptD20CheckDCKind {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("label", |_, this| Ok(this.label.clone()));
-        fields.add_field_method_get("dc", |_, this| Ok(this.dc));
-        fields.add_field_method_get("target", |_, this| {
-            Ok(this.target.as_ref().map(|e| e.id).unwrap_or(0))
+impl UserData for D20CheckKind {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("saving_throw", |_, this, ()| {
+            let D20CheckKind::SavingThrow(kind) = this else {
+                return Ok(None);
+            };
+            Ok(Some(kind.to_string().to_lowercase()))
+        });
+        methods.add_method("skill", |_, this, ()| {
+            let D20CheckKind::Skill(skill) = this else {
+                return Ok(None);
+            };
+            Ok(Some(skill.to_string().to_lowercase()))
+        });
+        methods.add_method("attack_roll", |_, this, ()| {
+            let D20CheckKind::AttackRoll(attack_source) = this else {
+                return Ok(None);
+            };
+            Ok(match attack_source {
+                AttackSource::Weapon(weapon_kind) => Some(weapon_kind.to_string().to_lowercase()),
+                AttackSource::Spell => Some("spell".to_string()),
+            })
         });
     }
 }
 
-impl UserData for ScriptD20Result {
+impl UserData for D20ResultKind {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("total", |_, this| Ok(this.total));
-        fields.add_field_method_get("dc_kind", |_, this| Ok(this.dc_kind.clone()));
-        fields.add_field_method_get("is_success", |_, this| Ok(this.is_success));
-    }
-}
-
-impl UserData for ScriptD20CheckView {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("performer", |_, this| Ok(this.performer()));
-        fields.add_field_method_get("result", |_, this| Ok(this.result()));
+        fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
+        fields.add_field_method_get("total", |_, this| Ok(this.d20_result().total()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        // `modify_*` methods take `&mut self` on the Rust side but the
-        // mutation actually flows through `Arc<RwLock>` interior mutability,
-        // so we can register them as `add_method` (shared borrow). This lets
-        // scripts call them on a userdata that was returned by a field getter
-        // (which always returns an owned clone — `add_method_mut` would fail
-        // there because mlua treats the borrow as exclusive).
-        methods.add_method("modify_result", |_, this, bonus: String| {
-            let parsed = bonus
-                .parse()
-                .map_err(|e: String| mlua::Error::RuntimeError(format!("Invalid bonus: {e}")))?;
-            this.clone().modify_result(parsed);
-            Ok(())
+        methods.add_method("is_success", |_, this, dc: D20CheckDCKind| {
+            Ok(this.is_success(&dc))
         });
-        methods.add_method("modify_dc", |_, this, modifier: String| {
-            let parsed = modifier
-                .parse()
-                .map_err(|e: String| mlua::Error::RuntimeError(format!("Invalid modifier: {e}")))?;
-            this.clone().modify_dc(parsed);
-            Ok(())
-        });
-        methods.add_method(
-            "reroll_result",
-            |_, this, (bonus, force_use_new): (String, bool)| {
-                let parsed = if bonus.is_empty() {
-                    None
-                } else {
-                    Some(bonus.parse().map_err(|e: String| {
-                        mlua::Error::RuntimeError(format!("Invalid bonus: {e}"))
-                    })?)
+
+        methods.add_method_mut(
+            "reroll_bonus",
+            |_, this, (bonus, source, force_use_new): (Value, String, bool)| {
+                let bonus = match bonus {
+                    Value::Integer(int) => int,
+                    Value::String(string) => todo!(),
+                    _ => {
+                        return Err(mlua::Error::RuntimeError(
+                            "Bonus must be an integer or string".to_string(),
+                        ));
+                    }
                 };
-                this.clone().reroll_result(parsed, force_use_new);
+                let mut new_result = this.reroll();
+                new_result
+                    .d20_result_mut()
+                    .add_modifier(parse_source(&source), bonus as i32);
+
+                if force_use_new {
+                    *this = new_result;
+                } else {
+                    if new_result.d20_result().total() > this.d20_result().total() {
+                        *this = new_result;
+                    }
+                }
+
                 Ok(())
+            },
+        );
+
+        methods.add_method_mut(
+            "modify_result",
+            |_, this, (bonus, source): (String, String)| {
+                if let Ok(dice_expression) = Parser::new(&bonus).parse_dice_expression() {
+                    match dice_expression.evaluate_without_variables() {
+                        Ok((count, size, modifier)) => {
+                            let roll = DiceSetRoll {
+                                dice: DiceSet::from_str(format!("{}d{}", count, size).as_str())
+                                    .unwrap(),
+                                modifiers: ModifierSet::from(parse_source(&source), modifier),
+                            }
+                            .roll();
+                            this.d20_result_mut()
+                                .add_modifier(parse_source(&source), roll.subtotal as i32);
+                            Ok(())
+                        }
+                        Err(err) => Err(mlua::Error::RuntimeError(format!(
+                            "Failed to evaluate dice expression: {err}"
+                        ))),
+                    }
+                } else {
+                    Err(mlua::Error::RuntimeError(format!(
+                        "Invalid dice expression: {}",
+                        bonus
+                    )))
+                }
             },
         );
     }
 }
 
-impl UserData for ScriptMovingOutOfReachView {
+fn parse_source(source: &str) -> ModifierSource {
+    if source.contains("action") {
+        ModifierSource::Action(source.into())
+    } else {
+        ModifierSource::Custom(source.into())
+    }
+}
+
+impl UserData for D20CheckDCKind {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("mover", |_, this| Ok(this.inner.read().unwrap().mover.id));
-        fields.add_field_method_get("entity", |_, this| Ok(this.inner.read().unwrap().entity.id));
-        fields.add_field_method_get("continue_movement", |_, this| {
-            Ok(this.inner.read().unwrap().continue_movement)
-        });
-        fields.add_field_method_set("continue_movement", |_, this, v: bool| {
-            this.inner.write().unwrap().continue_movement = v;
-            Ok(())
+        fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
+        // TODO: Kind of a funky method
+        fields.add_field_method_get("target", |_, this| {
+            Ok(match this {
+                D20CheckDCKind::SavingThrow { .. } => None,
+                D20CheckDCKind::Skill { .. } => None,
+                D20CheckDCKind::AttackRoll(target, ..) => Some(ScriptEntity::from(target.id())),
+            })
         });
     }
 }
@@ -433,6 +467,17 @@ impl UserData for ActionData {
             let id = parse_resource_id(&resource_id)?;
             Ok(this.resource_cost.map.contains_key(&id))
         });
+    }
+}
+
+impl UserData for ReactionData {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("reactor", |_, this| {
+            Ok(ScriptEntity::from(this.reactor.id()))
+        });
+        fields.add_field_method_get("event", |_, this| Ok(this.event.as_ref().clone()));
+        fields.add_field_method_get("reaction_id", |_, this| Ok(this.reaction_id.to_string()));
+        fields.add_field_method_get("context", |_, this| Ok(this.context.clone()));
     }
 }
 
@@ -515,65 +560,86 @@ impl UserData for TargetInstance {
     }
 }
 
-impl UserData for ScriptEventView {
+impl UserData for Event {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("is_d20_check_performed", |_, this, ()| {
-            Ok(this.is_d20_check_performed())
+            Ok(matches!(this.kind, EventKind::D20CheckPerformed(_, _, _)))
         });
         methods.add_method("as_d20_check_performed", |_, this, ()| {
-            Ok(this.as_d20_check_performed().clone())
+            let EventKind::D20CheckPerformed(actor, kind, result) = &this.kind else {
+                return Ok((None, None, None));
+            };
+            Ok((
+                Some(ScriptEntity::from(actor.id())),
+                Some(kind.clone()),
+                Some(result.clone()),
+            ))
+        });
+        methods.add_method_mut("with_d20_check", |lua, this, callback: Function| {
+            let EventKind::D20CheckPerformed(_, result, dc) = &mut this.kind else {
+                return Ok(());
+            };
+            lua.scope(|scope| {
+                callback.call::<()>((
+                    scope.create_userdata_ref_mut(result)?,
+                    scope.create_userdata_ref_mut(dc)?,
+                ))
+            })?;
+            Ok(())
         });
         methods.add_method("is_action_requested", |_, this, ()| {
-            Ok(this.is_action_requested())
+            Ok(matches!(this.kind, EventKind::ActionRequested { .. }))
         });
         methods.add_method("as_action_requested", |_, this, ()| {
-            Ok(this.as_action_requested().clone())
+            let EventKind::ActionRequested { action } = &this.kind else {
+                return Ok(None);
+            };
+            Ok(Some(action.clone()))
         });
         methods.add_method("is_action_performed", |_, this, ()| {
-            Ok(this.is_action_performed())
+            Ok(matches!(this.kind, EventKind::ActionPerformed { .. }))
         });
         methods.add_method("as_action_performed", |_, this, ()| {
-            Ok(this.as_action_performed())
+            let EventKind::ActionPerformed { action, results } = &this.kind else {
+                return Ok((None, None));
+            };
+            Ok((Some(action.clone()), Some(results.clone())))
         });
         methods.add_method("is_moving_out_of_reach", |_, this, ()| {
-            Ok(this.is_moving_out_of_reach())
+            Ok(matches!(this.kind, EventKind::MovingOutOfReach { .. }))
         });
         methods.add_method("as_moving_out_of_reach", |_, this, ()| {
-            Ok(this.as_moving_out_of_reach().clone())
+            let EventKind::MovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            } = &this.kind
+            else {
+                return Ok((None, None, None));
+            };
+            Ok((
+                Some(ScriptEntity::from(mover.id())),
+                Some(ScriptEntity::from(entity.id())),
+                Some(*continue_movement),
+            ))
         });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Reaction contexts
-// ---------------------------------------------------------------------------
-
-impl UserData for ScriptReactionTriggerContext {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("reactor", |_, this| Ok(this.reactor.clone()));
-        fields.add_field_method_get("event", |_, this| Ok(this.event.clone()));
-    }
-
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_own_failed_d20_check", |_, this, dc_kind: String| {
-            if !this.event.is_d20_check_performed() {
-                return Ok(false);
-            }
-            let d20_check = this.event.as_d20_check_performed();
-            let result = d20_check.result();
-            Ok(d20_check.performer() == this.reactor
-                && !result.is_success
-                && result.dc_kind.label == dc_kind)
+        methods.add_method_mut("with_moving_out_of_reach", |_, this, callback: Function| {
+            let EventKind::MovingOutOfReach {
+                mover,
+                entity,
+                continue_movement,
+            } = &mut this.kind
+            else {
+                return Ok(());
+            };
+            let new_continue: bool = callback.call((
+                ScriptEntity::from(mover.id()),
+                ScriptEntity::from(entity.id()),
+                *continue_movement,
+            ))?;
+            *continue_movement = new_continue;
+            Ok(())
         });
-    }
-}
-
-impl UserData for ScriptReactionBodyContext {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("reactor", |_, this| Ok(this.reactor.clone()));
-        fields.add_field_method_get("event", |_, this| Ok(this.event.clone()));
-        fields.add_field_method_get("reaction_id", |_, this| Ok(this.reaction_id.clone()));
-        fields.add_field_method_get("context", |_, this| Ok(this.context.clone()));
     }
 }
 
@@ -583,6 +649,21 @@ impl UserData for ScriptReactionBodyContext {
 
 impl UserData for GameState {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method(
+            "class_level",
+            |_, this, (entity, class): (ScriptEntity, String)| {
+                let class: ClassId = class.parse().map_err(|e| {
+                    mlua::Error::RuntimeError(format!("Failed to parse class name: {e}"))
+                })?;
+                Ok(
+                    systems::helpers::get_component::<CharacterLevels>(&this.world, entity.into())
+                        .class_level(&class)
+                        .map(|level| level.level())
+                        .unwrap_or(0),
+                )
+            },
+        );
+
         // -- Resource queries / mutations --
         methods.add_method(
             "can_afford_resource",

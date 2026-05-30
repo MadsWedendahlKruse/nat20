@@ -167,11 +167,13 @@ impl D20Check {
     }
 
     pub fn roll(&self, proficiency_bonus: u8) -> D20CheckResult {
-        let mut modifiers = self.modifiers.clone();
-        modifiers.add_modifier(
-            ModifierSource::Proficiency(self.proficiency.level().clone()),
-            self.proficiency.bonus(proficiency_bonus) as i32,
-        );
+        let mut check = self.clone();
+        if proficiency_bonus > 0 {
+            check.modifiers.add_modifier(
+                ModifierSource::Proficiency(self.proficiency.level().clone()),
+                self.proficiency.bonus(proficiency_bonus) as i32,
+            );
+        }
 
         let mut rng = rand::rng();
         let roll_mode = self.advantage_tracker.roll_mode();
@@ -192,8 +194,9 @@ impl D20Check {
 
                 D20CheckOutcome::Failure => {
                     // We can approximate a failure by subtracting the total
-                    let total = (rolls.iter().max().unwrap().clone() as i32) + modifiers.total();
-                    modifiers.add_modifier(source.clone(), -total);
+                    let total =
+                        (rolls.iter().max().unwrap().clone() as i32) + check.modifiers.total();
+                    check.modifiers.add_modifier(source.clone(), -total);
                 }
 
                 D20CheckOutcome::CriticalSuccess => {
@@ -225,10 +228,9 @@ impl D20Check {
         };
 
         D20CheckResult {
-            advantage_tracker: self.advantage_tracker.clone(),
+            check,
             rolls,
             selected_roll,
-            modifier_breakdown: modifiers.clone(),
             outcome,
         }
     }
@@ -315,20 +317,27 @@ impl fmt::Display for D20Check {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20CheckResult {
-    pub advantage_tracker: AdvantageTracker,
+    pub check: D20Check,
     pub rolls: Vec<u8>,
     pub selected_roll: u8,
-    pub modifier_breakdown: ModifierSet,
     pub outcome: Option<D20CheckOutcome>,
 }
 
 impl D20CheckResult {
+    pub fn modifiers(&self) -> &ModifierSet {
+        self.check.modifiers()
+    }
+
     pub fn total_modifier(&self) -> i32 {
-        self.modifier_breakdown.total()
+        self.check.modifiers.total()
     }
 
     pub fn total(&self) -> u32 {
         max(self.selected_roll as i32 + self.total_modifier(), 0) as u32
+    }
+
+    pub fn advantage_tracker(&self) -> &AdvantageTracker {
+        &self.check.advantage_tracker
     }
 
     pub fn is_success<T>(&self, dc: &D20CheckDC<T>) -> bool
@@ -342,21 +351,25 @@ impl D20CheckResult {
         }
     }
 
-    pub fn add_bonus(&mut self, source: ModifierSource, value: i32) {
-        self.modifier_breakdown.add_modifier(source, value);
+    pub fn add_modifier(&mut self, source: ModifierSource, value: i32) {
+        self.check.add_modifier(source, value);
+    }
+
+    pub fn reroll(&self) -> D20CheckResult {
+        self.check.roll(0)
     }
 }
 
 impl fmt::Display for D20CheckResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} (1d20)", self.selected_roll)?;
-        if self.advantage_tracker.roll_mode() != RollMode::Normal {
+        if self.advantage_tracker().roll_mode() != RollMode::Normal {
             write!(
                 f,
                 " ({}, {}, {:?})",
                 self.rolls[0],
                 self.rolls[1],
-                self.advantage_tracker.roll_mode()
+                self.advantage_tracker().roll_mode()
             )?;
         }
         match self.outcome {
@@ -364,8 +377,8 @@ impl fmt::Display for D20CheckResult {
             Some(D20CheckOutcome::CriticalFailure) => write!(f, " (Critical Failure)")?,
             _ => {}
         }
-        if !self.modifier_breakdown.is_empty() {
-            write!(f, " {}", self.modifier_breakdown)?;
+        if !self.check.modifiers.is_empty() {
+            write!(f, " {}", self.check.modifiers)?;
         }
         write!(f, " = {}", self.total())?;
         Ok(())
@@ -445,12 +458,7 @@ where
         self.get_mut(key).clear_forced_outcome();
     }
 
-    pub fn add_crit_threshold_reduction(
-        &mut self,
-        key: &K,
-        source: ModifierSource,
-        reduction: u8,
-    ) {
+    pub fn add_crit_threshold_reduction(&mut self, key: &K, source: ModifierSource, reduction: u8) {
         self.get_mut(key)
             .add_crit_threshold_reduction(source, reduction);
     }
@@ -551,7 +559,7 @@ mod tests {
         // Max: 20 + 2 + 2 = 24
         assert!(result.total() >= 5 && result.total() <= 24);
         assert_eq!(result.rolls.len(), 1);
-        assert_eq!(result.advantage_tracker.roll_mode(), RollMode::Normal);
+        assert_eq!(result.check.advantage_tracker.roll_mode(), RollMode::Normal);
         println!("Result: {}", result);
     }
 
@@ -576,7 +584,10 @@ mod tests {
         // Max: 20 + 2 = 22
         assert!(result.total() >= 3 && result.total() <= 22);
         assert_eq!(result.rolls.len(), 2);
-        assert_eq!(result.advantage_tracker.roll_mode(), RollMode::Advantage);
+        assert_eq!(
+            result.check.advantage_tracker.roll_mode(),
+            RollMode::Advantage
+        );
         // Check if the selected roll is the maximum
         assert_eq!(
             result.selected_roll,
@@ -602,7 +613,10 @@ mod tests {
         // Max: 20 + 8 = 28
         assert!(result.total() >= 9 && result.total() <= 28);
         assert_eq!(result.rolls.len(), 2);
-        assert_eq!(result.advantage_tracker.roll_mode(), RollMode::Disadvantage);
+        assert_eq!(
+            result.check.advantage_tracker.roll_mode(),
+            RollMode::Disadvantage
+        );
         // Check if the selected roll is the minimum
         assert_eq!(
             result.selected_roll,
@@ -632,7 +646,7 @@ mod tests {
         // Max: 20 + 8 = 28
         assert!(result.total() >= 9 && result.total() <= 28);
         assert_eq!(result.rolls.len(), 1);
-        assert_eq!(result.advantage_tracker.roll_mode(), RollMode::Normal);
+        assert_eq!(result.check.advantage_tracker.roll_mode(), RollMode::Normal);
         println!("Result: {}", result);
     }
 

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use hecs::{Entity, World};
+use strum::Display;
 
 use crate::{
     components::actions::action::ActionContext, registry::serialize::variables::VariableFunction,
@@ -17,7 +18,7 @@ pub enum IntExpression {
     Negate(Box<IntExpression>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Display)]
 pub enum EvaluationError {
     UnknownVariable(String),
     DivisionByZero,

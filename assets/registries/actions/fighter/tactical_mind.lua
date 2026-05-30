@@ -1,18 +1,34 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(context)
-    return context:is_own_failed_d20_check("Skill")
+local function reaction_trigger(game_state, reactor, event)
+    if not event:is_d20_check_performed() then
+        return false
+    end
+
+    local actor, d20_result, d20_dc = event:as_d20_check_performed()
+    if actor and d20_result and d20_dc then
+        if actor ~= reactor then
+            return false
+        end
+
+        if not d20_result.kind:skill() then
+            return false
+        end
+
+        return not d20_result:is_success(d20_dc)
+    end
+
+    return false
 end
 
 ---@type ReactionBodyFn
-local function reaction_body(context)
-    local event = context.event
+local function reaction_body(game_state, reaction, event)
     if not event:is_d20_check_performed() then
-        return ReactionPlan.none()
+        return
     end
 
-    local d20_check = event:as_d20_check_performed()
-    d20_check:modify_result("1d10")
-    return event
+    event:with_d20_check(function(result, dc)
+        result:modify_result("1d10", "nat20_core::action.fighter.tactical_mind")
+    end)
 end
 
 return {

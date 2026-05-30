@@ -97,6 +97,13 @@ local ActionData = {}
 ---@return boolean
 function ActionData:costs_resource(resource_id) end
 
+---@class ReactionData
+---@field reaction_id string
+---@field reactor ScriptEntity
+---@field event Event
+---@field context ActionContext
+local ReactionData = {}
+
 ---@class ResourceAmountMap
 local ResourceAmountMap = {}
 ---@param resource_id string
@@ -152,6 +159,39 @@ function TargetInstance:entity() end
 -- D20 / event views
 ------------------------------------------------------------
 
+---@class D20CheckKind
+local D20CheckKind = {}
+---@return string?
+function D20CheckKind:saving_throw() end
+
+---@return string?
+function D20CheckKind:skill() end
+
+---@return string?
+function D20CheckKind:attack_roll() end
+
+---@class D20ResultKind
+---@field kind D20CheckKind
+---@field total integer
+local D20ResultKind = {}
+---@param dc D20CheckDCKind
+---@return boolean
+function D20ResultKind:is_success(dc) end
+
+---@param bonus string|integer
+---@param source string
+---@param force_use_new boolean
+function D20ResultKind:reroll_bonus(bonus, source, force_use_new) end
+
+---@param bonus string|integer
+---@param source string
+function D20ResultKind:modify_result(bonus, source) end
+
+---@class D20CheckDCKind
+---@field kind D20CheckKind
+---@field target ScriptEntity?
+local D20CheckDCKind = {}
+
 ---@class ScriptD20CheckDCKind
 ---@field label string  -- "AttackRoll" | "SavingThrow" | "Skill"
 ---@field dc integer
@@ -162,64 +202,42 @@ function TargetInstance:entity() end
 ---@field dc_kind ScriptD20CheckDCKind
 ---@field is_success boolean
 
----@class ScriptD20CheckView
----@field performer ScriptEntity
----@field result ScriptD20Result
-local ScriptD20CheckView = {}
----@param bonus string
-function ScriptD20CheckView:modify_result(bonus) end
-
----@param modifier string
-function ScriptD20CheckView:modify_dc(modifier) end
-
----@param bonus string
----@param force_use_new boolean
-function ScriptD20CheckView:reroll_result(bonus, force_use_new) end
-
 ---@class ScriptMovingOutOfReachView
 ---@field mover integer
 ---@field entity integer
 ---@field continue_movement boolean
 
----@class ScriptEventView
-local ScriptEventView = {}
+---@class Event
+local Event = {}
 ---@return boolean
-function ScriptEventView:is_d20_check_performed() end
+function Event:is_d20_check_performed() end
 
----@return ScriptD20CheckView
-function ScriptEventView:as_d20_check_performed() end
+---@return ScriptEntity?, D20ResultKind?, D20CheckDCKind?
+function Event:as_d20_check_performed() end
+
+---@param callback fun(result: D20ResultKind, dc: D20CheckDCKind)
+function Event:with_d20_check(callback) end
 
 ---@return boolean
-function ScriptEventView:is_action_requested() end
+function Event:is_action_requested() end
 
 ---@return ActionData
-function ScriptEventView:as_action_requested() end
+function Event:as_action_requested() end
 
 ---@return boolean
-function ScriptEventView:is_action_performed() end
+function Event:is_action_performed() end
 
 ---@return ActionData?, ActionResult[]?
-function ScriptEventView:as_action_performed() end
+function Event:as_action_performed() end
 
 ---@return boolean
-function ScriptEventView:is_moving_out_of_reach() end
+function Event:is_moving_out_of_reach() end
 
----@return ScriptMovingOutOfReachView
-function ScriptEventView:as_moving_out_of_reach() end
+---@return ScriptEntity?, ScriptEntity?, boolean?
+function Event:as_moving_out_of_reach() end
 
----@class ScriptReactionTriggerContext
----@field reactor ScriptEntity
----@field event ScriptEventView
-local ScriptReactionTriggerContext = {}
----@param dc_kind string
----@return boolean
-function ScriptReactionTriggerContext:is_own_failed_d20_check(dc_kind) end
-
----@class ScriptReactionBodyContext
----@field reactor ScriptEntity
----@field event ScriptEventView
----@field reaction_id string
----@field context ActionContext
+---@param callback fun(mover: ScriptEntity, entity: ScriptEntity, continue: boolean): boolean
+function Event:with_moving_out_of_reach(callback) end
 
 ------------------------------------------------------------
 -- GameState — the main script-facing world handle
@@ -227,6 +245,11 @@ function ScriptReactionTriggerContext:is_own_failed_d20_check(dc_kind) end
 
 ---@class GameState
 local GameState = {}
+
+---@param entity ScriptEntity
+---@param class_id string
+---@return integer
+function GameState:class_level(entity, class_id) end
 
 ---@param entity ScriptEntity
 ---@param resource_id string
@@ -370,7 +393,7 @@ function ModifierSource.effect(effect_id) end
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult)
----@alias ReactionTriggerFn fun(context: ScriptReactionTriggerContext): boolean
----@alias ReactionBodyFn fun(context: ScriptReactionBodyContext): ScriptReactionPlan|ScriptEventView|nil
+---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
+---@alias ReactionBodyFn fun(game_state: GameState, reaction: ReactionData, event: Event): ScriptReactionPlan|nil
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)

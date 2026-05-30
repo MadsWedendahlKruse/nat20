@@ -67,7 +67,7 @@ mod tests {
         );
         let result = systems::damage::attack_roll(roll, &mut game_state.world, entity, entity);
         assert_eq!(
-            result.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker().roll_mode(),
             RollMode::Normal
         );
 
@@ -83,7 +83,7 @@ mod tests {
         );
         let result = systems::damage::attack_roll(roll, &mut game_state.world, entity, entity);
         assert_eq!(
-            result.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker().roll_mode(),
             RollMode::Advantage
         );
 
@@ -97,7 +97,7 @@ mod tests {
         );
         let result = systems::damage::attack_roll(roll, &mut game_state.world, entity, entity);
         assert_eq!(
-            result.roll_result.advantage_tracker.roll_mode(),
+            result.roll_result.advantage_tracker().roll_mode(),
             RollMode::Normal
         );
     }
@@ -168,7 +168,7 @@ mod tests {
                 &game_state.world,
                 entity,
             );
-        assert_eq!(throw.advantage_tracker.roll_mode(), RollMode::Advantage);
+        assert_eq!(throw.advantage_tracker().roll_mode(), RollMode::Advantage);
 
         systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::Armor)
             .expect("Failed to unequip armor");
@@ -179,6 +179,6 @@ mod tests {
                 &game_state.world,
                 entity,
             );
-        assert_eq!(throw.advantage_tracker.roll_mode(), RollMode::Normal);
+        assert_eq!(throw.advantage_tracker().roll_mode(), RollMode::Normal);
     }
 }

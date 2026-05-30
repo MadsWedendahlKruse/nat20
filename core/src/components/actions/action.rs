@@ -45,8 +45,8 @@ pub type SavingThrowFunction =
 pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
-pub type ReactionTriggerFunction = dyn Fn(&World, &Entity, &Event) -> bool + Send + Sync;
-pub type ReactionBodyFunction = dyn Fn(&mut GameState, &ReactionData) + Send + Sync;
+pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
+pub type ReactionBodyFunction = dyn Fn(&mut GameState, &ReactionData, &mut Event) + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -550,10 +550,11 @@ pub enum ActionKindResult {
     Reaction { result: ReactionResult },
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ReactionResult {
     ModifyEvent {
-        modification: Arc<dyn Fn(&World, &mut Event) + Send + Sync>,
+        before: Event,
+        after: Event,
     },
     CancelEvent {
         event: Box<Event>,
@@ -562,27 +563,19 @@ pub enum ReactionResult {
     NoEffect,
 }
 
-impl Debug for ReactionResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReactionResult::ModifyEvent { .. } => write!(f, "ModifyEvent"),
-            ReactionResult::CancelEvent {
-                event,
-                resources_refunded,
-            } => f
-                .debug_struct("CancelEvent")
-                .field("event", &event.id)
-                .field("resources_refunded", resources_refunded)
-                .finish(),
-            ReactionResult::NoEffect => write!(f, "NoEffect"),
-        }
-    }
-}
-
 impl PartialEq for ReactionResult {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ReactionResult::ModifyEvent { .. }, ReactionResult::ModifyEvent { .. }) => true,
+            (
+                ReactionResult::ModifyEvent {
+                    before: b1,
+                    after: a1,
+                },
+                ReactionResult::ModifyEvent {
+                    before: b2,
+                    after: a2,
+                },
+            ) => b1.id == b2.id && a1.id == a2.id,
             (
                 ReactionResult::CancelEvent { event: e1, .. },
                 ReactionResult::CancelEvent { event: e2, .. },

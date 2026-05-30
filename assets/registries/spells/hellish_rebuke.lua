@@ -1,6 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(context)
-    local event = context.event
+local function reaction_trigger(game_state, reactor, event)
     if not event:is_action_performed() then
         return false
     end
@@ -11,13 +10,13 @@ local function reaction_trigger(context)
     end
 
     -- Cannot target yourself
-    if action.actor == context.reactor then
+    if action.actor == reactor then
         return false
     end
 
     for _, result in ipairs(results) do
         local standard_kind = result.kind:as_standard()
-        if result.target:entity() == context.reactor and standard_kind then
+        if result.target:entity() == reactor and standard_kind then
             local damage = standard_kind:damage()
             if damage and damage:damage_taken_total() > 0 then
                 return true

@@ -8,12 +8,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::{ReactionBodyFunction, ReactionTriggerFunction},
-        id::ScriptId,
+        actions::{
+            action::{
+                ActionKindResult, ReactionBodyFunction, ReactionResult, ReactionTriggerFunction,
+            },
+            targeting::TargetInstance,
+        },
+        id::{EntityIdentifier, ScriptId},
     },
-    scripts::script_api::{
-        ScriptEntity, ScriptEventView, ScriptReactionBodyContext, ScriptReactionTriggerContext,
-    },
+    engine::{action_prompt::ActionData, event::Event},
     systems,
 };
 
@@ -53,15 +56,8 @@ impl FromStr for ReactionTrigger {
 
         Ok(ReactionTrigger {
             raw: s.to_string(),
-            function: Arc::new(move |_world, reactor, event| {
-                let Some(script_event) = ScriptEventView::from_event(event) else {
-                    return false;
-                };
-                let context = ScriptReactionTriggerContext {
-                    reactor: ScriptEntity::from(*reactor),
-                    event: script_event,
-                };
-                systems::scripts::evaluate_reaction_trigger(&script_id, &context)
+            function: Arc::new(move |game_state, reactor, event| {
+                systems::scripts::evaluate_reaction_trigger(&script_id, game_state, *reactor, event)
             }),
             script,
         })
@@ -112,12 +108,33 @@ impl FromStr for ReactionBody {
 
         Ok(ReactionBody {
             raw: s.to_string(),
-            function: Arc::new(move |game_state, reaction_data| {
+            function: Arc::new(move |game_state, reaction_data, event| {
                 let result = systems::scripts::evaluate_reaction_body(
                     &script_id,
-                    &ScriptReactionBodyContext::from(reaction_data),
+                    game_state,
+                    reaction_data,
+                    event,
                 );
                 systems::scripts::apply_reaction_body_result(game_state, reaction_data, result);
+
+                // TODO: Find a better solution? Also feel like this should live somewhere else?
+                if reaction_data.event.as_ref() != event {
+                    let TargetInstance::Entity { entity, .. } = &reaction_data.target else {
+                        return;
+                    };
+                    game_state.process_event(Event::action_performed_event(
+                        &ActionData::from(reaction_data),
+                        vec![(
+                            entity.clone(),
+                            ActionKindResult::Reaction {
+                                result: ReactionResult::ModifyEvent {
+                                    before: reaction_data.event.as_ref().clone(),
+                                    after: event.clone(),
+                                },
+                            },
+                        )],
+                    ));
+                }
             }),
             script,
         })

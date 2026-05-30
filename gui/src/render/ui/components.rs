@@ -290,7 +290,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for AbilityScoreMap {
                         .render(ui);
                     }
                     let result = saving_throws.check(&saving_throw_kind, world, entity);
-                    let modifiers = &result.modifier_breakdown;
+                    let modifiers = &result.check.modifiers();
                     let total = modifiers.total();
                     ui.text(format!("Bonus: {}", signed_value(&total)));
                     modifiers.render_with_context(ui, ModifierSetRenderMode::List(1));
@@ -338,7 +338,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for SkillSet {
                 // TODO: Avoid doing an actual skill check here every time
                 let result = self.check(&skill, world, entity);
                 result
-                    .modifier_breakdown
+                    .modifiers()
                     .render_with_context(ui, ModifierSetRenderMode::Hoverable);
             }
 
@@ -904,13 +904,13 @@ impl ImguiRenderable for D20CheckResult {
             (self.selected_roll.to_string(), TextKind::Normal),
             ("(1d20)".to_string(), TextKind::Details),
         ];
-        if self.advantage_tracker.roll_mode() != RollMode::Normal {
+        if self.advantage_tracker().roll_mode() != RollMode::Normal {
             segments.push((
                 format!(
                     " ({}, {}, {:?})",
                     self.rolls[0],
                     self.rolls[1],
-                    self.advantage_tracker.roll_mode()
+                    self.advantage_tracker().roll_mode()
                 ),
                 TextKind::Details,
             ));
@@ -925,9 +925,9 @@ impl ImguiRenderable for D20CheckResult {
             _ => { /* No outcome to render */ }
         }
         TextSegments::new(segments).render(ui);
-        if !self.modifier_breakdown.is_empty() {
+        if !self.modifiers().is_empty() {
             ui.same_line();
-            self.modifier_breakdown
+            self.modifiers()
                 .render_with_context(ui, ModifierSetRenderMode::Line);
         }
         ui.same_line();
@@ -1144,9 +1144,19 @@ impl ImguiRenderableWithContext<u8> for ActionResult {
             ActionKindResult::Composite { actions } => todo!(),
 
             ActionKindResult::Reaction { result } => match result {
-                ReactionResult::ModifyEvent { modification } => {
-                    // TODO: No idea how to render this yet
-                    return;
+                ReactionResult::ModifyEvent { before, after } => {
+                    TextSegment::new("\tmodifying", TextKind::Normal).render(ui);
+                    ui.same_line();
+                    render_event_description(ui, before);
+
+                    if ui.is_item_hovered() {
+                        ui.tooltip(|| {
+                            ui.separator_with_text("Before");
+                            ui.text("TODO");
+                            ui.separator_with_text("After");
+                            ui.text("TODO");
+                        });
+                    }
                 }
 
                 ReactionResult::CancelEvent {

@@ -57,6 +57,7 @@ impl fmt::Display for ModifierSource {
     }
 }
 
+// TODO: Add support for dice modifiers?
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModifierSet {
     modifiers: BTreeMap<ModifierSource, i32>,

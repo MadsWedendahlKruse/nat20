@@ -546,7 +546,7 @@ impl EventFilterKind {
 
                 if let Some((modifier_source, modifier_value)) = modifier {
                     let Some(event_modifier) =
-                        result.d20_result().modifier_breakdown.get(modifier_source)
+                        result.d20_result().check.modifiers().get(modifier_source)
                     else {
                         return false;
                     };
@@ -559,7 +559,7 @@ impl EventFilterKind {
                 if let Some((advantage_source, advantage_type)) = advantage
                     && !result
                         .d20_result()
-                        .advantage_tracker
+                        .advantage_tracker()
                         .summary()
                         .contains(&(advantage_source, *advantage_type))
                 {

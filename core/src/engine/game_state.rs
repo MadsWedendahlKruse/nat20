@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use hecs::{Entity, NoSuchEntity, World};
 use parry3d::{na::Point3, shape::Ball};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
@@ -702,7 +702,24 @@ impl GameState {
             }
 
             EventKind::ReactionRequested { reaction } => {
-                systems::actions::perform_reaction(self, reaction);
+                let game_state = unsafe { &mut *(self as *mut GameState) };
+                let reaction_event = self
+                    .session_for_entity_mut(reaction.reactor.id())
+                    .pending_events_mut()
+                    .iter_mut()
+                    .find(|pe| pe.event.id == reaction.event.id);
+                if let Some(reaction_event) = reaction_event {
+                    systems::actions::perform_reaction(
+                        game_state,
+                        reaction,
+                        &mut reaction_event.event,
+                    );
+                } else {
+                    panic!(
+                        "Attempted to perform reaction to event which is not pending: {:#?}",
+                        reaction
+                    );
+                }
             }
 
             EventKind::ActionPerformed { action, results } => {
@@ -722,6 +739,10 @@ impl GameState {
                                 .session_mut(self.scope_for_entity(action_result.performer.id()));
 
                             match reaction_result {
+                                ReactionResult::ModifyEvent { .. } => {
+                                    // TODO: Don't need to do anything here?
+                                }
+
                                 ReactionResult::CancelEvent {
                                     event,
                                     resources_refunded,
@@ -755,23 +776,6 @@ impl GameState {
                                             event
                                         );
                                     }
-                                }
-
-                                // TODO: How to handle this properly?
-                                ReactionResult::ModifyEvent { modification } => {
-                                    info!(
-                                        "Modifying event {:?} due to reaction by {:?}",
-                                        event.id,
-                                        action_result.performer.id()
-                                    );
-                                    (modification)(
-                                        &self.world,
-                                        &mut session
-                                            .pending_events_mut()
-                                            .front_mut()
-                                            .unwrap()
-                                            .event,
-                                    );
                                 }
 
                                 ReactionResult::NoEffect => { /* Do nothing */ }

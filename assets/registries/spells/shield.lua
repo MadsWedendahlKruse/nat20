@@ -1,11 +1,9 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(context)
-    local event = context.event
-
+local function reaction_trigger(game_state, reactor, event)
     if event:is_action_requested() then
         local action = event:as_action_requested()
         -- Cannot use Shield as a reaction to your own spell
-        if action.actor == context.reactor then
+        if action.actor == reactor then
             return false
         end
         -- Note: checking the *action* ID, not the spell ID
@@ -13,11 +11,15 @@ local function reaction_trigger(context)
     end
 
     if event:is_d20_check_performed() then
-        local d20_check = event:as_d20_check_performed()
-        local result = d20_check.result
-        return result.dc_kind.label == "AttackRoll"
-            and result.dc_kind.target == context.reactor.id
-            and result.is_success == true
+        local actor, d20_result, d20_dc = event:as_d20_check_performed()
+        if actor and d20_result and d20_dc then
+            if not d20_result.kind:attack_roll() or not d20_dc.target then
+                return false
+            end
+
+            return d20_dc.target == reactor and
+                d20_result:is_success(d20_dc)
+        end
     end
 
     return false

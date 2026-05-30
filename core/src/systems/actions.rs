@@ -367,7 +367,7 @@ pub fn available_reactions_to_event(
         let reaction = reaction.unwrap();
 
         if let Some(trigger) = &reaction.reaction_trigger {
-            if trigger(world, &reactor, event) {
+            if trigger(game_state, &reactor, event) {
                 for (context, resource_cost) in &contexts_and_costs {
                     let self_target = matches!(
                         targeting_context(world, reactor, &reaction_id, context).kind,
@@ -381,6 +381,7 @@ pub fn available_reactions_to_event(
                             event.actor().unwrap(),
                         ))
                     };
+
                     if action_usable_on_targets(
                         world,
                         world_geometry,
@@ -409,20 +410,24 @@ pub fn available_reactions_to_event(
     reactions
 }
 
-pub fn perform_reaction(game_state: &mut GameState, reaction_data: &ReactionData) {
+pub fn perform_reaction(
+    game_state: &mut GameState,
+    reaction_data: &ReactionData,
+    event: &mut Event,
+) {
     let action = get_action(&reaction_data.reaction_id)
         .unwrap_or_else(|| panic!("Reaction action not found: {:?}", reaction_data.reaction_id));
 
     match &action.kind {
         ActionKind::Reaction { reaction } => {
-            reaction(game_state, reaction_data);
+            reaction(game_state, reaction_data, event);
         }
 
         ActionKind::Composite { actions } => {
             for action in actions {
                 match action {
                     ActionKind::Reaction { reaction } => {
-                        reaction(game_state, reaction_data);
+                        reaction(game_state, reaction_data, event);
                     }
 
                     _ => {

@@ -18,7 +18,7 @@ use crate::{
     systems,
 };
 
-// TODO: Do we even need it without the DC? Does that make sense?
+// TODO: Why do we call it SavingTHROW and AttackROLL, but not SkillCHECK?
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
@@ -148,6 +148,12 @@ impl D20ResultKind {
             D20ResultKind::Skill { skill, .. } => D20CheckKind::Skill(*skill),
             D20ResultKind::AttackRoll { result } => D20CheckKind::AttackRoll(result.source.clone()),
         }
+    }
+
+    pub fn reroll(&self) -> D20ResultKind {
+        let mut new_result = self.clone();
+        *(new_result.d20_result_mut()) = new_result.d20_result().reroll();
+        new_result
     }
 }
 

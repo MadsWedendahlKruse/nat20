@@ -45,24 +45,22 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 
 use crate::{
     components::{
-        actions::{
-            action::{ActionContext, ActionResult},
-            targeting::TargetInstance,
-        },
+        actions::action::{ActionContext, ActionResult},
         damage::{DamageMitigationResult, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, EntityIdentifier, ScriptId},
         resource::ResourceAmountMap,
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::{
+        action_prompt::{ActionData, ReactionData},
+        event::Event,
+        game_state::GameState,
+    },
     registry::registry::REGISTRY_ROOT,
     scripts::{
         lua::lua_types::{self},
         script::{Script, ScriptError, ScriptFunction},
-        script_api::{
-            ScriptEntity, ScriptEventView, ScriptReactionBodyContext, ScriptReactionBodyResult,
-            ScriptReactionPlan, ScriptReactionTriggerContext,
-        },
+        script_api::{ScriptEntity, ScriptReactionBodyResult, ScriptReactionPlan},
     },
 };
 
@@ -158,27 +156,46 @@ impl ScriptEngine {
     pub fn evaluate_reaction_trigger(
         &self,
         script: &Script,
-        context: &ScriptReactionTriggerContext,
+        game_state: &GameState,
+        reactor: Entity,
+        event: &Event,
     ) -> Result<bool, ScriptError> {
         let func = self.get_function(script, ScriptFunction::ReactionTrigger)?;
-        let ctx = self
+        let reactor = self
             .lua
-            .create_userdata(context.clone())
+            .create_userdata(ScriptEntity::from(reactor))
             .map_err(Self::runtime_error)?;
-        func.call::<bool>(ctx).map_err(Self::runtime_error)
+        let result: bool = self
+            .lua
+            .scope(|scope| {
+                func.call::<bool>((
+                    scope.create_userdata_ref(game_state)?,
+                    reactor,
+                    scope.create_userdata_ref(event)?,
+                ))
+            })
+            .map_err(Self::runtime_error)?;
+        Ok(result)
     }
 
     pub fn evaluate_reaction_body(
         &self,
         script: &Script,
-        context: &ScriptReactionBodyContext,
+        game_state: &mut GameState,
+        reaction: &ReactionData,
+        event: &mut Event,
     ) -> Result<ScriptReactionBodyResult, ScriptError> {
         let func = self.get_function(script, ScriptFunction::ReactionBody)?;
-        let ctx = self
+        let value: Value = self
             .lua
-            .create_userdata(context.clone())
+            .scope(|scope| {
+                func.call::<Value>((
+                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref(reaction)?,
+                    scope.create_userdata_ref_mut(event)?,
+                ))
+            })
             .map_err(Self::runtime_error)?;
-        let value: Value = func.call(ctx).map_err(Self::runtime_error)?;
         match value {
             Value::Nil => Ok(ScriptReactionBodyResult::none()),
             Value::UserData(ud) => {
@@ -186,8 +203,8 @@ impl ScriptEngine {
                     Ok(ScriptReactionBodyResult::Plan(plan.clone()))
                 } else if let Ok(body) = ud.borrow::<ScriptReactionBodyResult>() {
                     Ok(body.clone())
-                } else if let Ok(event) = ud.borrow::<ScriptEventView>() {
-                    Ok(ScriptReactionBodyResult::TriggerEvent(event.clone()))
+                } else if let Ok(event) = ud.borrow::<Event>() {
+                    Ok(todo!())
                 } else {
                     Err(Self::runtime_error(mlua::Error::RuntimeError(
                         "Unexpected userdata return type from reaction_body".to_string(),

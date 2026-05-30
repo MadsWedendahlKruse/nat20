@@ -1,6 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(context)
-    local event = context.event
+local function reaction_trigger(game_state, reactor, event)
     -- Only care about action-like events (ActionRequested / ReactionRequested).
     if not event:is_action_requested() then
         return false
@@ -8,7 +7,7 @@ local function reaction_trigger(context)
 
     local action = event:as_action_requested()
     -- Cannot counterspell yourself.
-    if action.actor == context.reactor then
+    if action.actor == reactor then
         return false
     end
     -- Only react to spells.
