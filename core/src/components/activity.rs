@@ -202,6 +202,10 @@ impl ActivityStateKind {
                 action,
                 paused,
             } => {
+                if *paused {
+                    return commands;
+                }
+
                 if *current_target >= path.points.len() {
                     warn!(
                         "Current target index {} is out of bounds for path with length {}. Target appears to have reached goal, but follow up state was not set correctly. Did the action submission fail? Setting state to idle",
