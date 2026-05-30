@@ -7,8 +7,20 @@
         "somatic"
     ],
     "kind": {
-        "reaction": {
-            "reaction": "nat20_core::script.spell.counterspell"
+        "standard": {
+            "condition": {
+                "saving_throw": "spell_save_dc;constitution"
+            },
+            "payload": {
+                "reaction": "cancel_event",
+                "_delivery": "immediate",
+                "delivery": {
+                    "projectile": {
+                        "trajectory": "ray",
+                        "velocity": "40 m/s"
+                    }
+                }
+            }
         }
     },
     "resource_cost": {

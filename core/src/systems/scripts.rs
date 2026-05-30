@@ -1,32 +1,17 @@
-use std::sync::Arc;
-
-use hecs::{Entity, World};
-use tracing::{error, event};
+use hecs::Entity;
+use tracing::error;
 
 use crate::{
     components::{
-        actions::action::{ActionContext, ActionKindResult, ActionResult, ReactionResult},
+        actions::action::{ActionContext, ActionResult},
         damage::{DamageMitigationResult, DamageRollResult},
         effects::effect::EffectInstance,
-        id::{ActionId, EntityIdentifier, ScriptId},
+        id::{ActionId, ScriptId},
         resource::ResourceAmountMap,
     },
-    engine::{
-        action_prompt::{ActionData, ReactionData},
-        event::{CallbackResult, Event, EventCallback, EventKind},
-        game_state::GameState,
-    },
+    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::ScriptsRegistry,
-    scripts::{
-        script_api::{
-            ScriptEntityRole, ScriptEventRef, ScriptReactionBodyResult, ScriptReactionPlan,
-        },
-        script_engine::SCRIPT_ENGINE,
-    },
-    systems::{
-        self,
-        d20::{D20CheckDCKind, D20ResultKind},
-    },
+    scripts::script_engine::SCRIPT_ENGINE,
 };
 
 // TODO: Since we only have single languauge support, do we still need all these
@@ -60,20 +45,18 @@ pub fn evaluate_reaction_trigger(
 pub fn evaluate_reaction_body(
     reaction_body: &ScriptId,
     game_state: &mut GameState,
-    reaction: &ReactionData,
+    reaction: &ActionData,
     event: &mut Event,
-) -> ScriptReactionBodyResult {
+) {
     let script = ScriptsRegistry::get(reaction_body)
         .expect(format!("Reaction script not found in registry: {:?}", reaction_body).as_str());
-    match SCRIPT_ENGINE.evaluate_reaction_body(script, game_state, reaction, event) {
-        Ok(result) => result,
-        Err(err) => {
-            error!(
-                "Error evaluating reaction body script {:?} for reactor {:?}: {:?}",
-                reaction_body, reaction.reactor, err
-            );
-            ScriptReactionBodyResult::none()
-        }
+    if let Err(err) = SCRIPT_ENGINE.evaluate_reaction_body(script, game_state, reaction, event) {
+        error!(
+            "Error evaluating reaction body script {:?} for reactor {:?}: {:?}",
+            reaction_body,
+            reaction.actor.id(),
+            err
+        );
     }
 }
 
@@ -279,140 +262,5 @@ pub fn evaluate_turn_start_hook(script_id: &ScriptId, game_state: &mut GameState
             "Error evaluating turn start hook script {:?} for entity {:?}: {:?}",
             script_id, entity, err
         );
-    }
-}
-
-pub fn apply_reaction_body_result(
-    game_state: &mut GameState,
-    reaction_data: &ReactionData,
-    result: ScriptReactionBodyResult,
-) {
-    match result {
-        ScriptReactionBodyResult::Plan(plan) => {
-            apply_reaction_plan(game_state, reaction_data, plan);
-        } // ScriptReactionBodyResult::TriggerEvent(event_view) => {
-          //     let reaction_data = reaction_data.clone();
-          //     let reaction_data_for_modification = reaction_data.clone();
-          //     let reaction_result = ReactionResult::ModifyEvent {
-          //         modification: Arc::new(move |world: &World, event: &mut Event| {
-          //             event_view.apply_to_event(world, &reaction_data_for_modification, event);
-          //         }),
-          //     };
-
-          //     game_state.process_event(Event::action_performed_event(
-          //         &ActionData::from(&reaction_data),
-          //         vec![(
-          //             reaction_data.reactor,
-          //             ActionKindResult::Reaction {
-          //                 result: reaction_result,
-          //             },
-          //         )],
-          //     ));
-          // }
-    }
-}
-
-pub fn apply_reaction_plan(
-    game_state: &mut GameState,
-    reaction_data: &ReactionData,
-    plan: ScriptReactionPlan,
-) {
-    match plan {
-        ScriptReactionPlan::None => {}
-
-        ScriptReactionPlan::Sequence(plans) => {
-            for p in plans {
-                apply_reaction_plan(game_state, reaction_data, p);
-            }
-        }
-
-        ScriptReactionPlan::CancelEvent {
-            event,
-            resources_to_refund,
-        } => {
-            let target_event = match event {
-                ScriptEventRef::TriggerEvent => &reaction_data.event,
-            };
-
-            let mut resources_refunded = ResourceAmountMap::new();
-            for resource_id in &resources_to_refund {
-                resources_refunded.map.insert(
-                    resource_id.clone(),
-                    reaction_data
-                        .resource_cost
-                        .map
-                        .get(resource_id)
-                        .cloned()
-                        .unwrap(),
-                );
-            }
-
-            let result = ReactionResult::CancelEvent {
-                event: target_event.clone(),
-                resources_refunded,
-            };
-
-            game_state.process_event(Event::action_performed_event(
-                &ActionData::from(reaction_data),
-                vec![(
-                    EntityIdentifier::from_world(&game_state.world, target_event.actor().unwrap()),
-                    ActionKindResult::Reaction { result },
-                )],
-            ));
-        }
-
-        ScriptReactionPlan::RequireSavingThrow {
-            target,
-            dc,
-            on_success,
-            on_failure,
-        } => {
-            let target_entity = match target {
-                ScriptEntityRole::Reactor => reaction_data.reactor.id(),
-                ScriptEntityRole::Actor => reaction_data
-                    .event
-                    .actor()
-                    .expect("Trigger event has no actor"),
-                ScriptEntityRole::Target => reaction_data
-                    .event
-                    .target()
-                    .expect("RequireSavingThrow reaction target role 'Target' but trigger event has no target"),
-            };
-
-            let dc_kind = D20CheckDCKind::SavingThrow((dc.saving_throw.function)(
-                &game_state.world,
-                target_entity,
-                &reaction_data.context,
-            ));
-
-            let check_event = systems::d20::check(game_state, target_entity, &dc_kind);
-
-            let context_clone = reaction_data.clone();
-            let on_success_plan = *on_success;
-            let on_failure_plan = *on_failure;
-
-            let callback = EventCallback::new(move |game_state, event, _| {
-                if let EventKind::D20CheckResolved(_, result_kind, _) = &event.kind {
-                    let success = match result_kind {
-                        D20ResultKind::SavingThrow { .. } => result_kind.is_success(&dc_kind),
-                        _ => panic!("RequireSavingThrow expects a saving throw result"),
-                    };
-
-                    let next_plan = if success {
-                        on_success_plan.clone()
-                    } else {
-                        on_failure_plan.clone()
-                    };
-
-                    apply_reaction_plan(game_state, &context_clone, next_plan);
-
-                    CallbackResult::None
-                } else {
-                    panic!("RequireSavingThrow callback received unexpected event");
-                }
-            });
-
-            let _ = game_state.process_event_with_response_callback(check_event, callback);
-        }
     }
 }

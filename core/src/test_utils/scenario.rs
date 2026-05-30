@@ -22,7 +22,7 @@ use crate::{
         time::TimeMode,
     },
     engine::{
-        action_prompt::ReactionData,
+        action_prompt::ActionData,
         encounter::EncounterId,
         event::{Event, EventCallback, EventFilter, EventKind},
         game_state::GameState,
@@ -326,7 +326,7 @@ impl ScenarioReactionBuilder<'_> {
         self
     }
 
-    pub fn option_filter(mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> Self {
+    pub fn option_filter(mut self, filter_fn: impl Fn(&ActionData) -> bool) -> Self {
         self.builder.option_filter(filter_fn);
         self
     }

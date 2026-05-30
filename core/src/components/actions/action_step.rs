@@ -14,6 +14,7 @@ use crate::{
                 ActionCondition, ActionConditionKind, ActionConditionResolution, ActionKindResult,
                 ActionOutcomeBundle, ActionPayload, DamageFunction, DamageOnFailure, DamageOutcome,
                 EffectOutcome, HealingFunction, HealingOutcome, PayloadDelivery,
+                ReactionBodyFunction, ReactionOutcome,
             },
             targeting::TargetInstance,
         },
@@ -250,6 +251,7 @@ impl ActionStepCondition {
 
         match condition {
             ActionCondition::None => {
+                debug!("No condition to resolve, marking as automatically successful");
                 *self = Self::Resolved {
                     resolution: ActionConditionResolution::Unconditional,
                 };
@@ -330,6 +332,11 @@ impl ActionStepCondition {
 
                 game_state.process_event_with_response_callback(attack_event, callback);
 
+                debug!(
+                    "Waiting for attack roll resolution callback for action instance {:?}...",
+                    action.instance_id
+                );
+
                 let maybe_resolution = result_slot.lock().unwrap().take();
                 match maybe_resolution {
                     Some(resolution) => *self = Self::Resolved { resolution },
@@ -340,6 +347,11 @@ impl ActionStepCondition {
             ActionCondition::SavingThrow(saving_throw) => {
                 let saving_throw_dc =
                     saving_throw(&game_state.world, action.actor.id(), &action.context);
+
+                debug!(
+                    "Performing saving throw for action instance {:?} with DC {:?}...",
+                    action.instance_id, saving_throw_dc
+                );
 
                 let saving_throw_event = systems::d20::check(
                     game_state,
@@ -395,6 +407,11 @@ impl ActionStepCondition {
 
                 game_state.process_event_with_response_callback(saving_throw_event, callback);
 
+                debug!(
+                    "Waiting for saving throw resolution callback for action instance {:?}...",
+                    action.instance_id
+                );
+
                 let maybe_resolution = result_slot.lock().unwrap().take();
                 match maybe_resolution {
                     Some(resolution) => *self = Self::Resolved { resolution },
@@ -417,6 +434,7 @@ pub struct ActionStepPayload {
     pub damage: Option<StepPayloadDamage>,
     pub effect: Option<StepPayloadEffect>,
     pub healing: Option<StepPayloadHealing>,
+    pub reaction: Option<StepPayloadReaction>,
 }
 
 impl ActionStepPayload {
@@ -445,6 +463,11 @@ impl ActionStepPayload {
                 .map(|healing| StepPayloadHealing::Unresolved {
                     healing: healing.clone(),
                 }),
+            reaction: payload
+                .reaction()
+                .map(|reaction| StepPayloadReaction::Resolved {
+                    reaction: reaction.clone(),
+                }),
         }
     }
 
@@ -452,8 +475,9 @@ impl ActionStepPayload {
         let damage_resolved = self.damage.as_ref().map_or(true, |d| d.is_resolved());
         let effect_resolved = self.effect.as_ref().map_or(true, |e| e.is_resolved());
         let healing_resolved = self.healing.as_ref().map_or(true, |h| h.is_resolved());
+        let reaction_resolved = self.reaction.as_ref().map_or(true, |r| r.is_resolved());
 
-        damage_resolved && effect_resolved && healing_resolved
+        damage_resolved && effect_resolved && healing_resolved && reaction_resolved
     }
 
     pub fn resolve(
@@ -473,14 +497,19 @@ impl ActionStepPayload {
         if let Some(healing) = &mut self.healing {
             healing.resolve(game_state, action, condition_resolution);
         }
+
+        if let Some(reaction) = &mut self.reaction {
+            reaction.resolve(game_state, action, condition_resolution);
+        }
     }
 
     pub fn is_applied(&self) -> bool {
         let damage_applied = self.damage.as_ref().map_or(true, |d| d.is_applied());
         let effect_applied = self.effect.as_ref().map_or(true, |e| e.is_applied());
         let healing_applied = self.healing.as_ref().map_or(true, |h| h.is_applied());
+        let reaction_applied = self.reaction.as_ref().map_or(true, |r| r.is_applied());
 
-        damage_applied && effect_applied && healing_applied
+        damage_applied && effect_applied && healing_applied && reaction_applied
     }
 
     pub fn apply(
@@ -521,10 +550,21 @@ impl ActionStepPayload {
             None
         };
 
+        let reaction_outcome = if let Some(reaction) = &mut self.reaction {
+            reaction.apply_payload(game_state, action, target, condition_resolution);
+            self.reaction.as_ref().and_then(|r| match r {
+                StepPayloadReaction::Applied { outcome } => Some(outcome.clone()),
+                _ => None,
+            })
+        } else {
+            None
+        };
+
         let result = ActionKindResult::Standard(ActionOutcomeBundle {
             damage: damage_outcome,
             effect: effect_outcome,
             healing: healing_outcome,
+            reaction: reaction_outcome,
         });
 
         game_state.process_event(Event::action_performed_event(
@@ -987,5 +1027,102 @@ impl StepPayloadComponent for StepPayloadEffect {
                 applied: true,
             },
         };
+    }
+}
+
+#[derive(Clone)]
+pub enum StepPayloadReaction {
+    // Nothing to resolve, so no need for an Unresolved variant
+    Resolved { reaction: Arc<ReactionBodyFunction> },
+    Applied { outcome: ReactionOutcome },
+}
+
+impl StepPayloadComponent for StepPayloadReaction {
+    fn is_resolved(&self) -> bool {
+        matches!(self, Self::Resolved { .. })
+    }
+
+    fn resolve(
+        &mut self,
+        _game_state: &mut GameState,
+        _action: &ActionData,
+        _condition_resolution: &ActionConditionResolution,
+    ) {
+        // Nothing to resolve for reactions
+        return;
+    }
+
+    fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied { .. })
+    }
+
+    fn apply_payload(
+        &mut self,
+        game_state: &mut GameState,
+        action: &ActionData,
+        _target: Entity,
+        condition_resolution: &ActionConditionResolution,
+    ) {
+        let reaction_fn = match self {
+            Self::Resolved { reaction } => reaction.clone(),
+            Self::Applied { .. } => return, // Already applied, should never get here
+        };
+
+        if !condition_resolution.is_success() {
+            *self = Self::Applied {
+                outcome: ReactionOutcome::NoEffect,
+            };
+            return;
+        }
+
+        let Some(trigger_event) = action.trigger_event.as_ref() else {
+            panic!("No trigger event in action for reaction payload, cannot apply reaction");
+        };
+
+        let game_state_ptr = unsafe { &mut *(game_state as *mut GameState) };
+        let reaction_event = game_state
+            .session_for_entity_mut(action.actor.id())
+            .pending_events_mut()
+            .iter_mut()
+            .find(|pe| pe.event.id == trigger_event.id);
+        let Some(reaction_event) = reaction_event else {
+            panic!(
+                "Attempted to perform reaction to event which is not pending: {:#?}",
+                action
+            );
+        };
+
+        let outcome = reaction_fn(game_state_ptr, action, &mut reaction_event.event);
+
+        if let Some(outcome) = outcome {
+            *self = Self::Applied { outcome };
+            return;
+        }
+
+        // TODO: Not sure if this check actually works
+        if **trigger_event != reaction_event.event {
+            *self = Self::Applied {
+                outcome: ReactionOutcome::ModifyEvent {
+                    before: trigger_event.as_ref().clone(),
+                    after: reaction_event.event.clone(),
+                },
+            };
+            return;
+        }
+
+        *self = Self::Applied {
+            outcome: ReactionOutcome::NoEffect, // TEMP
+        };
+    }
+}
+
+impl std::fmt::Debug for StepPayloadReaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Resolved { .. } => f.debug_struct("Resolved").finish(),
+            Self::Applied { outcome } => {
+                f.debug_struct("Applied").field("outcome", outcome).finish()
+            }
+        }
     }
 }

@@ -34,15 +34,12 @@ use crate::{
         time::{TimeDuration, TurnBoundary},
     },
     engine::{
-        action_prompt::{ActionData, ReactionData},
+        action_prompt::ActionData,
         event::{Event, EventKind},
         game_state::GameState,
     },
     registry::serialize::parser::Parser,
-    scripts::script_api::{
-        ScriptDiceRollBonus, ScriptEntity, ScriptEventRef, ScriptReactionBodyResult,
-        ScriptReactionPlan, ScriptSavingThrow,
-    },
+    scripts::script_api::{ScriptDiceRollBonus, ScriptEntity},
     systems::{
         self,
         d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
@@ -113,9 +110,6 @@ impl_from_lua_userdata!(
     ScriptEntity,
     D20CheckDCKind,
     D20ResultKind,
-    ScriptSavingThrow,
-    ScriptReactionPlan,
-    ScriptReactionBodyResult,
     ActionContext,
     ActionData,
     ActionConditionResolution,
@@ -404,13 +398,6 @@ impl UserData for D20CheckDCKind {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Opaque marker UserData impls (no methods; used as opaque values)
-// ---------------------------------------------------------------------------
-
-impl UserData for ScriptSavingThrow {}
-impl UserData for ScriptReactionPlan {}
-impl UserData for ScriptReactionBodyResult {}
 impl UserData for ModifierSource {}
 
 // ---------------------------------------------------------------------------
@@ -460,6 +447,9 @@ impl UserData for ActionData {
         fields.add_field_method_get("action_id", |_, this| Ok(this.action_id.to_string()));
         fields.add_field_method_get("actor", |_, this| Ok(ScriptEntity::from(this.actor.id())));
         fields.add_field_method_get("action_context", |_, this| Ok(this.context.clone()));
+        fields.add_field_method_get("trigger_event", |_, this| {
+            Ok(this.trigger_event.as_ref().map(|e| e.as_ref().clone()))
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
@@ -467,17 +457,6 @@ impl UserData for ActionData {
             let id = parse_resource_id(&resource_id)?;
             Ok(this.resource_cost.map.contains_key(&id))
         });
-    }
-}
-
-impl UserData for ReactionData {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("reactor", |_, this| {
-            Ok(ScriptEntity::from(this.reactor.id()))
-        });
-        fields.add_field_method_get("event", |_, this| Ok(this.event.as_ref().clone()));
-        fields.add_field_method_get("reaction_id", |_, this| Ok(this.reaction_id.to_string()));
-        fields.add_field_method_get("context", |_, this| Ok(this.context.clone()));
     }
 }
 
@@ -909,77 +888,6 @@ impl UserData for ResourceAmountMap {
 
 pub fn register_globals(lua: &Lua) -> LuaResult<()> {
     let globals = lua.globals();
-
-    // ReactionPlan ----------------------------------------------------------
-    let reaction_plan = lua.create_table()?;
-    reaction_plan.set(
-        "none",
-        lua.create_function(|_, ()| Ok(ScriptReactionPlan::None))?,
-    )?;
-    reaction_plan.set(
-        "sequence",
-        lua.create_function(|_, plans: Variadic<ScriptReactionPlan>| {
-            Ok(ScriptReactionPlan::Sequence(plans.into_iter().collect()))
-        })?,
-    )?;
-    reaction_plan.set(
-        "require_saving_throw",
-        lua.create_function(
-            |_,
-             (target_role, dc, on_success, on_failure): (
-                String,
-                ScriptSavingThrow,
-                ScriptReactionPlan,
-                ScriptReactionPlan,
-            )| {
-                let target = target_role.parse().map_err(|e| {
-                    mlua::Error::RuntimeError(format!("Failed to parse ScriptEntityRole: {e}"))
-                })?;
-                Ok(ScriptReactionPlan::RequireSavingThrow {
-                    target,
-                    dc,
-                    on_success: Box::new(on_success),
-                    on_failure: Box::new(on_failure),
-                })
-            },
-        )?,
-    )?;
-    reaction_plan.set(
-        "cancel_trigger_event",
-        lua.create_function(|_, resources: Variadic<String>| {
-            let parsed: Result<Vec<ResourceId>, _> = resources
-                .into_iter()
-                .map(|s| s.parse::<ResourceId>())
-                .collect();
-            let resources_to_refund = parsed.map_err(|e| {
-                mlua::Error::RuntimeError(format!("Failed to parse ResourceId: {e}"))
-            })?;
-            Ok(ScriptReactionPlan::CancelEvent {
-                event: ScriptEventRef::TriggerEvent,
-                resources_to_refund,
-            })
-        })?,
-    )?;
-    globals.set("ReactionPlan", reaction_plan)?;
-
-    // SavingThrow -----------------------------------------------------------
-    let saving_throw = lua.create_table()?;
-    saving_throw.set(
-        "dc",
-        lua.create_function(|_, (entity_role, saving_throw): (String, String)| {
-            let entity = entity_role.parse().map_err(|e| {
-                mlua::Error::RuntimeError(format!("Failed to parse ScriptEntityRole: {e}"))
-            })?;
-            let saving_throw = saving_throw.parse().map_err(|e| {
-                mlua::Error::RuntimeError(format!("Failed to parse SavingThrowProvider: {e}"))
-            })?;
-            Ok(ScriptSavingThrow {
-                entity,
-                saving_throw,
-            })
-        })?,
-    )?;
-    globals.set("SavingThrow", saving_throw)?;
 
     // ModifierSet -----------------------------------------------------------
     let modifier_set = lua.create_table()?;

@@ -21,11 +21,7 @@ use crate::{
         spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
-    engine::{
-        action_prompt::{ActionData, ReactionData},
-        encounter::EncounterId,
-        game_state::GameState,
-    },
+    engine::{action_prompt::ActionData, encounter::EncounterId, game_state::GameState},
     systems::{
         d20::{D20CheckDCKind, D20ResultKind},
         time::RestKind,
@@ -66,7 +62,6 @@ impl Event {
             EventKind::ActionPerformed { action, .. } => Some(action.actor.id()),
             // TODO: What to do here? Multiple reactors?
             EventKind::ReactionTriggered { reactors, .. } => Some(reactors.iter().next()?.id()),
-            EventKind::ReactionRequested { reaction } => Some(reaction.reactor.id()),
             EventKind::LifeStateChanged { entity, actor, .. } => {
                 if let Some(actor) = actor {
                     Some(actor.id())
@@ -146,9 +141,6 @@ pub enum EventKind {
         /// might trigger a Counterspell reaction.
         trigger_event: Arc<Event>,
         reactors: HashSet<EntityIdentifier>,
-    },
-    ReactionRequested {
-        reaction: ReactionData,
     },
     LifeStateChanged {
         entity: EntityIdentifier,

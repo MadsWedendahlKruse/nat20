@@ -5,6 +5,7 @@ use tracing::error;
 
 use crate::components::level::{ChallengeRating, CharacterLevels, Level};
 
+#[track_caller]
 pub fn get_component<'a, T: hecs::Component + 'static>(
     world: &'a World,
     entity: Entity,
@@ -14,6 +15,7 @@ pub fn get_component<'a, T: hecs::Component + 'static>(
         .unwrap_or_else(|_| missing_component_panic::<T>(entity))
 }
 
+#[track_caller]
 pub fn get_component_mut<'a, T: hecs::Component + 'static>(
     world: &'a mut World,
     entity: Entity,
@@ -23,16 +25,19 @@ pub fn get_component_mut<'a, T: hecs::Component + 'static>(
         .unwrap_or_else(|_| missing_component_panic::<T>(entity))
 }
 
+#[track_caller]
 pub fn get_component_clone<T: hecs::Component + Clone>(world: &World, entity: Entity) -> T {
     get_component::<T>(world, entity).deref().clone()
 }
 
+#[track_caller]
 pub fn set_component<T: hecs::Component + Clone>(world: &mut World, entity: Entity, value: T) {
     world
         .insert_one(entity, value)
         .unwrap_or_else(|_| missing_component_panic::<T>(entity));
 }
 
+#[track_caller]
 fn missing_component_panic<T: 'static>(entity: Entity) -> ! {
     let type_name = type_name::<T>();
 

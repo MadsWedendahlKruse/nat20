@@ -5,9 +5,7 @@ use tracing::debug;
 use crate::{
     components::{
         actions::{
-            action::{
-                Action, ActionContext, ActionCooldownMap, ActionKind, ActionMap, ActionProvider,
-            },
+            action::{Action, ActionContext, ActionCooldownMap, ActionMap, ActionProvider},
             targeting::{
                 AreaShape, LineOfSightMode, TargetInstance, TargetingContext, TargetingError,
                 TargetingKind,
@@ -16,14 +14,11 @@ use crate::{
         activity::{ActivityPauseReason, ActivityState},
         id::{ActionId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
-        resource::{RechargeRule, ResourceAmountMap, ResourceMap},
+        resource::{RechargeRule, ResourceAmountMap},
         spells::spellbook::Spellbook,
     },
     engine::{
-        action_prompt::{ActionData, ReactionData},
-        event::Event,
-        game_state::GameState,
-        geometry::WorldGeometry,
+        action_prompt::ActionData, event::Event, game_state::GameState, geometry::WorldGeometry,
     },
     entities::projectile::Projectile,
     registry::registry::{ActionsRegistry, SpellsRegistry},
@@ -353,7 +348,7 @@ pub fn available_reactions_to_event(
     game_state: &GameState,
     reactor: Entity,
     event: &Event,
-) -> Vec<ReactionData> {
+) -> Vec<ActionData> {
     let mut reactions = Vec::new();
 
     let available = systems::actions::available_actions(game_state, reactor);
@@ -393,14 +388,16 @@ pub fn available_reactions_to_event(
                     )
                     .is_ok()
                     {
-                        reactions.push(ReactionData::new(
-                            EntityIdentifier::from_world(world, reactor),
-                            event.clone().into(),
-                            reaction_id.clone(),
-                            context.clone(),
-                            resource_cost.clone(),
-                            target,
-                        ));
+                        reactions.push(
+                            ActionData::new(
+                                EntityIdentifier::from_world(world, reactor),
+                                reaction_id.clone(),
+                                context.clone(),
+                                resource_cost.clone(),
+                                vec![target],
+                            )
+                            .with_trigger_event(event.clone().into()),
+                        );
                     }
                 }
             }
@@ -408,39 +405,6 @@ pub fn available_reactions_to_event(
     }
 
     reactions
-}
-
-pub fn perform_reaction(
-    game_state: &mut GameState,
-    reaction_data: &ReactionData,
-    event: &mut Event,
-) {
-    let action = get_action(&reaction_data.reaction_id)
-        .unwrap_or_else(|| panic!("Reaction action not found: {:?}", reaction_data.reaction_id));
-
-    match &action.kind {
-        ActionKind::Reaction { reaction } => {
-            reaction(game_state, reaction_data, event);
-        }
-
-        ActionKind::Composite { actions } => {
-            for action in actions {
-                match action {
-                    ActionKind::Reaction { reaction } => {
-                        reaction(game_state, reaction_data, event);
-                    }
-
-                    _ => {
-                        perform_action(game_state, &ActionData::from(reaction_data));
-                    }
-                }
-            }
-        }
-
-        _ => {
-            perform_action(game_state, &ActionData::from(reaction_data));
-        }
-    }
 }
 
 // TODO: Something about this seems a bit clunky
@@ -451,7 +415,10 @@ fn set_projectiles_paused_for_entity(game_state: &mut GameState, entity: Entity,
         .iter()
         .map(|(entity, projectile)| (entity, projectile.delivery_phase.action.actor.id()))
         .collect();
-    debug!("Found projectiles to check for pausing: {:?}", pairs);
+    if pairs.is_empty() {
+        return;
+    }
+    debug!("Found projectiles to set paused={}: {:?}", paused, pairs);
     for (proj_entity, actor) in pairs {
         if actor == entity
             && let Ok(mut projectile) = game_state.world.get::<&mut Projectile>(proj_entity)
@@ -464,13 +431,13 @@ fn set_projectiles_paused_for_entity(game_state: &mut GameState, entity: Entity,
 pub fn pause_action(game_state: &mut GameState, entity: Entity, reason: ActivityPauseReason) {
     debug!("Pausing actions for entity {:?}: {:?}", entity, reason);
     systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
-        .pause_action(reason);
+        .pause(reason);
     set_projectiles_paused_for_entity(game_state, entity, true);
 }
 
 pub fn resume_action(game_state: &mut GameState, entity: Entity, reason: ActivityPauseReason) {
     debug!("Resuming actions for entity {:?}: {:?}", entity, reason);
     systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
-        .resume_action(reason);
+        .resume(reason);
     set_projectiles_paused_for_entity(game_state, entity, false);
 }

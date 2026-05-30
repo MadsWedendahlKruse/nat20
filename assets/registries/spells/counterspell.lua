@@ -18,18 +18,6 @@ local function reaction_trigger(game_state, reactor, event)
     return true
 end
 
----@type ReactionBodyFn
-local function reaction_body(context)
-    -- The actor that triggered the reaction makes a Constitution saving throw
-    -- against the reactor's spell save DC. On failure, the spell is canceled
-    -- and the spell slot is refunded.
-    local dc = SavingThrow.dc("reactor", "spell_save_dc;constitution")
-    local on_success = ReactionPlan.none()
-    local on_failure = ReactionPlan.cancel_trigger_event("nat20_core::resource.spell_slot")
-    return ReactionPlan.require_saving_throw("actor", dc, on_success, on_failure)
-end
-
 return {
     reaction_trigger = reaction_trigger,
-    reaction_body = reaction_body,
 }

@@ -2,23 +2,22 @@ use std::collections::{HashMap, HashSet};
 
 use hecs::{Entity, NoSuchEntity, World};
 use parry3d::{na::Point3, shape::Ball};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
-        actions::{
-            action::{ActionKindResult, ReactionResult},
-            targeting::EntityFilter,
+        actions::targeting::EntityFilter,
+        activity::{
+            Activity, ActivityError, ActivityPauseReason, ActivityState, ActivityStateKind,
         },
-        activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
         speed::Speed,
         time::{TimeMode, TimeStep},
     },
     engine::{
         action_prompt::{
             ActionData, ActionDecision, ActionDecisionKind, ActionError, ActionPrompt,
-            ActionPromptId, ActionPromptKind, ReactionData,
+            ActionPromptId, ActionPromptKind,
         },
         encounter::{Encounter, EncounterId},
         event::{
@@ -379,34 +378,23 @@ impl GameState {
                 ActionDecisionKind::Reaction { choice, .. } => {
                     // Declined – reactor is no longer a blocker on any pending event.
                     let Some(reaction_data) = choice else {
+                        debug!(
+                            "Clearing blocker for {:?} on prompt {:?} (reaction declined)",
+                            entity, prompt_id
+                        );
                         self.interaction_engine
                             .session_mut(scope)
                             .clear_blocker(*entity);
                         continue;
                     };
 
-                    // Validate reaction as if it were an action:
-                    let action_view = ActionData::from(reaction_data);
-                    self.validate_action(&action_view, false)?;
+                    self.validate_action(&reaction_data, false)?;
                     self.process_event_scoped(
                         scope,
-                        Event::new(EventKind::ReactionRequested {
-                            reaction: reaction_data.clone(),
+                        Event::new(EventKind::ActionRequested {
+                            action: reaction_data.clone(),
                         }),
                     );
-
-                    // If perform_reaction spawned an activity on the reactor,
-                    // they stay in `blocked_by` until ActivityCompleted clears
-                    // them. Otherwise (instant modifier / decline-equivalent)
-                    // we can clear them now.
-                    let reactor = reaction_data.reactor.id();
-                    if !systems::helpers::get_component::<ActivityState>(&self.world, reactor)
-                        .is_acting()
-                    {
-                        self.interaction_engine
-                            .session_mut(scope)
-                            .clear_blocker(reactor);
-                    }
                 }
             }
         }
@@ -555,6 +543,8 @@ impl GameState {
                 return;
             };
 
+            debug!("Resuming pending event: {:?}", event.id);
+
             self.advance_event(event, true);
 
             // An event advance may have filled parked phases' slots via the
@@ -589,7 +579,7 @@ impl GameState {
         &mut self,
         actor: Entity,
         event: &Event,
-    ) -> Option<HashMap<Entity, Vec<ReactionData>>> {
+    ) -> Option<HashMap<Entity, Vec<ActionData>>> {
         let reactors = self.get_potential_reactors(actor);
 
         info!(
@@ -654,6 +644,7 @@ impl GameState {
             context: action_context,
             resource_cost,
             targets,
+            trigger_event: _,
         } = action;
 
         systems::actions::action_usable_on_targets(
@@ -691,7 +682,11 @@ impl GameState {
                     mover.id(),
                 );
                 if *continue_movement {
-                    state.resume_movement();
+                    // TODO: This is a bit hacky
+                    if let ActivityStateKind::Moving { paused, .. } = &mut state.state {
+                        *paused = false;
+                    };
+                    // state.resume(ActivityPauseReason::Reaction);
                 } else {
                     state.set_idle();
                 }
@@ -701,89 +696,11 @@ impl GameState {
                 systems::actions::perform_action(self, action);
             }
 
-            EventKind::ReactionRequested { reaction } => {
-                let game_state = unsafe { &mut *(self as *mut GameState) };
-                let reaction_event = self
-                    .session_for_entity_mut(reaction.reactor.id())
-                    .pending_events_mut()
-                    .iter_mut()
-                    .find(|pe| pe.event.id == reaction.event.id);
-                if let Some(reaction_event) = reaction_event {
-                    systems::actions::perform_reaction(
-                        game_state,
-                        reaction,
-                        &mut reaction_event.event,
-                    );
-                } else {
-                    panic!(
-                        "Attempted to perform reaction to event which is not pending: {:#?}",
-                        reaction
-                    );
-                }
-            }
-
             EventKind::ActionPerformed { action, results } => {
                 let hooks = systems::effects::effects(&self.world, action.actor.id())
                     .collect_hooks(|effect| effect.on_action_result.as_ref());
                 for hook in hooks {
                     hook(self, action, results);
-                }
-
-                for action_result in results {
-                    match &action_result.kind {
-                        ActionKindResult::Reaction {
-                            result: reaction_result,
-                        } => {
-                            let session = self
-                                .interaction_engine
-                                .session_mut(self.scope_for_entity(action_result.performer.id()));
-
-                            match reaction_result {
-                                ReactionResult::ModifyEvent { .. } => {
-                                    // TODO: Don't need to do anything here?
-                                }
-
-                                ReactionResult::CancelEvent {
-                                    event,
-                                    resources_refunded,
-                                } => {
-                                    info!(
-                                        "Cancelling event {:?} due to reaction by {:?}",
-                                        event.id,
-                                        action_result.performer.id()
-                                    );
-
-                                    if let Some(actor) =
-                                        session.pending_events().iter().find_map(|pe| {
-                                            if pe.event.id == event.id {
-                                                pe.event.actor()
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                    {
-                                        systems::resources::restore(
-                                            &mut self.world,
-                                            actor,
-                                            resources_refunded,
-                                        );
-                                        session
-                                            .pending_events_mut()
-                                            .retain(|pe| pe.event.id != event.id);
-                                    } else {
-                                        panic!(
-                                            "Attempted to cancel event which is not pending: {:#?}",
-                                            event
-                                        );
-                                    }
-                                }
-
-                                ReactionResult::NoEffect => { /* Do nothing */ }
-                            }
-                        }
-
-                        _ => {}
-                    }
                 }
             }
 

@@ -4,7 +4,7 @@ use hecs::Entity;
 use nat20_core::{
     components::{activity::Activity, id::Name},
     engine::{
-        action_prompt::{ActionDecision, ActionDecisionKind, ActionPromptId, ReactionData},
+        action_prompt::{ActionData, ActionDecision, ActionDecisionKind, ActionPromptId},
         event::Event,
         game_state::GameState,
     },
@@ -21,14 +21,14 @@ use crate::{
         },
     },
     state::gui_state::GuiState,
-    windows::anchor::{AUTO_RESIZE, BOTTOM_CENTER, CENTER},
+    windows::anchor::{AUTO_RESIZE, CENTER},
 };
 
 pub enum ReactionWindowState {
     Active {
         prompt_id: ActionPromptId,
         event: Event,
-        options: HashMap<Entity, Vec<ReactionData>>,
+        options: HashMap<Entity, Vec<ActionData>>,
     },
     Pending,
 }
@@ -52,7 +52,7 @@ impl ReactionsWindow {
         &mut self,
         prompt_id: ActionPromptId,
         event: &Event,
-        options: &HashMap<Entity, Vec<ReactionData>>,
+        options: &HashMap<Entity, Vec<ActionData>>,
     ) {
         info!("Activating reactions window for prompt {:?}", prompt_id);
         self.state = ReactionWindowState::Active {
@@ -130,10 +130,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                                 ui,
                                 format!(
                                     "{}##{:?}{:?}{:?}",
-                                    option.reaction_id,
-                                    option.resource_cost,
-                                    option.context,
-                                    reactor
+                                    option.action_id, option.resource_cost, option.context, reactor
                                 ),
                                 [0., 0.],
                                 option_selected,
@@ -144,7 +141,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
 
                             if ui.is_item_hovered() {
                                 ui.tooltip(|| {
-                                    (&option.reaction_id, &option.context, &option.resource_cost)
+                                    (&option.action_id, &option.context, &option.resource_cost)
                                         .render_with_context(ui, (&game_state.world, *reactor));
                                 });
                             }

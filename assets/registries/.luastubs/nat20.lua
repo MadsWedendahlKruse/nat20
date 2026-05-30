@@ -97,13 +97,6 @@ local ActionData = {}
 ---@return boolean
 function ActionData:costs_resource(resource_id) end
 
----@class ReactionData
----@field reaction_id string
----@field reactor ScriptEntity
----@field event Event
----@field context ActionContext
-local ReactionData = {}
-
 ---@class ResourceAmountMap
 local ResourceAmountMap = {}
 ---@param resource_id string
@@ -191,21 +184,6 @@ function D20ResultKind:modify_result(bonus, source) end
 ---@field kind D20CheckKind
 ---@field target ScriptEntity?
 local D20CheckDCKind = {}
-
----@class ScriptD20CheckDCKind
----@field label string  -- "AttackRoll" | "SavingThrow" | "Skill"
----@field dc integer
----@field target integer
-
----@class ScriptD20Result
----@field total integer
----@field dc_kind ScriptD20CheckDCKind
----@field is_success boolean
-
----@class ScriptMovingOutOfReachView
----@field mover integer
----@field entity integer
----@field continue_movement boolean
 
 ---@class Event
 local Event = {}
@@ -314,14 +292,6 @@ function GameState:remove_effect(target, effect_id) end
 ---@param source ModifierSource
 function GameState:heal(target, dice, bonus, source) end
 
-------------------------------------------------------------
--- Opaque tag types (used as parameters / returns)
-------------------------------------------------------------
-
----@class ScriptSavingThrow
----@class ScriptReactionPlan
----@class ScriptReactionBodyResult
-
 ---@class ModifierSet
 local ModifierSet_instance = {}
 ---@param source ModifierSource
@@ -333,31 +303,6 @@ function ModifierSet_instance:add_modifier(source, value) end
 ------------------------------------------------------------
 -- Global module tables (registered by lua_types::register_globals)
 ------------------------------------------------------------
-
-ReactionPlan = {}
----@return ScriptReactionPlan
-function ReactionPlan.none() end
-
----@vararg ScriptReactionPlan
----@return ScriptReactionPlan
-function ReactionPlan.sequence(...) end
-
----@param target_role string  -- "actor" | "reactor" | "target"
----@param dc ScriptSavingThrow
----@param on_success ScriptReactionPlan
----@param on_failure ScriptReactionPlan
----@return ScriptReactionPlan
-function ReactionPlan.require_saving_throw(target_role, dc, on_success, on_failure) end
-
----@vararg string  -- resource IDs to refund
----@return ScriptReactionPlan
-function ReactionPlan.cancel_trigger_event(...) end
-
-SavingThrow = {}
----@param entity_role string         -- "actor" | "reactor" | "target"
----@param saving_throw string        -- e.g. "spell_save_dc;constitution"
----@return ScriptSavingThrow
-function SavingThrow.dc(entity_role, saving_throw) end
 
 ModifierSet = {}
 ---@return ModifierSet
@@ -394,6 +339,6 @@ function ModifierSource.effect(effect_id) end
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult)
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
----@alias ReactionBodyFn fun(game_state: GameState, reaction: ReactionData, event: Event): ScriptReactionPlan|nil
+---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)

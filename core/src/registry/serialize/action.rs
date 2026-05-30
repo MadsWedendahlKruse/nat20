@@ -160,6 +160,8 @@ pub struct ActionPayloadDefinition {
     #[serde(default)]
     pub effect: Option<EffectInstanceDefinition>,
     #[serde(default)]
+    pub reaction: Option<ReactionBody>,
+    #[serde(default)]
     pub delivery: PayloadDeliveryDefinition,
 }
 
@@ -176,9 +178,6 @@ pub enum ActionKindDefinition {
     },
     Variants {
         variants: Vec<ActionId>,
-    },
-    Reaction {
-        reaction: ReactionBody,
     },
 }
 
@@ -198,6 +197,7 @@ impl From<ActionKindDefinition> for ActionKind {
                         .effect
                         .map(|effect_instance_definition| effect_instance_definition.into()),
                     payload.healing.map(|eq| eq.function),
+                    payload.reaction.map(|r| r.function),
                     payload.delivery.into(),
                 )
                 .unwrap(),
@@ -208,10 +208,6 @@ impl From<ActionKindDefinition> for ActionKind {
             },
 
             ActionKindDefinition::Variants { variants } => ActionKind::Variant { variants },
-
-            ActionKindDefinition::Reaction { reaction } => ActionKind::Reaction {
-                reaction: reaction.function,
-            },
         }
     }
 }
@@ -222,6 +218,14 @@ impl RegistryReferenceCollector for ActionKindDefinition {
             ActionKindDefinition::Standard { payload, .. } => {
                 if let Some(effect) = &payload.effect {
                     collector.add(RegistryReference::Effect(effect.effect_id.clone()));
+                }
+                if let Some(reaction) = &payload.reaction {
+                    if let Some(script_id) = &reaction.script {
+                        collector.add(RegistryReference::Script(
+                            script_id.clone(),
+                            ScriptFunction::ReactionBody,
+                        ));
+                    }
                 }
             }
             ActionKindDefinition::Composite { actions } => {
@@ -234,14 +238,6 @@ impl RegistryReferenceCollector for ActionKindDefinition {
                 // refer to the action associated with a spell, so the action ID
                 // would not be present in the action registry directly. So how do
                 // we validate that?
-            }
-            ActionKindDefinition::Reaction { reaction } => {
-                if let Some(script_id) = &reaction.script {
-                    collector.add(RegistryReference::Script(
-                        script_id.clone(),
-                        ScriptFunction::ReactionBody,
-                    ));
-                }
             }
         }
     }

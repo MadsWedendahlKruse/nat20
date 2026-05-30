@@ -1,6 +1,6 @@
 use hecs::Entity;
 use parry3d::query::Ray;
-use tracing::warn;
+use tracing::{debug, warn};
 use uom::si::{f32::Velocity, velocity::meter_per_second};
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
             action_step::ActionPhase,
             targeting::{LineOfSightMode, TargetInstance},
         },
-        activity::ActivityGameStateCommand,
+        activity::{ActivityGameStateCommand, ActivityState},
     },
     engine::{action_prompt::ActionData, game_state::GameState},
     systems::{
@@ -41,6 +41,10 @@ impl Projectile {
         }
 
         if self.flight_time >= self.time_of_impact {
+            debug!(
+                "Projectile {:?} has reached its target: {:?}",
+                entity, self.delivery_phase.target
+            );
             let actor = self.delivery_phase.action.actor.id();
             vec![
                 ActivityGameStateCommand::DespawnEntity { entity },
@@ -139,9 +143,11 @@ impl ProjectileTemplate {
             flight_time: 0.0,
             time_of_impact,
             delivery_phase,
-            paused: game_state
-                .session_for_entity(action.actor.id())
-                .map_or(false, |session| !session.pending_events().is_empty()),
+            paused: systems::helpers::get_component::<ActivityState>(
+                &game_state.world,
+                action.actor.id(),
+            )
+            .is_paused(),
         })
     }
 }

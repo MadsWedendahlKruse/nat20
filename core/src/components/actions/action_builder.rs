@@ -16,7 +16,6 @@ use crate::{
     engine::{
         action_prompt::{
             ActionData, ActionDecision, ActionDecisionKind, ActionPromptId, ActionPromptKind,
-            ReactionData,
         },
         event::Event,
         game_state::GameState,
@@ -560,7 +559,7 @@ impl ReactionBuilder {
         self
     }
 
-    pub fn option_filter(&mut self, filter_fn: impl Fn(&ReactionData) -> bool) -> &mut Self {
+    pub fn option_filter(&mut self, filter_fn: impl Fn(&ActionData) -> bool) -> &mut Self {
         self.state = match &mut self.state {
             Ok(ReactionBuilderState::Options {
                 prompt_id,
@@ -590,7 +589,7 @@ impl ReactionBuilder {
 
     pub fn option_id(&mut self, reaction_id: impl Into<ActionId>) -> &mut Self {
         let reaction_id = reaction_id.into();
-        self.option_filter(|option| option.reaction_id == reaction_id)
+        self.option_filter(|option| option.action_id == reaction_id)
     }
 
     pub fn build(&self) -> Result<Activity, ReactionBuilderError> {
@@ -640,12 +639,12 @@ pub enum ReactionBuilderState {
     Options {
         prompt_id: ActionPromptId,
         event: Event,
-        options: Vec<ReactionData>,
+        options: Vec<ActionData>,
     },
     Decision {
         prompt_id: ActionPromptId,
         event: Event,
-        decision: Option<ReactionData>,
+        decision: Option<ActionData>,
     },
 }
 
@@ -663,14 +662,14 @@ pub enum ReactionBuilderError {
     NoPrompt,
     NoReactionPrompt,
     NoOptionsForEntity {
-        options: HashMap<Entity, Vec<ReactionData>>,
+        options: HashMap<Entity, Vec<ActionData>>,
     },
     InvalidOptionIndex {
         index: usize,
         len: usize,
     },
     NoMatchingOption {
-        options: Vec<ReactionData>,
+        options: Vec<ActionData>,
     },
     InvalidStateTransition {
         expected: &'static str,
@@ -1108,7 +1107,7 @@ mod tests {
                     .as_ref()
                     .map(|spell| spell.level == 3)
                     .unwrap_or(false)
-                    && option.reaction_id == ActionId::new("nat20_core", "action.shield")
+                    && option.action_id == ActionId::new("nat20_core", "action.shield")
             })
             .build();
 

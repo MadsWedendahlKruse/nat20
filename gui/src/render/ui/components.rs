@@ -6,10 +6,10 @@ use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap}, actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionResult, ReactionResult
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionResult, ReactionOutcome
             },
             targeting::{AreaShape, TargetInstance, TargetingKind, TargetingRange},
-        }, activity::ActivityState, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
+        }, activity::{ActivityState, ActivityStateKind}, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
             AttackRollResult, DamageComponentMitigation, DamageComponentResult,
             DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
             DamageRollResult, MitigationOperation,
@@ -1139,41 +1139,43 @@ impl ImguiRenderableWithContext<u8> for ActionResult {
                     .with_indent(indent_level + 1)
                     .render(ui);
                 }
+
+                if let Some(reaction) = &action_outcome.reaction {
+                    match reaction {
+                        ReactionOutcome::ModifyEvent { before, after } => {
+                            TextSegment::new("\tmodifying", TextKind::Normal).render(ui);
+                            ui.same_line();
+                            render_event_description(ui, before);
+
+                            if ui.is_item_hovered() {
+                                ui.tooltip(|| {
+                                    ui.separator_with_text("Before");
+                                    ui.text("TODO");
+                                    ui.separator_with_text("After");
+                                    ui.text("TODO");
+                                });
+                            }
+                        }
+
+                        ReactionOutcome::CancelEvent {
+                            event,
+                            resources_refunded,
+                        } => {
+                            // ui.same_line();
+                            TextSegment::new("\tcancelling", TextKind::Normal).render(ui);
+                            ui.same_line();
+                            render_event_description(ui, event);
+                        }
+
+                        ReactionOutcome::NoEffect => {
+                            ui.same_line();
+                            TextSegment::new("with no effect", TextKind::Normal).render(ui)
+                        }
+                    }
+                }
             }
 
             ActionKindResult::Composite { actions } => todo!(),
-
-            ActionKindResult::Reaction { result } => match result {
-                ReactionResult::ModifyEvent { before, after } => {
-                    TextSegment::new("\tmodifying", TextKind::Normal).render(ui);
-                    ui.same_line();
-                    render_event_description(ui, before);
-
-                    if ui.is_item_hovered() {
-                        ui.tooltip(|| {
-                            ui.separator_with_text("Before");
-                            ui.text("TODO");
-                            ui.separator_with_text("After");
-                            ui.text("TODO");
-                        });
-                    }
-                }
-
-                ReactionResult::CancelEvent {
-                    event,
-                    resources_refunded,
-                } => {
-                    // ui.same_line();
-                    TextSegment::new("\tcancelling", TextKind::Normal).render(ui);
-                    ui.same_line();
-                    render_event_description(ui, event);
-                }
-
-                ReactionResult::NoEffect => {
-                    ui.same_line();
-                    TextSegment::new("with no effect", TextKind::Normal).render(ui)
-                }
-            },
         }
     }
 }
@@ -1887,8 +1889,8 @@ impl ImguiRenderable for TargetingKind {
 
 impl Renderable for ActivityState {
     fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
-        match self {
-            ActivityState::Moving { path, .. } => {
+        match &self.state {
+            ActivityStateKind::Moving { path, .. } => {
                 let points = path.points.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<[f32; 3]>>();
                 gui_state.line_renderer.add_path(path, Color::White);
                 gui_state.line_renderer.add_circle(*points.last().unwrap(), 0.5, Color::White);

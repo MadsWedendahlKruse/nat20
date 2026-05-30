@@ -2,25 +2,15 @@
     "id": "nat20_core::action.opportunity_attack",
     "description": "Make an attack against a creature moving out of your reach.",
     "kind": {
-        "composite": {
-            "actions": [
-                {
-                    "reaction": {
-                        "reaction": "nat20_core::script.action.opportunity_attack"
-                    }
-                },
-                {
-                    "standard": {
-                        "condition": {
-                            "attack_roll": "melee_attack_roll"
-                        },
-                        "payload": {
-                            "damage": "melee_damage_roll",
-                            "delivery": "immediate"
-                        }
-                    }
-                }
-            ]
+        "standard": {
+            "condition": {
+                "attack_roll": "melee_attack_roll"
+            },
+            "payload": {
+                "damage": "melee_damage_roll",
+                "reaction": "nat20_core::script.action.opportunity_attack",
+                "delivery": "immediate"
+            }
         }
     },
     "targeting": "melee_targeting",

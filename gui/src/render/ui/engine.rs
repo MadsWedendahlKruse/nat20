@@ -43,7 +43,6 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::Encounter(encounter_event) => LogLevel::Info,
         EventKind::MovingOutOfReach { .. } => LogLevel::Debug,
         EventKind::ActionRequested { .. } => LogLevel::Info,
-        EventKind::ReactionRequested { .. } => LogLevel::Info,
         EventKind::ActionPerformed { .. } => LogLevel::Info,
         EventKind::ReactionTriggered { .. } => LogLevel::Info,
         EventKind::LifeStateChanged { .. } => LogLevel::Info,
@@ -79,9 +78,6 @@ pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
     match &event.kind {
         EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
             render_action_description(ui, action);
-        }
-        EventKind::ReactionRequested { reaction } => {
-            render_action_description(ui, &ActionData::from(reaction));
         }
         EventKind::D20CheckPerformed(entity, _, dc_kind) => {
             let label = get_dc_description(dc_kind);
@@ -181,13 +177,12 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
             }
             EventKind::ActionRequested { action } => {
                 action.render_with_context(ui, world);
-            }
-            EventKind::ReactionRequested { reaction } => {
-                ActionData::from(reaction).render_with_context(ui, world);
 
-                TextSegment::new("\tas a response to".to_string(), TextKind::Normal).render(ui);
-                ui.same_line();
-                render_event_description(ui, &reaction.event);
+                if let Some(trigger_event) = action.trigger_event.as_ref() {
+                    TextSegment::new("\tas a response to".to_string(), TextKind::Normal).render(ui);
+                    ui.same_line();
+                    render_event_description(ui, trigger_event);
+                }
             }
             EventKind::ActionPerformed { action, results } => {
                 TextSegments::new(vec![

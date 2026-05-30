@@ -1,19 +1,16 @@
 use std::collections::HashMap;
 
-use hecs::{Entity, World};
+use hecs::Entity;
 use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::{
-            action::ActionContext,
-            targeting::{TargetInstance, TargetingContext},
-        },
+        actions::{action::ActionContext, targeting::TargetInstance},
         id::{ActionId, EntityIdentifier},
         resource::{ResourceAmountMap, ResourceError},
     },
     engine::event::Event,
-    systems::{self, actions::ActionUsabilityError},
+    systems::actions::ActionUsabilityError,
 };
 
 pub type ActionPromptId = Uuid;
@@ -34,7 +31,7 @@ pub enum ActionPromptKind {
         event: Event,
         /// The options available for those reacting. The key is the entity which
         /// is reaction, and the value is their options
-        options: HashMap<Entity, Vec<ReactionData>>,
+        options: HashMap<Entity, Vec<ActionData>>,
     },
 }
 
@@ -72,7 +69,7 @@ pub enum ActionDecisionKind {
         event: Event,
         reactor: Entity,
         /// The chosen reaction. None if the entity chooses not to react
-        choice: Option<ReactionData>,
+        choice: Option<ActionData>,
     },
 }
 
@@ -238,7 +235,7 @@ impl ActionDecision {
         match &self.kind {
             ActionDecisionKind::Action { action } => Some(action.action_id.clone()),
             ActionDecisionKind::Reaction { choice, .. } => {
-                choice.as_ref().map(|c| c.reaction_id.clone())
+                choice.as_ref().map(|c| c.action_id.clone())
             }
         }
     }
@@ -255,6 +252,8 @@ pub struct ActionData {
     pub context: ActionContext,
     pub resource_cost: ResourceAmountMap,
     pub targets: Vec<TargetInstance>,
+    /// In the case of a reaction, this will be the event that triggered the reaction
+    pub trigger_event: Option<Box<Event>>,
 }
 
 impl ActionData {
@@ -272,57 +271,21 @@ impl ActionData {
             context,
             resource_cost,
             targets,
+            trigger_event: None,
         }
+    }
+
+    pub fn with_trigger_event(mut self, event: Event) -> Self {
+        self.trigger_event = Some(Box::new(event));
+        self
     }
 
     pub fn is_self_target(&self) -> bool {
         self.targets.len() == 1
             && matches!(&self.targets[0], TargetInstance::Entity { entity, ..} if entity.id() == self.actor.id())
     }
-}
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReactionData {
-    pub instance_id: ActionExecutionInstanceId,
-    pub reactor: EntityIdentifier,
-    // The event that triggered this reaction
-    pub event: Box<Event>,
-    pub reaction_id: ActionId,
-    pub context: ActionContext,
-    pub resource_cost: ResourceAmountMap,
-    pub target: TargetInstance,
-}
-
-impl ReactionData {
-    pub fn new(
-        reactor: EntityIdentifier,
-        event: Event,
-        reaction_id: ActionId,
-        context: ActionContext,
-        resource_cost: ResourceAmountMap,
-        target: TargetInstance,
-    ) -> Self {
-        Self {
-            instance_id: Uuid::new_v4(),
-            reactor,
-            event: Box::new(event),
-            reaction_id,
-            context,
-            resource_cost,
-            target,
-        }
-    }
-}
-
-impl From<&ReactionData> for ActionData {
-    fn from(reaction: &ReactionData) -> Self {
-        ActionData {
-            instance_id: reaction.instance_id,
-            actor: reaction.reactor.clone(),
-            action_id: reaction.reaction_id.clone(),
-            context: reaction.context.clone(),
-            resource_cost: reaction.resource_cost.clone(),
-            targets: vec![reaction.target.clone()],
-        }
+    pub fn is_reaction(&self) -> bool {
+        self.trigger_event.is_some()
     }
 }

@@ -27,11 +27,7 @@ use crate::{
         saving_throw::{SavingThrowDC, SavingThrowKind},
         spells::spellbook::SpellSource,
     },
-    engine::{
-        action_prompt::{ActionData, ReactionData},
-        event::Event,
-        game_state::GameState,
-    },
+    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     entities::projectile::ProjectileTemplate,
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{self},
@@ -46,7 +42,8 @@ pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
 pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
-pub type ReactionBodyFunction = dyn Fn(&mut GameState, &ReactionData, &mut Event) + Send + Sync;
+pub type ReactionBodyFunction =
+    dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionOutcome> + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -324,6 +321,7 @@ pub struct ActionPayload {
     damage_on_failure: Option<DamageOnFailure>,
     effect: Option<EffectInstanceTemplate>,
     healing: Option<Arc<HealingFunction>>,
+    reaction: Option<Arc<ReactionBodyFunction>>,
     delivery: PayloadDelivery,
 }
 
@@ -338,6 +336,7 @@ impl ActionPayload {
         damage_on_failure: Option<DamageOnFailure>,
         effect: Option<EffectInstanceTemplate>,
         healing: Option<Arc<HealingFunction>>,
+        reaction: Option<Arc<ReactionBodyFunction>>,
         delivery: PayloadDelivery,
     ) -> Result<Self, ActionPayloadError> {
         let payload = ActionPayload {
@@ -345,6 +344,7 @@ impl ActionPayload {
             damage_on_failure,
             effect,
             healing,
+            reaction,
             delivery,
         };
 
@@ -356,7 +356,10 @@ impl ActionPayload {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.damage.is_none() && self.effect.is_none() && self.healing.is_none()
+        self.damage.is_none()
+            && self.effect.is_none()
+            && self.healing.is_none()
+            && self.reaction.is_none()
     }
 
     pub fn damage(&self) -> Option<&Arc<DamageFunction>> {
@@ -373,6 +376,10 @@ impl ActionPayload {
 
     pub fn healing(&self) -> Option<&Arc<HealingFunction>> {
         self.healing.as_ref()
+    }
+
+    pub fn reaction(&self) -> Option<&Arc<ReactionBodyFunction>> {
+        self.reaction.as_ref()
     }
 
     pub fn delivery(&self) -> &PayloadDelivery {
@@ -392,10 +399,6 @@ pub enum ActionKind {
     Variant {
         variants: Vec<ActionId>,
     },
-    Reaction {
-        reaction: Arc<ReactionBodyFunction>,
-    },
-    Custom(Arc<dyn Fn(&World, Entity, &ActionContext) + Send + Sync>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -520,16 +523,56 @@ pub struct HealingOutcome {
     pub new_life_state: Option<LifeState>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ReactionOutcome {
+    ModifyEvent {
+        before: Event,
+        after: Event,
+    },
+    CancelEvent {
+        event: Box<Event>,
+        resources_refunded: ResourceAmountMap,
+    },
+    NoEffect,
+}
+
+impl PartialEq for ReactionOutcome {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                ReactionOutcome::ModifyEvent {
+                    before: b1,
+                    after: a1,
+                },
+                ReactionOutcome::ModifyEvent {
+                    before: b2,
+                    after: a2,
+                },
+            ) => b1.id == b2.id && a1.id == a2.id,
+            (
+                ReactionOutcome::CancelEvent { event: e1, .. },
+                ReactionOutcome::CancelEvent { event: e2, .. },
+            ) => e1.id == e2.id,
+            (ReactionOutcome::NoEffect, ReactionOutcome::NoEffect) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionOutcomeBundle {
     pub damage: Option<DamageOutcome>,
     pub effect: Option<EffectOutcome>,
     pub healing: Option<HealingOutcome>,
+    pub reaction: Option<ReactionOutcome>,
 }
 
 impl ActionOutcomeBundle {
     pub fn is_empty(&self) -> bool {
-        self.damage.is_none() && self.effect.is_none() && self.healing.is_none()
+        self.damage.is_none()
+            && self.effect.is_none()
+            && self.healing.is_none()
+            && self.reaction.is_none()
     }
 
     pub fn resolution(&self) -> &ActionConditionResolution {
@@ -547,43 +590,6 @@ impl ActionOutcomeBundle {
 pub enum ActionKindResult {
     Standard(ActionOutcomeBundle),
     Composite { actions: Vec<ActionKindResult> },
-    Reaction { result: ReactionResult },
-}
-
-#[derive(Debug, Clone)]
-pub enum ReactionResult {
-    ModifyEvent {
-        before: Event,
-        after: Event,
-    },
-    CancelEvent {
-        event: Box<Event>,
-        resources_refunded: ResourceAmountMap,
-    },
-    NoEffect,
-}
-
-impl PartialEq for ReactionResult {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                ReactionResult::ModifyEvent {
-                    before: b1,
-                    after: a1,
-                },
-                ReactionResult::ModifyEvent {
-                    before: b2,
-                    after: a2,
-                },
-            ) => b1.id == b2.id && a1.id == a2.id,
-            (
-                ReactionResult::CancelEvent { event: e1, .. },
-                ReactionResult::CancelEvent { event: e2, .. },
-            ) => e1.id == e2.id,
-            (ReactionResult::NoEffect, ReactionResult::NoEffect) => true,
-            _ => false,
-        }
-    }
 }
 
 /// Represents the result of performing an action on a single target. For actions
@@ -631,14 +637,7 @@ impl ActionKind {
 
             ActionKind::Composite { actions } => {
                 for action in actions {
-                    match action {
-                        ActionKind::Reaction { .. } => {
-                            // Assume this is being performed as part of a reaction
-                            // TODO: Also seems like a bit of a hack
-                            continue;
-                        }
-                        _ => phases.extend(action.perform(game_state, action_data)),
-                    }
+                    phases.extend(action.perform(game_state, action_data));
                 }
             }
 
@@ -647,17 +646,6 @@ impl ActionKind {
                     "ActionKind::Variants should be resolved to a specific variant before performing"
                 );
             }
-
-            ActionKind::Reaction { .. } => {
-                panic!(
-                    "ActionKind::Reaction should be performed via systems::actions::perform_reaction"
-                );
-            }
-
-            ActionKind::Custom(custom) => {
-                // custom(game_state.world, target, context)
-                todo!("Custom actions are not yet implemented");
-            }
         }
 
         phases
@@ -665,7 +653,7 @@ impl ActionKind {
 
     pub fn is_reaction(&self) -> bool {
         match self {
-            ActionKind::Reaction { .. } => true,
+            ActionKind::Standard { payload, .. } => payload.reaction().is_some(),
             ActionKind::Composite { actions } => actions.iter().any(|action| action.is_reaction()),
             _ => false,
         }
@@ -678,8 +666,6 @@ impl Debug for ActionKind {
             ActionKind::Standard { .. } => write!(f, "Standard"),
             ActionKind::Composite { actions } => write!(f, "Composite({:?})", actions),
             ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
-            ActionKind::Reaction { .. } => write!(f, "Reaction"),
-            ActionKind::Custom(_) => write!(f, "CustomAction"),
         }
     }
 }

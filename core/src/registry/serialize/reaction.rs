@@ -5,18 +5,19 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::{
     components::{
-        actions::{
-            action::{
-                ActionKindResult, ReactionBodyFunction, ReactionResult, ReactionTriggerFunction,
-            },
-            targeting::TargetInstance,
-        },
-        id::{EntityIdentifier, ScriptId},
+        actions::action::{ReactionBodyFunction, ReactionOutcome, ReactionTriggerFunction},
+        id::ScriptId,
+        resource::{RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION, ResourceAmountMap},
     },
-    engine::{action_prompt::ActionData, event::Event},
+    engine::{
+        action_prompt::ActionData,
+        event::{Event, EventKind},
+        game_state::GameState,
+    },
     systems,
 };
 
@@ -24,7 +25,48 @@ static REACTION_TRIGGER_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionTriggerFu
     LazyLock::new(|| HashMap::new());
 
 static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction>>> =
-    LazyLock::new(|| HashMap::new());
+    LazyLock::new(|| {
+        HashMap::from([(
+            "cancel_event".to_string(),
+            Arc::new(
+                |game_state: &mut GameState, reaction_data: &ActionData, event: &mut Event| {
+                    debug!("Cancelling event with ID {} due to reaction", event.id);
+                    game_state
+                        .session_for_entity_mut(reaction_data.actor.id())
+                        .pending_events_mut()
+                        .retain(|pending| pending.event.id != event.id);
+
+                    // TODO: Bit of a hack to comply with Counterspell
+                    let resources_refunded = if let EventKind::ActionRequested { action } =
+                        &event.kind
+                    {
+                        debug!(
+                            "Refunding non-standard resources for cancelled action: {:?}",
+                            action
+                        );
+                        let mut resources_to_refund = action.resource_cost.clone();
+                        for resource in [RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION]
+                        {
+                            resources_to_refund.map.remove(&resource);
+                        }
+                        let _ = systems::resources::restore(
+                            &mut game_state.world,
+                            reaction_data.actor.id(),
+                            &resources_to_refund,
+                        );
+                        resources_to_refund
+                    } else {
+                        ResourceAmountMap::new()
+                    };
+
+                    Some(ReactionOutcome::CancelEvent {
+                        event: event.clone().into(),
+                        resources_refunded,
+                    })
+                },
+            ) as Arc<ReactionBodyFunction>,
+        )])
+    });
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -109,32 +151,13 @@ impl FromStr for ReactionBody {
         Ok(ReactionBody {
             raw: s.to_string(),
             function: Arc::new(move |game_state, reaction_data, event| {
-                let result = systems::scripts::evaluate_reaction_body(
+                systems::scripts::evaluate_reaction_body(
                     &script_id,
                     game_state,
                     reaction_data,
                     event,
                 );
-                systems::scripts::apply_reaction_body_result(game_state, reaction_data, result);
-
-                // TODO: Find a better solution? Also feel like this should live somewhere else?
-                if reaction_data.event.as_ref() != event {
-                    let TargetInstance::Entity { entity, .. } = &reaction_data.target else {
-                        return;
-                    };
-                    game_state.process_event(Event::action_performed_event(
-                        &ActionData::from(reaction_data),
-                        vec![(
-                            entity.clone(),
-                            ActionKindResult::Reaction {
-                                result: ReactionResult::ModifyEvent {
-                                    before: reaction_data.event.as_ref().clone(),
-                                    after: event.clone(),
-                                },
-                            },
-                        )],
-                    ));
-                }
+                None
             }),
             script,
         })

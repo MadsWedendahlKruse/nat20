@@ -59,8 +59,104 @@ impl From<ActionError> for ActivityError {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ActivityState {
+    pub state: ActivityStateKind,
+    pub pause_reasons: HashSet<ActivityPauseReason>,
+}
+
+impl ActivityState {
+    pub fn update(
+        &mut self,
+        game_state: &mut GameState,
+        entity: Entity,
+        delta_time: f32,
+    ) -> Vec<ActivityGameStateCommand> {
+        if self.is_paused() {
+            return Vec::new();
+        }
+
+        self.state.update(game_state, entity, delta_time)
+    }
+
+    pub fn pause(&mut self, reason: ActivityPauseReason) {
+        debug!("Pausing activity due to reason {:?}", reason);
+        self.pause_reasons.insert(reason);
+    }
+
+    pub fn resume(&mut self, reason: ActivityPauseReason) {
+        debug!("Resuming activity for reason {:?}", reason);
+        self.pause_reasons.remove(&reason);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        !self.pause_reasons.is_empty()
+    }
+
+    pub fn set_idle(&mut self) {
+        debug!("Setting entity to idle");
+        self.state = ActivityStateKind::Idle;
+    }
+
+    pub fn is_idle(&self) -> bool {
+        matches!(self.state, ActivityStateKind::Idle)
+    }
+
+    pub fn set_moving(
+        &mut self,
+        path: WorldPath,
+        opportunity_attacks: HashMap<usize, Entity>,
+        action: Option<ActionDecision>,
+    ) {
+        debug!("Setting entity to move to goal {:?}", path.points.last());
+
+        self.state = ActivityStateKind::Moving {
+            path,
+            current_target: 0,
+            opportunity_attacks,
+            action,
+            paused: false,
+        };
+    }
+
+    pub fn set_acting(&mut self, action: &Action, phases: Vec<ActionPhase>) {
+        if phases.is_empty() {
+            debug!("No phases provided for action, setting to idle");
+            self.set_idle();
+            return;
+        }
+
+        if let ActivityStateKind::Acting {
+            phases: current_phases,
+            ..
+        } = &self.state
+        {
+            warn!(
+                "Overriding activity state for entity which is already acting: {:?}, with new phases {:?}",
+                current_phases, phases
+            );
+        }
+        debug!(
+            "Setting entity to perform action {:?}\nWith phases:{:?}",
+            action, phases
+        );
+
+        self.state = ActivityStateKind::Acting {
+            timeline: action.timeline.clone(),
+            elapsed_time: 0.0,
+            phases: phases.into(),
+            phase_cooldown: action.timeline.step_spacing,
+            pause_reasons: HashSet::new(),
+        };
+    }
+
+    pub fn is_acting(&self) -> bool {
+        matches!(self.state, ActivityStateKind::Acting { .. })
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum ActivityState {
+pub enum ActivityStateKind {
     Idle,
     Moving {
         path: WorldPath,
@@ -85,7 +181,7 @@ pub enum ActivityState {
 
 /// In order to avoid a double borrow of the ActivityState it needs to return commands
 /// to be executed in the game state after the update at which point the borrow is dropped
-impl ActivityState {
+impl ActivityStateKind {
     pub fn update(
         &mut self,
         game_state: &mut GameState,
@@ -93,10 +189,6 @@ impl ActivityState {
         delta_time: f32,
     ) -> Vec<ActivityGameStateCommand> {
         let mut commands = Vec::new();
-
-        if self.is_paused() {
-            return commands;
-        }
 
         match self {
             Self::Idle => {
@@ -218,110 +310,9 @@ impl ActivityState {
 
         return commands;
     }
-
-    pub fn set_idle(&mut self) {
-        debug!("Setting entity to idle");
-        *self = Self::Idle;
-    }
-
-    pub fn is_idle(&self) -> bool {
-        matches!(self, Self::Idle)
-    }
-
-    pub fn set_moving(
-        &mut self,
-        path: WorldPath,
-        opportunity_attacks: HashMap<usize, Entity>,
-        action: Option<ActionDecision>,
-    ) {
-        debug!("Setting entity to move to goal {:?}", path.points.last());
-
-        *self = Self::Moving {
-            path,
-            current_target: 0,
-            opportunity_attacks,
-            action,
-            paused: false,
-        };
-    }
-
-    pub fn set_acting(&mut self, action: &Action, phases: Vec<ActionPhase>) {
-        if phases.is_empty() {
-            debug!("No phases provided for action, setting to idle");
-            *self = Self::Idle;
-            return;
-        }
-
-        if let Self::Acting {
-            phases: current_phases,
-            ..
-        } = self
-        {
-            warn!(
-                "Overriding activity state for entity which is already acting: {:?}, with new phases {:?}",
-                *current_phases, phases
-            );
-        }
-        debug!(
-            "Setting entity to perform action {:?}\nWith phases:{:?}",
-            action, phases
-        );
-
-        *self = Self::Acting {
-            timeline: action.timeline.clone(),
-            elapsed_time: 0.0,
-            phases: phases.into(),
-            phase_cooldown: action.timeline.step_spacing,
-            pause_reasons: HashSet::new(),
-        };
-    }
-
-    pub fn is_acting(&self) -> bool {
-        matches!(self, Self::Acting { .. })
-    }
-
-    pub fn pause_movement(&mut self) {
-        if let Self::Moving { paused, .. } = self {
-            *paused = true;
-        } else {
-            warn!("Attempted to pause movement for an activity that is not currently moving");
-        }
-    }
-
-    pub fn resume_movement(&mut self) {
-        if let Self::Moving { paused, .. } = self {
-            *paused = false;
-        } else {
-            warn!("Attempted to resume movement for an activity that is not currently moving");
-        }
-    }
-
-    pub fn pause_action(&mut self, reason: ActivityPauseReason) {
-        if let Self::Acting { pause_reasons, .. } = self {
-            pause_reasons.insert(reason);
-        } else {
-            warn!("Attempted to pause an activity that is not currently acting");
-        }
-    }
-
-    pub fn resume_action(&mut self, reason: ActivityPauseReason) {
-        if let Self::Acting { pause_reasons, .. } = self {
-            pause_reasons.remove(&reason);
-        } else {
-            warn!("Attempted to resume an activity that is not currently acting");
-        }
-    }
-
-    pub fn is_paused(&self) -> bool {
-        match self {
-            Self::Moving { paused, .. } => *paused,
-            Self::Acting { pause_reasons, .. } => !pause_reasons.is_empty(),
-            Self::Idle => false,
-        }
-    }
 }
 
-impl Default for ActivityState {
+impl Default for ActivityStateKind {
     fn default() -> Self {
         Self::Idle
     }
@@ -367,6 +358,10 @@ impl ActivityGameStateCommand {
 
             Self::ActivityCompleted { entity } => {
                 let scope = game_state.scope_for_entity(entity);
+                debug!(
+                    "Activity completed for entity {:?}, clearing blockers and resuming pending events if ready",
+                    entity
+                );
                 game_state
                     .interaction_engine
                     .session_mut(scope)
