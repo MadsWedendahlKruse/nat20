@@ -2,7 +2,7 @@
 //! shared via the [`SCRIPT_ENGINE`] static.
 //!
 //! Each hook closure runs inside [`mlua::Lua::scope`] so any `UserData` we
-//! pass in (especially `&mut GameState` and `&mut DamageRollResult`) is
+//! pass in (especially `&mut GameState` and other mutable data) is
 //! destroyed when the scope exits, releasing all script-side borrows before
 //! the caller reclaims ownership.
 
@@ -54,9 +54,8 @@ use crate::{
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::REGISTRY_ROOT,
     scripts::{
-        lua::lua_types::{self},
         script::{Script, ScriptError, ScriptFunction},
-        script_api::ScriptEntity,
+        script_api::{self, ScriptEntity},
     },
 };
 
@@ -70,7 +69,7 @@ pub struct ScriptEngine {
 impl ScriptEngine {
     pub fn new() -> Self {
         let lua = Lua::new();
-        lua_types::register_globals(&lua).expect("failed to register Lua globals");
+        script_api::register_globals(&lua).expect("failed to register Lua globals");
 
         // Configure package.path so scripts can `require("effects.foo")` and
         // resolve to `<registry_root>/effects/foo.lua`.
