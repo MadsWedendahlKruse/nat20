@@ -250,7 +250,7 @@ function GameState:hp_max(entity) end
 
 ---@param entity ScriptEntity
 ---@param ability_name string  -- "strength" | "dexterity" | ...
----@return integer
+---@return ModifierSet
 function GameState:ability_modifier(entity, ability_name) end
 
 ---@param entity ScriptEntity
@@ -287,44 +287,18 @@ end
 function GameState:remove_effect(target, effect_id) end
 
 ---@param target ScriptEntity
----@param dice string
+---@param base_amount string
 ---@param bonus ModifierSet
----@param source ModifierSource
-function GameState:heal(target, dice, bonus, source) end
+---@param source string
+function GameState:heal(target, base_amount, bonus, source) end
 
 ---@class ModifierSet
-local ModifierSet_instance = {}
+local ModifierSet = {}
 ---@param source ModifierSource
 ---@param value integer
-function ModifierSet_instance:add_modifier(source, value) end
+function ModifierSet:add_modifier(source, value) end
 
 ---@class ModifierSource
-
-------------------------------------------------------------
--- Global module tables (registered by lua_types::register_globals)
-------------------------------------------------------------
-
-ModifierSet = {}
----@return ModifierSet
-function ModifierSet.empty() end
-
----@param source ModifierSource
----@param value integer
----@return ModifierSet
-function ModifierSet.from(source, value) end
-
-ModifierSource = {}
----@param ability_name string
----@return ModifierSource
-function ModifierSource.ability(ability_name) end
-
----@return ModifierSource
-function ModifierSource.base() end
-
----@param effect_id string
----@return ModifierSource
-function ModifierSource.effect(effect_id) end
-
 ------------------------------------------------------------
 -- Hook function signatures. Annotate your script-side functions with
 --   ---@type <HookName>Fn

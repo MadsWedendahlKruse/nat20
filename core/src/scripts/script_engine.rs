@@ -55,7 +55,7 @@ use crate::{
     registry::registry::REGISTRY_ROOT,
     scripts::{
         script::{Script, ScriptError, ScriptFunction},
-        script_api::{self, ScriptEntity},
+        script_api::ScriptEntity,
     },
 };
 
@@ -69,7 +69,6 @@ pub struct ScriptEngine {
 impl ScriptEngine {
     pub fn new() -> Self {
         let lua = Lua::new();
-        script_api::register_globals(&lua).expect("failed to register Lua globals");
 
         // Configure package.path so scripts can `require("effects.foo")` and
         // resolve to `<registry_root>/effects/foo.lua`.

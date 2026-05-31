@@ -15,7 +15,7 @@ pub enum IdError {
 }
 
 macro_rules! id_newtypes {
-    ($($name:ident),+) => {
+    ($($name:ident => $prefix:literal),+) => {
         $(
             #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
             #[serde(try_from = "String", into = "String")]
@@ -25,6 +25,9 @@ macro_rules! id_newtypes {
             }
 
             impl $name {
+                 /// The required id prefix for this type, e.g. `ClassId` -> "class".
+                pub const PREFIX: &'static str = $prefix;
+
                 pub fn new(namespace: impl Into<String>, id: impl Into<String>) -> Self {
                     Self {
                         namespace: namespace.into(),
@@ -51,10 +54,9 @@ macro_rules! id_newtypes {
                     } else {
                         (parts[0], parts[1])
                     };
-                    let prefix = stringify!($name).to_lowercase().replace("id", "");
-                    if !id.starts_with(&prefix) {
+                    if !id.starts_with(Self::PREFIX) {
                         return Err(IdError::InvalidPrefix {
-                            expected: prefix,
+                            expected: Self::PREFIX.into(),
                             found: id.to_string(),
                         });
                     }
@@ -82,7 +84,7 @@ macro_rules! id_newtypes {
                 type Error = IdError;
 
                 fn try_from(value: String) -> Result<Self, Self::Error> {
-                    Self::from_str(&value)
+                    value.parse()
                 }
             }
 
@@ -92,24 +94,52 @@ macro_rules! id_newtypes {
                 }
             }
         )+
+
+        pub enum Id {
+            $($name($name),)+
+        }
+
+        impl FromStr for Id {
+            type Err = IdError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                $(
+                    if let Ok(id) = s.parse::<$name>() {
+                        return Ok(Id::$name(id));
+                    }
+                )+
+                Err(IdError::InvalidPrefix {
+                    expected: format!("one of: {}", vec![$($name::PREFIX),+].join(", ")),
+                    found: s.to_string(),
+                })
+            }
+        }
+
+        impl fmt::Display for Id {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $(Id::$name(id) => write!(f, "{}", id),)+
+                }
+            }
+        }
     };
 }
 
 id_newtypes!(
-    ClassId,
-    SubclassId,
-    ItemId,
-    EffectId,
-    ResourceId,
-    ActionId,
-    SpellId,
-    FeatId,
-    BackgroundId,
-    SpeciesId,
-    SubspeciesId,
-    AIControllerId,
-    FactionId,
-    ScriptId
+    ClassId => "class",
+    SubclassId => "subclass",
+    ItemId => "item",
+    EffectId => "effect",
+    ResourceId => "resource",
+    ActionId => "action",
+    SpellId => "spell",
+    FeatId => "feat",
+    BackgroundId => "background",
+    SpeciesId => "species",
+    SubspeciesId => "subspecies",
+    AIControllerId => "aicontroller",
+    FactionId => "faction",
+    ScriptId => "script"
 );
 
 impl Into<ActionId> for SpellId {

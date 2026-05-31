@@ -21,12 +21,12 @@ use crate::{
             AttackSource, CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageRollResult, MitigationOperation,
         },
-        dice::DiceSetRoll,
+        dice::{DiceSet, DiceSetRoll, DieSize},
         effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
         },
         health::hit_points::HitPoints,
-        id::{ClassId, EffectId, EntityIdentifier, ResourceId},
+        id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId},
         level::CharacterLevels,
         modifier::{Modifiable, ModifierSet, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
@@ -150,7 +150,7 @@ fn amount_to_string(value: Value) -> LuaResult<String> {
         Value::String(s) => Ok(s.to_str()?.to_string()),
         Value::Integer(i) => Ok(i.to_string()),
         Value::Number(n) => Ok(n.to_string()),
-        other => Err(mlua::Error::RuntimeError(format!(
+        other => Err(LuaError::RuntimeError(format!(
             "Expected string or integer for resource amount, got {}",
             other.type_name()
         ))),
@@ -160,7 +160,7 @@ fn amount_to_string(value: Value) -> LuaResult<String> {
 fn parse_resource_amount(value: Value) -> LuaResult<ResourceAmount> {
     let s = amount_to_string(value)?;
     serde_plain::from_str(&s)
-        .map_err(|e| mlua::Error::RuntimeError(format!("Failed to parse ResourceAmount: {e}")))
+        .map_err(|e| LuaError::RuntimeError(format!("Failed to parse ResourceAmount: {e}")))
 }
 
 fn parse_id<T>(s: &str) -> LuaResult<T>
@@ -169,7 +169,7 @@ where
     T::Err: std::fmt::Display,
 {
     s.parse()
-        .map_err(|e| mlua::Error::RuntimeError(format!("Failed to parse ID: {e}")))
+        .map_err(|e| LuaError::RuntimeError(format!("Failed to parse ID: {e}")))
 }
 /// mlua's blanket impls cover `IntoLua` for `UserData + Clone` but not
 /// `FromLua` — when a script-facing function takes a `UserData` type as an
@@ -182,7 +182,7 @@ macro_rules! impl_from_lua_userdata {
                 fn from_lua(value: Value, _: &Lua) -> LuaResult<Self> {
                     match value {
                         Value::UserData(ud) => Ok(ud.borrow::<Self>()?.clone()),
-                        other => Err(mlua::Error::FromLuaConversionError {
+                        other => Err(LuaError::FromLuaConversionError {
                             from: other.type_name(),
                             to: stringify!($ty).to_string(),
                             message: Some(format!(
@@ -270,15 +270,15 @@ impl UserData for DamageRollResult {
             "add_damage",
             |_, this, (amount, damage_type): (String, String)| {
                 let bonus: ScriptDiceRollBonus = amount.parse().map_err(|e: String| {
-                    mlua::Error::RuntimeError(format!("Invalid bonus: {e}"))
+                    LuaError::RuntimeError(format!("Invalid bonus: {e}"))
                 })?;
                 let damage_type = serde_plain::from_str(&damage_type)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("Invalid damage type: {e}")))?;
+                    .map_err(|e| LuaError::RuntimeError(format!("Invalid damage type: {e}")))?;
 
                 match bonus {
                     ScriptDiceRollBonus::Flat(_int_expression) => {
                         // TODO: figure out how to add a flat bonus properly
-                        return Err(mlua::Error::RuntimeError(
+                        return Err(LuaError::RuntimeError(
                             "Flat bonuses not implemented yet".to_string(),
                         ));
                     }
@@ -387,13 +387,14 @@ impl UserData for D20ResultKind {
             "reroll_bonus",
             |_, this, (bonus, source, force_use_new): (String, String, bool)| {
                 let bonus: ScriptDiceRollBonus = bonus.parse().map_err(|e: String| {
-                    mlua::Error::RuntimeError(format!("Invalid bonus: {e}"))
+                    LuaError::RuntimeError(format!("Invalid bonus: {e}"))
                 })?;
                 let mut new_result = this.reroll();
                 let bonus_value = bonus.evaluate_without_variables()?;
+                let source = parse_source(&source)?;
                 new_result
                     .d20_result_mut()
-                    .add_modifier(parse_source(&source), bonus_value);
+                    .add_modifier(source, bonus_value);
 
                 if force_use_new || new_result.d20_result().total() > this.d20_result().total() {
                     *this = new_result;
@@ -407,23 +408,26 @@ impl UserData for D20ResultKind {
             "modify_result",
             |_, this, (bonus, source): (String, String)| {
                 let bonus: ScriptDiceRollBonus = bonus.parse().map_err(|e: String| {
-                    mlua::Error::RuntimeError(format!("Invalid bonus: {e}"))
+                    LuaError::RuntimeError(format!("Invalid bonus: {e}"))
                 })?;
                 let bonus_value = bonus.evaluate_without_variables()?;
+                let source = parse_source(&source)?;
                 this.d20_result_mut()
-                    .add_modifier(parse_source(&source), bonus_value);
+                    .add_modifier(source, bonus_value);
                 Ok(())
             },
         );
     }
 }
 
-fn parse_source(source: &str) -> ModifierSource {
-    if source.contains("action") {
-        ModifierSource::Action(source.into())
-    } else {
-        ModifierSource::Custom(source.into())
+fn parse_source(source: &str) -> Result<ModifierSource, LuaError> {
+    if source == "base" {
+        return Ok(ModifierSource::Base);
     }
+    let id: Id = source.parse().map_err(|e| {
+        LuaError::RuntimeError(format!("Failed to parse modifier source ID '{}': {e}", source))
+    })?;
+    Ok(ModifierSource::from(id))
 }
 
 impl UserData for D20CheckDCKind {
@@ -662,7 +666,7 @@ impl UserData for GameState {
             "class_level",
             |_, this, (entity, class): (ScriptEntity, String)| {
                 let class: ClassId = class.parse().map_err(|e| {
-                    mlua::Error::RuntimeError(format!("Failed to parse class name: {e}"))
+                    LuaError::RuntimeError(format!("Failed to parse class name: {e}"))
                 })?;
                 Ok(
                     systems::helpers::get_component::<CharacterLevels>(&this.world, entity.into())
@@ -713,10 +717,10 @@ impl UserData for GameState {
             |_, this, (entity, name): (ScriptEntity, String)| {
                 let ability = name
                     .parse()
-                    .map_err(|e| mlua::Error::RuntimeError(format!("Invalid ability name: {e}")))?;
+                    .map_err(|e| LuaError::RuntimeError(format!("Invalid ability name: {e}")))?;
                 let scores =
                     systems::helpers::get_component::<AbilityScoreMap>(&this.world, entity.into());
-                Ok(scores.ability_modifier(&ability).total() as i64)
+                Ok(scores.ability_modifier(&ability))
             },
         );
 
@@ -732,7 +736,7 @@ impl UserData for GameState {
             "wielding_with_both_hands",
             |_, this, (entity, weapon_kind): (ScriptEntity, String)| {
                 let kind = serde_plain::from_str(&weapon_kind.to_lowercase()).map_err(|e| {
-                    mlua::Error::RuntimeError(format!("Failed to parse WeaponKind: {e}"))
+                    LuaError::RuntimeError(format!("Failed to parse WeaponKind: {e}"))
                 })?;
                 let loadout = systems::loadout::loadout(&this.world, entity.into());
                 Ok(loadout.is_wielding_weapon_with_both_hands(&kind))
@@ -781,7 +785,7 @@ impl UserData for GameState {
                 ActionConditionResolution,
             )| {
                 if turns <= 0 {
-                    return Err(mlua::Error::RuntimeError(
+                    return Err(LuaError::RuntimeError(
                         "turns must be greater than 0".into(),
                     ));
                 }
@@ -813,29 +817,47 @@ impl UserData for GameState {
             "heal",
             |_,
              this,
-             (target, dice, bonus, source): (
+             (target, amount, bonus, source): (
                 ScriptEntity,
                 String,
                 ModifierSet,
-                ModifierSource,
+                String,
             )| {
-                let mut dice_roll: DiceSetRoll = dice.parse().map_err(|e| {
-                    mlua::Error::RuntimeError(format!("Invalid dice expression: {e}"))
+                let source = parse_source(&source)?;
+
+                let heal_expr: ScriptDiceRollBonus = amount.parse().map_err(|e| {
+                    LuaError::RuntimeError(format!("Invalid healing amount expression: {e}"))
                 })?;
+
+                let mut dice_roll = match heal_expr {
+                    ScriptDiceRollBonus::Flat(expr) => {
+                        let value = expr.evaluate_without_variables().map_err(|e| {
+                            LuaError::RuntimeError(format!(
+                                "Failed to evaluate healing amount: {e}"
+                            ))
+                        })?;
+                        DiceSetRoll {
+                            dice: DiceSet::new(0, DieSize::D6),
+                            modifiers: ModifierSet::from(source.clone(), value),
+                        }
+                    }
+                    ScriptDiceRollBonus::Dice(expr) => {
+                        expr.evaluate_without_variables().map_err(|e| {
+                            LuaError::RuntimeError(format!("Failed to evaluate healing dice: {e}"))
+                        })?
+                    }
+                };
+                
                 dice_roll.modifiers.add_modifier_set(&bonus);
+
                 let healing = dice_roll.roll();
                 let target_entity: hecs::Entity = target.into();
                 systems::health::heal(&mut this.world, target_entity, healing.subtotal as u32);
-                let event = Event::new(
-                    EventKind::Healing {
-                        entity: EntityIdentifier::from_world(
-                            &this.world,
-                            target_entity,
-                        ),
-                        amount: healing,
-                        source,
-                    },
-                );
+                let event = Event::new(EventKind::Healing {
+                    entity: EntityIdentifier::from_world(&this.world, target_entity),
+                    amount: healing,
+                    source,
+                });
                 this.process_event(event);
                 Ok(())
             },
@@ -903,53 +925,11 @@ impl UserData for ResourceAmountMap {
                 let from = parse_id::<ResourceId>(&from)?;
                 let to = parse_id::<ResourceId>(&to)?;
                 let amount: ResourceAmount = serde_plain::from_str(&new_amount).map_err(|e| {
-                    mlua::Error::RuntimeError(format!("Failed to parse ResourceAmount: {e}"))
+                    LuaError::RuntimeError(format!("Failed to parse ResourceAmount: {e}"))
                 })?;
                 this.replace_resource(&from, &to, &amount);
                 Ok(())
             },
         );
     }
-}
-
-pub fn register_globals(lua: &Lua) -> LuaResult<()> {
-    let globals = lua.globals();
-
-    let modifier_set = lua.create_table()?;
-    modifier_set.set(
-        "empty",
-        lua.create_function(|_, ()| Ok(ModifierSet::new()))?,
-    )?;
-    modifier_set.set(
-        "from",
-        lua.create_function(|_, (source, value): (ModifierSource, i64)| {
-            Ok(ModifierSet::from(source, value as i32))
-        })?,
-    )?;
-    globals.set("ModifierSet", modifier_set)?;
-
-    let modifier_source = lua.create_table()?;
-    modifier_source.set(
-        "ability",
-        lua.create_function(|_, ability_name: String| {
-            let ability = ability_name
-                .parse()
-                .map_err(|e| mlua::Error::RuntimeError(format!("Invalid ability name: {e}")))?;
-            Ok(ModifierSource::Ability(ability))
-        })?,
-    )?;
-    modifier_source.set(
-        "base",
-        lua.create_function(|_, ()| Ok(ModifierSource::Base))?,
-    )?;
-    modifier_source.set(
-        "effect",
-        lua.create_function(|_, effect_id: String| {
-            let id = parse_id::<EffectId>(&effect_id)?;
-            Ok(ModifierSource::Effect(id))
-        })?,
-    )?;
-    globals.set("ModifierSource", modifier_source)?;
-
-    Ok(())
 }

@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::components::id::{
-    ActionId, BackgroundId, ClassId, EffectId, FeatId, ItemId, SpeciesId, SubclassId, SubspeciesId,
+    ActionId, BackgroundId, ClassId, EffectId, FeatId, Id, ItemId, SpeciesId, SubclassId,
+    SubspeciesId,
 };
 
 use super::{ability::Ability, proficiency::ProficiencyLevel};
@@ -24,10 +25,10 @@ pub enum ModifierSource {
     Proficiency(ProficiencyLevel),
     Feat(FeatId),                 // e.g. "Great Weapon Master"
     FeatRepeatable(FeatId, Uuid), // e.g. "Ability Score Improvement" with unique instance ID
-    Custom(String),               // fallback for ad-hoc things
     Species(SpeciesId),           // e.g. "Dwarf"
     Subspecies(SubspeciesId),     // e.g. "Hill Dwarf"
     None,                         // Used for cases where no modifier is applicable
+    Custom(String),               // fallback for ad-hoc things
 }
 
 impl fmt::Display for ModifierSource {
@@ -53,6 +54,23 @@ impl fmt::Display for ModifierSource {
             ModifierSource::Species(id) => write!(f, "Species: {}", id),
             ModifierSource::Subspecies(id) => write!(f, "Subspecies: {}", id),
             ModifierSource::None => write!(f, "None"),
+        }
+    }
+}
+
+impl From<Id> for ModifierSource {
+    fn from(id: Id) -> Self {
+        match id {
+            Id::ActionId(action_id) => ModifierSource::Action(action_id),
+            Id::BackgroundId(background_id) => ModifierSource::Background(background_id),
+            Id::ClassId(class_id) => ModifierSource::ClassFeature(class_id),
+            Id::EffectId(effect_id) => ModifierSource::Effect(effect_id),
+            Id::FeatId(feat_id) => ModifierSource::Feat(feat_id),
+            Id::ItemId(item_id) => ModifierSource::Item(item_id),
+            Id::SpeciesId(species_id) => ModifierSource::Species(species_id),
+            Id::SubclassId(subclass_id) => ModifierSource::SubclassFeature(subclass_id),
+            Id::SubspeciesId(subspecies_id) => ModifierSource::Subspecies(subspecies_id),
+            other => ModifierSource::Custom(other.to_string()),
         }
     }
 }
