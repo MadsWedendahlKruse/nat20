@@ -84,10 +84,9 @@ pub struct DiceSetRoll {
 }
 
 impl DiceSetRoll {
-    // TODO: Redundant new?
-    pub fn new(dice_set: DiceSet, modifier: ModifierSet) -> Self {
+    pub fn new(num_dice: u32, die_size: DieSize, modifier: ModifierSet) -> Self {
         Self {
-            dice: dice_set,
+            dice: DiceSet::new(num_dice, die_size),
             modifiers: modifier,
         }
     }
@@ -186,6 +185,15 @@ impl TryFrom<String> for DiceSetRoll {
 impl From<DiceSetRoll> for String {
     fn from(spec: DiceSetRoll) -> Self {
         spec.to_string()
+    }
+}
+
+impl Into<DiceSetRoll> for DiceSet {
+    fn into(self) -> DiceSetRoll {
+        DiceSetRoll {
+            dice: self,
+            modifiers: ModifierSet::new(),
+        }
     }
 }
 

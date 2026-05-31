@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use hecs::{Entity, World};
 use mlua::{
-    FromLua, Function, Lua, MetaMethod, Result as LuaResult, UserData, UserDataFields,
-    UserDataMethods,
+    FromLua, Function, Lua, MetaMethod, UserData, UserDataFields, UserDataMethods,
     Value::{self},
+    prelude::{LuaError, LuaResult},
 };
 
 use crate::{
@@ -21,7 +21,7 @@ use crate::{
             AttackSource, CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageRollResult, MitigationOperation,
         },
-        dice::{DiceSet, DiceSetRoll},
+        dice::DiceSetRoll,
         effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
         },
@@ -87,22 +87,43 @@ pub enum ScriptDiceRollBonus {
 }
 
 impl ScriptDiceRollBonus {
-    pub fn evaluate(&self, world: &World, entity: Entity, action_context: &ActionContext) -> i32 {
+    pub fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        action_context: &ActionContext,
+    ) -> Result<i32, LuaError> {
         match self {
             ScriptDiceRollBonus::Flat(expr) => expr
                 .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                .unwrap(),
+                .map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to evaluate flat bonus expression: {e}"))
+                }),
             ScriptDiceRollBonus::Dice(expr) => {
-                let (num_dice, size, modifier) = expr
+                let dice_roll = expr
                     .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                    .unwrap();
+                    .map_err(|e| {
+                        LuaError::RuntimeError(format!(
+                            "Failed to evaluate dice bonus expression: {e}"
+                        ))
+                    })?;
 
-                DiceSetRoll {
-                    dice: DiceSet::from_str(format!("{}d{}", num_dice, size).as_str()).unwrap(),
-                    modifiers: ModifierSet::from(ModifierSource::Base, modifier),
-                }
-                .roll()
-                .subtotal
+                Ok(dice_roll.roll().subtotal)
+            }
+        }
+    }
+
+    pub fn evaluate_without_variables(&self) -> Result<i32, LuaError> {
+        match self {
+            ScriptDiceRollBonus::Flat(expr) => expr.evaluate_without_variables().map_err(|e| {
+                LuaError::RuntimeError(format!("Failed to evaluate flat bonus expression: {e}"))
+            }),
+            ScriptDiceRollBonus::Dice(expr) => {
+                let dice_roll = expr.evaluate_without_variables().map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to evaluate dice bonus expression: {e}"))
+                })?;
+
+                Ok(dice_roll.roll().subtotal)
             }
         }
     }
@@ -117,7 +138,7 @@ impl FromStr for ScriptDiceRollBonus {
         } else if let Ok(expr) = Parser::new(s).parse_dice_expression() {
             Ok(ScriptDiceRollBonus::Dice(expr))
         } else {
-            Err(format!("Invalid ScriptD20Bonus expression: {}", s))
+            Err(format!("Invalid ScriptDiceRollBonus expression: {}", s))
         }
     }
 }
@@ -259,21 +280,17 @@ impl UserData for DamageRollResult {
                 match bonus {
                     ScriptDiceRollBonus::Flat(_int_expression) => {
                         // TODO: figure out how to add a flat bonus properly
+                        return Err(mlua::Error::RuntimeError(
+                            "Flat bonuses not implemented yet".to_string(),
+                        ));
                     }
                     ScriptDiceRollBonus::Dice(dice_expression) => {
-                        let (mut num_dice, die_size, modifier) =
-                            dice_expression.evaluate_without_variables().unwrap();
+                        let mut dice_roll = dice_expression.evaluate_without_variables().unwrap();
                         if this.crit {
-                            num_dice *= CRIT_DICE_MULTIPLIER as i32;
+                            dice_roll.dice.num_dice *= CRIT_DICE_MULTIPLIER as u32;
                         }
-                        let result = DiceSetRoll {
-                            dice: DiceSet::from_str(format!("{}d{}", num_dice, die_size).as_str())
-                                .unwrap(),
-                            modifiers: ModifierSet::from(ModifierSource::Base, modifier),
-                        }
-                        .roll();
                         this.add_component(DamageComponentResult {
-                            result,
+                            result: dice_roll.roll(),
                             damage_type,
                         });
                     }
@@ -370,27 +387,18 @@ impl UserData for D20ResultKind {
 
         methods.add_method_mut(
             "reroll_bonus",
-            |_, this, (bonus, source, force_use_new): (Value, String, bool)| {
-                let bonus = match bonus {
-                    Value::Integer(int) => int,
-                    Value::String(string) => todo!(),
-                    _ => {
-                        return Err(mlua::Error::RuntimeError(
-                            "Bonus must be an integer or string".to_string(),
-                        ));
-                    }
-                };
+            |_, this, (bonus, source, force_use_new): (String, String, bool)| {
+                let bonus: ScriptDiceRollBonus = bonus.parse().map_err(|e: String| {
+                    mlua::Error::RuntimeError(format!("Invalid bonus: {e}"))
+                })?;
                 let mut new_result = this.reroll();
+                let bonus_value = bonus.evaluate_without_variables()?;
                 new_result
                     .d20_result_mut()
-                    .add_modifier(parse_source(&source), bonus as i32);
+                    .add_modifier(parse_source(&source), bonus_value);
 
-                if force_use_new {
+                if force_use_new || new_result.d20_result().total() > this.d20_result().total() {
                     *this = new_result;
-                } else {
-                    if new_result.d20_result().total() > this.d20_result().total() {
-                        *this = new_result;
-                    }
                 }
 
                 Ok(())
@@ -400,29 +408,13 @@ impl UserData for D20ResultKind {
         methods.add_method_mut(
             "modify_result",
             |_, this, (bonus, source): (String, String)| {
-                if let Ok(dice_expression) = Parser::new(&bonus).parse_dice_expression() {
-                    match dice_expression.evaluate_without_variables() {
-                        Ok((count, size, modifier)) => {
-                            let roll = DiceSetRoll {
-                                dice: DiceSet::from_str(format!("{}d{}", count, size).as_str())
-                                    .unwrap(),
-                                modifiers: ModifierSet::from(parse_source(&source), modifier),
-                            }
-                            .roll();
-                            this.d20_result_mut()
-                                .add_modifier(parse_source(&source), roll.subtotal as i32);
-                            Ok(())
-                        }
-                        Err(err) => Err(mlua::Error::RuntimeError(format!(
-                            "Failed to evaluate dice expression: {err}"
-                        ))),
-                    }
-                } else {
-                    Err(mlua::Error::RuntimeError(format!(
-                        "Invalid dice expression: {}",
-                        bonus
-                    )))
-                }
+                let bonus: ScriptDiceRollBonus = bonus.parse().map_err(|e: String| {
+                    mlua::Error::RuntimeError(format!("Invalid bonus: {e}"))
+                })?;
+                let bonus_value = bonus.evaluate_without_variables()?;
+                this.d20_result_mut()
+                    .add_modifier(parse_source(&source), bonus_value);
+                Ok(())
             },
         );
     }

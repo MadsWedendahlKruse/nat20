@@ -17,7 +17,7 @@ use crate::{
         damage::{
             AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageSource, DamageType,
         },
-        dice::{DiceSet, DieSize},
+        dice::{DiceSet, DiceSetRoll, DieSize},
         id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
@@ -361,7 +361,7 @@ impl Loadout {
 
     pub fn unarmed_damage_roll(&self, world: &World, entity: Entity) -> DamageRoll {
         let mut damage_roll = DamageRoll::new(
-            DiceSet::new(0, DieSize::D4),
+            DiceSetRoll::new(0, DieSize::D4, ModifierSet::new()),
             DamageType::Bludgeoning,
             DamageSource::Weapon(WeaponKind::Unarmed),
         );

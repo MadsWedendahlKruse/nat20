@@ -15,7 +15,7 @@ use crate::{
         actions::targeting::TargetingRange,
         d20::D20Check,
         damage::{AttackRoll, AttackSource, DamageRoll, DamageSource, DamageType},
-        dice::DiceSet,
+        dice::{DiceSet, DiceSetRoll},
         id::{ActionId, EffectId},
         items::{
             equipment::slots::{EquipmentSlot, SlotProvider},
@@ -238,10 +238,23 @@ impl Weapon {
         }
         let (dice, damage_type) = damage[0];
         let source = DamageSource::Weapon(kind.clone());
-        let mut damage_roll = DamageRoll::new(dice, damage_type, source.clone());
+        let mut damage_roll = DamageRoll::new(
+            DiceSetRoll {
+                dice,
+                modifiers: ModifierSet::new(),
+            },
+            damage_type,
+            source.clone(),
+        );
         for i in 1..damage.len() {
             let (dice, damage_type) = damage[i];
-            damage_roll.add_bonus(dice, damage_type);
+            damage_roll.add_bonus(
+                DiceSetRoll {
+                    dice,
+                    modifiers: ModifierSet::new(),
+                },
+                damage_type,
+            );
         }
 
         Self {

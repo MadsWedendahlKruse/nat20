@@ -12,8 +12,6 @@ use crate::{
     components::{
         actions::action::{ActionAttackKind, ActionContext, DamageFunction, HealingFunction},
         damage::{DamageRoll, DamageSource, DamageType},
-        dice::{DiceSet, DiceSetRoll},
-        modifier::{Modifiable, ModifierSet, ModifierSource},
     },
     registry::serialize::{
         parser::{Evaluable, Parser},
@@ -121,25 +119,17 @@ impl FromStr for DamageEquation {
         if let Ok(dice_expression) = Parser::new(dice_part).parse_dice_expression() {
             let function = Arc::new(
                 move |world: &World, entity: Entity, action_context: &ActionContext| {
-                    let (num_dice, size, modifier) = dice_expression
+                    let dice_roll = dice_expression
                         .evaluate(world, entity, action_context, &PARSER_VARIABLES)
                         .unwrap();
-                    // TODO: Absolutely cooked way to construct dice set
-                    let dice_set =
-                        DiceSet::from_str(format!("{}d{}", num_dice, size).as_str()).unwrap();
-                    let mut damage_roll = DamageRoll::new(
-                        dice_set,
+                    DamageRoll::new(
+                        dice_roll,
                         damage_type,
                         // TODO: Determine source properly
                         // Source is also included in AttackRoll, so maybe we only
                         // need one of them?
                         DamageSource::from(action_context),
-                    );
-                    damage_roll
-                        .primary
-                        .dice_roll
-                        .add_modifier(ModifierSource::Base, modifier);
-                    damage_roll
+                    )
                 },
             );
 
@@ -189,14 +179,9 @@ impl FromStr for HealEquation {
         if let Ok(dice_expression) = Parser::new(s).parse_dice_expression() {
             let function = Arc::new(
                 move |world: &World, entity: Entity, action_context: &ActionContext| {
-                    let (num_dice, size, modifier) = dice_expression
+                    dice_expression
                         .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                        .unwrap();
-
-                    DiceSetRoll {
-                        dice: DiceSet::from_str(format!("{}d{}", num_dice, size).as_str()).unwrap(),
-                        modifiers: ModifierSet::from(ModifierSource::Base, modifier),
-                    }
+                        .unwrap()
                 },
             );
 

@@ -171,12 +171,12 @@ local D20ResultKind = {}
 ---@return boolean
 function D20ResultKind:is_success(dc) end
 
----@param bonus string|integer
+---@param bonus string
 ---@param source string
 ---@param force_use_new boolean
 function D20ResultKind:reroll_bonus(bonus, source, force_use_new) end
 
----@param bonus string|integer
+---@param bonus string
 ---@param source string
 function D20ResultKind:modify_result(bonus, source) end
 

@@ -1,10 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use hecs::{Entity, World};
 use strum::Display;
 
 use crate::{
-    components::actions::action::ActionContext, registry::serialize::variables::VariableFunction,
+    components::{
+        actions::action::ActionContext,
+        dice::{DiceSet, DiceSetRoll},
+        modifier::{ModifierSet, ModifierSource},
+    },
+    registry::serialize::variables::VariableFunction,
 };
 
 #[derive(Debug, Clone)]
@@ -115,7 +120,7 @@ pub struct DiceExpression {
 }
 
 impl Evaluable for DiceExpression {
-    type Output = (i32, i32, i32);
+    type Output = DiceSetRoll;
 
     fn evaluate(
         &self,
@@ -126,7 +131,7 @@ impl Evaluable for DiceExpression {
             String,
             Arc<dyn Fn(&World, Entity, &ActionContext) -> i32 + Send + Sync>,
         >,
-    ) -> Result<(i32, i32, i32), EvaluationError> {
+    ) -> Result<DiceSetRoll, EvaluationError> {
         let count = self
             .count_expression
             .evaluate(world, entity, action_context, variables)?;
@@ -139,12 +144,15 @@ impl Evaluable for DiceExpression {
             0
         };
 
-        Ok((count, size, modifier))
+        Ok(DiceSetRoll {
+            dice: DiceSet::from_str(format!("{}d{}", count, size).as_str()).unwrap(),
+            modifiers: ModifierSet::from(ModifierSource::Base, modifier),
+        })
     }
 }
 
 impl DiceExpression {
-    pub fn evaluate_without_variables(&self) -> Result<(i32, i32, i32), EvaluationError> {
+    pub fn evaluate_without_variables(&self) -> Result<DiceSetRoll, EvaluationError> {
         let count = self.count_expression.evaluate_without_variables()?;
         let size = self.size_expression.evaluate_without_variables()?;
         let modifier = if let Some(mod_expr) = &self.modifier_expression {
@@ -153,7 +161,10 @@ impl DiceExpression {
             0
         };
 
-        Ok((count, size, modifier))
+        Ok(DiceSetRoll {
+            dice: DiceSet::from_str(format!("{}d{}", count, size).as_str()).unwrap(),
+            modifiers: ModifierSet::from(ModifierSource::Base, modifier),
+        })
     }
 }
 
@@ -432,6 +443,8 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::components::{dice::DieSize, modifier::Modifiable};
+
     use super::*;
 
     fn expect_literal(expr: &IntExpression, expected: i32) {
@@ -575,12 +588,12 @@ mod tests {
         let entity = world.spawn(());
         let action_context = ActionContext::default();
 
-        let (count, size, modifier) = dice_expression
+        let dice_roll = dice_expression
             .evaluate(&world, entity, &action_context, &variables)
             .expect("failed to evaluate");
 
-        assert_eq!(count, 5); // spell_level (3) + 2
-        assert_eq!(size, 10); // caster_level (5) * 2
-        assert_eq!(modifier, 7); // character_level (7)
+        assert_eq!(dice_roll.dice.num_dice, 5); // spell_level (3) + 2
+        assert_eq!(dice_roll.dice.die_size, DieSize::D10); // caster_level (5) * 2
+        assert_eq!(dice_roll.modifiers.total(), 7); // character_level (7)
     }
 }

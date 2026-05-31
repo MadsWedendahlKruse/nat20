@@ -58,9 +58,9 @@ pub struct DamageComponent {
 }
 
 impl DamageComponent {
-    pub fn new(dice: DiceSet, damage_type: DamageType) -> Self {
+    pub fn new(dice_roll: impl Into<DiceSetRoll>, damage_type: DamageType) -> Self {
         Self {
-            dice_roll: DiceSetRoll::new(dice, ModifierSet::new()),
+            dice_roll: dice_roll.into(),
             damage_type,
         }
     }
@@ -184,7 +184,7 @@ pub struct DamageRoll {
 }
 
 impl DamageRoll {
-    pub fn new(dice: DiceSet, damage_type: DamageType, source: DamageSource) -> Self {
+    pub fn new(dice: DiceSetRoll, damage_type: DamageType, source: DamageSource) -> Self {
         Self {
             primary: DamageComponent::new(dice, damage_type),
             bonus: Vec::new(),
@@ -192,7 +192,7 @@ impl DamageRoll {
         }
     }
 
-    pub fn add_bonus(&mut self, dice: DiceSet, damage_type: DamageType) {
+    pub fn add_bonus(&mut self, dice: DiceSetRoll, damage_type: DamageType) {
         self.bonus.push(DamageComponent::new(dice, damage_type));
     }
 
@@ -1021,23 +1021,23 @@ mod tests {
         modifiers.add_modifier(ModifierSource::Ability(Ability::Strength), 2);
         DamageRoll {
             primary: DamageComponent {
-                dice_roll: DiceSetRoll::new(
-                    DiceSet {
+                dice_roll: DiceSetRoll {
+                    dice: DiceSet {
                         num_dice: 2,
                         die_size: DieSize::D6,
                     },
                     modifiers,
-                ),
+                },
                 damage_type: DamageType::Slashing,
             },
             bonus: vec![DamageComponent {
-                dice_roll: DiceSetRoll::new(
-                    DiceSet {
+                dice_roll: DiceSetRoll {
+                    dice: DiceSet {
                         num_dice: 1,
                         die_size: DieSize::D4,
                     },
-                    ModifierSet::new(),
-                ),
+                    modifiers: ModifierSet::new(),
+                },
                 damage_type: DamageType::Fire,
             }],
             source: DamageSource::Weapon(WeaponKind::Melee),
