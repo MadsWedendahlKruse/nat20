@@ -163,16 +163,14 @@ fn parse_resource_amount(value: Value) -> LuaResult<ResourceAmount> {
         .map_err(|e| mlua::Error::RuntimeError(format!("Failed to parse ResourceAmount: {e}")))
 }
 
-fn parse_resource_id(s: &str) -> LuaResult<ResourceId> {
+fn parse_id<T>(s: &str) -> LuaResult<T>
+where
+    T: FromStr,
+    T::Err: std::fmt::Display,
+{
     s.parse()
-        .map_err(|e| mlua::Error::RuntimeError(format!("Failed to parse ResourceId: {e}")))
+        .map_err(|e| mlua::Error::RuntimeError(format!("Failed to parse ID: {e}")))
 }
-
-fn parse_effect_id(s: &str) -> LuaResult<EffectId> {
-    s.parse()
-        .map_err(|e| mlua::Error::RuntimeError(format!("Failed to parse EffectId: {e}")))
-}
-
 /// mlua's blanket impls cover `IntoLua` for `UserData + Clone` but not
 /// `FromLua` — when a script-facing function takes a `UserData` type as an
 /// argument, we need an explicit `FromLua` impl. This macro generates one
@@ -490,7 +488,7 @@ impl UserData for ActionData {
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("costs_resource", |_, this, resource_id: String| {
-            let id = parse_resource_id(&resource_id)?;
+            let id = parse_id::<ResourceId>(&resource_id)?;
             Ok(this.resource_cost.map.contains_key(&id))
         });
     }
@@ -679,7 +677,7 @@ impl UserData for GameState {
         methods.add_method(
             "can_afford_resource",
             |_, this, (entity, resource_id, amount): (ScriptEntity, String, Value)| {
-                let id = parse_resource_id(&resource_id)?;
+                let id = parse_id::<ResourceId>(&resource_id)?;
                 let amount = parse_resource_amount(amount)?;
                 Ok(
                     systems::helpers::get_component::<ResourceMap>(&this.world, entity.into())
@@ -691,7 +689,7 @@ impl UserData for GameState {
         methods.add_method_mut(
             "add_resource",
             |_, this, (entity, resource_id, amount): (ScriptEntity, String, Value)| {
-                let id = parse_resource_id(&resource_id)?;
+                let id = parse_id::<ResourceId>(&resource_id)?;
                 let amount = parse_resource_amount(amount)?;
                 systems::helpers::get_component_mut::<ResourceMap>(&mut this.world, entity.into())
                     .add(id, amount.into(), true);
@@ -757,10 +755,10 @@ impl UserData for GameState {
                     this,
                     applier,
                     target,
-                    parse_effect_id(&effect_id)?,
+                    parse_id::<EffectId>(&effect_id)?,
                     None,
                     false,
-                    parse_effect_id(&source_effect)?,
+                    parse_id::<EffectId>(&source_effect)?,
                     context,
                     ActionConditionResolution::Unconditional,
                 );
@@ -791,10 +789,10 @@ impl UserData for GameState {
                     this,
                     applier,
                     target,
-                    parse_effect_id(&effect_id)?,
+                    parse_id::<EffectId>(&effect_id)?,
                     Some(turns as u32),
                     one_shot,
-                    parse_effect_id(&source_effect)?,
+                    parse_id::<EffectId>(&source_effect)?,
                     context,
                     resolution,
                 );
@@ -805,7 +803,7 @@ impl UserData for GameState {
         methods.add_method_mut(
             "remove_effect",
             |_, this, (target, effect_id): (ScriptEntity, String)| {
-                let id = parse_effect_id(&effect_id)?;
+                let id = parse_id::<EffectId>(&effect_id)?;
                 systems::effects::remove_effects_by_id(this, target.into(), &id);
                 Ok(())
             },
@@ -892,7 +890,7 @@ fn apply_effect_impl(
 impl UserData for ResourceAmountMap {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("costs_resource", |_, this, resource_id: String| {
-            let id = parse_resource_id(&resource_id)?;
+            let id = parse_id::<ResourceId>(&resource_id)?;
             Ok(this
                 .map
                 .get(&id)
@@ -902,8 +900,8 @@ impl UserData for ResourceAmountMap {
         methods.add_method_mut(
             "replace_resource",
             |_, this, (from, to, new_amount): (String, String, String)| {
-                let from = parse_resource_id(&from)?;
-                let to = parse_resource_id(&to)?;
+                let from = parse_id::<ResourceId>(&from)?;
+                let to = parse_id::<ResourceId>(&to)?;
                 let amount: ResourceAmount = serde_plain::from_str(&new_amount).map_err(|e| {
                     mlua::Error::RuntimeError(format!("Failed to parse ResourceAmount: {e}"))
                 })?;
@@ -947,7 +945,7 @@ pub fn register_globals(lua: &Lua) -> LuaResult<()> {
     modifier_source.set(
         "effect",
         lua.create_function(|_, effect_id: String| {
-            let id = parse_effect_id(&effect_id)?;
+            let id = parse_id::<EffectId>(&effect_id)?;
             Ok(ModifierSource::Effect(id))
         })?,
     )?;
