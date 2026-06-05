@@ -13,7 +13,7 @@ use crate::{
         saving_throw::SavingThrowSet,
         skill::SkillSet,
         speed::Speed,
-        spells::spellbook::Spellbook,
+        spells::{spell::ConcentrationInstance, spellbook::Spellbook},
         time::{TimeStep, TurnBoundary},
     },
     engine::{event::EventCallback, game_state::GameState},
@@ -369,6 +369,38 @@ impl CreatureProbe {
                 }
             },
         }
+    }
+
+    // TODO: Update this is we add support for concentration on things other than effects
+    pub fn assert_concentration(&self, game_state: &GameState, effect_id: impl Into<EffectId>) {
+        let effect_id = effect_id.into();
+        let spellbook =
+            systems::helpers::get_component::<Spellbook>(&game_state.world, self.creature.id());
+        let concentration = spellbook
+            .concentration_tracker()
+            .instances()
+            .iter()
+            .find(|instance| match instance {
+                ConcentrationInstance::Effect { effect, .. } => *effect == effect_id,
+            });
+        assert!(
+            concentration.is_some(),
+            "Expected creature {:?} to be concentrating on effect {:?}, but it was not found. Current concentration instances: {:#?}",
+            self.creature,
+            effect_id,
+            spellbook.concentration_tracker().instances()
+        );
+    }
+
+    pub fn assert_no_concentration(&self, game_state: &GameState) {
+        let spellbook =
+            systems::helpers::get_component::<Spellbook>(&game_state.world, self.creature.id());
+        assert!(
+            spellbook.concentration_tracker().instances().is_empty(),
+            "Expected creature {:?} to not be concentrating, but it has concentration instances: {:#?}",
+            self.creature,
+            spellbook.concentration_tracker().instances()
+        );
     }
 }
 

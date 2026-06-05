@@ -32,21 +32,33 @@ pub struct ActionBuilder {
 }
 
 impl ActionBuilder {
-    pub fn all(world: &World, entity: Entity) -> Self {
-        Self {
-            actor: EntityIdentifier::from_world(world, entity),
-            state: Ok(ActionBuilderState::Action {
-                actions: systems::actions::all_actions(world, entity),
-            }),
-        }
+    pub fn all(game_state: &GameState, entity: Entity) -> Self {
+        Self::new(
+            game_state,
+            entity,
+            systems::actions::all_actions(&game_state.world, entity),
+        )
     }
 
     pub fn available(game_state: &GameState, entity: Entity) -> Self {
+        Self::new(
+            game_state,
+            entity,
+            systems::actions::available_actions(game_state, entity),
+        )
+    }
+
+    fn new(game_state: &GameState, entity: Entity, actions: ActionMap) -> Self {
+        if !systems::health::is_alive(&game_state.world, entity) {
+            return Self {
+                actor: EntityIdentifier::from_world(&game_state.world, entity),
+                state: Err(ActionBuilderError::DeadActor),
+            };
+        }
+
         Self {
             actor: EntityIdentifier::from_world(&game_state.world, entity),
-            state: Ok(ActionBuilderState::Action {
-                actions: systems::actions::available_actions(game_state, entity),
-            }),
+            state: Ok(ActionBuilderState::Action { actions }),
         }
     }
 
@@ -431,6 +443,7 @@ impl ActionBuilderState {
 
 #[derive(Debug, Clone)]
 pub enum ActionBuilderError {
+    DeadActor,
     ActionNotFound(ActionId),
     ActionIsReaction(ActionId),
     ActionNotAvailable {
@@ -464,6 +477,13 @@ pub struct ReactionBuilder {
 impl ReactionBuilder {
     pub fn new(game_state: &GameState, entity: Entity) -> Self {
         let actor = EntityIdentifier::from_world(&game_state.world, entity);
+
+        if !systems::health::is_alive(&game_state.world, entity) {
+            return Self {
+                actor,
+                state: Err(ReactionBuilderError::DeadActor),
+            };
+        }
 
         let Some(prompt) = game_state.next_prompt_entity(entity) else {
             return Self {
@@ -659,6 +679,7 @@ impl ReactionBuilderState {
 
 #[derive(Debug, Clone)]
 pub enum ReactionBuilderError {
+    DeadActor,
     NoPrompt,
     NoReactionPrompt,
     NoOptionsForEntity {

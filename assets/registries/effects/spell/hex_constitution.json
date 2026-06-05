@@ -2,9 +2,10 @@
     "id": "nat20_core::effect.spell.hex.constitution",
     "kind": "debuff",
     "description": "The target takes 1d6 necrotic damage when attacked by the caster and has Disadvantage on Constitution ability checks.",
-    "modifiers": [
+    "_modifiers": [
         {
-            "saving_throw": "constitution disadvantage"
+            "_comment": "Consitution doesn't have any skills, so what to do here?",
+            "_skill": "? disadvantage"
         }
     ],
     "pre_damage_mitigation": [

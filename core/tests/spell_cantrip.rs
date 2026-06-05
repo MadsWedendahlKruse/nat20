@@ -47,12 +47,9 @@ fn acid_splash() {
     scenario
         .event_filter()
         .actor("wizard")
-        .damage(
-            Some(DamageComponent::new(
-                DiceSet::new(1, DieSize::D6),
-                DamageType::Acid,
-            )),
-            Some(DamageSource::Spell("spell.acid_splash".into())),
+        .damage_roll(
+            DamageComponent::new(DiceSet::new(1, DieSize::D6), DamageType::Acid),
+            DamageSource::Spell("spell.acid_splash".into()),
         )
         .assert_event();
 
@@ -89,12 +86,12 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
     scenario
         .event_filter()
         .actor("wizard")
-        .damage(
-            Some(DamageComponent::new(
+        .damage_roll(
+            DamageComponent::new(
                 DiceSet::new(expected_dice_num, DieSize::D10), // rolls twice on crit
                 DamageType::Fire,
-            )),
-            Some(DamageSource::Spell("spell.fire_bolt".into())),
+            ),
+            DamageSource::Spell("spell.fire_bolt".into()),
         )
         .assert_event();
 }
@@ -124,12 +121,12 @@ fn ray_of_frost() {
     scenario
         .event_filter()
         .actor("wizard")
-        .damage(
-            Some(DamageComponent::new(
+        .damage_roll(
+            DamageComponent::new(
                 DiceSet::new(2, DieSize::D8), // rolls twice on crit
                 DamageType::Cold,
-            )),
-            Some(DamageSource::Spell("spell.ray_of_frost".into())),
+            ),
+            DamageSource::Spell("spell.ray_of_frost".into()),
         )
         .assert_event();
 

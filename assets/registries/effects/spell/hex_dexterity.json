@@ -4,7 +4,16 @@
     "description": "The target takes 1d6 necrotic damage when attacked by the caster and has Disadvantage on Dexterity ability checks.",
     "modifiers": [
         {
-            "saving_throw": "dexterity disadvantage"
+            "skill": "acrobatics disadvantage"
+        },
+        {
+            "skill": "sleight_of_hand disadvantage"
+        },
+        {
+            "skill": "stealth disadvantage"
+        },
+        {
+            "skill": "initiative disadvantage"
         }
     ],
     "pre_damage_mitigation": [

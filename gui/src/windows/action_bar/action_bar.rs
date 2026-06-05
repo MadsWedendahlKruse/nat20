@@ -127,8 +127,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
                     Err(error) => {
                         // TODO: Would be cool if this was a pop up?
                         error!("Error building action: {:#?}", error);
-                        self.builder =
-                            ActionBuilder::all(&game_state.world, self.builder.actor().id());
+                        self.builder = ActionBuilder::all(game_state, self.builder.actor().id());
                     }
                 }
 
@@ -172,7 +171,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
 impl ActionBarWindow {
     pub fn new(game_state: &mut GameState, entity: Entity) -> Self {
         Self {
-            builder: ActionBuilder::all(&game_state.world, entity),
+            builder: ActionBuilder::all(game_state, entity),
             movement_preview: MovementPreview::new(entity),
         }
     }
@@ -403,7 +402,7 @@ impl ActionBarWindow {
             };
 
         if ui.button("Cancel") || right_click_cancel {
-            self.builder = ActionBuilder::all(&game_state.world, self.builder.actor().id());
+            self.builder = ActionBuilder::all(game_state, self.builder.actor().id());
         }
     }
 
@@ -452,7 +451,7 @@ impl ActionBarWindow {
                     error!("Failed to submit action: {:?}", err);
                 }
             }
-            self.builder = ActionBuilder::all(&game_state.world, self.builder.actor().id());
+            self.builder = ActionBuilder::all(game_state, self.builder.actor().id());
         }
 
         self.right_click_cancel(ui, gui_state, game_state);

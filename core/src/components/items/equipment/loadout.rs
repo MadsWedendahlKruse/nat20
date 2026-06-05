@@ -126,7 +126,7 @@ impl Into<EquipmentInstance> for &LazyLock<ItemId> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Loadout {
     equipment: HashMap<EquipmentSlot, EquipmentInstance>,
     attack_roll_templates: HashMap<WeaponKind, AttackRollTemplate>,
@@ -416,6 +416,12 @@ impl Loadout {
             }
         }
         melee_range
+    }
+}
+
+impl Default for Loadout {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
