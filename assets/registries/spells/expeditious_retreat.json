@@ -9,47 +9,40 @@
         "concentration"
     ],
     "kind": {
-        "composite": {
-            "actions": [
-                {
-                    "standard": {
-                        "payload": {
-                            "effect": {
-                                "effect_id": "nat20_core::effect.dash",
-                                "lifetime": {
-                                    "turn_boundary": {
-                                        "entity": "applier",
-                                        "boundary": "start",
-                                        "duration": {
-                                            "turns": 1
-                                        }
+        "standard": {
+            "payload": {
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.dash",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "applier",
+                                    "boundary": "start",
+                                    "duration": {
+                                        "turns": 1
                                     }
                                 }
-                            },
-                            "delivery": "immediate"
+                            }
                         }
-                    }
-                },
-                {
-                    "standard": {
-                        "payload": {
-                            "effect": {
-                                "effect_id": "nat20_core::effect.spell.expeditious_retreat",
-                                "lifetime": {
-                                    "turn_boundary": {
-                                        "entity": "applier",
-                                        "boundary": "start",
-                                        "duration": {
-                                            "time": "10 minutes"
-                                        }
+                    },
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.spell.expeditious_retreat",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "applier",
+                                    "boundary": "start",
+                                    "duration": {
+                                        "time": "10 minutes"
                                     }
                                 }
-                            },
-                            "delivery": "immediate"
+                            }
                         }
                     }
-                }
-            ]
+                ],
+                "delivery": "immediate"
+            }
         }
     },
     "targeting": "self",

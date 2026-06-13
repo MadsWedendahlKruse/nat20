@@ -315,13 +315,20 @@ pub enum PayloadDelivery {
     Projectile { template: ProjectileTemplate },
 }
 
+#[derive(Clone, Kinded)]
+pub enum ActionPayloadComponent {
+    Damage {
+        damage: Arc<DamageFunction>,
+        damage_on_failure: Option<DamageOnFailure>,
+    },
+    Effect(EffectInstanceTemplate),
+    Healing(Arc<HealingFunction>),
+    Reaction(Arc<ReactionBodyFunction>),
+}
+
 #[derive(Clone)]
 pub struct ActionPayload {
-    damage: Option<Arc<DamageFunction>>,
-    damage_on_failure: Option<DamageOnFailure>,
-    effect: Option<EffectInstanceTemplate>,
-    healing: Option<Arc<HealingFunction>>,
-    reaction: Option<Arc<ReactionBodyFunction>>,
+    components: Vec<ActionPayloadComponent>,
     delivery: PayloadDelivery,
 }
 
@@ -332,19 +339,11 @@ pub enum ActionPayloadError {
 
 impl ActionPayload {
     pub fn new(
-        damage: Option<Arc<DamageFunction>>,
-        damage_on_failure: Option<DamageOnFailure>,
-        effect: Option<EffectInstanceTemplate>,
-        healing: Option<Arc<HealingFunction>>,
-        reaction: Option<Arc<ReactionBodyFunction>>,
+        components: Vec<ActionPayloadComponent>,
         delivery: PayloadDelivery,
     ) -> Result<Self, ActionPayloadError> {
         let payload = ActionPayload {
-            damage,
-            damage_on_failure,
-            effect,
-            healing,
-            reaction,
+            components,
             delivery,
         };
 
@@ -356,30 +355,18 @@ impl ActionPayload {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.damage.is_none()
-            && self.effect.is_none()
-            && self.healing.is_none()
-            && self.reaction.is_none()
+        self.components.is_empty()
     }
 
-    pub fn damage(&self) -> Option<&Arc<DamageFunction>> {
-        self.damage.as_ref()
+    pub fn components(&self) -> &Vec<ActionPayloadComponent> {
+        &self.components
     }
 
-    pub fn damage_on_failure(&self) -> Option<&DamageOnFailure> {
-        self.damage_on_failure.as_ref()
-    }
-
-    pub fn effect(&self) -> Option<&EffectInstanceTemplate> {
-        self.effect.as_ref()
-    }
-
-    pub fn healing(&self) -> Option<&Arc<HealingFunction>> {
-        self.healing.as_ref()
-    }
-
-    pub fn reaction(&self) -> Option<&Arc<ReactionBodyFunction>> {
-        self.reaction.as_ref()
+    pub fn component(&self, kind: ActionPayloadComponentKind) -> Vec<&ActionPayloadComponent> {
+        self.components
+            .iter()
+            .filter(|component| component.kind() == kind)
+            .collect()
     }
 
     pub fn delivery(&self) -> &PayloadDelivery {
@@ -392,9 +379,6 @@ pub enum ActionKind {
     Standard {
         condition: ActionCondition,
         payload: ActionPayload,
-    },
-    Composite {
-        actions: Vec<ActionKind>,
     },
     Variant {
         variants: Vec<ActionId>,
@@ -559,37 +543,51 @@ impl PartialEq for ReactionOutcome {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Kinded)]
+pub enum ActionOutcome {
+    Damage(DamageOutcome),
+    Effect(EffectOutcome),
+    Healing(HealingOutcome),
+    Reaction(ReactionOutcome),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionOutcomeBundle {
-    pub damage: Option<DamageOutcome>,
-    pub effect: Option<EffectOutcome>,
-    pub healing: Option<HealingOutcome>,
-    pub reaction: Option<ReactionOutcome>,
+    pub components: Vec<ActionOutcome>,
 }
 
 impl ActionOutcomeBundle {
     pub fn is_empty(&self) -> bool {
-        self.damage.is_none()
-            && self.effect.is_none()
-            && self.healing.is_none()
-            && self.reaction.is_none()
+        self.components.is_empty()
+    }
+
+    pub fn components(&self) -> &Vec<ActionOutcome> {
+        &self.components
+    }
+
+    pub fn component(&self, kind: ActionOutcomeKind) -> Vec<&ActionOutcome> {
+        self.components
+            .iter()
+            .filter(|component| component.kind() == kind)
+            .collect()
     }
 
     pub fn resolution(&self) -> &ActionConditionResolution {
-        if let Some(damage) = &self.damage {
-            &damage.resolution
-        } else if let Some(effect) = &self.effect {
-            &effect.resolution
-        } else {
-            &ActionConditionResolution::Unconditional
+        for component in &self.components {
+            match component {
+                ActionOutcome::Damage(damage) => return &damage.resolution,
+                ActionOutcome::Effect(effect) => return &effect.resolution,
+                _ => {}
+            }
         }
+        &ActionConditionResolution::Unconditional
     }
 }
 
+// TODO: Might not be worth to use an enum since now we only have one variant
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionKindResult {
     Standard(ActionOutcomeBundle),
-    Composite { actions: Vec<ActionKindResult> },
 }
 
 /// Represents the result of performing an action on a single target. For actions
@@ -635,12 +633,6 @@ impl ActionKind {
                 }
             }
 
-            ActionKind::Composite { actions } => {
-                for action in actions {
-                    phases.extend(action.perform(game_state, action_data));
-                }
-            }
-
             ActionKind::Variant { .. } => {
                 panic!(
                     "ActionKind::Variants should be resolved to a specific variant before performing"
@@ -653,8 +645,9 @@ impl ActionKind {
 
     pub fn is_reaction(&self) -> bool {
         match self {
-            ActionKind::Standard { payload, .. } => payload.reaction().is_some(),
-            ActionKind::Composite { actions } => actions.iter().any(|action| action.is_reaction()),
+            ActionKind::Standard { payload, .. } => !payload
+                .component(ActionPayloadComponentKind::Reaction)
+                .is_empty(),
             _ => false,
         }
     }
@@ -664,7 +657,6 @@ impl Debug for ActionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ActionKind::Standard { .. } => write!(f, "Standard"),
-            ActionKind::Composite { actions } => write!(f, "Composite({:?})", actions),
             ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
         }
     }

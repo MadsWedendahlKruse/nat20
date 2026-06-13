@@ -11,18 +11,22 @@
     "kind": {
         "standard": {
             "payload": {
-                "effect": {
-                    "effect_id": "nat20_core::effect.spell.hex.intelligence",
-                    "lifetime": {
-                        "turn_boundary": {
-                            "entity": "applier",
-                            "boundary": "start",
-                            "duration": {
-                                "time": "1 hour"
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.spell.hex.intelligence",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "applier",
+                                    "boundary": "start",
+                                    "duration": {
+                                        "time": "1 hour"
+                                    }
+                                }
                             }
                         }
                     }
-                },
+                ],
                 "delivery": "immediate"
             }
         }

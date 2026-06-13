@@ -9,7 +9,7 @@ use uom::si::f32::Length;
 use crate::{
     components::{
         actions::{
-            action::{ActionContext, ActionKindResult},
+            action::{ActionContext, ActionKindResult, ActionOutcome},
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
@@ -671,29 +671,36 @@ impl EventFilterKind {
             ) => {
                 let mut found_matching_result = false;
 
-                for result in results {
+                'result: for result in results {
                     if let ActionKindResult::Standard(outcome) = &result.kind
                         && let TargetInstance::Entity { entity, .. } = &result.target
                         && entity.id() == *expected_target
-                        && let Some(damage_outcome) = &outcome.damage
-                        && let Some(damage_result) = &damage_outcome.damage_taken
                     {
-                        let mut found_matching_component = false;
-
-                        for component in &damage_result.components {
-                            let expected_dice = &expected_damage.dice_roll.dice;
-                            if component.damage_type == expected_damage.damage_type
-                                && expected_dice.die_size == component.original.die_size
-                                && expected_dice.num_dice == component.original.rolls.len() as u32
+                        for component in outcome.components() {
+                            if let ActionOutcome::Damage(damage_outcome) = component
+                                && let Some(damage_result) = &damage_outcome.damage_taken
                             {
-                                found_matching_component = true;
-                                break;
-                            }
-                        }
+                                let mut found_matching_component = false;
 
-                        if found_matching_component && damage_result.source == *expected_source {
-                            found_matching_result = true;
-                            break;
+                                for component in &damage_result.components {
+                                    let expected_dice = &expected_damage.dice_roll.dice;
+                                    if component.damage_type == expected_damage.damage_type
+                                        && expected_dice.die_size == component.original.die_size
+                                        && expected_dice.num_dice
+                                            == component.original.rolls.len() as u32
+                                    {
+                                        found_matching_component = true;
+                                        break;
+                                    }
+                                }
+
+                                if found_matching_component
+                                    && damage_result.source == *expected_source
+                                {
+                                    found_matching_result = true;
+                                    break 'result;
+                                }
+                            }
                         }
                     }
                 }

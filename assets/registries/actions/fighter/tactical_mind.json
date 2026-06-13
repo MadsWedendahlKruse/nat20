@@ -4,7 +4,11 @@
     "kind": {
         "standard": {
             "payload": {
-                "reaction": "nat20_core::script.action.fighter.tactical_mind",
+                "components": [
+                    {
+                        "reaction": "nat20_core::script.action.fighter.tactical_mind"
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

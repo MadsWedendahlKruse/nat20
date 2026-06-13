@@ -13,7 +13,11 @@
                 "attack_roll": "spell_attack_roll"
             },
             "payload": {
-                "damage": "2d6;fire",
+                "components": [
+                    {
+                        "damage": "2d6;fire"
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

@@ -13,8 +13,12 @@
                 "saving_throw": "spell_save_dc;dexterity"
             },
             "payload": {
-                "damage": "(8 + spell_level - 3)d6;lightning",
-                "damage_on_failure": "half",
+                "components": [
+                    {
+                        "damage": "(8 + spell_level - 3)d6;lightning",
+                        "damage_on_failure": "half"
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

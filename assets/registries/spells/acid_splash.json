@@ -13,7 +13,11 @@
                 "saving_throw": "spell_save_dc;dexterity"
             },
             "payload": {
-                "damage": "(1 + (character_level + 1) / 6)d6;acid",
+                "components": [
+                    {
+                        "damage": "(1 + (character_level + 1) / 6)d6;acid"
+                    }
+                ],
                 "delivery": {
                     "projectile": {
                         "trajectory": "ray",

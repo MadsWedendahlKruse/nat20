@@ -10,18 +10,22 @@
     "kind": {
         "standard": {
             "payload": {
-                "effect": {
-                    "effect_id": "nat20_core::effect.spell.shield",
-                    "lifetime": {
-                        "turn_boundary": {
-                            "entity": "applier",
-                            "boundary": "start",
-                            "duration": {
-                                "turns": 1
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.spell.shield",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "applier",
+                                    "boundary": "start",
+                                    "duration": {
+                                        "turns": 1
+                                    }
+                                }
                             }
                         }
                     }
-                },
+                ],
                 "delivery": "immediate"
             }
         }

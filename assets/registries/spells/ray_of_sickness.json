@@ -13,19 +13,26 @@
                 "attack_roll": "spell_attack_roll"
             },
             "payload": {
-                "damage": "(2 + (spell_level - 1))d8;poison",
-                "effect": {
-                    "effect_id": "nat20_core::effect.condition.poisoned",
-                    "lifetime": {
-                        "turn_boundary": {
-                            "entity": "applier",
-                            "boundary": "start",
-                            "duration": {
-                                "turns": 1
+                "components": [
+                    {
+                        "damage": "(2 + (spell_level - 1))d8;poison",
+                        "damage_on_failure": "half"
+                    },
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.condition.poisoned",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "applier",
+                                    "boundary": "start",
+                                    "duration": {
+                                        "turns": 1
+                                    }
+                                }
                             }
                         }
                     }
-                },
+                ],
                 "delivery": "immediate"
             }
         }

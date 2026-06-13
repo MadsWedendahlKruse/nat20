@@ -13,7 +13,11 @@
                 "attack_roll": "spell_attack_roll"
             },
             "payload": {
-                "damage": "(1 + (character_level + 1) / 6)d12;poison",
+                "components": [
+                    {
+                        "damage": "(1 + (character_level + 1) / 6)d12;poison"
+                    }
+                ],
                 "delivery": {
                     "projectile": {
                         "trajectory": "ray",

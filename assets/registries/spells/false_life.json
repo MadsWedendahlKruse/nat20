@@ -10,10 +10,22 @@
     "kind": {
         "standard": {
             "payload": {
-                "effect": {
-                    "effect_id": "nat20_core::effect.dash",
-                    "lifetime": "permanent"
-                },
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.false_life",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "applier",
+                                    "boundary": "start",
+                                    "duration": {
+                                        "time": "1 hour"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

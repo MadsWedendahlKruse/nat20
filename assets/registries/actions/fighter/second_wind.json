@@ -4,7 +4,11 @@
     "kind": {
         "standard": {
             "payload": {
-                "healing": "1d10 + class.fighter.level",
+                "components": [
+                    {
+                        "healing": "1d10 + class.fighter.level"
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

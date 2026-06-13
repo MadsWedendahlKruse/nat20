@@ -10,7 +10,11 @@
     "kind": {
         "standard": {
             "payload": {
-                "damage": "1d4 + 1;force",
+                "components": [
+                    {
+                        "damage": "1d4 + 1;force"
+                    }
+                ],
                 "delivery": {
                     "projectile": {
                         "trajectory": "ray",

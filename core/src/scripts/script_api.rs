@@ -12,8 +12,7 @@ use crate::{
         ability::AbilityScoreMap,
         actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
-                ActionKindResult, ActionOutcomeBundle, ActionResult, DamageOutcome,
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionOutcome, ActionOutcomeBundle, ActionResult, DamageOutcome
             },
             targeting::TargetInstance,
         },
@@ -540,7 +539,16 @@ impl UserData for DamageOutcome {
 
 impl UserData for ActionOutcomeBundle {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("damage", |_, this, ()| Ok(this.damage.clone()));
+        methods.add_method("damage", |_, this, ()| {
+            Ok(this.components()
+                .iter()
+                .filter_map(|component| match &component {
+                    ActionOutcome::Damage(damage_outcome) => Some(damage_outcome.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+            )
+        });
         methods.add_method("resolution", |_, this, ()| Ok(this.resolution().clone()));
     }
 }

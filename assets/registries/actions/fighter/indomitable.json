@@ -4,7 +4,11 @@
     "kind": {
         "standard": {
             "payload": {
-                "reaction": "nat20_core::script.action.fighter.indomitable",
+                "components": [
+                    {
+                        "reaction": "nat20_core::script.action.fighter.indomitable"
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

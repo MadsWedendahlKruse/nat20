@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use enum_dispatch::enum_dispatch;
 use hecs::Entity;
 use tracing::{debug, error};
 
@@ -12,9 +13,9 @@ use crate::{
         actions::{
             action::{
                 ActionCondition, ActionConditionKind, ActionConditionResolution, ActionKindResult,
-                ActionOutcomeBundle, ActionPayload, DamageFunction, DamageOnFailure, DamageOutcome,
-                EffectOutcome, HealingFunction, HealingOutcome, PayloadDelivery,
-                ReactionBodyFunction, ReactionOutcome,
+                ActionOutcome, ActionOutcomeBundle, ActionPayload, ActionPayloadComponent,
+                DamageFunction, DamageOnFailure, DamageOutcome, EffectOutcome, HealingFunction,
+                HealingOutcome, PayloadDelivery, ReactionBodyFunction, ReactionOutcome,
             },
             targeting::TargetInstance,
         },
@@ -431,53 +432,47 @@ impl ActionStepCondition {
 
 #[derive(Debug, Clone)]
 pub struct ActionStepPayload {
-    pub damage: Option<StepPayloadDamage>,
-    pub effect: Option<StepPayloadEffect>,
-    pub healing: Option<StepPayloadHealing>,
-    pub reaction: Option<StepPayloadReaction>,
+    pub components: Vec<StepPayloadKind>,
 }
 
 impl ActionStepPayload {
     pub fn new(payload: &ActionPayload) -> Self {
         Self {
-            damage: payload.damage().map(|damage| {
-                if let Some(damage_on_failure) = payload.damage_on_failure() {
-                    StepPayloadDamage::Unresolved {
-                        damage: damage.clone(),
-                        damage_on_failure: Some(damage_on_failure.clone()),
+            components: payload
+                .components()
+                .into_iter()
+                .map(|component| match component {
+                    ActionPayloadComponent::Damage {
+                        damage,
+                        damage_on_failure,
+                    } => StepPayloadKind::Damage(StepPayloadDamage::Unresolved {
+                        damage: Arc::clone(damage),
+                        damage_on_failure: damage_on_failure.clone(),
+                    }),
+                    ActionPayloadComponent::Effect(effect) => {
+                        StepPayloadKind::Effect(StepPayloadEffect::Unresolved {
+                            effect: effect.clone(),
+                        })
                     }
-                } else {
-                    StepPayloadDamage::Unresolved {
-                        damage: damage.clone(),
-                        damage_on_failure: None,
+                    ActionPayloadComponent::Healing(healing) => {
+                        StepPayloadKind::Healing(StepPayloadHealing::Unresolved {
+                            healing: healing.clone(),
+                        })
                     }
-                }
-            }),
-            effect: payload
-                .effect()
-                .map(|effect| StepPayloadEffect::Unresolved {
-                    effect: effect.clone(),
-                }),
-            healing: payload
-                .healing()
-                .map(|healing| StepPayloadHealing::Unresolved {
-                    healing: healing.clone(),
-                }),
-            reaction: payload
-                .reaction()
-                .map(|reaction| StepPayloadReaction::Resolved {
-                    reaction: reaction.clone(),
-                }),
+                    ActionPayloadComponent::Reaction(reaction) => {
+                        StepPayloadKind::Reaction(StepPayloadReaction::Resolved {
+                            reaction: reaction.clone(),
+                        })
+                    }
+                })
+                .collect(),
         }
     }
 
     pub fn is_resolved(&self) -> bool {
-        let damage_resolved = self.damage.as_ref().map_or(true, |d| d.is_resolved());
-        let effect_resolved = self.effect.as_ref().map_or(true, |e| e.is_resolved());
-        let healing_resolved = self.healing.as_ref().map_or(true, |h| h.is_resolved());
-        let reaction_resolved = self.reaction.as_ref().map_or(true, |r| r.is_resolved());
-
-        damage_resolved && effect_resolved && healing_resolved && reaction_resolved
+        self.components
+            .iter()
+            .all(|component| component.is_resolved())
     }
 
     pub fn resolve(
@@ -486,30 +481,15 @@ impl ActionStepPayload {
         action: &ActionData,
         condition_resolution: &ActionConditionResolution,
     ) {
-        if let Some(damage) = &mut self.damage {
-            damage.resolve(game_state, action, condition_resolution);
-        }
-
-        if let Some(effect) = &mut self.effect {
-            effect.resolve(game_state, action, condition_resolution);
-        }
-
-        if let Some(healing) = &mut self.healing {
-            healing.resolve(game_state, action, condition_resolution);
-        }
-
-        if let Some(reaction) = &mut self.reaction {
-            reaction.resolve(game_state, action, condition_resolution);
+        for component in self.components.iter_mut() {
+            component.resolve(game_state, action, condition_resolution);
         }
     }
 
     pub fn is_applied(&self) -> bool {
-        let damage_applied = self.damage.as_ref().map_or(true, |d| d.is_applied());
-        let effect_applied = self.effect.as_ref().map_or(true, |e| e.is_applied());
-        let healing_applied = self.healing.as_ref().map_or(true, |h| h.is_applied());
-        let reaction_applied = self.reaction.as_ref().map_or(true, |r| r.is_applied());
-
-        damage_applied && effect_applied && healing_applied && reaction_applied
+        self.components
+            .iter()
+            .all(|component| component.is_applied())
     }
 
     pub fn apply(
@@ -519,52 +499,15 @@ impl ActionStepPayload {
         target: Entity,
         condition_resolution: &ActionConditionResolution,
     ) {
-        // TOOD: Could probably do some smarter stuff with some generics
-        let damage_outcome = if let Some(damage) = &mut self.damage {
-            damage.apply_payload(game_state, action, target, condition_resolution);
-            self.damage.as_ref().and_then(|d| match d {
-                StepPayloadDamage::Applied { outcome } => Some(outcome.clone()),
-                _ => None,
-            })
-        } else {
-            None
-        };
-
-        let effect_outcome = if let Some(effect) = &mut self.effect {
-            effect.apply_payload(game_state, action, target, condition_resolution);
-            self.effect.as_ref().and_then(|e| match e {
-                StepPayloadEffect::Applied { outcome } => Some(outcome.clone()),
-                _ => None,
-            })
-        } else {
-            None
-        };
-
-        let healing_outcome = if let Some(healing) = &mut self.healing {
-            healing.apply_payload(game_state, action, target, condition_resolution);
-            self.healing.as_ref().and_then(|h| match h {
-                StepPayloadHealing::Applied { outcome } => Some(outcome.clone()),
-                _ => None,
-            })
-        } else {
-            None
-        };
-
-        let reaction_outcome = if let Some(reaction) = &mut self.reaction {
-            reaction.apply_payload(game_state, action, target, condition_resolution);
-            self.reaction.as_ref().and_then(|r| match r {
-                StepPayloadReaction::Applied { outcome } => Some(outcome.clone()),
-                _ => None,
-            })
-        } else {
-            None
-        };
-
         let result = ActionKindResult::Standard(ActionOutcomeBundle {
-            damage: damage_outcome,
-            effect: effect_outcome,
-            healing: healing_outcome,
-            reaction: reaction_outcome,
+            components: self
+                .components
+                .iter_mut()
+                .filter_map(|component| {
+                    component.apply_payload(game_state, action, target, condition_resolution);
+                    component.outcome()
+                })
+                .collect(),
         });
 
         game_state.process_event(Event::action_performed_event(
@@ -577,6 +520,7 @@ impl ActionStepPayload {
     }
 }
 
+#[enum_dispatch]
 pub trait StepPayloadComponent {
     fn is_resolved(&self) -> bool;
     fn resolve(
@@ -593,6 +537,16 @@ pub trait StepPayloadComponent {
         target: Entity,
         condition_resolution: &ActionConditionResolution,
     );
+    fn outcome(&self) -> Option<ActionOutcome>;
+}
+
+#[derive(Debug, Clone)]
+#[enum_dispatch(StepPayloadComponent)]
+pub enum StepPayloadKind {
+    Damage(StepPayloadDamage),
+    Effect(StepPayloadEffect),
+    Healing(StepPayloadHealing),
+    Reaction(StepPayloadReaction),
 }
 
 #[derive(Clone)]
@@ -807,6 +761,13 @@ impl StepPayloadComponent for StepPayloadDamage {
             outcome: damage_outcome,
         };
     }
+
+    fn outcome(&self) -> Option<ActionOutcome> {
+        match self {
+            Self::Applied { outcome } => Some(ActionOutcome::Damage(outcome.clone())),
+            _ => None,
+        }
+    }
 }
 
 impl Debug for StepPayloadDamage {
@@ -899,6 +860,13 @@ impl StepPayloadComponent for StepPayloadHealing {
                 new_life_state,
             },
         };
+    }
+
+    fn outcome(&self) -> Option<ActionOutcome> {
+        match self {
+            Self::Applied { outcome } => Some(ActionOutcome::Healing(outcome.clone())),
+            _ => None,
+        }
     }
 }
 
@@ -1028,6 +996,13 @@ impl StepPayloadComponent for StepPayloadEffect {
             },
         };
     }
+
+    fn outcome(&self) -> Option<ActionOutcome> {
+        match self {
+            Self::Applied { outcome } => Some(ActionOutcome::Effect(outcome.clone())),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1113,6 +1088,13 @@ impl StepPayloadComponent for StepPayloadReaction {
         *self = Self::Applied {
             outcome: ReactionOutcome::NoEffect, // TEMP
         };
+    }
+
+    fn outcome(&self) -> Option<ActionOutcome> {
+        match self {
+            Self::Applied { outcome } => Some(ActionOutcome::Reaction(outcome.clone())),
+            _ => None,
+        }
     }
 }
 

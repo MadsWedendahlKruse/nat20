@@ -6,7 +6,7 @@ use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap}, actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionResult, ReactionOutcome
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionOutcome, ActionPayloadComponent, ActionResult, ReactionOutcome
             },
             targeting::{AreaShape, TargetInstance, TargetingKind, TargetingRange},
         }, activity::{ActivityState, ActivityStateKind}, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
@@ -994,188 +994,193 @@ impl ImguiRenderableWithContext<u8> for ActionResult {
                     return;
                 }
 
-                if let Some(damage) = &action_outcome.damage {
-                    let no_damage_text = match damage.resolution {
-                        ActionConditionResolution::Unconditional => "took no damage",
-                        ActionConditionResolution::AttackRoll { .. } => "was not hit",
-                        ActionConditionResolution::SavingThrow { .. } => "took no damage",
-                    };
+                for component in &action_outcome.components {
+                    component.render_with_context(ui, (indent_level, self.performer.name().as_str(), target_name));
+                }
+            }
+        }
+    }
+}
 
-                    ui.group(|| {
-                        damage.damage_taken.render_with_context(
-                            ui,
-                            (&target_name, indent_level + 1, no_damage_text, None),
-                        );
-                        damage.new_life_state.render_with_context(
-                            ui,
-                            (
-                                &target_name,
-                                Some(self.performer.name().as_str()),
-                                indent_level + 1,
-                            ),
-                        );
-                    });
+impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
+    fn render_with_context(&self, ui: &imgui::Ui, (indent_level, performer_name, target_name): (u8, &str, &str)) {
+        match self {
+            ActionOutcome::Damage(damage) => {
+                let no_damage_text = match damage.resolution {
+                    ActionConditionResolution::Unconditional => "took no damage",
+                    ActionConditionResolution::AttackRoll { .. } => "was not hit",
+                    ActionConditionResolution::SavingThrow { .. } => "took no damage",
+                };
 
-                    if ui.is_item_hovered() {
-                        ui.tooltip(|| {
-                            match damage.resolution {
-                                ActionConditionResolution::Unconditional => {
-                                    (&damage.damage_roll, &damage.damage_taken)
-                                        .render(ui);
-                                }
+                ui.group(|| {
+                    damage.damage_taken.render_with_context(
+                        ui,
+                        (&target_name, indent_level + 1, no_damage_text, None),
+                    );
+                    damage.new_life_state.render_with_context(
+                        ui,
+                        (
+                            &target_name,
+                            Some(performer_name),
+                            indent_level + 1,
+                        ),
+                    );
+                });
 
-                                ActionConditionResolution::AttackRoll {
-                                    ref attack_roll,
-                                    ref armor_class,
-                                } => {
-                                    TextSegment::new(
-                                        format!("{}'s", target_name),
-                                        TextKind::Target,
-                                    )
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        match damage.resolution {
+                            ActionConditionResolution::Unconditional => {
+                                (&damage.damage_roll, &damage.damage_taken)
                                     .render(ui);
+                            }
+
+                            ActionConditionResolution::AttackRoll {
+                                ref attack_roll,
+                                ref armor_class,
+                            } => {
+                                TextSegment::new(
+                                    format!("{}'s", target_name),
+                                    TextKind::Target,
+                                )
+                                .render(ui);
+                                ui.same_line();
+                                ui.text("Armor Class:");
+                                ui.same_line();
+                                armor_class.render(ui);
+
+                                ui.text("");
+                                ui.text("Attack Roll:");
+                                ui.same_line();
+                                attack_roll.render(ui);
+
+                                if let Some(damage_taken) = &damage.damage_taken {
+                                    ui.text("");
+                                    ui.text("Damage Roll:");
                                     ui.same_line();
-                                    ui.text("Armor Class:");
-                                    ui.same_line();
-                                    armor_class.render(ui);
+                                    damage.damage_roll.as_ref().unwrap().render(ui);
 
                                     ui.text("");
-                                    ui.text("Attack Roll:");
+                                    ui.text("Damage Taken:");
                                     ui.same_line();
-                                    attack_roll.render(ui);
-
-                                    if let Some(damage_taken) = &damage.damage_taken {
-                                        ui.text("");
-                                        ui.text("Damage Roll:");
-                                        ui.same_line();
-                                        damage.damage_roll.as_ref().unwrap().render(ui);
-
-                                        ui.text("");
-                                        ui.text("Damage Taken:");
-                                        ui.same_line();
-                                        damage_taken.render(ui);
-                                    } else {
-                                        ui.text(format!("Attack did not hit. Attack roll ({}) was less than Armor Class ({})", 
-                                            attack_roll.roll_result.total(), armor_class.total()));
-                                    }
-                                }
-
-                                ActionConditionResolution::SavingThrow {
-                                    ref saving_throw_dc,
-                                    ref saving_throw_result,
-                                } => {
-                                    ui.text("Saving Throw DC:");
-                                    ui.same_line();
-                                    saving_throw_dc.render(ui);
-
-                                    ui.text("");
-                                    ui.text("Saving Throw:");
-                                    ui.same_line();
-                                    saving_throw_result.render(ui);
-
-                                    ui.same_line();
-                                    let (label, kind) = if saving_throw_result.is_success(saving_throw_dc) {
-                                        ("Success", TextKind::Green)
-                                    } else {
-                                        ("Failure", TextKind::Red)
-                                    };
-                                    TextSegment::new(label, kind)
-                                        .render(ui);
-                                    
-                                    ui.text("");
-                                    (&damage.damage_roll, &damage.damage_taken)
-                                        .render(ui);
+                                    damage_taken.render(ui);
+                                } else {
+                                    ui.text(format!("Attack did not hit. Attack roll ({}) was less than Armor Class ({})", 
+                                        attack_roll.roll_result.total(), armor_class.total()));
                                 }
                             }
-                        });
-                    }
-                }
 
-                if let Some(healing) = &action_outcome.healing {
-                    ui.group(|| {
-                        TextSegments::new(vec![
-                            (target_name, TextKind::Target),
-                            ("was healed for", TextKind::Normal),
-                            (&format!("{} HP", healing.healing.subtotal), TextKind::Healing),
-                        ])
-                        .with_indent(indent_level + 1)
-                        .render(ui);
-                        healing.new_life_state.render_with_context(
-                            ui,
-                            (
-                                &target_name,
-                                Some(self.performer.name().as_str()),
-                                indent_level + 1,
-                            ),
-                        );
+                            ActionConditionResolution::SavingThrow {
+                                ref saving_throw_dc,
+                                ref saving_throw_result,
+                            } => {
+                                ui.text("Saving Throw DC:");
+                                ui.same_line();
+                                saving_throw_dc.render(ui);
+
+                                ui.text("");
+                                ui.text("Saving Throw:");
+                                ui.same_line();
+                                saving_throw_result.render(ui);
+
+                                ui.same_line();
+                                let (label, kind) = if saving_throw_result.is_success(saving_throw_dc) {
+                                    ("Success", TextKind::Green)
+                                } else {
+                                    ("Failure", TextKind::Red)
+                                };
+                                TextSegment::new(label, kind)
+                                    .render(ui);
+                                
+                                ui.text("");
+                                (&damage.damage_roll, &damage.damage_taken)
+                                    .render(ui);
+                            }
+                        }
                     });
-
-                    if ui.is_item_hovered() {
-                        ui.tooltip(|| {
-                            ui.text("Healing:");
-                            ui.same_line();
-                            TextSegment::new(
-                                &format!("{} HP", healing.healing),
-                                TextKind::Healing,
-                            ).render(ui);
-                        });
-                    }
                 }
-
-                if let Some(effect) = &action_outcome.effect {
-                    if !effect.applied {
-                        TextSegments::new(vec![
-                            (target_name, TextKind::Target),
-                            ("was unaffected by", TextKind::Normal),
-                            (&effect.effect.to_string(), TextKind::Effect),
-                        ]).with_indent(indent_level + 1).render(ui);
-                        return;
-                    }
-
+            },
+            ActionOutcome::Effect(effect) => {
+                if !effect.applied {
                     TextSegments::new(vec![
                         (target_name, TextKind::Target),
-                        ("gained effect", TextKind::Normal),
+                        ("was unaffected by", TextKind::Normal),
                         (&effect.effect.to_string(), TextKind::Effect),
+                    ]).with_indent(indent_level + 1).render(ui);
+                    return;
+                }
+
+                TextSegments::new(vec![
+                    (target_name, TextKind::Target),
+                    ("gained effect", TextKind::Normal),
+                    (&effect.effect.to_string(), TextKind::Effect),
+                ])
+                .with_indent(indent_level + 1)
+                .render(ui);
+            },
+            ActionOutcome::Healing(healing) => {
+                ui.group(|| {
+                    TextSegments::new(vec![
+                        (target_name, TextKind::Target),
+                        ("was healed for", TextKind::Normal),
+                        (&format!("{} HP", healing.healing.subtotal), TextKind::Healing),
                     ])
                     .with_indent(indent_level + 1)
                     .render(ui);
+                    healing.new_life_state.render_with_context(
+                        ui,
+                        (
+                            &target_name,
+                            Some(performer_name),
+                            indent_level + 1,
+                        ),
+                    );
+                });
+
+                if ui.is_item_hovered() {
+                    ui.tooltip(|| {
+                        ui.text("Healing:");
+                        ui.same_line();
+                        TextSegment::new(
+                            &format!("{} HP", healing.healing),
+                            TextKind::Healing,
+                        ).render(ui);
+                    });
                 }
+            },
+            ActionOutcome::Reaction(reaction) => {
+                match reaction {
+                    ReactionOutcome::ModifyEvent { before, after } => {
+                        TextSegment::new("\tmodifying", TextKind::Normal).render(ui);
+                        ui.same_line();
+                        render_event_description(ui, before);
 
-                if let Some(reaction) = &action_outcome.reaction {
-                    match reaction {
-                        ReactionOutcome::ModifyEvent { before, after } => {
-                            TextSegment::new("\tmodifying", TextKind::Normal).render(ui);
-                            ui.same_line();
-                            render_event_description(ui, before);
-
-                            if ui.is_item_hovered() {
-                                ui.tooltip(|| {
-                                    ui.separator_with_text("Before");
-                                    ui.text("TODO");
-                                    ui.separator_with_text("After");
-                                    ui.text("TODO");
-                                });
-                            }
-                        }
-
-                        ReactionOutcome::CancelEvent {
-                            event,
-                            resources_refunded,
-                        } => {
-                            // ui.same_line();
-                            TextSegment::new("\tcancelling", TextKind::Normal).render(ui);
-                            ui.same_line();
-                            render_event_description(ui, event);
-                        }
-
-                        ReactionOutcome::NoEffect => {
-                            ui.same_line();
-                            TextSegment::new("with no effect", TextKind::Normal).render(ui)
+                        if ui.is_item_hovered() {
+                            ui.tooltip(|| {
+                                ui.separator_with_text("Before");
+                                ui.text("TODO");
+                                ui.separator_with_text("After");
+                                ui.text("TODO");
+                            });
                         }
                     }
-                }
-            }
 
-            ActionKindResult::Composite { actions } => todo!(),
+                    ReactionOutcome::CancelEvent {
+                        event,
+                        resources_refunded,
+                    } => {
+                        // ui.same_line();
+                        TextSegment::new("\tcancelling", TextKind::Normal).render(ui);
+                        ui.same_line();
+                        render_event_description(ui, event);
+                    }
+
+                    ReactionOutcome::NoEffect => {
+                        ui.same_line();
+                        TextSegment::new("with no effect", TextKind::Normal).render(ui)
+                    }
+                }
+            },
         }
     }
 }
@@ -1594,28 +1599,25 @@ impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind
         let (world, entity, action_context) = context;
         match self {
             ActionKind::Standard { payload, .. } => {
-                if let Some(damage) = &payload.damage() {
-                    damage(world, entity, action_context).render(ui);
-                }
-
-                if let Some(healing) = &payload.healing() {
-                    // TODO: More info? Modifiers?
-                    let healing = healing(world, entity, action_context);
-                    TextSegment::new(
-                        format!("{}-{} Healing", healing.min_roll(), healing.max_roll()),
-                        TextKind::Healing,
-                    )
-                    .render(ui);
-                }
-
-                if let Some(effect) = &payload.effect() {
-                    TextSegment::new(format!("{}", effect.effect_id), TextKind::Effect).render(ui);
-                }
-            }
-
-            ActionKind::Composite { actions } => {
-                for action in actions {
-                    action.render_with_context(ui, (world, entity, action_context));
+                for component in payload.components() {
+                    match component {
+                        ActionPayloadComponent::Damage { damage, .. } => {
+                            damage(world, entity, action_context).render(ui);
+                        },
+                        ActionPayloadComponent::Effect(effect) => {
+                            TextSegment::new(format!("{}", effect.effect_id), TextKind::Effect).render(ui)
+                        },
+                        ActionPayloadComponent::Healing(healing) => {
+                            // TODO: More info? Modifiers?
+                            let healing = healing(world, entity, action_context);
+                            TextSegment::new(
+                                format!("{}-{} Healing", healing.min_roll(), healing.max_roll()),
+                                TextKind::Healing,
+                            )
+                            .render(ui);
+                        },
+                        ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */},
+                    }
                 }
             }
 

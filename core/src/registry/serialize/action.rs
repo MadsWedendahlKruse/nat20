@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{
-            Action, ActionCondition, ActionKind, ActionPayload, ActionTimeline, DamageOnFailure,
-            PayloadDelivery,
+            Action, ActionCondition, ActionKind, ActionPayload, ActionPayloadComponent,
+            ActionTimeline, DamageOnFailure, PayloadDelivery,
         },
         id::ActionId,
         resource::{RechargeRule, ResourceAmountMap},
@@ -150,18 +150,57 @@ impl From<PayloadDeliveryDefinition> for PayloadDelivery {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ActionPayloadComponentDefinition {
+    DamageFailure {
+        damage: DamageEquation,
+        damage_on_failure: Option<DamageOnFailureDefinition>,
+    },
+    Damage {
+        damage: DamageEquation,
+    },
+    Effect {
+        effect: EffectInstanceDefinition,
+    },
+    Healing {
+        healing: HealEquation,
+    },
+    Reaction {
+        reaction: ReactionBody,
+    },
+}
+
+impl From<ActionPayloadComponentDefinition> for ActionPayloadComponent {
+    fn from(value: ActionPayloadComponentDefinition) -> Self {
+        match value {
+            ActionPayloadComponentDefinition::Damage { damage } => ActionPayloadComponent::Damage {
+                damage: damage.function,
+                damage_on_failure: None,
+            },
+            ActionPayloadComponentDefinition::DamageFailure {
+                damage,
+                damage_on_failure,
+            } => ActionPayloadComponent::Damage {
+                damage: damage.function,
+                damage_on_failure: damage_on_failure.map(Into::into),
+            },
+            ActionPayloadComponentDefinition::Effect { effect } => {
+                ActionPayloadComponent::Effect(effect.into())
+            }
+            ActionPayloadComponentDefinition::Healing { healing } => {
+                ActionPayloadComponent::Healing(healing.function)
+            }
+            ActionPayloadComponentDefinition::Reaction { reaction } => {
+                ActionPayloadComponent::Reaction(reaction.function)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ActionPayloadDefinition {
     #[serde(default)]
-    pub damage: Option<DamageEquation>,
-    #[serde(default)]
-    pub damage_on_failure: Option<DamageOnFailureDefinition>,
-    #[serde(default)]
-    pub healing: Option<HealEquation>,
-    #[serde(default)]
-    pub effect: Option<EffectInstanceDefinition>,
-    #[serde(default)]
-    pub reaction: Option<ReactionBody>,
-    #[serde(default)]
+    pub components: Vec<ActionPayloadComponentDefinition>,
     pub delivery: PayloadDeliveryDefinition,
 }
 
@@ -172,9 +211,6 @@ pub enum ActionKindDefinition {
         #[serde(default)]
         condition: Option<ActionConditionDefinition>,
         payload: ActionPayloadDefinition,
-    },
-    Composite {
-        actions: Vec<ActionKindDefinition>,
     },
     Variants {
         variants: Vec<ActionId>,
@@ -191,20 +227,10 @@ impl From<ActionKindDefinition> for ActionKind {
                     ActionCondition::None
                 },
                 payload: ActionPayload::new(
-                    payload.damage.map(|eq| eq.function),
-                    payload.damage_on_failure.map(|d| d.into()),
-                    payload
-                        .effect
-                        .map(|effect_instance_definition| effect_instance_definition.into()),
-                    payload.healing.map(|eq| eq.function),
-                    payload.reaction.map(|r| r.function),
+                    payload.components.into_iter().map(Into::into).collect(),
                     payload.delivery.into(),
                 )
                 .unwrap(),
-            },
-
-            ActionKindDefinition::Composite { actions } => ActionKind::Composite {
-                actions: actions.into_iter().map(ActionKind::from).collect(),
             },
 
             ActionKindDefinition::Variants { variants } => ActionKind::Variant { variants },
@@ -216,21 +242,21 @@ impl RegistryReferenceCollector for ActionKindDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         match self {
             ActionKindDefinition::Standard { payload, .. } => {
-                if let Some(effect) = &payload.effect {
-                    collector.add(RegistryReference::Effect(effect.effect_id.clone()));
-                }
-                if let Some(reaction) = &payload.reaction {
-                    if let Some(script_id) = &reaction.script {
-                        collector.add(RegistryReference::Script(
-                            script_id.clone(),
-                            ScriptFunction::ReactionBody,
-                        ));
+                for component in &payload.components {
+                    match component {
+                        ActionPayloadComponentDefinition::Effect { effect } => {
+                            collector.add(RegistryReference::Effect(effect.effect_id.clone()));
+                        }
+                        ActionPayloadComponentDefinition::Reaction { reaction } => {
+                            if let Some(script_id) = &reaction.script {
+                                collector.add(RegistryReference::Script(
+                                    script_id.clone(),
+                                    ScriptFunction::ReactionBody,
+                                ));
+                            }
+                        }
+                        _ => {}
                     }
-                }
-            }
-            ActionKindDefinition::Composite { actions } => {
-                for action in actions {
-                    action.collect_registry_references(collector);
                 }
             }
             ActionKindDefinition::Variants { .. } => {

@@ -14,27 +14,31 @@
                 "saving_throw": "spell_save_dc;wisdom"
             },
             "payload": {
-                "effect": {
-                    "effect_id": "nat20_core::effect.spell.hold_person",
-                    "lifetime": {
-                        "turn_boundary": {
-                            "entity": "target",
-                            "boundary": "end",
-                            "duration": {
-                                "time": "1 min"
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.spell.hold_person",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "entity": "target",
+                                    "boundary": "end",
+                                    "duration": {
+                                        "time": "1 min"
+                                    }
+                                }
+                            },
+                            "end_condition": {
+                                "event": {
+                                    "turn_boundary": {
+                                        "entity": "target",
+                                        "boundary": "start"
+                                    }
+                                },
+                                "callback": "repeat_apply_condition"
                             }
                         }
-                    },
-                    "end_condition": {
-                        "event": {
-                            "turn_boundary": {
-                                "entity": "target",
-                                "boundary": "start"
-                            }
-                        },
-                        "callback": "repeat_apply_condition"
                     }
-                },
+                ],
                 "delivery": "immediate"
             }
         }

@@ -127,7 +127,7 @@ function ActionConditionResolution:is_crit() end
 
 ---@class ActionOutcomeBundle
 local ActionOutcomeBundle = {}
----@return DamageOutcome?
+---@return DamageOutcome[]
 function ActionOutcomeBundle:damage() end
 
 ---@return ActionConditionResolution

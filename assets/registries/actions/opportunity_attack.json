@@ -7,8 +7,14 @@
                 "attack_roll": "melee_attack_roll"
             },
             "payload": {
-                "damage": "melee_damage_roll",
-                "reaction": "nat20_core::script.action.opportunity_attack",
+                "components": [
+                    {
+                        "damage": "melee_damage_roll"
+                    },
+                    {
+                        "reaction": "nat20_core::script.action.opportunity_attack"
+                    }
+                ],
                 "delivery": "immediate"
             }
         }

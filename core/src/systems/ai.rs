@@ -2,8 +2,12 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::action::ActionKind, activity::Activity, ai::PlayerControlledTag,
-        effects::effect::EffectKind, faction::Attitude, id::AIControllerId,
+        actions::action::{ActionKind, ActionPayloadComponent},
+        activity::Activity,
+        ai::PlayerControlledTag,
+        effects::effect::EffectKind,
+        faction::Attitude,
+        id::AIControllerId,
     },
     engine::{action_prompt::ActionPrompt, game_state::GameState},
     registry::{self},
@@ -35,33 +39,24 @@ pub fn recommeneded_target_attitude(
 ) -> Attitude {
     match action_kind {
         ActionKind::Standard { payload, .. } => {
-            if payload.damage().is_some() {
-                return Attitude::Hostile;
-            }
-            if payload.healing().is_some() {
-                return Attitude::Friendly;
-            }
-            if let Some(effect) = payload.effect() {
-                return match effect.effect().kind {
-                    EffectKind::Buff => Attitude::Friendly,
-                    EffectKind::Debuff => Attitude::Hostile,
-                };
-            }
-            return Attitude::Neutral;
-        }
-
-        ActionKind::Composite { actions } => {
-            // TODO: Hopefully there's never a mix of friendly and hostile sub-actions?
-            // If any sub-action is hostile, be hostile; else friendly
-            let mut best = Attitude::Friendly;
-            for sub_action in actions {
-                let attitude = recommeneded_target_attitude(world, actor, sub_action);
-                best = best.max(attitude);
-                if best == Attitude::Hostile {
-                    break;
+            for component in payload.components() {
+                match component {
+                    ActionPayloadComponent::Damage { .. } => return Attitude::Hostile,
+                    ActionPayloadComponent::Effect(effect_instance_template) => {
+                        return match effect_instance_template.effect().kind {
+                            EffectKind::Buff => Attitude::Friendly,
+                            EffectKind::Debuff => Attitude::Hostile,
+                        };
+                    }
+                    ActionPayloadComponent::Healing(_) => {
+                        return Attitude::Friendly;
+                    }
+                    ActionPayloadComponent::Reaction(_) => {
+                        // TODO: Reactions can be hostile or friendly
+                    }
                 }
             }
-            best
+            return Attitude::Neutral;
         }
 
         ActionKind::Variant { variants } => {

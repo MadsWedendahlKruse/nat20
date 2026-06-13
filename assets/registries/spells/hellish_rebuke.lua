@@ -17,9 +17,10 @@ local function reaction_trigger(game_state, reactor, event)
     for _, result in ipairs(results) do
         local standard_kind = result.kind:as_standard()
         if result.target:entity() == reactor and standard_kind then
-            local damage = standard_kind:damage()
-            if damage and damage:damage_taken_total() > 0 then
-                return true
+            for _, damage in ipairs(standard_kind:damage()) do
+                if damage:damage_taken_total() > 0 then
+                    return true
+                end
             end
         end
     end

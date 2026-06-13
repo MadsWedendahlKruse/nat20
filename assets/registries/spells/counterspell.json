@@ -12,7 +12,11 @@
                 "saving_throw": "spell_save_dc;constitution"
             },
             "payload": {
-                "reaction": "cancel_event",
+                "components": [
+                    {
+                        "reaction": "cancel_event"
+                    }
+                ],
                 "_delivery": "immediate",
                 "delivery": {
                     "projectile": {
