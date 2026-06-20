@@ -39,7 +39,7 @@ use crate::{
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
-        geometry::{DEFAULT_GRAVITY, Displacement, DisplacementTemplate, Parabola},
+        geometry::{DEFAULT_GRAVITY, Displacement, DisplacementTemplate, Parabola, RaycastFilter},
     },
 };
 
@@ -1213,7 +1213,7 @@ impl StepPayloadComponent for StepPayloadDisplacement {
                 let target_position = target_start_position + direction * distance;
                 let launch_speed = (2.0 * distance * DEFAULT_GRAVITY.y.abs()).sqrt(); // v = sqrt(2 * d * g)
 
-                let Some(trajectory) = Parabola::from_launch_velocity(
+                let Some(mut trajectory) = Parabola::from_launch_velocity(
                     target_start_position,
                     target_position,
                     DEFAULT_GRAVITY,
@@ -1222,6 +1222,19 @@ impl StepPayloadComponent for StepPayloadDisplacement {
                     error!("No valid trajectory for push displacement");
                     return;
                 };
+                // Arbitrary max time to prevent infinite trajectories, but also
+                // allow for long pushes, e.g. off a cliff
+                trajectory.max_time = 30.0;
+
+                if let Some(raycast_result) = systems::geometry::raycast_parabola(
+                    &game_state.world,
+                    &game_state.geometry,
+                    &trajectory,
+                    &RaycastFilter::WorldOnly,
+                ) && let Some(closest) = raycast_result.closest()
+                {
+                    trajectory.max_time = closest.toi;
+                }
 
                 debug!(
                     "Pushing target from {:?} to {:?} with launch speed {:?}",

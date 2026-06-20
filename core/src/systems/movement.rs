@@ -5,23 +5,26 @@ use parry3d::{
     query::{PointQuery, Ray, RayCast},
     shape::Ball,
 };
-use tracing::trace;
+use tracing::{error, trace};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
         actions::targeting::{LineOfSightMode, TargetInstance, TargetingError, TargetingKind},
+        activity::{ActivityPauseReason, ActivityState},
+        id::EntityIdentifier,
         speed::Speed,
     },
     engine::{
         action_prompt::{ActionData, ActionError},
+        event::{Event, EventKind},
         game_state::GameState,
         geometry::WorldPath,
     },
     systems::{
         self,
         actions::ActionUsabilityError,
-        geometry::{LineOfSightResult, RaycastFilter, RaycastHitKind},
+        geometry::{EPSILON, LineOfSightResult, RaycastFilter},
     },
 };
 
@@ -316,104 +319,231 @@ pub fn path_to_target(
     ))
 }
 
-pub fn potential_opportunity_attacks(
-    world: &World,
-    path: &WorldPath,
-    mover: Entity,
-    attackers: &[Entity],
-) -> Vec<(Entity, Point3<f32>)> {
-    let free_movement_distance =
-        systems::helpers::get_component::<Speed>(world, mover).free_movement_remaining();
-
-    attackers
-        .iter()
-        .filter_map(|attacker| {
-            if let Some(intersection_point) =
-                opportunity_attack_point(world, path, mover, *attacker, &free_movement_distance)
-            {
-                Some((*attacker, intersection_point))
-            } else {
-                None
-            }
-        })
-        .collect()
+pub enum MoveMode {
+    Voluntary,
+    Displace,
 }
 
-fn opportunity_attack_point(
-    world: &World,
-    path: &WorldPath,
-    mover: Entity,
+pub fn move_entity(
+    game_state: &mut GameState,
+    entity: Entity,
+    new_position: &Point3<f32>,
+    mode: MoveMode,
+) {
+    match mode {
+        MoveMode::Voluntary => {
+            // Voluntary movement triggers opportunity attacks
+            let Some(from_position) =
+                systems::geometry::get_foot_position(&game_state.world, entity)
+            else {
+                error!(
+                    "Failed to get position of entity {:?} for voluntary movement",
+                    entity
+                );
+                return;
+            };
+
+            let mut potential_attackers = game_state.get_potential_reactors(entity);
+
+            potential_attackers.sort_by(|a, b| {
+                let distance_a =
+                    systems::geometry::distance_between_entities(&game_state.world, entity, *a)
+                        .unwrap_or(Length::new::<meter>(f32::MAX));
+                let distance_b =
+                    systems::geometry::distance_between_entities(&game_state.world, entity, *b)
+                        .unwrap_or(Length::new::<meter>(f32::MAX));
+                distance_a
+                    .partial_cmp(&distance_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            for attacker in potential_attackers {
+                let Some((event, intersection)) = calculate_opportunity_attack(
+                    game_state,
+                    entity,
+                    &from_position,
+                    new_position,
+                    attacker,
+                ) else {
+                    continue;
+                };
+
+                move_new_position(game_state, entity, from_position, &intersection);
+
+                systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
+                    .pause(ActivityPauseReason::OpportunityAttack);
+
+                game_state.process_event(event);
+                return;
+            }
+
+            // No opportunity attacks, so just move the entity
+            move_new_position(game_state, entity, from_position, new_position);
+        }
+
+        MoveMode::Displace => {
+            systems::geometry::teleport_to(&mut game_state.world, entity, new_position)
+        }
+    }
+}
+
+pub fn calculate_opportunity_attack(
+    game_state: &GameState,
+    entity: Entity,
+    from_position: &Point3<f32>,
+    new_position: &Point3<f32>,
     attacker: Entity,
-    free_movement_distance: &Length,
-) -> Option<Point3<f32>> {
-    if mover == attacker {
+) -> Option<(Event, Point3<f32>)> {
+    if attacker == entity {
+        // An entity can't attack itself
         return None;
     }
 
-    // Take the size of the attacker into account when determining opportunity attacks
-    let (attacker_shape, _) = systems::geometry::get_shape(world, attacker)?;
-    let attacker_radius = Length::new::<meter>(attacker_shape.radius);
-    let attacker_loadout = systems::loadout::loadout(world, attacker);
-    let attacker_position = systems::geometry::get_foot_position(world, attacker)?;
-    let attacker_reach = attacker_loadout.melee_range().max() + attacker_radius;
+    let free_movement = systems::helpers::get_component::<Speed>(&game_state.world, entity)
+        .free_movement_remaining();
+    if (from_position - new_position).norm() <= free_movement.get::<meter>() {
+        trace!(
+            "Entity {:?} has enough free movement to move from {:?} to {:?} without provoking opportunity attacks.",
+            entity, from_position, new_position
+        );
+        return None;
+    }
 
-    let path_intersections = systems::geometry::path_intersections_within_radius(
-        path,
-        attacker_position,
+    let event = Event::new(EventKind::MovingOutOfReach {
+        mover: EntityIdentifier::from_world(&game_state.world, entity),
+        entity: EntityIdentifier::from_world(&game_state.world, attacker),
+        continue_movement: true,
+    });
+
+    let reactions = systems::actions::available_reactions_to_event(
+        game_state,
+        attacker,
+        &event,
+        Some(|error: &ActionUsabilityError| {
+            matches!(error, ActionUsabilityError::TargetingError(targeting_error)
+                if matches!(targeting_error, TargetingError::OutOfRange { .. } | TargetingError::NoLineOfSight { .. }))
+        }),
+    );
+
+    if reactions.is_empty() {
+        // No reactions so no opportunity attack
+        trace!(
+            "Potential attacker {:?} has no reactions available to event {:?}, so no opportunity attack.",
+            attacker, event
+        );
+        return None;
+    }
+
+    let Some(attacker_position) = systems::geometry::get_foot_position(&game_state.world, attacker)
+    else {
+        error!(
+            "Failed to get position of potential attacker {:?} for opportunity attack",
+            attacker
+        );
+        return None;
+    };
+
+    let attacker_reach = {
+        let Some((attacker_shape, _)) = systems::geometry::get_shape(&game_state.world, attacker)
+        else {
+            error!(
+                "Failed to get shape of potential attacker {:?} for opportunity attack",
+                attacker
+            );
+            return None;
+        };
+        let attacker_radius = Length::new::<meter>(attacker_shape.radius);
+        let attacker_loadout = systems::loadout::loadout(&game_state.world, attacker);
+        let attacker_reach = attacker_loadout.melee_range().max() + attacker_radius;
+        attacker_reach.get::<meter>()
+    };
+    let attacker_reach_squared = attacker_reach.powi(2);
+
+    let mut intersections = systems::geometry::line_sphere_intersections(
+        from_position,
+        new_position,
+        &attacker_position,
         attacker_reach,
     );
 
     // Scenario 1: No intersections
     // Entity either doesn't come within reach or doesn't leave reach, so no opportunity attack.
-    if path_intersections.is_empty() {
+    if intersections.is_empty() {
+        trace!(
+            "No intersections for potential opportunity attack between {:?} and {:?}.",
+            entity, attacker
+        );
         return None;
     }
 
     // Scenario 2: One intersection
     // 2a: Entity starts outside of reach and enters reach: no opportunity attack
-    // 2b: Entity starts inside of reach and leaves reach: opportunity attack
-    if path_intersections.len() == 1 {
-        let Some(distance_to_mover_start_position) =
-            systems::geometry::distance_between_entities(world, mover, attacker)
-        else {
-            return None;
-        };
-
-        if distance_to_mover_start_position > attacker_reach {
-            // Scenario 2a
-            return None;
-        } else {
-            // Scenario 2b
-            if let Some(distance_along_path) = path.distance_along_path(&path_intersections[0])
-                && distance_along_path > *free_movement_distance
-            {
-                return Some(path_intersections[0]);
-            };
-
+    // 2b: Entity starts inside of reach and remains inside reach: no opportunity attack
+    // 2c: Entity starts inside of reach and leaves reach: opportunity attack
+    if intersections.len() == 1 {
+        // Scenario 2a
+        if (from_position - attacker_position).norm_squared() > attacker_reach_squared - EPSILON {
+            trace!(
+                "Entity {:?} starts outside of reach of potential attacker {:?} and enters reach, so no opportunity attack.",
+                entity, attacker
+            );
             return None;
         }
+
+        // Scenario 2b
+        if (new_position - attacker_position).norm_squared() <= attacker_reach_squared + EPSILON {
+            trace!(
+                "Entity {:?} starts within reach of potential attacker {:?} and stays within reach, so no opportunity attack.",
+                entity, attacker
+            );
+            return None;
+        }
+
+        // Scenario 2c
+        trace!(
+            "Entity {:?} starts within reach of potential attacker {:?} and leaves reach, so opportunity attack.",
+            entity, attacker
+        );
+        trace!(
+            "attacker_from_dist: {:?}, attacker_to_dist: {:?}, attacker_reach: {:?}",
+            (from_position - attacker_position).norm(),
+            (new_position - attacker_position).norm(),
+            attacker_reach
+        );
+        return Some((event, intersections[0]));
     }
 
     // Scenario 3: More than one intersection
     // Entity enters and leaves reach at least once, so opportunity attack.
-    let mut distances_along_path: Vec<(Option<Length>, Point3<f32>)> = path_intersections
-        .iter()
-        .map(|intersection| (path.distance_along_path(intersection), *intersection))
-        .collect();
-    distances_along_path.sort_by(|(distance_a, _), (distance_b, _)| {
+    intersections.sort_by(|a, b| {
+        let distance_a = (from_position - *a).norm_squared();
+        let distance_b = (from_position - *b).norm_squared();
         distance_a
-            .partial_cmp(distance_b)
+            .partial_cmp(&distance_b)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    distances_along_path.reverse();
 
-    for (distance_along_path, intersection) in distances_along_path {
-        if let Some(distance) = distance_along_path {
-            if distance > *free_movement_distance {
-                return Some(intersection);
-            }
-        }
+    intersections.reverse();
+
+    trace!(
+        "Entity {:?} enters and leaves reach of potential attacker {:?} multiple times, so opportunity attack.",
+        entity, attacker
+    );
+
+    Some((event, intersections[0]))
+}
+
+fn move_new_position(
+    game_state: &mut GameState,
+    entity: Entity,
+    from_position: Point3<f32>,
+    new_position: &Point3<f32>,
+) {
+    systems::geometry::teleport_to(&mut game_state.world, entity, new_position);
+
+    if game_state.in_combat.contains_key(&entity) {
+        let distance_moved = Length::new::<meter>((new_position - from_position).norm());
+        systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity)
+            .record_movement(distance_moved);
     }
-
-    None
 }

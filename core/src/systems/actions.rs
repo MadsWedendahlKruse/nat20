@@ -359,6 +359,7 @@ pub fn available_reactions_to_event(
     game_state: &GameState,
     reactor: Entity,
     event: &Event,
+    skipped_errors: Option<fn(&ActionUsabilityError) -> bool>,
 ) -> Vec<ActionData> {
     let mut reactions = Vec::new();
 
@@ -388,7 +389,7 @@ pub fn available_reactions_to_event(
                         ))
                     };
 
-                    if action_usable_on_targets(
+                    let usability_result = action_usable_on_targets(
                         world,
                         world_geometry,
                         reactor,
@@ -396,20 +397,26 @@ pub fn available_reactions_to_event(
                         context,
                         resource_cost,
                         &[target.clone()],
-                    )
-                    .is_ok()
+                    );
+
+                    // If the action is not usable and the error is not in the
+                    // skipped_errors, then skip this reaction
+                    if let Err(error) = &usability_result
+                        && !skipped_errors.as_ref().map_or(false, |f| f(error))
                     {
-                        reactions.push(
-                            ActionData::new(
-                                EntityIdentifier::from_world(world, reactor),
-                                reaction_id.clone(),
-                                context.clone(),
-                                resource_cost.clone(),
-                                vec![target],
-                            )
-                            .with_trigger_event(event.clone().into()),
-                        );
+                        continue;
                     }
+
+                    reactions.push(
+                        ActionData::new(
+                            EntityIdentifier::from_world(world, reactor),
+                            reaction_id.clone(),
+                            context.clone(),
+                            resource_cost.clone(),
+                            vec![target],
+                        )
+                        .with_trigger_event(event.clone().into()),
+                    );
                 }
             }
         }

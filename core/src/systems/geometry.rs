@@ -862,9 +862,9 @@ pub fn entities_in_range_of_entity(world: &World, entity: Entity, range: &Length
 }
 
 pub fn line_sphere_intersections(
-    line_start: Point3<f32>,
-    line_end: Point3<f32>,
-    sphere_center: Point3<f32>,
+    line_start: &Point3<f32>,
+    line_end: &Point3<f32>,
+    sphere_center: &Point3<f32>,
     sphere_radius: f32,
 ) -> Vec<Point3<f32>> {
     let mut intersections = vec![];
@@ -916,9 +916,9 @@ pub fn path_intersections_within_radius(
 
     for (start, end) in path.points.windows(2).map(|window| (window[0], window[1])) {
         intersections.extend(line_sphere_intersections(
-            start,
-            end,
-            point,
+            &start,
+            &end,
+            &point,
             radius.get::<meter>(),
         ));
     }

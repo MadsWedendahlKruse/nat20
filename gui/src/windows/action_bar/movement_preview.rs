@@ -1,6 +1,6 @@
 use hecs::Entity;
 use nat20_core::{
-    engine::game_state::GameState,
+    engine::{game_state::GameState, geometry::WorldPath},
     systems::{self, movement::PathResult},
 };
 use parry3d::na::Point3;
@@ -73,18 +73,49 @@ impl MovementPreview {
                 {
                     self.prev_goal = Some(goal);
                     self.path_result = Some(path_result.clone());
-                    self.opportunity_attacks = systems::movement::potential_opportunity_attacks(
-                        &game_state.world,
+                    self.opportunity_attacks = potential_opportunity_attacks(
+                        &game_state,
                         &path_result.taken_path,
                         self.entity,
                         &game_state.get_potential_reactors(self.entity),
                     );
                 }
+                self.prev_entity_position = Some(entity_position);
             }
         } else {
             self.prev_goal = Some(goal);
         }
     }
+}
+
+fn potential_opportunity_attacks(
+    game_state: &GameState,
+    path: &WorldPath,
+    mover: Entity,
+    attackers: &[Entity],
+) -> Vec<(Entity, Point3<f32>)> {
+    let mut opportunity_attacks = Vec::new();
+
+    for (start, end) in path.points.windows(2).map(|window| (window[0], window[1])) {
+        let opportunity_attacks_on_segment = attackers
+            .iter()
+            .filter_map(|attacker| {
+                if let Some((_event, intersection)) =
+                    systems::movement::calculate_opportunity_attack(
+                        game_state, mover, &start, &end, *attacker,
+                    )
+                {
+                    Some((*attacker, intersection))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(Entity, Point3<f32>)>>();
+
+        opportunity_attacks.extend(opportunity_attacks_on_segment);
+    }
+
+    opportunity_attacks
 }
 
 impl RenderableWithContext<&mut GameState> for MovementPreview {

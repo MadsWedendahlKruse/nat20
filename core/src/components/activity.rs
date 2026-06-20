@@ -1,26 +1,25 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 use hecs::Entity;
 use parry3d::na::Point3;
 use tracing::{debug, error, warn};
-use uom::si::{f32::Length, length::meter};
 
 use crate::{
-    components::{
-        actions::{
-            action::{Action, ActionTimeline},
-            action_step::ActionPhase,
-        },
-        id::EntityIdentifier,
-        speed::Speed,
+    components::actions::{
+        action::{Action, ActionTimeline},
+        action_step::ActionPhase,
     },
     engine::{
         action_prompt::{ActionDecision, ActionError},
-        event::{Event, EventKind},
+        event::Event,
         game_state::GameState,
         geometry::WorldPath,
     },
-    systems::{self, geometry::Parabola, movement::MovementError},
+    systems::{
+        self,
+        geometry::Parabola,
+        movement::{MoveMode, MovementError},
+    },
 };
 
 const MOVEMENT_SPEED: f32 = 5.0; // [m/s]
@@ -102,20 +101,13 @@ impl ActivityState {
         matches!(self.state, ActivityStateKind::Idle)
     }
 
-    pub fn set_moving(
-        &mut self,
-        path: WorldPath,
-        opportunity_attacks: HashMap<usize, Entity>,
-        action: Option<ActionDecision>,
-    ) {
+    pub fn set_moving(&mut self, path: WorldPath, action: Option<ActionDecision>) {
         debug!("Setting entity to move to goal {:?}", path.points.last());
 
         self.state = ActivityStateKind::Moving {
             path,
             current_target: 0,
-            opportunity_attacks,
             action,
-            paused: false,
         };
     }
 
@@ -173,13 +165,8 @@ pub enum ActivityStateKind {
         path: WorldPath,
         /// Current index in the path which the entity is moving towards
         current_target: usize,
-        /// Indices of points in the path that trigger opportunity attacks
-        opportunity_attacks: HashMap<usize, Entity>,
         /// Potential action to be performed after reaching the destination
         action: Option<ActionDecision>,
-        /// Whether the movement is currently paused due to an opportunity attack
-        /// TODO: Can movement only be paused by opportunity attacks?
-        paused: bool,
     },
     Acting {
         timeline: ActionTimeline,
@@ -213,14 +200,8 @@ impl ActivityStateKind {
             Self::Moving {
                 path,
                 current_target,
-                opportunity_attacks,
                 action,
-                paused,
             } => {
-                if *paused {
-                    return commands;
-                }
-
                 if *current_target >= path.points.len() {
                     warn!(
                         "Current target index {} is out of bounds for path with length {}. Target appears to have reached goal, but follow up state was not set correctly. Did the action submission fail? Setting state to idle",
@@ -238,31 +219,16 @@ impl ActivityStateKind {
                 let distance_to_target = direction.norm();
 
                 if distance_to_target != 0.0 {
-                    let distance_to_move = distance_to_target.min(MOVEMENT_SPEED * delta_time);
-                    let movement_vector = direction.normalize() * distance_to_move;
-                    let new_position = position + movement_vector;
-                    systems::geometry::teleport_to(&mut game_state.world, entity, &new_position);
-
-                    if game_state.in_combat.contains_key(&entity) {
-                        systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity)
-                            .record_movement(Length::new::<meter>(distance_to_move));
-                    }
+                    commands.push(ActivityGameStateCommand::MoveEntity {
+                        entity,
+                        new_position: position
+                            + direction.normalize() * MOVEMENT_SPEED * delta_time,
+                        kind: MoveMode::Voluntary,
+                    });
                 }
 
                 if distance_to_target < MOVEMENT_SPEED * delta_time {
                     // Reached the target point
-
-                    if let Some(attacker) = opportunity_attacks.remove(current_target) {
-                        commands.push(ActivityGameStateCommand::ProcessEvent(Event::new(
-                            EventKind::MovingOutOfReach {
-                                mover: EntityIdentifier::from_world(&game_state.world, entity),
-                                entity: EntityIdentifier::from_world(&game_state.world, attacker),
-                                continue_movement: true,
-                            },
-                        )));
-                        *paused = true;
-                    }
-
                     *current_target += 1;
 
                     if *current_target >= path.points.len() {
@@ -333,7 +299,11 @@ impl ActivityStateKind {
                 *elapsed_time += delta_time;
 
                 let new_position = trajectory.position_at_time(*elapsed_time);
-                systems::geometry::teleport_to(&mut game_state.world, entity, &new_position);
+                commands.push(ActivityGameStateCommand::MoveEntity {
+                    entity,
+                    new_position,
+                    kind: MoveMode::Displace,
+                });
 
                 if *elapsed_time >= trajectory.max_time {
                     debug!(
@@ -359,15 +329,30 @@ impl Default for ActivityStateKind {
 pub enum ActivityPauseReason {
     Reaction,
     ActionStepResolution,
+    // TODO: Not a fan of giving this kind of special treatment, but can't find
+    // a better way to handle it right now
+    OpportunityAttack,
 }
 
 // TODO: Name?
 pub enum ActivityGameStateCommand {
     ProcessEvent(Event),
     SubmitAction(ActionDecision),
-    PerformActionPhase { entity: Entity, phase: ActionPhase },
-    ActivityCompleted { entity: Entity },
-    DespawnEntity { entity: Entity },
+    PerformActionPhase {
+        entity: Entity,
+        phase: ActionPhase,
+    },
+    ActivityCompleted {
+        entity: Entity,
+    },
+    DespawnEntity {
+        entity: Entity,
+    },
+    MoveEntity {
+        entity: Entity,
+        new_position: Point3<f32>,
+        kind: MoveMode,
+    },
 }
 
 // TODO: If the implementaiton of this is in the GameState it can access all the
@@ -411,6 +396,14 @@ impl ActivityGameStateCommand {
                     .world
                     .despawn(entity)
                     .expect("DespawnEntity: entity not found");
+            }
+
+            Self::MoveEntity {
+                entity,
+                new_position,
+                kind,
+            } => {
+                systems::movement::move_entity(game_state, entity, &new_position, kind);
             }
         }
     }

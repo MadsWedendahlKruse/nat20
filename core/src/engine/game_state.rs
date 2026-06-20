@@ -191,42 +191,8 @@ impl GameState {
             return Err(MovementError::InsufficientSpeed);
         }
 
-        let potential_reactors = self.get_potential_reactors(entity);
-
-        debug!("Potential reactors to movement: {:?}", potential_reactors);
-
-        let mut potential_attacks = systems::movement::potential_opportunity_attacks(
-            &self.world,
-            &path.taken_path,
-            entity,
-            &potential_reactors,
-        );
-        // Make sure the opportunity attacks are triggered in the order they are
-        // encountered along the path
-        potential_attacks.sort_by(|(_, point_a), (_, point_b)| {
-            let a_distance = path.taken_path.distance_along_path(point_a);
-            let b_distance = path.taken_path.distance_along_path(point_b);
-            a_distance.partial_cmp(&b_distance).unwrap()
-        });
-
-        debug!("Potential opportunity attacks: {:?}", potential_attacks);
-
-        let (attackers, attack_points): (Vec<_>, Vec<_>) = potential_attacks
-            .iter()
-            .map(|(attacker, attack_point)| (*attacker, attack_point.clone()))
-            .unzip();
-
-        let (final_path, attack_indices) = path.taken_path.insert_points(&attack_points);
-        let opportunity_attacks: HashMap<usize, Entity> = attack_indices
-            .into_iter()
-            .zip(attackers.into_iter())
-            .collect();
-
-        systems::helpers::get_component_mut::<ActivityState>(&mut self.world, entity).set_moving(
-            final_path,
-            opportunity_attacks,
-            action,
-        );
+        systems::helpers::get_component_mut::<ActivityState>(&mut self.world, entity)
+            .set_moving(path.taken_path, action);
 
         Ok(())
     }
@@ -479,8 +445,9 @@ impl GameState {
                 ActionPromptKind::Reactions { event, options } => {
                     let mut new_options = HashMap::new();
                     for reactor in options.keys() {
-                        let reactions =
-                            systems::actions::available_reactions_to_event(self, *reactor, event);
+                        let reactions = systems::actions::available_reactions_to_event(
+                            self, *reactor, event, None,
+                        );
                         if !reactions.is_empty() {
                             new_options.insert(*reactor, reactions);
                         }
@@ -594,7 +561,8 @@ impl GameState {
                 continue;
             }
 
-            let reactions = systems::actions::available_reactions_to_event(self, *reactor, event);
+            let reactions =
+                systems::actions::available_reactions_to_event(self, *reactor, event, None);
 
             if !reactions.is_empty() {
                 reaction_options.insert(*reactor, reactions);
@@ -681,15 +649,10 @@ impl GameState {
                     &mut self.world,
                     mover.id(),
                 );
-                if *continue_movement {
-                    // TODO: This is a bit hacky
-                    if let ActivityStateKind::Moving { paused, .. } = &mut state.state {
-                        *paused = false;
-                    };
-                    // state.resume(ActivityPauseReason::Reaction);
-                } else {
+                if !continue_movement {
                     state.set_idle();
                 }
+                state.resume(ActivityPauseReason::OpportunityAttack);
             }
 
             EventKind::ActionRequested { action } => {
