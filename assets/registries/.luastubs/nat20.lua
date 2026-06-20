@@ -211,11 +211,8 @@ function Event:as_action_performed() end
 ---@return boolean
 function Event:is_moving_out_of_reach() end
 
----@return ScriptEntity?, ScriptEntity?, boolean?
+---@return ScriptEntity?, ScriptEntity?
 function Event:as_moving_out_of_reach() end
-
----@param callback fun(mover: ScriptEntity, entity: ScriptEntity, continue: boolean): boolean
-function Event:with_moving_out_of_reach(callback) end
 
 ------------------------------------------------------------
 -- GameState — the main script-facing world handle

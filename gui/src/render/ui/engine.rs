@@ -163,11 +163,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     ui.separator_with_text(format!("Round {}", round));
                 }
             },
-            EventKind::MovingOutOfReach {
-                mover,
-                entity,
-                continue_movement,
-            } => {
+            EventKind::MovingOutOfReach { mover, entity } => {
                 TextSegments::new(vec![
                     (mover.name().as_str(), TextKind::Actor),
                     ("is moving out of reach of", TextKind::Normal),

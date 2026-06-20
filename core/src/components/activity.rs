@@ -329,9 +329,6 @@ impl Default for ActivityStateKind {
 pub enum ActivityPauseReason {
     Reaction,
     ActionStepResolution,
-    // TODO: Not a fan of giving this kind of special treatment, but can't find
-    // a better way to handle it right now
-    OpportunityAttack,
 }
 
 // TODO: Name?

@@ -371,7 +371,7 @@ pub fn move_entity(
                 move_new_position(game_state, entity, from_position, &intersection);
 
                 systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
-                    .pause(ActivityPauseReason::OpportunityAttack);
+                    .set_idle();
 
                 game_state.process_event(event);
                 return;
@@ -412,7 +412,6 @@ pub fn calculate_opportunity_attack(
     let event = Event::new(EventKind::MovingOutOfReach {
         mover: EntityIdentifier::from_world(&game_state.world, entity),
         entity: EntityIdentifier::from_world(&game_state.world, attacker),
-        continue_movement: true,
     });
 
     let reactions = systems::actions::available_reactions_to_event(

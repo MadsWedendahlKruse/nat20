@@ -120,7 +120,6 @@ pub enum EventKind {
     MovingOutOfReach {
         mover: EntityIdentifier,
         entity: EntityIdentifier,
-        continue_movement: bool,
     },
 
     /// An entity has declared they want to take an action. The engine can then

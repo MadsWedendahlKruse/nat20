@@ -637,33 +637,14 @@ impl UserData for Event {
             let EventKind::MovingOutOfReach {
                 mover,
                 entity,
-                continue_movement,
             } = &this.kind
             else {
-                return Ok((None, None, None));
+                return Ok((None, None));
             };
             Ok((
                 Some(ScriptEntity::from(mover.id())),
                 Some(ScriptEntity::from(entity.id())),
-                Some(*continue_movement),
             ))
-        });
-        methods.add_method_mut("with_moving_out_of_reach", |_, this, callback: Function| {
-            let EventKind::MovingOutOfReach {
-                mover,
-                entity,
-                continue_movement,
-            } = &mut this.kind
-            else {
-                return Ok(());
-            };
-            let new_continue: bool = callback.call((
-                ScriptEntity::from(mover.id()),
-                ScriptEntity::from(entity.id()),
-                *continue_movement,
-            ))?;
-            *continue_movement = new_continue;
-            Ok(())
         });
     }
 }

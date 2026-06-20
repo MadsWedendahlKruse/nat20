@@ -640,21 +640,6 @@ impl GameState {
     // TODO: Maybe this function should live in the events
     fn advance_event(&mut self, event: Event, process_pending_events: bool) {
         match &event.kind {
-            EventKind::MovingOutOfReach {
-                mover,
-                continue_movement,
-                ..
-            } => {
-                let mut state = systems::helpers::get_component_mut::<ActivityState>(
-                    &mut self.world,
-                    mover.id(),
-                );
-                if !continue_movement {
-                    state.set_idle();
-                }
-                state.resume(ActivityPauseReason::OpportunityAttack);
-            }
-
             EventKind::ActionRequested { action } => {
                 systems::actions::perform_action(self, action);
             }
