@@ -80,7 +80,7 @@ impl AIController for RandomController {
                         && let Some(encounter) = game_state.encounters.get(encounter_id)
                     {
                         encounter
-                            .participants(&game_state.world, &targeting.allowed_targets)
+                            .participants(&game_state.world, &targeting.allowed_entities)
                             .into_iter()
                             .filter(|target| {
                                 let target_attitude = systems::factions::mutual_attitude(
@@ -125,6 +125,7 @@ impl AIController for RandomController {
                         TargetingKind::Area {
                             shape,
                             fixed_on_actor,
+                            filters,
                         } => todo!(),
                     }
 

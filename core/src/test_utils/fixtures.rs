@@ -476,6 +476,17 @@ pub mod creatures {
                         &None,
                         vec![SpellId::new("nat20_core", "spell.lightning_bolt")],
                     ),
+                    // Level 7
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.wizard",
+                    ))),
+                    LevelUpDecision::spells(
+                        "choice.spells",
+                        &ClassId::new("nat20_core", "class.wizard"),
+                        &None,
+                        vec![SpellId::new("nat20_core", "spell.thunderwave")],
+                    ),
                 ],
             );
 
@@ -590,6 +601,12 @@ pub mod creatures {
                         Ability::Charisma,
                         2,
                     )])),
+                    LevelUpDecision::spells(
+                        "choice.spells",
+                        &ClassId::new("nat20_core", "class.warlock"),
+                        &None,
+                        vec![SpellId::new("nat20_core", "spell.misty_step")],
+                    ),
                     LevelUpDecision::ReplaceSpells { spells: Vec::new() },
                     // Level 5
                     LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(

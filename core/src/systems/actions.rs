@@ -7,8 +7,8 @@ use crate::{
         actions::{
             action::{Action, ActionContext, ActionCooldownMap, ActionMap, ActionProvider},
             targeting::{
-                AreaShape, LineOfSightMode, TargetInstance, TargetingContext, TargetingError,
-                TargetingKind,
+                AreaFilter, AreaShape, LineOfSightMode, TargetInstance, TargetingContext,
+                TargetingError, TargetingKind,
             },
         },
         activity::{ActivityPauseReason, ActivityState},
@@ -246,6 +246,7 @@ pub fn get_targeted_entities(
         TargetingKind::Area {
             shape,
             fixed_on_actor,
+            filters,
         } => {
             let (_, actor_shape_pose) =
                 systems::geometry::get_shape(&game_state.world, action_data.actor.id()).unwrap();
@@ -270,7 +271,7 @@ pub fn get_targeted_entities(
 
                 let mut entities_in_shape = systems::geometry::entities_in_shape(
                     &game_state.world,
-                    shape_transform.shape,
+                    shape_transform.shape.as_ref(),
                     &shape_transform.transform,
                 );
 
@@ -319,6 +320,16 @@ pub fn get_targeted_entities(
                 }
 
                 entities.extend(entities_in_shape);
+            }
+
+            // Edge case handling for targeting unoccupied areas, e.g. Misty Step
+            // If there are no targets the corresponding `ActionPhase` will not have
+            // any steps, so the action won't do anything. To avoid this, we return
+            // the actor as the target
+            for filter in filters {
+                if filter == &AreaFilter::Unoccupied && entities.is_empty() {
+                    return vec![action_data.actor.id()];
+                }
             }
         }
     }

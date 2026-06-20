@@ -76,7 +76,10 @@ fn get_points_indices(shape: &Box<dyn Shape>) -> (Vec<Point3<f32>>, Vec<[u32; 3]
             let cuboid = shape.as_cuboid().unwrap();
             cuboid.to_trimesh()
         }
-        ShapeType::Capsule => todo!(),
+        ShapeType::Capsule => {
+            let capsule = shape.as_capsule().unwrap();
+            capsule.to_trimesh(20, 20)
+        }
         ShapeType::Segment => todo!(),
         ShapeType::Triangle => todo!(),
         ShapeType::Voxels => todo!(),
@@ -86,7 +89,10 @@ fn get_points_indices(shape: &Box<dyn Shape>) -> (Vec<Point3<f32>>, Vec<[u32; 3]
         ShapeType::HeightField => todo!(),
         ShapeType::Compound => todo!(),
         ShapeType::ConvexPolyhedron => todo!(),
-        ShapeType::Cylinder => todo!(),
+        ShapeType::Cylinder => {
+            let cyl = shape.as_cylinder().unwrap();
+            cyl.to_trimesh(20)
+        }
         ShapeType::Cone => {
             let cone = shape.as_cone().unwrap();
             cone.to_trimesh(20)

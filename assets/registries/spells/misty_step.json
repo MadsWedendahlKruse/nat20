@@ -1,0 +1,43 @@
+{
+    "id": "nat20_core::spell.misty_step",
+    "description": "Briefly surrounded by silvery mist, you teleport up to 30 feet to an unoccupied space that you can see.",
+    "base_level": 2,
+    "school": "conjuration",
+    "flags": [
+        "verbal"
+    ],
+    "kind": {
+        "standard": {
+            "payload": {
+                "components": [
+                    {
+                        "displacement": "teleport"
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        }
+    },
+    "resource_cost": {
+        "nat20_core::resource.bonus_action": 1
+    },
+    "targeting": {
+        "kind": {
+            "area": {
+                "shape": "actor",
+                "fixed_on_actor": false,
+                "filters": [
+                    "unoccupied",
+                    "walkable"
+                ]
+            }
+        },
+        "range": "30 feet",
+        "line_of_sight": "ray",
+        "allowed_targets": []
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
+    }
+}

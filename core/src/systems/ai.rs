@@ -54,6 +54,7 @@ pub fn recommeneded_target_attitude(
                     ActionPayloadComponent::Reaction(_) => {
                         // TODO: Reactions can be hostile or friendly
                     }
+                    ActionPayloadComponent::Displacement(_) => todo!(),
                 }
             }
             return Attitude::Neutral;

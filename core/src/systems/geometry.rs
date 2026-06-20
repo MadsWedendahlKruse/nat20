@@ -130,7 +130,7 @@ pub fn get_shape_at_point(
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Parabola {
     pub origin: Point3<f32>,
     pub initial_velocity: Vector3<f32>,
@@ -823,7 +823,7 @@ pub fn path(
 
 pub fn entities_in_shape(
     world: &World,
-    shape: Box<dyn Shape>,
+    shape: &dyn Shape,
     shape_pose: &Isometry3<f32>,
 ) -> Vec<Entity> {
     let mut entities = vec![];
@@ -832,7 +832,7 @@ pub fn entities_in_shape(
         if let Some((creature_shape, creature_shape_pose)) = get_shape(world, entity) {
             let intersects = parry3d::query::intersection_test(
                 shape_pose,
-                shape.as_ref(),
+                shape,
                 &creature_shape_pose,
                 &creature_shape,
             )
@@ -851,9 +851,9 @@ pub fn entities_in_range_of_entity(world: &World, entity: Entity, range: &Length
     if let Some((_, shape_pose)) = get_shape(world, entity) {
         entities_in_shape(
             world,
-            Box::new(Ball {
+            &Ball {
                 radius: range.get::<meter>(),
-            }),
+            },
             &shape_pose,
         )
     } else {
@@ -924,4 +924,19 @@ pub fn path_intersections_within_radius(
     }
 
     intersections
+}
+
+// TODO: Not sure where to put this
+#[derive(Debug, Clone, PartialEq)]
+pub enum DisplacementTemplate {
+    Teleport,
+    Push { distance: Length },
+    Pull { distance: Length },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Displacement {
+    Teleport,
+    Push { trajectory: Parabola },
+    Pull { trajectory: Parabola },
 }

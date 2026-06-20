@@ -7,15 +7,19 @@ use std::{
 
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
-use uom::si::{f32::Velocity, length::meter, velocity::meter_per_second};
+use uom::si::{
+    f32::{Length, Velocity},
+    length::meter,
+    velocity::meter_per_second,
+};
 
 use crate::{
     components::{
         actions::{
             action::{ActionAttackKind, ActionContext, TargetingFunction},
             targeting::{
-                AreaShape, EntityFilter, LineOfSightMode, TargetingContext, TargetingKind,
-                TargetingRange,
+                AreaFilter, AreaShape, EntityFilter, LineOfSightMode, TargetingContext,
+                TargetingKind, TargetingRange,
             },
         },
         faction::Attitude,
@@ -31,6 +35,28 @@ use crate::{
     },
     systems,
 };
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TargetingDefinition {
+    Default(String),
+    Custom(TargetingContextDefinition),
+}
+
+impl TargetingDefinition {
+    pub fn function(&self) -> Arc<TargetingFunction> {
+        match self {
+            TargetingDefinition::Default(name) => {
+                if let Some(function) = TARGETING_DEFAULTS.get(name) {
+                    function.clone()
+                } else {
+                    panic!("Unknown TargetingDefinition default: {}", name);
+                }
+            }
+            TargetingDefinition::Custom(definition) => definition.function(),
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 enum TargetingScope {
@@ -85,7 +111,7 @@ fn scoped_attack_targeting(
                 kind: TargetingKind::Single,
                 range,
                 line_of_sight,
-                allowed_targets: vec![EntityFilter::not_dead(), EntityFilter::NotSelf],
+                allowed_entities: vec![EntityFilter::not_dead(), EntityFilter::NotSelf],
             }
         },
     ) as Arc<TargetingFunction>
@@ -194,6 +220,7 @@ pub enum AreaShapeDefinition {
         length: LengthExpressionDefinition,
         width: LengthExpressionDefinition,
     },
+    Actor,
 }
 
 impl Evaluable for AreaShapeDefinition {
@@ -228,6 +255,17 @@ impl Evaluable for AreaShapeDefinition {
                 length: length.evaluate(world, entity, context, variables)?,
                 width: width.evaluate(world, entity, context, variables)?,
             }),
+            AreaShapeDefinition::Actor => {
+                let Some((actor_shape, _)) = systems::geometry::get_shape(world, entity) else {
+                    return Err(EvaluationError::Other(
+                        "Actor does not have a shape, cannot use 'actor' area shape".to_string(),
+                    ));
+                };
+                Ok(AreaShape::Capsule {
+                    half_height: Length::new::<meter>(actor_shape.half_height()),
+                    radius: Length::new::<meter>(actor_shape.radius),
+                })
+            }
         }
     }
 }
@@ -244,6 +282,8 @@ pub enum TargetingKindDefinition {
     Area {
         shape: AreaShapeDefinition,
         fixed_on_actor: bool,
+        #[serde(default)]
+        filters: Vec<AreaFilterDefinition>,
     },
 }
 
@@ -276,9 +316,11 @@ impl Evaluable for TargetingKindDefinition {
             TargetingKindDefinition::Area {
                 shape,
                 fixed_on_actor,
+                filters,
             } => Ok(TargetingKind::Area {
                 shape: shape.evaluate(world, entity, context, variables)?,
                 fixed_on_actor: *fixed_on_actor,
+                filters: filters.iter().map(|f| f.clone().into()).collect(),
             }),
         }
     }
@@ -362,6 +404,22 @@ impl EntityFilterDefinition {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum AreaFilterDefinition {
+    Unoccupied,
+    Walkable,
+}
+
+impl From<AreaFilterDefinition> for AreaFilter {
+    fn from(value: AreaFilterDefinition) -> Self {
+        match value {
+            AreaFilterDefinition::Unoccupied => AreaFilter::Unoccupied,
+            AreaFilterDefinition::Walkable => AreaFilter::Walkable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LineOfSightModeDefinition {
     Ignore,
     Ray,
@@ -421,7 +479,7 @@ impl TargetingContextDefinition {
                         .line_of_sight
                         .evaluate(world, entity, action_context, &PARSER_VARIABLES)
                         .unwrap(),
-                    allowed_targets: definition
+                    allowed_entities: definition
                         .allowed_targets
                         .iter()
                         .map(|entity_filter| entity_filter.evaluate())
@@ -429,27 +487,5 @@ impl TargetingContextDefinition {
                 }
             }
         })
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum TargetingDefinition {
-    Default(String),
-    Custom(TargetingContextDefinition),
-}
-
-impl TargetingDefinition {
-    pub fn function(&self) -> Arc<TargetingFunction> {
-        match self {
-            TargetingDefinition::Default(name) => {
-                if let Some(function) = TARGETING_DEFAULTS.get(name) {
-                    function.clone()
-                } else {
-                    panic!("Unknown TargetingDefinition default: {}", name);
-                }
-            }
-            TargetingDefinition::Custom(definition) => definition.function(),
-        }
     }
 }

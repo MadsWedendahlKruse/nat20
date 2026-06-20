@@ -7,6 +7,7 @@ use std::{
 use enum_dispatch::enum_dispatch;
 use hecs::Entity;
 use tracing::{debug, error};
+use uom::si::{f32::Velocity, length::meter, velocity::meter_per_second};
 
 use crate::{
     components::{
@@ -14,12 +15,13 @@ use crate::{
             action::{
                 ActionCondition, ActionConditionKind, ActionConditionResolution, ActionKindResult,
                 ActionOutcome, ActionOutcomeBundle, ActionPayload, ActionPayloadComponent,
-                DamageFunction, DamageOnFailure, DamageOutcome, EffectOutcome, HealingFunction,
-                HealingOutcome, PayloadDelivery, ReactionBodyFunction, ReactionOutcome,
+                DamageFunction, DamageOnFailure, DamageOutcome, DisplacementFunction,
+                EffectOutcome, HealingFunction, HealingOutcome, PayloadDelivery,
+                ReactionBodyFunction, ReactionOutcome,
             },
             targeting::TargetInstance,
         },
-        activity::ActivityPauseReason,
+        activity::{ActivityPauseReason, ActivityState},
         damage::DamageRollResult,
         dice::DiceSetRollResult,
         effects::effect::EffectInstanceTemplate,
@@ -37,6 +39,7 @@ use crate::{
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
+        geometry::{DEFAULT_GRAVITY, Displacement, DisplacementTemplate, Parabola},
     },
 };
 
@@ -464,6 +467,11 @@ impl ActionStepPayload {
                             reaction: reaction.clone(),
                         })
                     }
+                    ActionPayloadComponent::Displacement(displacement) => {
+                        StepPayloadKind::Displacement(StepPayloadDisplacement::Unresolved {
+                            displacement: displacement.clone(),
+                        })
+                    }
                 })
                 .collect(),
         }
@@ -547,6 +555,7 @@ pub enum StepPayloadKind {
     Effect(StepPayloadEffect),
     Healing(StepPayloadHealing),
     Reaction(StepPayloadReaction),
+    Displacement(StepPayloadDisplacement),
 }
 
 #[derive(Clone)]
@@ -1102,6 +1111,154 @@ impl std::fmt::Debug for StepPayloadReaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Resolved { .. } => f.debug_struct("Resolved").finish(),
+            Self::Applied { outcome } => {
+                f.debug_struct("Applied").field("outcome", outcome).finish()
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum StepPayloadDisplacement {
+    Unresolved {
+        displacement: Arc<DisplacementFunction>,
+    },
+    Resolved {
+        displacement: DisplacementTemplate,
+    },
+    Applied {
+        outcome: Displacement,
+    },
+}
+
+impl StepPayloadComponent for StepPayloadDisplacement {
+    fn is_resolved(&self) -> bool {
+        matches!(self, Self::Resolved { .. })
+    }
+
+    fn resolve(
+        &mut self,
+        game_state: &mut GameState,
+        action: &ActionData,
+        _condition_resolution: &ActionConditionResolution,
+    ) {
+        let displacement_fn = match self {
+            Self::Unresolved { displacement } => displacement.clone(),
+            Self::Resolved { .. } => return, // Already resolved
+            Self::Applied { .. } => return,  // Already applied, should never get here
+        };
+
+        *self = Self::Resolved {
+            displacement: displacement_fn(&game_state.world, action.actor.id(), &action.context),
+        };
+    }
+
+    fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied { .. })
+    }
+
+    fn apply_payload(
+        &mut self,
+        game_state: &mut GameState,
+        action: &ActionData,
+        target: Entity,
+        _condition_resolution: &ActionConditionResolution,
+    ) {
+        let displacement = match self {
+            Self::Unresolved { .. } => panic!("Cannot apply unresolved displacement payload"),
+            Self::Resolved { displacement } => displacement.clone(),
+            Self::Applied { .. } => return, // Already applied
+        };
+
+        match displacement {
+            DisplacementTemplate::Teleport => {
+                let Some(target_position) = action
+                    .targets
+                    .iter()
+                    .find_map(|target| target.position(&game_state.world))
+                else {
+                    error!("No valid target position for teleport displacement");
+                    return;
+                };
+
+                systems::geometry::teleport_to_ground(
+                    &mut game_state.world,
+                    &game_state.geometry,
+                    target,
+                    &target_position,
+                );
+
+                *self = Self::Applied {
+                    outcome: Displacement::Teleport,
+                };
+            }
+
+            DisplacementTemplate::Push { distance } => {
+                let Some(actor_position) =
+                    systems::geometry::get_foot_position(&game_state.world, action.actor.id())
+                else {
+                    error!("No valid actor position for push displacement");
+                    return;
+                };
+
+                let Some(target_start_position) =
+                    systems::geometry::get_foot_position(&game_state.world, target)
+                else {
+                    error!("No valid target position for push displacement");
+                    return;
+                };
+
+                let distance = distance.get::<meter>();
+                let direction = (target_start_position - actor_position).normalize();
+                let target_position = target_start_position + direction * distance;
+                let launch_speed = (2.0 * distance * DEFAULT_GRAVITY.y.abs()).sqrt(); // v = sqrt(2 * d * g)
+
+                let Some(trajectory) = Parabola::from_launch_velocity(
+                    target_start_position,
+                    target_position,
+                    DEFAULT_GRAVITY,
+                    &Velocity::new::<meter_per_second>(launch_speed),
+                ) else {
+                    error!("No valid trajectory for push displacement");
+                    return;
+                };
+
+                debug!(
+                    "Pushing target from {:?} to {:?} with launch speed {:?}",
+                    target_start_position, target_position, launch_speed
+                );
+
+                systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, target)
+                    .set_displaced(trajectory.clone());
+
+                *self = Self::Applied {
+                    outcome: Displacement::Push { trajectory },
+                };
+            }
+
+            DisplacementTemplate::Pull { distance } => todo!(),
+        }
+    }
+
+    fn outcome(&self) -> Option<ActionOutcome> {
+        match self {
+            Self::Applied { outcome } => Some(ActionOutcome::Displacement(outcome.clone())),
+            _ => None,
+        }
+    }
+}
+
+impl Debug for StepPayloadDisplacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unresolved { .. } => f
+                .debug_struct("Unresolved")
+                .field("displacement", &"<DisplacementFunction>")
+                .finish(),
+            Self::Resolved { displacement } => f
+                .debug_struct("Resolved")
+                .field("displacement", displacement)
+                .finish(),
             Self::Applied { outcome } => {
                 f.debug_struct("Applied").field("outcome", outcome).finish()
             }

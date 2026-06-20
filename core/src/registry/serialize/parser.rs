@@ -27,6 +27,7 @@ pub enum IntExpression {
 pub enum EvaluationError {
     UnknownVariable(String),
     DivisionByZero,
+    Other(String),
 }
 
 pub trait Evaluable {

@@ -3,9 +3,10 @@ use std::{collections::HashSet, fmt, str::FromStr};
 use hecs::{Entity, World};
 use parry3d::{
     na::{Isometry3, Point3, Translation3, UnitQuaternion, Vector3},
-    shape::{Ball, Cone, Cuboid, Cylinder, Shape},
+    shape::{Ball, Capsule, Cone, Cuboid, Cylinder, Shape},
 };
 use serde::{Deserialize, Serialize};
+use tracing::{error, trace};
 use uom::{
     Conversion,
     si::{
@@ -22,7 +23,7 @@ use crate::{
     },
     engine::geometry::WorldGeometry,
     entities::{character::CharacterTag, monster::MonsterTag},
-    systems,
+    systems::{self, geometry::EPSILON},
 };
 
 #[derive(Debug, Clone)]
@@ -30,7 +31,7 @@ pub struct TargetingContext {
     pub kind: TargetingKind,
     pub range: TargetingRange,
     pub line_of_sight: LineOfSightMode,
-    pub allowed_targets: Vec<EntityFilter>,
+    pub allowed_entities: Vec<EntityFilter>,
 }
 
 impl TargetingContext {
@@ -38,13 +39,13 @@ impl TargetingContext {
         kind: TargetingKind,
         range: TargetingRange,
         line_of_sight: LineOfSightMode,
-        allowed_targets: Vec<EntityFilter>,
+        allowed_entities: Vec<EntityFilter>,
     ) -> Self {
         TargetingContext {
             kind,
             range,
             line_of_sight,
-            allowed_targets,
+            allowed_entities,
         }
     }
 
@@ -53,7 +54,7 @@ impl TargetingContext {
             kind: TargetingKind::SelfTarget,
             range: TargetingRange::new::<meter>(0.0),
             line_of_sight: LineOfSightMode::Ignore,
-            allowed_targets: vec![EntityFilter::All],
+            allowed_entities: vec![EntityFilter::All],
         }
     }
 
@@ -64,7 +65,7 @@ impl TargetingContext {
         actor: Option<Entity>,
     ) -> Result<(), Vec<EntityFilter>> {
         let violated_filters: Vec<EntityFilter> = self
-            .allowed_targets
+            .allowed_entities
             .iter()
             .filter(|filter| !filter.matches(world, entity, actor))
             .cloned()
@@ -97,16 +98,43 @@ impl TargetingContext {
                     {
                         return Err(TargetingError::InvalidTarget {
                             target: target.clone(),
-                            violated_filters,
+                            violated_filters: violated_filters
+                                .into_iter()
+                                .map(Into::into)
+                                .collect(),
                         });
                     }
                 }
-                TargetInstance::Point(_) => {
-                    // Points are always allowed
+
+                TargetInstance::Point(point) => {
+                    if let TargetingKind::Area {
+                        shape,
+                        fixed_on_actor,
+                        filters,
+                    } = &self.kind
+                        && !filters.is_empty()
+                    {
+                        let shape_transform =
+                            shape.parry3d_shape(world, actor, *fixed_on_actor, point);
+                        let violated_filters: Vec<TargetFilter> = filters
+                            .iter()
+                            .filter(|filter| {
+                                !filter.matches(world, world_geometry, &shape_transform)
+                            })
+                            .cloned()
+                            .map(Into::into)
+                            .collect();
+
+                        if !violated_filters.is_empty() {
+                            return Err(TargetingError::InvalidTarget {
+                                target: target.clone(),
+                                violated_filters,
+                            });
+                        }
+                    }
                 }
             }
 
-            // Check range
             if self.kind.check_range() {
                 let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
 
@@ -130,7 +158,6 @@ impl TargetingContext {
                 }
             }
 
-            // Check line of sight
             if self.kind.check_line_of_sight() {
                 let line_of_sight_result = systems::geometry::line_of_sight_entity_target(
                     world,
@@ -222,6 +249,7 @@ pub enum TargetingKind {
     Area {
         shape: AreaShape,
         fixed_on_actor: bool,
+        filters: Vec<AreaFilter>,
     },
 }
 
@@ -246,11 +274,18 @@ impl TargetingKind {
 // TODO: parry3d shapes?
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AreaShape {
-    Cone { angle: Angle, length: Length }, // e.g. Cone of Cold
-    Sphere { radius: Length },             // e.g. Fireball
-    Cube { side_length: Length },          // e.g. Wall of Force
-    Cylinder { radius: Length, height: Length }, // e.g. Cloudkill
-    Line { length: Length, width: Length }, // e.g. Lightning Bolt
+    // e.g. Cone of Cold
+    Cone { angle: Angle, length: Length },
+    // e.g. Fireball
+    Sphere { radius: Length },
+    // e.g. Wall of Force
+    Cube { side_length: Length },
+    // e.g. Cloudkill
+    Cylinder { radius: Length, height: Length },
+    // e.g. Lightning Bolt
+    Line { length: Length, width: Length },
+    // Mainly used for unoccupied area targeting
+    Capsule { half_height: Length, radius: Length },
 }
 
 impl AreaShape {
@@ -319,13 +354,18 @@ impl AreaShape {
                 }
             }
 
-            AreaShape::Cylinder { radius, height } => ShapeTransform {
-                shape: Box::new(Cylinder::new(
-                    height.get::<meter>() / 2.0,
-                    radius.get::<meter>(),
-                )),
-                transform: Isometry3::new(translation, Vector3::zeros()),
-            },
+            AreaShape::Cylinder { radius, height } => {
+                // Parry's cylinders are centered on the middle, but we want them to start on the ground
+                translation.y += height.get::<meter>() / 2.0;
+
+                ShapeTransform {
+                    shape: Box::new(Cylinder::new(
+                        height.get::<meter>() / 2.0,
+                        radius.get::<meter>(),
+                    )),
+                    transform: Isometry3::new(translation, Vector3::zeros()),
+                }
+            }
 
             AreaShape::Line { length, width } => {
                 let half_length = length.get::<meter>() / 2.0;
@@ -355,6 +395,22 @@ impl AreaShape {
                         half_width,
                     ))),
                     transform,
+                }
+            }
+
+            AreaShape::Capsule {
+                half_height,
+                radius,
+            } => {
+                // Parry's capsules are centered on the middle, but we want them to start on the ground
+                translation.y += 2.0 * half_height.get::<meter>();
+
+                ShapeTransform {
+                    shape: Box::new(Capsule::new_y(
+                        half_height.get::<meter>(),
+                        radius.get::<meter>(),
+                    )),
+                    transform: Isometry3::new(translation, Vector3::zeros()),
                 }
             }
         }
@@ -451,6 +507,104 @@ impl EntityFilter {
     }
 }
 
+impl Into<TargetFilter> for EntityFilter {
+    fn into(self) -> TargetFilter {
+        TargetFilter::Entity(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AreaFilter {
+    Unoccupied,
+    Walkable,
+}
+
+impl AreaFilter {
+    pub fn matches(&self, world: &World, geometry: &WorldGeometry, shape: &ShapeTransform) -> bool {
+        match self {
+            AreaFilter::Unoccupied => {
+                let Result::Ok(intersection) = parry3d::query::intersection_test(
+                    &shape.transform,
+                    shape.shape.as_ref(),
+                    &Isometry3::identity(),
+                    &geometry.trimesh,
+                ) else {
+                    // If the intersection test fails for some reason, we don't
+                    // want to allow targeting the area
+                    error!(
+                        "Failed to perform area filter intersection test between world geometry and targeting shape: {:?}, {:?}",
+                        shape.shape.as_ref().shape_type(),
+                        shape.transform
+                    );
+                    return false;
+                };
+
+                if intersection {
+                    // If the shape intersects with the world geometry, it's probably
+                    // not an unoccupied area, though it could also be that we're
+                    // trying to target some part of the geometry which is not a
+                    // horizontal plane, so we can check if moving the shape up a
+                    // bit would avoid the intersection
+                    let mut moved_shape_transform = shape.transform.clone();
+                    moved_shape_transform.append_translation_mut(&Translation3::new(0.0, 0.1, 0.0));
+
+                    let Result::Ok(intersection) = parry3d::query::intersection_test(
+                        &moved_shape_transform,
+                        shape.shape.as_ref(),
+                        &Isometry3::identity(),
+                        &geometry.trimesh,
+                    ) else {
+                        error!(
+                            "Failed to perform area filter intersection test between world geometry and moved targeting shape: {:?}, {:?}",
+                            shape.shape.as_ref().shape_type(),
+                            moved_shape_transform
+                        );
+                        return false;
+                    };
+                    if !intersection {
+                        // If moving the shape up avoids the intersection, then it's
+                        // likely that the original intersection was just with the
+                        // ground, so we can still consider it an unoccupied area
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                systems::geometry::entities_in_shape(world, shape.shape.as_ref(), &shape.transform)
+                    .is_empty()
+            }
+
+            AreaFilter::Walkable => {
+                let point = shape.transform.translation.vector.into();
+                if let Some(nearest_walkable) =
+                    systems::geometry::navmesh_nearest_point(geometry, point)
+                {
+                    let xz_distance = (nearest_walkable.x - point.x).powi(2)
+                        + (nearest_walkable.z - point.z).powi(2);
+                    // TODO: Currently we're just checking if the point is above
+                    // the navmesh. Maybe we should also check the y distance?
+                    return xz_distance < EPSILON;
+                }
+
+                false
+            }
+        }
+    }
+}
+
+impl Into<TargetFilter> for AreaFilter {
+    fn into(self) -> TargetFilter {
+        TargetFilter::Area(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TargetFilter {
+    Entity(EntityFilter),
+    Area(AreaFilter),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetInstance {
     Entity {
@@ -505,7 +659,7 @@ pub enum TargetingError {
     },
     InvalidTarget {
         target: TargetInstance,
-        violated_filters: Vec<EntityFilter>,
+        violated_filters: Vec<TargetFilter>,
     },
     NotSelf {
         target: TargetInstance,

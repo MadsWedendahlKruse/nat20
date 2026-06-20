@@ -570,6 +570,7 @@ impl ActionBarWindow {
             TargetingKind::Area {
                 shape,
                 fixed_on_actor,
+                ..
             } => {
                 let Some(closest) = cursor_ray_result.closest() else {
                     return;
@@ -810,7 +811,7 @@ impl ActionBarWindow {
         let actor_radius = actor_shape.radius;
         let mut actor_position: [f32; 3] = actor_pose.translation.into();
         // Put the circle on the ground, but avoid z-fighting
-        actor_position[1] -= actor_shape.height() + 0.1;
+        actor_position[1] -= actor_shape.half_height() + 0.1;
 
         gui_state.line_renderer.add_circle(
             actor_position,

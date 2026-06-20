@@ -625,7 +625,7 @@ impl GameState {
             return systems::geometry::entities_in_shape(
                 &self.world,
                 // TODO: Not entirely sure what the right shape is here
-                Box::new(Ball { radius: 100.0 }),
+                &Ball { radius: 100.0 },
                 &shape_pose,
             );
         }

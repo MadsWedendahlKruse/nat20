@@ -26,7 +26,7 @@ use nat20_core::{
     registry::registry::{FeatsRegistry, SpellsRegistry},
     systems::{
         self,
-        d20::{D20CheckDCKind, D20ResultKind},
+        d20::{D20CheckDCKind, D20ResultKind}, geometry::Displacement,
     },
 };
 use std::collections::HashSet;
@@ -1181,6 +1181,25 @@ impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
                     }
                 }
             },
+            ActionOutcome::Displacement(displacement) => {
+                match displacement {
+                    Displacement::Teleport => {
+                        TextSegment::new("\tteleporting", TextKind::Normal).render(ui);
+                        ui.same_line();
+                        TextSegment::new(target_name, TextKind::Target).render(ui);
+                    },
+                    Displacement::Push { trajectory } => {
+                        TextSegment::new("\tpushing", TextKind::Normal).render(ui);
+                        ui.same_line();
+                        TextSegment::new(target_name, TextKind::Target).render(ui);
+                    },
+                    Displacement::Pull { trajectory } => {
+                        TextSegment::new("\tpulling", TextKind::Normal).render(ui);
+                        ui.same_line();
+                        TextSegment::new(target_name, TextKind::Target).render(ui);
+                    },
+                }
+            }
         }
     }
 }
@@ -1616,7 +1635,10 @@ impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind
                             )
                             .render(ui);
                         },
-                        ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */},
+                        ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */ },
+                        ActionPayloadComponent::Displacement(_) => {
+                            ui.text("TODO: Displacement placeholder");
+                        },
                     }
                 }
             }
@@ -1881,6 +1903,13 @@ impl ImguiRenderable for TargetingKind {
                         "AoE: Line\n\tLength: {:.1} meters, Width: {:.1} meters",
                         length.get::<meter>(),
                         width.get::<meter>()
+                    )
+                }
+                AreaShape::Capsule { half_height, radius } => {
+                    format!(
+                        "AoE: Capsule\n\tRadius: {:.1} meters, Half Height: {:.1} meters",
+                        radius.get::<meter>(),
+                        half_height.get::<meter>()
                     )
                 }
             },

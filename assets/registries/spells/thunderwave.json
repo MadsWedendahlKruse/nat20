@@ -1,0 +1,63 @@
+{
+    "id": "nat20_core::spell.thunderwave",
+    "description": "You unleash a wave of thunderous energy. Each creature in a 15-foot Cube originating from you makes a Constitution saving throw. On a failed save, a creature takes 2d8 Thunder damage and is pushed 10 feet away from you. On a successful save, a creature takes half as much damage only. In addition, unsecured objects that are entirely within the Cube are pushed 10 feet away from you, and a thunderous boom is audible within 300 feet. The damage increases by 1d8 for each spell slot level above 1.",
+    "base_level": 1,
+    "school": "evocation",
+    "flags": [
+        "verbal",
+        "somatic"
+    ],
+    "kind": {
+        "standard": {
+            "payload": {
+                "components": [
+                    {
+                        "damage": "(2  + spell_level - 1)d8;thunder",
+                        "damage_on_failure": "half"
+                    },
+                    {
+                        "displacement": {
+                            "push": {
+                                "distance": "10 feet"
+                            }
+                        }
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        }
+    },
+    "resource_cost": {
+        "nat20_core::resource.action": 1
+    },
+    "targeting": {
+        "kind": {
+            "area": {
+                "shape": {
+                    "line": {
+                        "length": "15 feet",
+                        "width": "15 feet"
+                    }
+                },
+                "fixed_on_actor": true
+            }
+        },
+        "range": "15 feet",
+        "line_of_sight": "ignore",
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            },
+            {
+                "tag": "not_self"
+            }
+        ]
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
+    }
+}

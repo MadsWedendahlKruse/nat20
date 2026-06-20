@@ -20,7 +20,7 @@ use crate::{
         game_state::GameState,
         geometry::WorldPath,
     },
-    systems::{self, movement::MovementError},
+    systems::{self, geometry::Parabola, movement::MovementError},
 };
 
 const MOVEMENT_SPEED: f32 = 5.0; // [m/s]
@@ -153,6 +153,17 @@ impl ActivityState {
     pub fn is_acting(&self) -> bool {
         matches!(self.state, ActivityStateKind::Acting { .. })
     }
+
+    pub fn set_displaced(&mut self, trajectory: Parabola) {
+        debug!(
+            "Setting entity to be displaced with trajectory {:?}",
+            trajectory
+        );
+        self.state = ActivityStateKind::Displaced {
+            trajectory,
+            elapsed_time: 0.0,
+        };
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +187,10 @@ pub enum ActivityStateKind {
         phases: VecDeque<ActionPhase>,
         phase_cooldown: f32,
         pause_reasons: HashSet<ActivityPauseReason>,
+    },
+    Displaced {
+        trajectory: Parabola,
+        elapsed_time: f32,
     },
 }
 
@@ -307,6 +322,24 @@ impl ActivityStateKind {
                         entity, total_duration
                     );
                     commands.push(ActivityGameStateCommand::ActivityCompleted { entity });
+                    *self = Self::Idle;
+                }
+            }
+
+            Self::Displaced {
+                trajectory,
+                elapsed_time,
+            } => {
+                *elapsed_time += delta_time;
+
+                let new_position = trajectory.position_at_time(*elapsed_time);
+                systems::geometry::teleport_to(&mut game_state.world, entity, &new_position);
+
+                if *elapsed_time >= trajectory.max_time {
+                    debug!(
+                        "Entity {:?} finished displacement after {:?} seconds",
+                        entity, trajectory.max_time
+                    );
                     *self = Self::Idle;
                 }
             }

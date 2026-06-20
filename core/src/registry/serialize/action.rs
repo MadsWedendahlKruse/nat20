@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
+use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
         actions::action::{
-            Action, ActionCondition, ActionKind, ActionPayload, ActionPayloadComponent,
-            ActionTimeline, DamageOnFailure, PayloadDelivery,
+            Action, ActionCondition, ActionContext, ActionKind, ActionPayload,
+            ActionPayloadComponent, ActionTimeline, DamageOnFailure, PayloadDelivery,
         },
         id::ActionId,
         resource::{RechargeRule, ResourceAmountMap},
@@ -16,12 +19,15 @@ use crate::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
             effect::EffectInstanceDefinition,
-            quantity::VelocityExpressionDefinition,
+            parser::{Evaluable, EvaluationError},
+            quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
             reaction::{ReactionBody, ReactionTrigger},
             targeting::TargetingDefinition,
+            variables::{PARSER_VARIABLES, VariableMap},
         },
     },
     scripts::script::ScriptFunction,
+    systems::geometry::DisplacementTemplate,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -150,6 +156,42 @@ impl From<PayloadDeliveryDefinition> for PayloadDelivery {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplacementTemplateDefinition {
+    Teleport,
+    Push {
+        distance: LengthExpressionDefinition,
+    },
+    Pull {
+        distance: LengthExpressionDefinition,
+    },
+}
+
+impl Evaluable for DisplacementTemplateDefinition {
+    type Output = DisplacementTemplate;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        action_context: &ActionContext,
+        variables: &VariableMap,
+    ) -> Result<Self::Output, EvaluationError> {
+        match self {
+            DisplacementTemplateDefinition::Teleport => Ok(DisplacementTemplate::Teleport),
+
+            DisplacementTemplateDefinition::Push { distance } => Ok(DisplacementTemplate::Push {
+                distance: distance.evaluate(world, entity, action_context, variables)?,
+            }),
+
+            DisplacementTemplateDefinition::Pull { distance } => Ok(DisplacementTemplate::Pull {
+                distance: distance.evaluate(world, entity, action_context, variables)?,
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionPayloadComponentDefinition {
     DamageFailure {
@@ -167,6 +209,9 @@ pub enum ActionPayloadComponentDefinition {
     },
     Reaction {
         reaction: ReactionBody,
+    },
+    Displacement {
+        displacement: DisplacementTemplateDefinition,
     },
 }
 
@@ -192,6 +237,15 @@ impl From<ActionPayloadComponentDefinition> for ActionPayloadComponent {
             }
             ActionPayloadComponentDefinition::Reaction { reaction } => {
                 ActionPayloadComponent::Reaction(reaction.function)
+            }
+            ActionPayloadComponentDefinition::Displacement { displacement } => {
+                ActionPayloadComponent::Displacement(Arc::new(
+                    move |world, entity, action_context| {
+                        displacement
+                            .evaluate(world, entity, action_context, &PARSER_VARIABLES)
+                            .unwrap()
+                    },
+                ))
             }
         }
     }

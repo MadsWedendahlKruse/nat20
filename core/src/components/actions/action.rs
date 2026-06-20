@@ -30,7 +30,10 @@ use crate::{
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     entities::projectile::ProjectileTemplate,
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
-    systems::{self},
+    systems::{
+        self,
+        geometry::{Displacement, DisplacementTemplate},
+    },
 };
 
 pub type DamageFunction = dyn Fn(&World, Entity, &ActionContext) -> DamageRoll + Send + Sync;
@@ -44,6 +47,8 @@ pub type TargetingFunction =
 pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
 pub type ReactionBodyFunction =
     dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionOutcome> + Send + Sync;
+pub type DisplacementFunction =
+    dyn Fn(&World, Entity, &ActionContext) -> DisplacementTemplate + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -324,6 +329,7 @@ pub enum ActionPayloadComponent {
     Effect(EffectInstanceTemplate),
     Healing(Arc<HealingFunction>),
     Reaction(Arc<ReactionBodyFunction>),
+    Displacement(Arc<DisplacementFunction>),
 }
 
 #[derive(Clone)]
@@ -549,6 +555,7 @@ pub enum ActionOutcome {
     Effect(EffectOutcome),
     Healing(HealingOutcome),
     Reaction(ReactionOutcome),
+    Displacement(Displacement),
 }
 
 #[derive(Debug, Clone, PartialEq)]
