@@ -3,6 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use hecs::Entity;
 use parry3d::na::Point3;
 use tracing::{debug, error, warn};
+use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::actions::{
@@ -314,6 +315,14 @@ impl ActivityStateKind {
                         "Entity {:?} finished displacement after {:?} seconds",
                         entity, trajectory.max_time
                     );
+
+                    let final_position = trajectory.position_at_time(trajectory.max_time);
+                    systems::movement::apply_fall_damage(
+                        game_state,
+                        entity,
+                        Length::new::<meter>(trajectory.origin.y - final_position.y),
+                    );
+
                     *self = Self::Idle;
                 }
             }

@@ -11,13 +11,13 @@ use crate::{
     components::{
         actions::action::{ActionAttackKind, ActionContext},
         d20::{D20Check, D20CheckOutcome, D20CheckResult},
-        dice::{DiceSet, DiceSetRoll, DiceSetRollResult},
+        dice::{DiceSetRoll, DiceSetRollResult},
         id::{ActionId, SpellId},
         items::equipment::{
             armor::ArmorClass,
             weapon::{Weapon, WeaponKind},
         },
-        modifier::{Modifiable, ModifierSet, ModifierSource},
+        modifier::{Modifiable, ModifierSource},
         proficiency::Proficiency,
     },
     systems::{self},
@@ -111,6 +111,7 @@ impl Default for DamageComponentResult {
 pub enum DamageSource {
     Weapon(WeaponKind),
     Spell(SpellId),
+    Environmental,
 }
 
 impl From<&Weapon> for DamageSource {
@@ -170,6 +171,7 @@ impl Display for DamageSource {
         match self {
             DamageSource::Weapon(kind) => write!(f, "{:?}", kind),
             DamageSource::Spell(spell_id) => write!(f, "{}", spell_id),
+            DamageSource::Environmental => write!(f, "Environmental"),
         }
     }
 }
@@ -712,7 +714,7 @@ mod tests {
 
     use crate::components::{
         ability::Ability,
-        dice::DieSize,
+        dice::{DiceSet, DieSize},
         id::{EffectId, ItemId},
         modifier::{Modifiable, ModifierSet, ModifierSource},
     };

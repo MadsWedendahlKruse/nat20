@@ -5,8 +5,11 @@ use parry3d::{
     query::{PointQuery, Ray, RayCast},
     shape::Ball,
 };
-use tracing::{error, trace};
-use uom::si::{f32::Length, length::meter};
+use tracing::{debug, error, trace};
+use uom::si::{
+    f32::Length,
+    length::{foot, meter},
+};
 
 use crate::{
     components::{
@@ -14,7 +17,10 @@ use crate::{
             LineOfSightMode, TargetInstance, TargetingCheck, TargetingError, TargetingKind,
         },
         activity::ActivityState,
+        damage::{DamageRoll, DamageSource, DamageType},
+        dice::{DiceSetRoll, DieSize},
         id::EntityIdentifier,
+        modifier::ModifierSet,
         speed::Speed,
     },
     engine::{
@@ -29,6 +35,10 @@ use crate::{
         geometry::{EPSILON, LineOfSightResult, RaycastFilter},
     },
 };
+
+pub const FALL_DAMAGE_DIE: DieSize = DieSize::D6;
+pub const FALL_DAMAGE_MAX_DICE: u32 = 20;
+pub const FALL_DAMAGE_THRESHOLD_FT: f32 = 10.0;
 
 #[derive(Debug, Clone)]
 pub enum MovementError {
@@ -549,4 +559,27 @@ fn get_opportunity_attack_point(
     });
 
     Some((event, intersections[0]))
+}
+
+// TODO: Not sure where this should live
+pub fn apply_fall_damage(game_state: &mut GameState, entity: Entity, fall_distance: Length) {
+    let fall_distance_ft = fall_distance.get::<foot>();
+    let damage_dice =
+        FALL_DAMAGE_MAX_DICE.min((fall_distance_ft / FALL_DAMAGE_THRESHOLD_FT).floor() as u32);
+    if damage_dice < 1 {
+        debug!(
+            "Entity {:?} fell {:?} ({} ft), which is below the threshold for fall damage, so no damage applied.",
+            entity, fall_distance, fall_distance_ft
+        );
+        return;
+    }
+
+    let damage_roll = DamageRoll::new(
+        DiceSetRoll::new(damage_dice, FALL_DAMAGE_DIE, ModifierSet::new()),
+        DamageType::Bludgeoning,
+        DamageSource::Environmental,
+    );
+    // TODO: Decouple damage events from the action performed events so stufff like
+    // this also shows up in the combat log
+    systems::health::damage(game_state, entity, &mut damage_roll.roll(false));
 }
