@@ -12,7 +12,6 @@ use crate::{
     },
     engine::{
         action_prompt::{ActionDecision, ActionError},
-        event::Event,
         game_state::GameState,
         geometry::WorldPath,
     },
@@ -71,7 +70,7 @@ impl ActivityState {
         game_state: &mut GameState,
         entity: Entity,
         delta_time: f32,
-    ) -> Vec<ActivityGameStateCommand> {
+    ) -> Vec<ActivityCommand> {
         if self.is_paused() {
             return Vec::new();
         }
@@ -194,7 +193,7 @@ impl ActivityStateKind {
         game_state: &mut GameState,
         entity: Entity,
         delta_time: f32,
-    ) -> Vec<ActivityGameStateCommand> {
+    ) -> Vec<ActivityCommand> {
         let mut commands = Vec::new();
 
         match self {
@@ -224,12 +223,14 @@ impl ActivityStateKind {
                 let distance_to_target = direction.norm();
 
                 if distance_to_target != 0.0 {
-                    commands.push(ActivityGameStateCommand::MoveEntity {
-                        entity,
-                        new_position: position
-                            + direction.normalize() * MOVEMENT_SPEED * delta_time,
-                        kind: MoveMode::Voluntary,
-                    });
+                    commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
+                        systems::movement::move_entity(
+                            game_state,
+                            entity,
+                            &(position + direction.normalize() * MOVEMENT_SPEED * delta_time),
+                            MoveMode::Voluntary,
+                        );
+                    }));
                 }
 
                 if distance_to_target < MOVEMENT_SPEED * delta_time {
@@ -245,7 +246,16 @@ impl ActivityStateKind {
                                 "Entity {:?} has a follow-up action, setting to act after movement",
                                 entity
                             );
-                            commands.push(ActivityGameStateCommand::SubmitAction(action_decision));
+                            commands.push(ActivityCommand::new(
+                                move |game_state: &mut GameState| match game_state
+                                    .submit_decision(action_decision.clone())
+                                {
+                                    Ok(_) => {}
+                                    Err(error) => {
+                                        error!("Failed to submit action decision: {:?}", error)
+                                    }
+                                },
+                            ));
                         } else {
                             debug!(
                                 "Entity {:?} has no follow-up action, setting to idle",
@@ -280,10 +290,10 @@ impl ActivityStateKind {
                             entity
                         );
                         *phase_cooldown = 0.0;
-                        commands.push(ActivityGameStateCommand::PerformActionPhase {
+                        commands.push(ActivityCommand::perform_phase(
                             entity,
-                            phase: phases.pop_front().unwrap(),
-                        });
+                            phases.pop_front().unwrap(),
+                        ));
                     }
                 }
 
@@ -292,8 +302,20 @@ impl ActivityStateKind {
                         "Entity {:?} finished action after {:?} seconds",
                         entity, total_duration
                     );
-                    commands.push(ActivityGameStateCommand::ActivityCompleted { entity });
                     *self = Self::Idle;
+
+                    commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
+                        let scope = game_state.scope_for_entity(entity);
+                        debug!(
+                            "Action completed for entity {:?}, clearing blockers and resuming pending events if ready",
+                            entity
+                        );
+                        game_state
+                            .interaction_engine
+                            .session_mut(scope)
+                            .clear_blocker(entity);
+                        game_state.resume_pending_events_if_ready(scope);
+                    }));
                 }
             }
 
@@ -304,11 +326,14 @@ impl ActivityStateKind {
                 *elapsed_time += delta_time;
 
                 let new_position = trajectory.position_at_time(*elapsed_time);
-                commands.push(ActivityGameStateCommand::MoveEntity {
-                    entity,
-                    new_position,
-                    kind: MoveMode::Displace,
-                });
+                commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
+                    systems::movement::move_entity(
+                        game_state,
+                        entity,
+                        &new_position,
+                        MoveMode::Displace,
+                    );
+                }));
 
                 if *elapsed_time >= trajectory.max_time {
                     debug!(
@@ -344,77 +369,28 @@ pub enum ActivityPauseReason {
     ActionStepResolution,
 }
 
-// TODO: Name?
-pub enum ActivityGameStateCommand {
-    ProcessEvent(Event),
-    SubmitAction(ActionDecision),
-    PerformActionPhase {
-        entity: Entity,
-        phase: ActionPhase,
-    },
-    ActivityCompleted {
-        entity: Entity,
-    },
-    DespawnEntity {
-        entity: Entity,
-    },
-    MoveEntity {
-        entity: Entity,
-        new_position: Point3<f32>,
-        kind: MoveMode,
-    },
-}
+pub struct ActivityCommand(pub Box<dyn FnOnce(&mut GameState)>);
 
-// TODO: If the implementaiton of this is in the GameState it can access all the
-// private methods without having to make them pub(crate)
-impl ActivityGameStateCommand {
+impl ActivityCommand {
     pub fn execute(self, game_state: &mut GameState) {
-        match self {
-            Self::ProcessEvent(event) => game_state.process_event(event),
+        (self.0)(game_state);
+    }
 
-            Self::SubmitAction(action) => match game_state.submit_decision(action) {
-                Ok(_) => {}
-                Err(error) => error!("Failed to submit action decision: {:?}", error),
-            },
+    pub fn new<F: FnOnce(&mut GameState) + 'static>(command: F) -> Self {
+        Self(Box::new(command))
+    }
 
-            Self::PerformActionPhase { entity, mut phase } => {
-                phase.perform(game_state);
-                if !phase.is_applied() {
-                    let scope = game_state.scope_for_entity(entity);
-                    game_state
-                        .interaction_engine
-                        .session_mut(scope)
-                        .queue_phase(entity, phase, false);
-                }
-            }
-
-            Self::ActivityCompleted { entity } => {
+    pub fn perform_phase(entity: Entity, mut phase: ActionPhase) -> Self {
+        // This one is a bit funky, so added a helper
+        Self::new(move |game_state| {
+            phase.perform(game_state);
+            if !phase.is_applied() {
                 let scope = game_state.scope_for_entity(entity);
-                debug!(
-                    "Activity completed for entity {:?}, clearing blockers and resuming pending events if ready",
-                    entity
-                );
                 game_state
                     .interaction_engine
                     .session_mut(scope)
-                    .clear_blocker(entity);
-                game_state.resume_pending_events_if_ready(scope);
+                    .queue_phase(entity, phase, false);
             }
-
-            Self::DespawnEntity { entity } => {
-                game_state
-                    .world
-                    .despawn(entity)
-                    .expect("DespawnEntity: entity not found");
-            }
-
-            Self::MoveEntity {
-                entity,
-                new_position,
-                kind,
-            } => {
-                systems::movement::move_entity(game_state, entity, &new_position, kind);
-            }
-        }
+        })
     }
 }

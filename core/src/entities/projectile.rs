@@ -9,7 +9,7 @@ use crate::{
             action_step::ActionPhase,
             targeting::{LineOfSightMode, TargetInstance},
         },
-        activity::{ActivityGameStateCommand, ActivityState},
+        activity::{ActivityCommand, ActivityState},
     },
     engine::{action_prompt::ActionData, game_state::GameState},
     systems::{
@@ -29,7 +29,7 @@ pub struct Projectile {
 }
 
 impl Projectile {
-    pub fn update(&mut self, entity: Entity, delta_time: f32) -> Vec<ActivityGameStateCommand> {
+    pub fn update(&mut self, entity: Entity, delta_time: f32) -> Vec<ActivityCommand> {
         if self.paused {
             return vec![];
         }
@@ -45,13 +45,16 @@ impl Projectile {
                 "Projectile {:?} has reached its target: {:?}",
                 entity, self.delivery_phase.target
             );
-            let actor = self.delivery_phase.action.actor.id();
             vec![
-                ActivityGameStateCommand::DespawnEntity { entity },
-                ActivityGameStateCommand::PerformActionPhase {
-                    entity: actor,
-                    phase: self.delivery_phase.clone(),
-                },
+                ActivityCommand::new(move |game_state: &mut GameState| {
+                    game_state
+                        .despawn(entity)
+                        .expect("Failed to despawn projectile entity");
+                }),
+                ActivityCommand::perform_phase(
+                    self.delivery_phase.action.actor.id(),
+                    self.delivery_phase.clone(),
+                ),
             ]
         } else {
             vec![]
