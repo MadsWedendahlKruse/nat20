@@ -5,3 +5,6 @@ members = [
 
 [patch.crates-io]
 polyanya = { git = "https://github.com/MadsWedendahlKruse/polyanya", branch = "fix-path-with-height-oob" }
+
+[profile.dev.package."*"]
+opt-level = 3

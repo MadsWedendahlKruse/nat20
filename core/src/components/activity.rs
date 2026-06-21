@@ -111,6 +111,10 @@ impl ActivityState {
         };
     }
 
+    pub fn is_moving(&self) -> bool {
+        matches!(self.state, ActivityStateKind::Moving { .. })
+    }
+
     pub fn set_acting(&mut self, action: &Action, phases: Vec<ActionPhase>) {
         if phases.is_empty() {
             debug!("No phases provided for action, setting to idle");

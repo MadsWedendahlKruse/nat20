@@ -6,7 +6,7 @@ use parry3d::{
     shape::{Ball, Capsule, Cone, Cuboid, Cylinder, Shape},
 };
 use serde::{Deserialize, Serialize};
-use tracing::{error, trace};
+use tracing::error;
 use uom::{
     Conversion,
     si::{
@@ -84,6 +84,7 @@ impl TargetingContext {
         world_geometry: &WorldGeometry,
         actor: Entity,
         targets: &[TargetInstance],
+        skip_checks: &[TargetingCheck],
     ) -> Result<(), TargetingError> {
         if targets.is_empty() {
             return Err(TargetingError::NoTargetsProvided);
@@ -135,9 +136,7 @@ impl TargetingContext {
                 }
             }
 
-            if self.kind.check_range() {
-                let actor_position = systems::geometry::get_foot_position(world, actor).unwrap();
-
+            if !skip_checks.contains(&TargetingCheck::Range) && self.kind.check_range() {
                 let distance = match target {
                     TargetInstance::Entity { entity, .. } => {
                         systems::geometry::distance_between_entities(world, actor, entity.id())
@@ -145,6 +144,8 @@ impl TargetingContext {
                     }
 
                     TargetInstance::Point(point) => {
+                        let actor_position =
+                            systems::geometry::get_foot_position(world, actor).unwrap();
                         Length::new::<meter>((point - actor_position).norm())
                     }
                 };
@@ -158,7 +159,9 @@ impl TargetingContext {
                 }
             }
 
-            if self.kind.check_line_of_sight() {
+            if !skip_checks.contains(&TargetingCheck::LineOfSight)
+                && self.kind.check_line_of_sight()
+            {
                 let line_of_sight_result = systems::geometry::line_of_sight_entity_target(
                     world,
                     world_geometry,
@@ -790,4 +793,10 @@ impl From<TargetingRange> for String {
     fn from(spec: TargetingRange) -> Self {
         spec.to_string()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TargetingCheck {
+    Range,
+    LineOfSight,
 }

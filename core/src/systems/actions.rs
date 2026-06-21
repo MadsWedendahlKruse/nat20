@@ -7,8 +7,8 @@ use crate::{
         actions::{
             action::{Action, ActionContext, ActionCooldownMap, ActionMap, ActionProvider},
             targeting::{
-                AreaFilter, AreaShape, LineOfSightMode, TargetInstance, TargetingContext,
-                TargetingError, TargetingKind,
+                AreaFilter, AreaShape, LineOfSightMode, TargetInstance, TargetingCheck,
+                TargetingContext, TargetingError, TargetingKind,
             },
         },
         activity::{ActivityPauseReason, ActivityState},
@@ -115,6 +115,16 @@ pub enum ActionUsabilityError {
     TargetingError(TargetingError),
 }
 
+// TODO: Not sure if this is the best way to handle skipping checks. All the call
+// sites get contaminated, and it's only used in one place so far
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ActionUsabilityCheck {
+    Alive,
+    Cooldown,
+    Resources,
+    Targeting(Vec<TargetingCheck>),
+}
+
 pub fn action_usable(
     world: &World,
     entity: Entity,
@@ -122,16 +132,23 @@ pub fn action_usable(
     // TODO: Is context really not needed here?
     action_context: &ActionContext,
     resource_cost: &ResourceAmountMap,
+    skip_checks: &[ActionUsabilityCheck],
 ) -> Result<(), ActionUsabilityError> {
-    if !systems::health::is_alive(world, entity) {
+    if !skip_checks.contains(&ActionUsabilityCheck::Alive)
+        && !systems::health::is_alive(world, entity)
+    {
         return Err(ActionUsabilityError::EntityNotAlive(entity));
     }
 
-    if let Some(cooldown) = on_cooldown(world, entity, action_id) {
+    if !skip_checks.contains(&ActionUsabilityCheck::Cooldown)
+        && let Some(cooldown) = on_cooldown(world, entity, action_id)
+    {
         return Err(ActionUsabilityError::OnCooldown(cooldown));
     }
 
-    if let Err(missing_resources) = systems::resources::can_afford(world, entity, resource_cost) {
+    if !skip_checks.contains(&ActionUsabilityCheck::Resources)
+        && let Err(missing_resources) = systems::resources::can_afford(world, entity, resource_cost)
+    {
         return Err(ActionUsabilityError::NotEnoughResources(missing_resources));
     }
 
@@ -146,13 +163,25 @@ pub fn action_usable_on_targets(
     context: &ActionContext,
     resource_cost: &ResourceAmountMap,
     targets: &[TargetInstance],
+    skip_checks: &[ActionUsabilityCheck],
 ) -> Result<(), ActionUsabilityError> {
-    action_usable(world, actor, action_id, context, resource_cost)?;
+    action_usable(world, actor, action_id, context, resource_cost, skip_checks)?;
 
     let targeting_context = targeting_context(world, actor, action_id, context);
 
+    let targeting_check = skip_checks
+        .iter()
+        .find_map(|check| {
+            if let ActionUsabilityCheck::Targeting(check) = check {
+                Some(check.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(Vec::new()); // If no targeting checks are being skipped, use an empty vector
+
     if let Err(targeting_error) =
-        targeting_context.validate_targets(world, world_geometry, actor, targets)
+        targeting_context.validate_targets(world, world_geometry, actor, targets, &targeting_check)
     {
         return Err(ActionUsabilityError::TargetingError(targeting_error));
     }
@@ -178,6 +207,7 @@ pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
                 action_id,
                 &action_context,
                 resource_cost,
+                &[],
             )
             .is_ok()
         });
@@ -359,7 +389,7 @@ pub fn available_reactions_to_event(
     game_state: &GameState,
     reactor: Entity,
     event: &Event,
-    skipped_errors: Option<fn(&ActionUsabilityError) -> bool>,
+    skip_checks: &[ActionUsabilityCheck],
 ) -> Vec<ActionData> {
     let mut reactions = Vec::new();
 
@@ -397,26 +427,21 @@ pub fn available_reactions_to_event(
                         context,
                         resource_cost,
                         &[target.clone()],
+                        skip_checks,
                     );
 
-                    // If the action is not usable and the error is not in the
-                    // skipped_errors, then skip this reaction
-                    if let Err(error) = &usability_result
-                        && !skipped_errors.as_ref().map_or(false, |f| f(error))
-                    {
-                        continue;
+                    if usability_result.is_ok() {
+                        reactions.push(
+                            ActionData::new(
+                                EntityIdentifier::from_world(world, reactor),
+                                reaction_id.clone(),
+                                context.clone(),
+                                resource_cost.clone(),
+                                vec![target],
+                            )
+                            .with_trigger_event(event.clone().into()),
+                        );
                     }
-
-                    reactions.push(
-                        ActionData::new(
-                            EntityIdentifier::from_world(world, reactor),
-                            reaction_id.clone(),
-                            context.clone(),
-                            resource_cost.clone(),
-                            vec![target],
-                        )
-                        .with_trigger_event(event.clone().into()),
-                    );
                 }
             }
         }

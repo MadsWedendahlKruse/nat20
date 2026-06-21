@@ -446,7 +446,10 @@ impl GameState {
                     let mut new_options = HashMap::new();
                     for reactor in options.keys() {
                         let reactions = systems::actions::available_reactions_to_event(
-                            self, *reactor, event, None,
+                            self,
+                            *reactor,
+                            event,
+                            &[],
                         );
                         if !reactions.is_empty() {
                             new_options.insert(*reactor, reactions);
@@ -562,7 +565,7 @@ impl GameState {
             }
 
             let reactions =
-                systems::actions::available_reactions_to_event(self, *reactor, event, None);
+                systems::actions::available_reactions_to_event(self, *reactor, event, &[]);
 
             if !reactions.is_empty() {
                 reaction_options.insert(*reactor, reactions);
@@ -623,6 +626,7 @@ impl GameState {
             action_context,
             resource_cost,
             targets,
+            &[],
         )
         .map_err(ActionError::Usability)?;
 

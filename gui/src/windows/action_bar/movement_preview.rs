@@ -1,5 +1,6 @@
 use hecs::Entity;
 use nat20_core::{
+    components::activity::ActivityState,
     engine::{game_state::GameState, geometry::WorldPath},
     systems::{self, movement::PathResult},
 };
@@ -13,7 +14,6 @@ use crate::{
 pub struct MovementPreview {
     pub entity: Entity,
     pub prev_goal: Option<Point3<f32>>,
-    pub prev_entity_position: Option<Point3<f32>>,
     pub path_result: Option<PathResult>,
     pub opportunity_attacks: Vec<(Entity, Point3<f32>)>,
 }
@@ -23,7 +23,6 @@ impl MovementPreview {
         Self {
             entity,
             prev_goal: None,
-            prev_entity_position: None,
             path_result: None,
             opportunity_attacks: Vec::new(),
         }
@@ -31,7 +30,6 @@ impl MovementPreview {
 
     pub fn clear(&mut self) {
         self.prev_goal = None;
-        self.prev_entity_position = None;
         self.path_result = None;
         self.opportunity_attacks.clear();
     }
@@ -63,10 +61,16 @@ impl MovementPreview {
         };
 
         if let Some(prev_goal) = self.prev_goal {
-            let entity_position =
-                systems::geometry::get_foot_position(&game_state.world, self.entity).unwrap();
-            // If the goal moved or the entity moved, recalculate the path and opportunity attacks
-            if goal != prev_goal || self.prev_entity_position != Some(entity_position) {
+            let is_moving =
+                systems::helpers::get_component::<ActivityState>(&game_state.world, self.entity)
+                    .is_moving();
+
+            if is_moving && !ui.is_mouse_down(imgui::MouseButton::Left) {
+                return;
+            }
+
+            // If the goal moved
+            if goal != prev_goal {
                 let in_combat = game_state.in_combat.contains_key(&self.entity);
                 if let Ok(path_result) =
                     systems::movement::path(game_state, self.entity, &goal, true, in_combat)
@@ -80,7 +84,6 @@ impl MovementPreview {
                         &game_state.get_potential_reactors(self.entity),
                     );
                 }
-                self.prev_entity_position = Some(entity_position);
             }
         } else {
             self.prev_goal = Some(goal);

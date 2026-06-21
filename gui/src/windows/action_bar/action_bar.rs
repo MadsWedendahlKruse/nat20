@@ -253,6 +253,7 @@ impl ActionBarWindow {
                     action_id,
                     context,
                     cost,
+                    &[],
                 )
                 .is_ok()
                 {
@@ -535,6 +536,7 @@ impl ActionBarWindow {
                     &game_state.geometry,
                     self.actor(),
                     &targets,
+                    &[],
                 );
 
                 match targeting_result {
@@ -671,6 +673,7 @@ impl ActionBarWindow {
             &game_state.geometry,
             self.actor(),
             &[target.clone()],
+            &[],
         );
 
         match targeting_result {

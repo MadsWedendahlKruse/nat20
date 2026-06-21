@@ -10,8 +10,10 @@ use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
-        actions::targeting::{LineOfSightMode, TargetInstance, TargetingError, TargetingKind},
-        activity::{ActivityPauseReason, ActivityState},
+        actions::targeting::{
+            LineOfSightMode, TargetInstance, TargetingCheck, TargetingError, TargetingKind,
+        },
+        activity::ActivityState,
         id::EntityIdentifier,
         speed::Speed,
     },
@@ -23,7 +25,7 @@ use crate::{
     },
     systems::{
         self,
-        actions::ActionUsabilityError,
+        actions::{ActionUsabilityCheck, ActionUsabilityError},
         geometry::{EPSILON, LineOfSightResult, RaycastFilter},
     },
 };
@@ -387,6 +389,21 @@ pub fn move_entity(
     }
 }
 
+fn move_new_position(
+    game_state: &mut GameState,
+    entity: Entity,
+    from_position: Point3<f32>,
+    new_position: &Point3<f32>,
+) {
+    systems::geometry::teleport_to(&mut game_state.world, entity, new_position);
+
+    if game_state.in_combat.contains_key(&entity) {
+        let distance_moved = Length::new::<meter>((new_position - from_position).norm());
+        systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity)
+            .record_movement(distance_moved);
+    }
+}
+
 pub fn calculate_opportunity_attack(
     game_state: &GameState,
     entity: Entity,
@@ -409,19 +426,17 @@ pub fn calculate_opportunity_attack(
         return None;
     }
 
-    let event = Event::new(EventKind::MovingOutOfReach {
-        mover: EntityIdentifier::from_world(&game_state.world, entity),
-        entity: EntityIdentifier::from_world(&game_state.world, attacker),
-    });
+    let (event, intersection) =
+        get_opportunity_attack_point(game_state, entity, attacker, from_position, new_position)?;
 
     let reactions = systems::actions::available_reactions_to_event(
         game_state,
         attacker,
         &event,
-        Some(|error: &ActionUsabilityError| {
-            matches!(error, ActionUsabilityError::TargetingError(targeting_error)
-                if matches!(targeting_error, TargetingError::OutOfRange { .. } | TargetingError::NoLineOfSight { .. }))
-        }),
+        &[ActionUsabilityCheck::Targeting(vec![
+            TargetingCheck::Range,
+            TargetingCheck::LineOfSight,
+        ])],
     );
 
     if reactions.is_empty() {
@@ -433,6 +448,16 @@ pub fn calculate_opportunity_attack(
         return None;
     }
 
+    Some((event, intersection))
+}
+
+fn get_opportunity_attack_point(
+    game_state: &GameState,
+    entity: Entity,
+    attacker: Entity,
+    from_position: &Point3<f32>,
+    new_position: &Point3<f32>,
+) -> Option<(Event, Point3<f32>)> {
     let Some(attacker_position) = systems::geometry::get_foot_position(&game_state.world, attacker)
     else {
         error!(
@@ -468,12 +493,13 @@ pub fn calculate_opportunity_attack(
     // Scenario 1: No intersections
     // Entity either doesn't come within reach or doesn't leave reach, so no opportunity attack.
     if intersections.is_empty() {
-        trace!(
-            "No intersections for potential opportunity attack between {:?} and {:?}.",
-            entity, attacker
-        );
         return None;
     }
+
+    let event = Event::new(EventKind::MovingOutOfReach {
+        mover: EntityIdentifier::from_world(&game_state.world, entity),
+        entity: EntityIdentifier::from_world(&game_state.world, attacker),
+    });
 
     // Scenario 2: One intersection
     // 2a: Entity starts outside of reach and enters reach: no opportunity attack
@@ -500,49 +526,27 @@ pub fn calculate_opportunity_attack(
 
         // Scenario 2c
         trace!(
-            "Entity {:?} starts within reach of potential attacker {:?} and leaves reach, so opportunity attack.",
+            "Entity {:?} starts within reach of potential attacker {:?} and leaves reach, so potential opportunity attack.",
             entity, attacker
-        );
-        trace!(
-            "attacker_from_dist: {:?}, attacker_to_dist: {:?}, attacker_reach: {:?}",
-            (from_position - attacker_position).norm(),
-            (new_position - attacker_position).norm(),
-            attacker_reach
         );
         return Some((event, intersections[0]));
     }
 
     // Scenario 3: More than one intersection
     // Entity enters and leaves reach at least once, so opportunity attack.
+    trace!(
+        "Entity {:?} enters and leaves reach of potential attacker {:?} multiple times, so potential opportunity attack.",
+        entity, attacker
+    );
+
     intersections.sort_by(|a, b| {
-        let distance_a = (from_position - *a).norm_squared();
-        let distance_b = (from_position - *b).norm_squared();
+        // Negative distance so we get the furthest intersection first
+        let distance_a = -(from_position - *a).norm_squared();
+        let distance_b = -(from_position - *b).norm_squared();
         distance_a
             .partial_cmp(&distance_b)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    intersections.reverse();
-
-    trace!(
-        "Entity {:?} enters and leaves reach of potential attacker {:?} multiple times, so opportunity attack.",
-        entity, attacker
-    );
-
     Some((event, intersections[0]))
-}
-
-fn move_new_position(
-    game_state: &mut GameState,
-    entity: Entity,
-    from_position: Point3<f32>,
-    new_position: &Point3<f32>,
-) {
-    systems::geometry::teleport_to(&mut game_state.world, entity, new_position);
-
-    if game_state.in_combat.contains_key(&entity) {
-        let distance_moved = Length::new::<meter>((new_position - from_position).norm());
-        systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity)
-            .record_movement(distance_moved);
-    }
 }
