@@ -1170,8 +1170,13 @@ impl StepPayloadComponent for StepPayloadDisplacement {
             Self::Applied { .. } => return, // Already applied
         };
 
-        match displacement {
-            DisplacementTemplate::Teleport => {
+        let Some(displacement) = displacement.instantiate(game_state, action, target) else {
+            error!("Failed to instantiate displacement, cannot apply");
+            return;
+        };
+
+        match &displacement {
+            Displacement::Teleport => {
                 let Some(target_position) = action
                     .targets
                     .iter()
@@ -1193,63 +1198,14 @@ impl StepPayloadComponent for StepPayloadDisplacement {
                 };
             }
 
-            DisplacementTemplate::Push { distance } => {
-                let Some(actor_position) =
-                    systems::geometry::get_foot_position(&game_state.world, action.actor.id())
-                else {
-                    error!("No valid actor position for push displacement");
-                    return;
-                };
-
-                let Some(target_start_position) =
-                    systems::geometry::get_foot_position(&game_state.world, target)
-                else {
-                    error!("No valid target position for push displacement");
-                    return;
-                };
-
-                let distance = distance.get::<meter>();
-                let direction = (target_start_position - actor_position).normalize();
-                let target_position = target_start_position + direction * distance;
-                let launch_speed = (2.0 * distance * DEFAULT_GRAVITY.y.abs()).sqrt(); // v = sqrt(2 * d * g)
-
-                let Some(mut trajectory) = Parabola::from_launch_velocity(
-                    target_start_position,
-                    target_position,
-                    DEFAULT_GRAVITY,
-                    &Velocity::new::<meter_per_second>(launch_speed),
-                ) else {
-                    error!("No valid trajectory for push displacement");
-                    return;
-                };
-                // Arbitrary max time to prevent infinite trajectories, but also
-                // allow for long pushes, e.g. off a cliff
-                trajectory.max_time = 30.0;
-
-                if let Some(raycast_result) = systems::geometry::raycast_parabola(
-                    &game_state.world,
-                    &game_state.geometry,
-                    &trajectory,
-                    &RaycastFilter::WorldOnly,
-                ) && let Some(closest) = raycast_result.closest()
-                {
-                    trajectory.max_time = closest.toi;
-                }
-
-                debug!(
-                    "Pushing target from {:?} to {:?} with launch speed {:?}",
-                    target_start_position, target_position, launch_speed
-                );
-
+            Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
                 systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, target)
                     .set_displaced(trajectory.clone());
 
                 *self = Self::Applied {
-                    outcome: Displacement::Push { trajectory },
+                    outcome: displacement.clone(),
                 };
             }
-
-            DisplacementTemplate::Pull { distance } => todo!(),
         }
     }
 

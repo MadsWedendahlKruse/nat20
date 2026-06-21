@@ -6,7 +6,10 @@ use nat20_core::{
     components::{
         ability::AbilityScoreMap,
         actions::{
-            action::{ActionCondition, ActionKind, AttackRollFunction, SavingThrowFunction},
+            action::{
+                ActionCondition, ActionKind, ActionPayloadComponent, AttackRollFunction,
+                SavingThrowFunction,
+            },
             action_builder::{ActionBuilder, ActionBuilderState},
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
         },
@@ -21,7 +24,11 @@ use nat20_core::{
         action_prompt::{ActionData, ActionPromptKind},
         game_state::GameState,
     },
-    systems::{self, geometry::RaycastHitKind, movement::TargetPathFindingResult},
+    systems::{
+        self,
+        geometry::{Displacement, DisplacementTemplate, RaycastHitKind},
+        movement::TargetPathFindingResult,
+    },
 };
 use parry3d::shape::ShapeType;
 use tracing::{debug, error, info};
@@ -619,6 +626,8 @@ impl ActionBarWindow {
 
                 render_target_chance_tooltips(ui, game_state, action, &target);
 
+                let displacement = get_displacement_component(game_state, action);
+
                 let affected_entities = systems::actions::get_targeted_entities(
                     game_state,
                     action,
@@ -633,6 +642,13 @@ impl ActionBarWindow {
                             width: 3.0,
                         },
                     );
+
+                    if let Some(displacement) = &displacement
+                        && let Some(displacement) =
+                            displacement.instantiate(game_state, action, entity)
+                    {
+                        displacement.render(ui, gui_state);
+                    }
                 }
 
                 if *fixed_on_actor {
@@ -1190,5 +1206,44 @@ fn reverse_text_kind(text_kind: TextKind) -> TextKind {
         TextKind::Green => TextKind::Red,
         TextKind::Red => TextKind::Green,
         other => other,
+    }
+}
+
+fn get_displacement_component(
+    game_state: &GameState,
+    action_data: &ActionData,
+) -> Option<DisplacementTemplate> {
+    let action = systems::actions::get_action(&action_data.action_id)?;
+    match action.kind() {
+        ActionKind::Standard { payload, .. } => {
+            for component in payload.components() {
+                match component {
+                    ActionPayloadComponent::Displacement(displacement_fn) => {
+                        return Some(displacement_fn(
+                            &game_state.world,
+                            action_data.actor.id(),
+                            &action_data.context,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+
+    return None;
+}
+
+impl Renderable for Displacement {
+    fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
+        match self {
+            Displacement::Teleport => { /* Nothing to render */ }
+            Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
+                gui_state
+                    .line_renderer
+                    .add_parabola(trajectory, Color::White);
+            }
+        }
     }
 }

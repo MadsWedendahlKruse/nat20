@@ -23,6 +23,7 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
+        game_state::GameState,
         geometry::{WorldGeometry, WorldPath},
     },
     systems,
@@ -932,6 +933,75 @@ pub enum DisplacementTemplate {
     Teleport,
     Push { distance: Length },
     Pull { distance: Length },
+}
+
+impl DisplacementTemplate {
+    pub fn instantiate(
+        &self,
+        game_state: &GameState,
+        action: &ActionData,
+        target: Entity,
+    ) -> Option<Displacement> {
+        match self {
+            DisplacementTemplate::Teleport => Some(Displacement::Teleport),
+
+            DisplacementTemplate::Push { distance } => Some(Displacement::Push {
+                trajectory: Self::get_trajectory(game_state, action, target, distance, true)?,
+            }),
+
+            DisplacementTemplate::Pull { distance } => Some(Displacement::Pull {
+                trajectory: Self::get_trajectory(game_state, action, target, distance, false)?,
+            }),
+        }
+    }
+
+    fn get_trajectory(
+        game_state: &GameState,
+        action: &ActionData,
+        target: Entity,
+        distance: &Length,
+        push: bool,
+    ) -> Option<Parabola> {
+        let actor_position =
+            systems::geometry::get_foot_position(&game_state.world, action.actor.id())?;
+        let target_start_position =
+            systems::geometry::get_foot_position(&game_state.world, target)?;
+
+        let distance = distance.get::<meter>();
+
+        let direction = if push {
+            (target_start_position - actor_position).normalize()
+        } else {
+            (actor_position - target_start_position).normalize()
+        };
+
+        let target_position = target_start_position + direction * distance;
+
+        let launch_speed = (2.0 * distance * DEFAULT_GRAVITY.y.abs()).sqrt(); // v = sqrt(2 * d * g)
+
+        let mut trajectory = Parabola::from_launch_velocity(
+            target_start_position,
+            target_position,
+            DEFAULT_GRAVITY,
+            &Velocity::new::<meter_per_second>(launch_speed),
+        )?;
+
+        // Arbitrary max time to prevent infinite trajectories, but also
+        // allow for long pushes, e.g. off a cliff
+        trajectory.max_time = 30.0;
+
+        if let Some(raycast_result) = systems::geometry::raycast_parabola(
+            &game_state.world,
+            &game_state.geometry,
+            &trajectory,
+            &RaycastFilter::WorldOnly,
+        ) && let Some(closest) = raycast_result.closest()
+        {
+            trajectory.max_time = closest.toi;
+        }
+
+        Some(trajectory)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
