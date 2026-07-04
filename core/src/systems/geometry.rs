@@ -797,16 +797,12 @@ pub fn path_point_point(
     start: Point3<f32>,
     goal: Point3<f32>,
 ) -> Option<WorldPath> {
-    let start = navmesh_nearest_point(world_geometry, start)?;
-    let goal = navmesh_nearest_point(world_geometry, goal)?;
-
     let mut path = world_geometry.path(start, goal)?;
-    let num_points = path.points.len();
 
-    // Snap remaining path points to navmesh
-    for point in &mut path.points[1..(num_points - 1)] {
-        if let Some(nav_point) = navmesh_nearest_point(world_geometry, *point) {
-            *point = nav_point;
+    // Snap path points to geometry
+    for point in &mut path.points {
+        if let Some(ground_pos) = ground_position(world_geometry, point) {
+            *point = ground_pos;
         }
     }
 
@@ -980,7 +976,8 @@ impl DisplacementTemplate {
         let launch_speed = (2.0 * distance * DEFAULT_GRAVITY.y.abs()).sqrt(); // v = sqrt(2 * d * g)
 
         let mut trajectory = Parabola::from_launch_velocity(
-            target_start_position,
+            // Slightly above the ground to avoid immediate collision
+            target_start_position + Vector3::y() * EPSILON,
             target_position,
             DEFAULT_GRAVITY,
             &Velocity::new::<meter_per_second>(launch_speed),
