@@ -797,6 +797,12 @@ pub fn path_point_point(
     start: Point3<f32>,
     goal: Point3<f32>,
 ) -> Option<WorldPath> {
+    // I feel like we're also doing this exact check inside WorldGeometry::path,
+    // but if I remove it from here we get some really weird path that just
+    // vertically no-clip through the geometry
+    let start = navmesh_nearest_point(world_geometry, start)?;
+    let goal = navmesh_nearest_point(world_geometry, goal)?;
+
     let mut path = world_geometry.path(start, goal)?;
 
     // Snap path points to geometry

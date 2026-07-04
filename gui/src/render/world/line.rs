@@ -186,7 +186,8 @@ impl LineRenderer {
             &path
                 .points
                 .iter()
-                .map(|p| [p.x, p.y, p.z])
+                // Offset the path slightly above the ground to avoid z-fighting
+                .map(|p| [p.x, p.y + 0.1, p.z])
                 .collect::<Vec<_>>(),
             col.into(),
         );
