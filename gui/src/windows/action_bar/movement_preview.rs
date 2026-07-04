@@ -1,6 +1,6 @@
 use hecs::Entity;
 use nat20_core::{
-    components::activity::ActivityState,
+    components::activity::{ActivityState, ActivityStateKind},
     engine::{game_state::GameState, geometry::WorldPath},
     systems::{self, movement::PathResult},
 };
@@ -61,12 +61,17 @@ impl MovementPreview {
         };
 
         if let Some(prev_goal) = self.prev_goal {
-            let is_moving =
-                systems::helpers::get_component::<ActivityState>(&game_state.world, self.entity)
-                    .is_moving();
+            let activity_state =
+                systems::helpers::get_component::<ActivityState>(&game_state.world, self.entity);
 
-            if is_moving && !ui.is_mouse_down(imgui::MouseButton::Left) {
-                return;
+            match &activity_state.state {
+                ActivityStateKind::Moving { .. } => {
+                    if !ui.is_mouse_down(imgui::MouseButton::Left) {
+                        return;
+                    }
+                }
+                ActivityStateKind::Acting { .. } => return,
+                _ => {}
             }
 
             // If the goal moved

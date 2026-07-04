@@ -14,7 +14,8 @@ use uom::si::{
 use crate::{
     components::{
         actions::targeting::{
-            LineOfSightMode, TargetInstance, TargetingCheck, TargetingError, TargetingKind,
+            LineOfSight, LineOfSightTrajectory, TargetInstance, TargetingCheck, TargetingError,
+            TargetingKind,
         },
         activity::ActivityState,
         damage::{DamageRoll, DamageSource, DamageType},
@@ -112,7 +113,7 @@ pub fn path_in_range_of_target(
     target: &TargetInstance,
     range: Length,
     allow_partial: bool,
-    line_of_sight: LineOfSightMode,
+    line_of_sight: LineOfSight,
     trim_to_movement: bool,
 ) -> Result<PathInRangeOfTargetResult, MovementError> {
     trace!(
@@ -154,7 +155,7 @@ pub fn path_in_range_of_target(
     if let Some(result) = determine_path_sphere_intersections(
         game_state,
         entity,
-        &line_of_sight,
+        &line_of_sight.trajectory,
         range,
         &path_to_target.full_path,
         &target,
@@ -192,7 +193,7 @@ pub struct PathSphereIntersectionResult {
 fn determine_path_sphere_intersections(
     game_state: &mut GameState,
     entity: Entity,
-    line_of_sight: &LineOfSightMode,
+    trajectory: &LineOfSightTrajectory,
     range: Length,
     path_to_target: &WorldPath,
     target: &TargetInstance,
@@ -226,9 +227,9 @@ fn determine_path_sphere_intersections(
             let mut line_of_sight_result = systems::geometry::line_of_sight_point_point(
                 &game_state.world,
                 &game_state.geometry,
-                eye_pos_at_intersection,
-                target_point,
-                line_of_sight,
+                &eye_pos_at_intersection,
+                &target_point,
+                trajectory,
                 &raycast_filter,
             );
             if let TargetInstance::Entity {

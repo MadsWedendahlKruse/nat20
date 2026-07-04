@@ -18,8 +18,8 @@ use crate::{
         actions::{
             action::{ActionAttackKind, ActionContext, TargetingFunction},
             targeting::{
-                AreaFilter, AreaShape, EntityFilter, LineOfSightMode, TargetingContext,
-                TargetingKind, TargetingRange,
+                AreaFilter, AreaShape, EntityFilter, LineOfSight, LineOfSightExtentTemplate,
+                LineOfSightTrajectory, TargetingContext, TargetingKind, TargetingRange,
             },
         },
         faction::Attitude,
@@ -35,6 +35,33 @@ use crate::{
     },
     systems,
 };
+
+static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
+    LazyLock::new(|| {
+        HashMap::from([
+            (
+                "melee_weapon_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::MeleeWeapon, "melee_weapon_targeting"),
+            ),
+            (
+                "melee_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::Melee, "melee_targeting"),
+            ),
+            (
+                "ranged_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::RangedWeapon, "ranged_targeting"),
+            ),
+            (
+                "unarmed_targeting".to_string(),
+                scoped_attack_targeting(TargetingScope::Unarmed, "unarmed_targeting"),
+            ),
+            (
+                "self".to_string(),
+                Arc::new(|_: &World, _: Entity, _: &ActionContext| TargetingContext::self_target())
+                    as Arc<TargetingFunction>,
+            ),
+        ])
+    });
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -98,10 +125,10 @@ fn scoped_attack_targeting(
 
             let range = systems::loadout::attack_targeting_range(world, entity, action_context);
 
-            let line_of_sight = if range.is_melee() {
-                LineOfSightMode::Ray
+            let trajectory = if range.is_melee() {
+                LineOfSightTrajectory::Ray
             } else {
-                LineOfSightMode::Parabola {
+                LineOfSightTrajectory::Parabola {
                     // TODO: Default arrow speed?
                     launch_velocity: Velocity::new::<meter_per_second>(50.0),
                 }
@@ -110,39 +137,15 @@ fn scoped_attack_targeting(
             TargetingContext {
                 kind: TargetingKind::Single,
                 range,
-                line_of_sight,
+                line_of_sight: LineOfSight {
+                    trajectory,
+                    extent: LineOfSightExtentTemplate::Point,
+                },
                 allowed_entities: vec![EntityFilter::not_dead(), EntityFilter::NotSelf],
             }
         },
     ) as Arc<TargetingFunction>
 }
-
-static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
-    LazyLock::new(|| {
-        HashMap::from([
-            (
-                "melee_weapon_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::MeleeWeapon, "melee_weapon_targeting"),
-            ),
-            (
-                "melee_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::Melee, "melee_targeting"),
-            ),
-            (
-                "ranged_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::RangedWeapon, "ranged_targeting"),
-            ),
-            (
-                "unarmed_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::Unarmed, "unarmed_targeting"),
-            ),
-            (
-                "self".to_string(),
-                Arc::new(|_: &World, _: Entity, _: &ActionContext| TargetingContext::self_target())
-                    as Arc<TargetingFunction>,
-            ),
-        ])
-    });
 
 // TODO: Should this live somewhere else?
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -420,7 +423,7 @@ impl From<AreaFilterDefinition> for AreaFilter {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LineOfSightModeDefinition {
+pub enum LineOfSightTrajectoryDefinition {
     Ignore,
     Ray,
     Parabola {
@@ -428,8 +431,8 @@ pub enum LineOfSightModeDefinition {
     },
 }
 
-impl Evaluable for LineOfSightModeDefinition {
-    type Output = LineOfSightMode;
+impl Evaluable for LineOfSightTrajectoryDefinition {
+    type Output = LineOfSightTrajectory;
 
     fn evaluate(
         &self,
@@ -437,12 +440,12 @@ impl Evaluable for LineOfSightModeDefinition {
         entity: Entity,
         context: &ActionContext,
         variables: &VariableMap,
-    ) -> Result<LineOfSightMode, EvaluationError> {
+    ) -> Result<LineOfSightTrajectory, EvaluationError> {
         match self {
-            LineOfSightModeDefinition::Ignore => Ok(LineOfSightMode::Ignore),
-            LineOfSightModeDefinition::Ray => Ok(LineOfSightMode::Ray),
-            LineOfSightModeDefinition::Parabola { launch_velocity } => {
-                Ok(LineOfSightMode::Parabola {
+            LineOfSightTrajectoryDefinition::Ignore => Ok(LineOfSightTrajectory::Ignore),
+            LineOfSightTrajectoryDefinition::Ray => Ok(LineOfSightTrajectory::Ray),
+            LineOfSightTrajectoryDefinition::Parabola { launch_velocity } => {
+                Ok(LineOfSightTrajectory::Parabola {
                     launch_velocity: launch_velocity.evaluate(world, entity, context, variables)?,
                 })
             }
@@ -450,11 +453,71 @@ impl Evaluable for LineOfSightModeDefinition {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LineOfSightExtentTemplateDefinition {
+    #[default]
+    Point,
+    Shape {
+        shape: AreaShapeDefinition,
+        fixed_on_actor: bool,
+    },
+}
+
+impl Evaluable for LineOfSightExtentTemplateDefinition {
+    type Output = LineOfSightExtentTemplate;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        context: &ActionContext,
+        variables: &VariableMap,
+    ) -> Result<LineOfSightExtentTemplate, EvaluationError> {
+        match self {
+            LineOfSightExtentTemplateDefinition::Point => Ok(LineOfSightExtentTemplate::Point),
+            LineOfSightExtentTemplateDefinition::Shape {
+                shape,
+                fixed_on_actor,
+            } => Ok(LineOfSightExtentTemplate::Shape {
+                shape: shape.evaluate(world, entity, context, variables)?,
+                fixed_on_actor: *fixed_on_actor,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineOfSightDefinition {
+    pub trajectory: LineOfSightTrajectoryDefinition,
+    #[serde(default)]
+    pub extent: LineOfSightExtentTemplateDefinition,
+}
+
+impl Evaluable for LineOfSightDefinition {
+    type Output = LineOfSight;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        context: &ActionContext,
+        variables: &VariableMap,
+    ) -> Result<LineOfSight, EvaluationError> {
+        Ok(LineOfSight {
+            trajectory: self
+                .trajectory
+                .evaluate(world, entity, context, variables)?,
+            extent: self.extent.evaluate(world, entity, context, variables)?,
+        })
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TargetingContextDefinition {
     pub kind: TargetingKindDefinition,
     pub range: LengthExpressionDefinition,
-    pub line_of_sight: LineOfSightModeDefinition,
+    pub line_of_sight: LineOfSightDefinition,
     pub allowed_targets: Vec<EntityFilterDefinition>,
 }
 

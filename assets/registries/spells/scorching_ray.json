@@ -33,7 +33,9 @@
             }
         },
         "range": "120 feet",
-        "line_of_sight": "ray",
+        "line_of_sight": {
+            "trajectory": "ray"
+        },
         "allowed_targets": [
             {
                 "life_states": [

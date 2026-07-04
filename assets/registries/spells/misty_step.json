@@ -33,7 +33,15 @@
             }
         },
         "range": "30 feet",
-        "line_of_sight": "ray",
+        "line_of_sight": {
+            "trajectory": "ray",
+            "extent": {
+                "shape": {
+                    "shape": "actor",
+                    "fixed_on_actor": false
+                }
+            }
+        },
         "allowed_targets": []
     },
     "timeline": {

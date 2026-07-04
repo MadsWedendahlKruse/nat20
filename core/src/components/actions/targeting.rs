@@ -30,7 +30,7 @@ use crate::{
 pub struct TargetingContext {
     pub kind: TargetingKind,
     pub range: TargetingRange,
-    pub line_of_sight: LineOfSightMode,
+    pub line_of_sight: LineOfSight,
     pub allowed_entities: Vec<EntityFilter>,
 }
 
@@ -38,7 +38,7 @@ impl TargetingContext {
     pub fn new(
         kind: TargetingKind,
         range: TargetingRange,
-        line_of_sight: LineOfSightMode,
+        line_of_sight: LineOfSight,
         allowed_entities: Vec<EntityFilter>,
     ) -> Self {
         TargetingContext {
@@ -53,7 +53,7 @@ impl TargetingContext {
         TargetingContext {
             kind: TargetingKind::SelfTarget,
             range: TargetingRange::new::<meter>(0.0),
-            line_of_sight: LineOfSightMode::Ignore,
+            line_of_sight: LineOfSight::ignore(),
             allowed_entities: vec![EntityFilter::All],
         }
     }
@@ -233,12 +233,62 @@ impl TargetingContext {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LineOfSight {
+    pub trajectory: LineOfSightTrajectory,
+    pub extent: LineOfSightExtentTemplate,
+}
+
+impl LineOfSight {
+    pub fn ignore() -> Self {
+        LineOfSight {
+            trajectory: LineOfSightTrajectory::Ignore,
+            extent: LineOfSightExtentTemplate::Point,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LineOfSightMode {
+pub enum LineOfSightTrajectory {
     Ignore,
     Ray,
     Parabola { launch_velocity: Velocity },
+}
+
+#[derive(Debug, Clone)]
+pub enum LineOfSightExtentTemplate {
+    Point,
+    Shape {
+        shape: AreaShape,
+        fixed_on_actor: bool,
+    },
+}
+
+impl LineOfSightExtentTemplate {
+    pub fn instantiate(
+        &self,
+        world: &World,
+        actor: Entity,
+        target_point: &Point3<f32>,
+    ) -> LineOfSightExtent {
+        match self {
+            LineOfSightExtentTemplate::Point => LineOfSightExtent::Point,
+            LineOfSightExtentTemplate::Shape {
+                shape,
+                fixed_on_actor,
+            } => {
+                let shape_transform =
+                    shape.parry3d_shape(world, actor, *fixed_on_actor, target_point);
+                LineOfSightExtent::Shape(shape_transform)
+            }
+        }
+    }
+}
+
+pub enum LineOfSightExtent {
+    Point,
+    Shape(ShapeTransform),
 }
 
 #[derive(Debug, Clone, PartialEq)]

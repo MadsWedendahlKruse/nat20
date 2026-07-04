@@ -26,7 +26,7 @@ use nat20_core::{
     registry::registry::{FeatsRegistry, SpellsRegistry},
     systems::{
         self,
-        d20::{D20CheckDCKind, D20ResultKind}, geometry::Displacement,
+        d20::{D20CheckDCKind, D20ResultKind}, geometry::{Displacement, DisplacementTemplate},
     },
 };
 use std::collections::HashSet;
@@ -1636,8 +1636,8 @@ impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind
                             .render(ui);
                         },
                         ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */ },
-                        ActionPayloadComponent::Displacement(_) => {
-                            ui.text("TODO: Displacement placeholder");
+                        ActionPayloadComponent::Displacement(displacement) => {
+                            displacement(world, entity, action_context).render(ui);
                         },
                     }
                 }
@@ -1956,3 +1956,20 @@ impl ImguiRenderable for ModifierSource {
     }
 }
 
+impl ImguiRenderable for DisplacementTemplate {
+    fn render(&self, ui: &imgui::Ui) {
+        match self {
+            DisplacementTemplate::Teleport => {
+                TextSegment::new("Teleport", TextKind::Details).render(ui);
+            },
+            DisplacementTemplate::Push { distance } => {
+                let distance = distance.get::<meter>();
+                TextSegment::new(format!("Push ({:.1} m)", distance), TextKind::Details).render(ui);
+            },
+            DisplacementTemplate::Pull { distance } => {
+                let distance = distance.get::<meter>();
+                TextSegment::new(format!("Pull ({:.1} m)", distance), TextKind::Details).render(ui);
+            },
+        }
+    }
+}

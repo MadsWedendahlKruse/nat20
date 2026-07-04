@@ -2,7 +2,7 @@ use core::f32;
 
 use hecs::Entity;
 use nat20_core::{
-    components::{actions::targeting::LineOfSightMode, id::Name},
+    components::{actions::targeting::LineOfSightTrajectory, id::Name},
     engine::game_state::GameState,
     systems::{
         self,
@@ -60,7 +60,7 @@ impl LineOfSightTarget {
 pub struct LineOfSightDebugWindow {
     pub from: LineOfSightTarget,
     pub to: LineOfSightTarget,
-    pub mode: LineOfSightMode,
+    pub mode: LineOfSightTrajectory,
     pub result: Option<LineOfSightResult>,
     pub show_raycast: bool,
 }
@@ -70,7 +70,7 @@ impl LineOfSightDebugWindow {
         Self {
             from: LineOfSightTarget::Point([0.0, 0.0, 0.0]),
             to: LineOfSightTarget::Point([0.0, 0.0, 0.0]),
-            mode: LineOfSightMode::Ray,
+            mode: LineOfSightTrajectory::Ray,
             result: None,
             show_raycast: true,
         }
@@ -162,8 +162,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                 ui.separator_with_text("Mode");
 
                 let mut current_mode = match self.mode {
-                    LineOfSightMode::Ray => 0usize,
-                    LineOfSightMode::Parabola { .. } => 1usize,
+                    LineOfSightTrajectory::Ray => 0usize,
+                    LineOfSightTrajectory::Parabola { .. } => 1usize,
                     _ => panic!("Unsupported LineOfSightMode"),
                 };
 
@@ -174,8 +174,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                     |s| s.into(),
                 ) {
                     self.mode = match current_mode {
-                        0 => LineOfSightMode::Ray,
-                        1 => LineOfSightMode::Parabola {
+                        0 => LineOfSightTrajectory::Ray,
+                        1 => LineOfSightTrajectory::Parabola {
                             launch_velocity: Velocity::new::<meter_per_second>(10.0),
                         },
                         _ => panic!("Invalid LineOfSightMode index"),
@@ -183,7 +183,7 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                 }
 
                 match &mut self.mode {
-                    LineOfSightMode::Parabola { launch_velocity } => {
+                    LineOfSightTrajectory::Parabola { launch_velocity } => {
                         let mut velocity = launch_velocity.get::<meter_per_second>();
                         if ui
                             .input_float("Launch Velocity##Parabola", &mut velocity)
@@ -220,7 +220,7 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                                     &game_state.world,
                                     &game_state.geometry,
                                     *entity,
-                                    to_point.clone().into(),
+                                    &to_point.clone().into(),
                                     &self.mode,
                                 ));
                             }
@@ -235,8 +235,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                             self.result = Some(systems::geometry::line_of_sight_point_point(
                                 &game_state.world,
                                 &game_state.geometry,
-                                from_point.clone().into(),
-                                to_point.clone().into(),
+                                &from_point.clone().into(),
+                                &to_point.clone().into(),
                                 &self.mode,
                                 &systems::geometry::RaycastFilter::All,
                             ));

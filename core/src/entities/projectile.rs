@@ -7,7 +7,9 @@ use crate::{
     components::{
         actions::{
             action_step::ActionPhase,
-            targeting::{LineOfSightMode, TargetInstance},
+            targeting::{
+                LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
+            },
         },
         activity::{ActivityCommand, ActivityState},
     },
@@ -93,9 +95,9 @@ impl ProjectileTemplate {
         target: &TargetInstance,
         delivery_phase: ActionPhase,
     ) -> Result<Projectile, ProjectileError> {
-        let line_of_sight_mode = match self {
-            ProjectileTemplate::Ray { .. } => LineOfSightMode::Ray,
-            ProjectileTemplate::Parabola { launch_velocity } => LineOfSightMode::Parabola {
+        let trajectory = match self {
+            ProjectileTemplate::Ray { .. } => LineOfSightTrajectory::Ray,
+            ProjectileTemplate::Parabola { launch_velocity } => LineOfSightTrajectory::Parabola {
                 launch_velocity: *launch_velocity,
             },
         };
@@ -105,7 +107,10 @@ impl ProjectileTemplate {
             &game_state.geometry,
             action.actor.id(),
             target,
-            &line_of_sight_mode,
+            &LineOfSight {
+                trajectory,
+                extent: LineOfSightExtentTemplate::Point,
+            },
         );
 
         if !line_of_sight_result.has_line_of_sight {

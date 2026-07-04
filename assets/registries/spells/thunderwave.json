@@ -43,7 +43,9 @@
             }
         },
         "range": "15 feet",
-        "line_of_sight": "ignore",
+        "line_of_sight": {
+            "trajectory": "ignore"
+        },
         "allowed_targets": [
             {
                 "life_states": [

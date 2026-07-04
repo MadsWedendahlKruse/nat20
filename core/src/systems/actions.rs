@@ -7,7 +7,7 @@ use crate::{
         actions::{
             action::{Action, ActionContext, ActionCooldownMap, ActionMap, ActionProvider},
             targeting::{
-                AreaFilter, AreaShape, LineOfSightMode, TargetInstance, TargetingCheck,
+                AreaFilter, AreaShape, LineOfSightTrajectory, TargetInstance, TargetingCheck,
                 TargetingContext, TargetingError, TargetingKind,
             },
         },
@@ -322,8 +322,8 @@ pub fn get_targeted_entities(
                             &game_state.world,
                             &game_state.geometry,
                             *entity,
-                            actor_position,
-                            &LineOfSightMode::Ray,
+                            &actor_position,
+                            &LineOfSightTrajectory::Ray,
                             &RaycastFilter::WorldOnly,
                         )
                         .has_line_of_sight
@@ -336,8 +336,8 @@ pub fn get_targeted_entities(
                                     &game_state.world,
                                     &game_state.geometry,
                                     *entity,
-                                    *point,
-                                    &LineOfSightMode::Ray,
+                                    point,
+                                    &LineOfSightTrajectory::Ray,
                                     // TODO: Can't hide behind other entities?
                                     &RaycastFilter::WorldOnly,
                                 )
