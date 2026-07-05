@@ -3,17 +3,21 @@
     "description": "Make a melee weapon attack with a weapon you are wielding.",
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "melee_weapon_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "melee_weapon_damage_roll"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "melee_weapon_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "melee_weapon_damage_roll"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "targeting": "melee_weapon_targeting",

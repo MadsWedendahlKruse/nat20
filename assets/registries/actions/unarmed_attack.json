@@ -3,17 +3,21 @@
     "description": "Make an unarmed strike.",
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "unarmed_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "unarmed_damage_roll"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "unarmed_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "unarmed_damage_roll"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "targeting": "unarmed_targeting",

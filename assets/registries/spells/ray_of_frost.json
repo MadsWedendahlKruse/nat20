@@ -9,31 +9,35 @@
     ],
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "spell_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "(1 + (character_level + 1) / 6)d8;cold"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "spell_attack_roll"
                     },
-                    {
-                        "effect": {
-                            "effect_id": "nat20_core::effect.spell.ray_of_frost",
-                            "lifetime": {
-                                "turn_boundary": {
-                                    "entity": "applier",
-                                    "boundary": "start",
-                                    "duration": {
-                                        "turns": 1
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "(1 + (character_level + 1) / 6)d8;cold"
+                            },
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.spell.ray_of_frost",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "entity": "applier",
+                                            "boundary": "start",
+                                            "duration": {
+                                                "turns": 1
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "resource_cost": {

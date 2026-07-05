@@ -3,17 +3,21 @@
     "description": "Make an attack against a creature moving out of your reach.",
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "melee_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "melee_damage_roll"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "melee_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "melee_damage_roll"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "targeting": "melee_targeting",

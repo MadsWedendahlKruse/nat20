@@ -10,25 +10,29 @@
     ],
     "kind": {
         "standard": {
-            "payload": {
-                "components": [
-                    {
-                        "effect": {
-                            "effect_id": "nat20_core::effect.spell.hex.strength",
-                            "lifetime": {
-                                "turn_boundary": {
-                                    "entity": "applier",
-                                    "boundary": "start",
-                                    "duration": {
-                                        "time": "1 hour"
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.spell.hex.strength",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "entity": "applier",
+                                            "boundary": "start",
+                                            "duration": {
+                                                "time": "1 hour"
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "targeting": {

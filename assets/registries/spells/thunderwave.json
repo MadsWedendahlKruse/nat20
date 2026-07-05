@@ -9,22 +9,26 @@
     ],
     "kind": {
         "standard": {
-            "payload": {
-                "components": [
-                    {
-                        "damage": "(2  + spell_level - 1)d8;thunder",
-                        "damage_on_failure": "half"
-                    },
-                    {
-                        "displacement": {
-                            "push": {
-                                "distance": "10 feet"
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "(2  + spell_level - 1)d8;thunder",
+                                "damage_on_failure": "half"
+                            },
+                            {
+                                "displacement": {
+                                    "push": {
+                                        "distance": "10 feet"
+                                    }
+                                }
                             }
-                        }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "resource_cost": {

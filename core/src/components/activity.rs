@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 use hecs::Entity;
 use parry3d::na::Point3;
@@ -8,7 +8,7 @@ use uom::si::{f32::Length, length::meter};
 use crate::{
     components::actions::{
         action::{Action, ActionTimeline},
-        action_step::ActionPhase,
+        execution::ExecutionStatus,
     },
     engine::{
         action_prompt::{ActionDecision, ActionError},
@@ -115,34 +115,19 @@ impl ActivityState {
         matches!(self.state, ActivityStateKind::Moving { .. })
     }
 
-    pub fn set_acting(&mut self, action: &Action, phases: Vec<ActionPhase>) {
-        if phases.is_empty() {
-            debug!("No phases provided for action, setting to idle");
-            self.set_idle();
-            return;
-        }
-
-        if let ActivityStateKind::Acting {
-            phases: current_phases,
-            ..
-        } = &self.state
-        {
+    pub fn set_acting(&mut self, action: &Action) {
+        if matches!(self.state, ActivityStateKind::Acting { .. }) {
             warn!(
-                "Overriding activity state for entity which is already acting: {:?}, with new phases {:?}",
-                current_phases, phases
+                "Overriding activity state for entity which is already acting, with action {:?}",
+                action
             );
         }
-        debug!(
-            "Setting entity to perform action {:?}\nWith phases:{:?}",
-            action, phases
-        );
+        debug!("Setting entity to perform action {:?}", action);
 
         self.state = ActivityStateKind::Acting {
             timeline: action.timeline.clone(),
             elapsed_time: 0.0,
-            phases: phases.into(),
             phase_cooldown: action.timeline.step_spacing,
-            pause_reasons: HashSet::new(),
         };
     }
 
@@ -175,9 +160,7 @@ pub enum ActivityStateKind {
     Acting {
         timeline: ActionTimeline,
         elapsed_time: f32,
-        phases: VecDeque<ActionPhase>,
         phase_cooldown: f32,
-        pause_reasons: HashSet<ActivityPauseReason>,
     },
     Displaced {
         trajectory: Parabola,
@@ -275,29 +258,30 @@ impl ActivityStateKind {
                         perform_time,
                         step_spacing,
                     },
-                phases,
                 phase_cooldown,
-                ..
             } => {
                 *elapsed_time += delta_time;
 
-                if *elapsed_time >= *perform_time {
+                let status = systems::actions::execution_status(game_state, entity);
+
+                if *elapsed_time >= *perform_time && status == Some(ExecutionStatus::Running) {
                     *phase_cooldown += delta_time;
 
-                    if *phase_cooldown >= *step_spacing && !phases.is_empty() {
+                    if *phase_cooldown >= *step_spacing {
                         debug!(
-                            "Action phase cooldown elapsed for entity {:?}, checking for next phase",
+                            "Action phase cooldown elapsed for entity {:?}, advancing execution",
                             entity
                         );
                         *phase_cooldown = 0.0;
-                        commands.push(ActivityCommand::perform_phase(
-                            entity,
-                            phases.pop_front().unwrap(),
-                        ));
+                        commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
+                            systems::actions::advance_execution(game_state, entity);
+                        }));
                     }
                 }
 
-                if *elapsed_time >= *total_duration && phases.is_empty() {
+                if *elapsed_time >= *total_duration
+                    && status.is_none_or(|status| status == ExecutionStatus::Done)
+                {
                     debug!(
                         "Entity {:?} finished action after {:?} seconds",
                         entity, total_duration
@@ -305,11 +289,14 @@ impl ActivityStateKind {
                     *self = Self::Idle;
 
                     commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
+                        
                         let scope = game_state.scope_for_entity(entity);
                         debug!(
                             "Action completed for entity {:?}, clearing blockers and resuming pending events if ready",
                             entity
                         );
+                        
+                        game_state.action_executions.remove(&entity);
                         game_state
                             .interaction_engine
                             .session_mut(scope)
@@ -366,7 +353,6 @@ impl Default for ActivityStateKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActivityPauseReason {
     Reaction,
-    ActionStepResolution,
 }
 
 pub struct ActivityCommand(pub Box<dyn FnOnce(&mut GameState)>);
@@ -378,19 +364,5 @@ impl ActivityCommand {
 
     pub fn new<F: FnOnce(&mut GameState) + 'static>(command: F) -> Self {
         Self(Box::new(command))
-    }
-
-    pub fn perform_phase(entity: Entity, mut phase: ActionPhase) -> Self {
-        // This one is a bit funky, so added a helper
-        Self::new(move |game_state| {
-            phase.perform(game_state);
-            if !phase.is_applied() {
-                let scope = game_state.scope_for_entity(entity);
-                game_state
-                    .interaction_engine
-                    .session_mut(scope)
-                    .queue_phase(entity, phase, false);
-            }
-        })
     }
 }

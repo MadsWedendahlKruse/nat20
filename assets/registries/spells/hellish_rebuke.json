@@ -9,18 +9,22 @@
     ],
     "kind": {
         "standard": {
-            "condition": {
-                "saving_throw": "spell_save_dc;dexterity"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "(2 + spell_level - 1)d10;fire",
-                        "damage_on_failure": "half"
+            "phases": [
+                {
+                    "condition": {
+                        "saving_throw": "spell_save_dc;dexterity"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "(2 + spell_level - 1)d10;fire",
+                                "damage_on_failure": "half"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "resource_cost": {

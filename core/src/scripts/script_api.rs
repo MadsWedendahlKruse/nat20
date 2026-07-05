@@ -308,10 +308,11 @@ fn is_action_condition_type(
     let Some(action) = systems::actions::get_action(action_id) else {
         return false;
     };
-    let ActionKind::Standard { condition, .. } = &action.kind else {
-        return false;
-    };
-    predicate(condition)
+    action
+        .kind
+        .phases()
+        .iter()
+        .any(|phase| predicate(&phase.condition))
 }
 
 impl UserData for DamageMitigationResult {

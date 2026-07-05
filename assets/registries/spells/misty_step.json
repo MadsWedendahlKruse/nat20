@@ -8,14 +8,18 @@
     ],
     "kind": {
         "standard": {
-            "payload": {
-                "components": [
-                    {
-                        "displacement": "teleport"
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "displacement": "teleport"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "resource_cost": {

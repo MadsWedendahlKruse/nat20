@@ -3,25 +3,29 @@
     "description": "Your movement doesn't provoke opportunity attacks for the rest of the turn.",
     "kind": {
         "standard": {
-            "payload": {
-                "components": [
-                    {
-                        "effect": {
-                            "effect_id": "nat20_core::effect.disengage",
-                            "lifetime": {
-                                "turn_boundary": {
-                                    "entity": "applier",
-                                    "boundary": "start",
-                                    "duration": {
-                                        "turns": 1
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.disengage",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "entity": "applier",
+                                            "boundary": "start",
+                                            "duration": {
+                                                "turns": 1
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "targeting": "self",

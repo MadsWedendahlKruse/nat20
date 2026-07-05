@@ -2,13 +2,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use hecs::Entity;
 
-use crate::{
-    components::actions::action_step::ActionPhase,
-    engine::{
-        action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
-        encounter::EncounterId,
-        event::Event,
-    },
+use crate::engine::{
+    action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
+    encounter::EncounterId,
+    event::Event,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -41,8 +38,6 @@ pub struct InteractionSession {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
     pending_events: VecDeque<PendingEvent>,
-    /// Phases parked while waiting for a pending event to be resumed and resolved.
-    pending_phases: VecDeque<(Entity, ActionPhase)>,
 }
 
 impl InteractionSession {
@@ -140,17 +135,6 @@ impl InteractionSession {
         }
     }
 
-    pub fn queue_phase(&mut self, entity: Entity, phase: ActionPhase, front: bool) {
-        if front {
-            self.pending_phases.push_front((entity, phase));
-        } else {
-            self.pending_phases.push_back((entity, phase));
-        }
-    }
-
-    pub fn pending_phases_mut(&mut self) -> &mut VecDeque<(Entity, ActionPhase)> {
-        &mut self.pending_phases
-    }
 }
 
 #[derive(Debug, Default)]

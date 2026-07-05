@@ -1,0 +1,75 @@
+{
+    "id": "nat20_core::spell.ice_knife",
+    "description": "You create a shard of ice and fling it at one creature within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 Piercing damage. Hit or miss, the shard then explodes. The target and each creature within 5 feet of it must succeed on a Dexterity saving throw or take 2d6 Cold damage. The Cold damage increases by 1d6 for each spell slot level above 1.",
+    "base_level": 1,
+    "school": "conjuration",
+    "flags": [
+        "somatic"
+    ],
+    "kind": {
+        "standard": {
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "spell_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "1d10;piercing"
+                            }
+                        ],
+                        "delivery": {
+                            "projectile": {
+                                "trajectory": "ray",
+                                "velocity": "40 m/s"
+                            }
+                        }
+                    }
+                },
+                {
+                    "condition": {
+                        "saving_throw": "spell_save_dc;dexterity"
+                    },
+                    "targets": {
+                        "shape": {
+                            "sphere": {
+                                "radius": "5 feet"
+                            }
+                        }
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "(1 + spell_level)d6;cold"
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                }
+            ]
+        }
+    },
+    "resource_cost": {
+        "nat20_core::resource.action": 1
+    },
+    "targeting": {
+        "kind": "single",
+        "range": "60 feet",
+        "line_of_sight": {
+            "trajectory": "ray"
+        },
+        "allowed_targets": [
+            {
+                "life_states": [
+                    "dead"
+                ],
+                "invert": true
+            }
+        ]
+    },
+    "timeline": {
+        "total_duration": 1.0,
+        "perform_time": 0.5
+    }
+}

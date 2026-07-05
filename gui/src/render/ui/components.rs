@@ -1616,34 +1616,30 @@ impl ImguiRenderableWithContext<&World> for Vec<EntityIdentifier> {
 impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind {
     fn render_with_context(&self, ui: &imgui::Ui, context: (&World, Entity, &ActionContext)) {
         let (world, entity, action_context) = context;
-        match self {
-            ActionKind::Standard { payload, .. } => {
-                for component in payload.components() {
-                    match component {
-                        ActionPayloadComponent::Damage { damage, .. } => {
-                            damage(world, entity, action_context).render(ui);
-                        },
-                        ActionPayloadComponent::Effect(effect) => {
-                            TextSegment::new(format!("{}", effect.effect_id), TextKind::Effect).render(ui)
-                        },
-                        ActionPayloadComponent::Healing(healing) => {
-                            // TODO: More info? Modifiers?
-                            let healing = healing(world, entity, action_context);
-                            TextSegment::new(
-                                format!("{}-{} Healing", healing.min_roll(), healing.max_roll()),
-                                TextKind::Healing,
-                            )
-                            .render(ui);
-                        },
-                        ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */ },
-                        ActionPayloadComponent::Displacement(displacement) => {
-                            displacement(world, entity, action_context).render(ui);
-                        },
-                    }
+        for phase in self.phases() {
+            for component in phase.payload.components() {
+                match component {
+                    ActionPayloadComponent::Damage { damage, .. } => {
+                        damage(world, entity, action_context).render(ui);
+                    },
+                    ActionPayloadComponent::Effect(effect) => {
+                        TextSegment::new(format!("{}", effect.effect_id), TextKind::Effect).render(ui)
+                    },
+                    ActionPayloadComponent::Healing(healing) => {
+                        // TODO: More info? Modifiers?
+                        let healing = healing(world, entity, action_context);
+                        TextSegment::new(
+                            format!("{}-{} Healing", healing.min_roll(), healing.max_roll()),
+                            TextKind::Healing,
+                        )
+                        .render(ui);
+                    },
+                    ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */ },
+                    ActionPayloadComponent::Displacement(displacement) => {
+                        displacement(world, entity, action_context).render(ui);
+                    },
                 }
             }
-
-            _ => {}
         }
     }
 }
@@ -1699,8 +1695,8 @@ impl ImguiRenderableWithContext<(&World, Entity)>
                 targeting.range.render(ui);
                 targeting.kind.render(ui);
 
-                match action.kind() {
-                    ActionKind::Standard { condition, .. } => match condition {
+                for phase in action.kind().phases() {
+                    match &phase.condition {
                         ActionCondition::AttackRoll(_) => {
                             TextSegment::new("Attack Roll", TextKind::Details).render(ui);
                         }
@@ -1717,8 +1713,7 @@ impl ImguiRenderableWithContext<(&World, Entity)>
                             .render(ui);
                         }
                         _ => {}
-                    },
-                    _ => {}
+                    }
                 }
 
                 if let Some(spell) = spell {

@@ -9,17 +9,21 @@
     ],
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "spell_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "1d10;force"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "spell_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "1d10;force"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "resource_cost": {

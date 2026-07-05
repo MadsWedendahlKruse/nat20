@@ -3,14 +3,18 @@
     "description": "You have a limited well of physical and mental stamina that you can draw on. As a Bonus Action, you can use it to regain Hit Points equal to 1d10 plus your Fighter level.",
     "kind": {
         "standard": {
-            "payload": {
-                "components": [
-                    {
-                        "healing": "1d10 + class.fighter.level"
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "healing": "1d10 + class.fighter.level"
+                            }
+                        ],
+                        "delivery": "immediate"
                     }
-                ],
-                "delivery": "immediate"
-            }
+                }
+            ]
         }
     },
     "targeting": "self",

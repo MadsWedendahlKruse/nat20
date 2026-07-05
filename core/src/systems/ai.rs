@@ -38,8 +38,8 @@ pub fn recommeneded_target_attitude(
     action_kind: &ActionKind,
 ) -> Attitude {
     match action_kind {
-        ActionKind::Standard { payload, .. } => {
-            for component in payload.components() {
+        ActionKind::Standard { phases } => {
+            for component in phases.iter().flat_map(|phase| phase.payload.components()) {
                 match component {
                     ActionPayloadComponent::Damage { .. } => return Attitude::Hostile,
                     ActionPayloadComponent::Effect(effect_instance_template) => {

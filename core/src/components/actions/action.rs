@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Debug,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use hecs::{Entity, World};
@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::{
-            action_step::ActionPhase,
-            targeting::{TargetInstance, TargetingContext},
+            execution::PhaseState,
+            targeting::{AreaShape, TargetInstance, TargetingContext},
         },
         d20::D20CheckResult,
         damage::{
@@ -49,6 +49,7 @@ pub type ReactionBodyFunction =
     dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionOutcome> + Send + Sync;
 pub type DisplacementFunction =
     dyn Fn(&World, Entity, &ActionContext) -> DisplacementTemplate + Send + Sync;
+pub type AreaShapeFunction = dyn Fn(&World, Entity, &ActionContext) -> AreaShape + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -69,11 +70,7 @@ pub struct Action {
 }
 
 impl Action {
-    pub fn perform(
-        &self,
-        game_state: &mut GameState,
-        action_data: &ActionData,
-    ) -> Vec<ActionPhase> {
+    pub fn perform(&self, game_state: &mut GameState, action_data: &ActionData) -> Vec<PhaseState> {
         let hooks = systems::effects::effects(&game_state.world, action_data.actor.id())
             .collect_hooks(|effect| effect.on_action.as_ref());
         for hook in hooks {
@@ -137,6 +134,69 @@ impl PartialEq for Action {
     fn eq(&self, other: &Self) -> bool {
         // TODO: For now we just assume actions are equal if their IDs are the same.
         self.id == other.id
+    }
+}
+
+#[derive(Clone)]
+pub enum ActionKind {
+    Standard { phases: Vec<ActionPhaseSpec> },
+    Variant { variants: Vec<ActionId> },
+}
+
+impl ActionKind {
+    pub fn perform(&self, game_state: &mut GameState, action_data: &ActionData) -> Vec<PhaseState> {
+        let mut phases = Vec::new();
+
+        match self {
+            ActionKind::Standard { phases: specs } => {
+                let outcomes = Arc::new(PhaseOutcomes::default());
+                for (phase_index, spec) in specs.iter().enumerate() {
+                    for (target_index, target) in action_data.targets.iter().enumerate() {
+                        phases.push(PhaseState::new(
+                            game_state,
+                            action_data,
+                            spec,
+                            target.clone(),
+                            (phase_index, target_index),
+                            Arc::clone(&outcomes),
+                        ));
+                    }
+                }
+            }
+
+            ActionKind::Variant { .. } => {
+                panic!(
+                    "ActionKind::Variants should be resolved to a specific variant before performing"
+                );
+            }
+        }
+
+        phases
+    }
+
+    pub fn is_reaction(&self) -> bool {
+        self.phases().iter().any(|phase| {
+            !phase
+                .payload
+                .component(ActionPayloadComponentKind::Reaction)
+                .is_empty()
+        })
+    }
+
+    pub fn phases(&self) -> &[ActionPhaseSpec] {
+        match self {
+            ActionKind::Standard { phases } => phases,
+            ActionKind::Variant { .. } => &[],
+        }
+    }
+}
+
+impl Debug for ActionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActionKind::Standard { .. } => write!(f, "Standard"),
+            ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
+        }
     }
 }
 
@@ -380,15 +440,54 @@ impl ActionPayload {
     }
 }
 
+/// In case of multiple phases, this describes the requirement for a phase to be
+/// executed, e.g. only execute if the previous phase succeeded or failed.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PhaseRequirement {
+    #[default]
+    None,
+    Success,
+    Failure,
+}
+
 #[derive(Clone)]
-pub enum ActionKind {
-    Standard {
-        condition: ActionCondition,
-        payload: ActionPayload,
-    },
-    Variant {
-        variants: Vec<ActionId>,
-    },
+pub enum PhaseTargets {
+    /// Same targets as the action's initial targets
+    Inherited,
+    /// The entities inside a shape centered on each chosen target
+    Shape(Arc<AreaShapeFunction>),
+}
+
+#[derive(Clone)]
+pub struct ActionPhaseSpec {
+    pub requires: PhaseRequirement,
+    pub condition: ActionCondition,
+    pub payload: ActionPayload,
+    pub targets: PhaseTargets,
+}
+
+/// Condition outcomes of the phases of one action execution, keyed by
+/// (phase index, target index), shared between the phases so later ones can be
+/// gated on earlier results.
+#[derive(Debug, Default)]
+pub struct PhaseOutcomes(Mutex<HashMap<(usize, usize), bool>>);
+
+impl PhaseOutcomes {
+    pub fn record(&self, phase_index: usize, target_index: usize, success: bool) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert((phase_index, target_index), success);
+    }
+
+    pub fn get(&self, phase_index: usize, target_index: usize) -> Option<bool> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(&(phase_index, target_index))
+            .copied()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -617,56 +716,6 @@ pub trait ActionProvider {
     /// about how the action can be performed (e.g. weapon type, spell level, etc.)
     /// as well as the resource cost of the action.
     fn actions(&self, world: &World, entity: Entity) -> ActionMap;
-}
-
-impl ActionKind {
-    pub fn perform(
-        &self,
-        game_state: &mut GameState,
-        action_data: &ActionData,
-    ) -> Vec<ActionPhase> {
-        let mut phases = Vec::new();
-
-        match self {
-            ActionKind::Standard { condition, payload } => {
-                for target in &action_data.targets {
-                    phases.push(ActionPhase::new(
-                        game_state,
-                        action_data,
-                        condition,
-                        payload,
-                        target.clone(),
-                    ));
-                }
-            }
-
-            ActionKind::Variant { .. } => {
-                panic!(
-                    "ActionKind::Variants should be resolved to a specific variant before performing"
-                );
-            }
-        }
-
-        phases
-    }
-
-    pub fn is_reaction(&self) -> bool {
-        match self {
-            ActionKind::Standard { payload, .. } => !payload
-                .component(ActionPayloadComponentKind::Reaction)
-                .is_empty(),
-            _ => false,
-        }
-    }
-}
-
-impl Debug for ActionKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ActionKind::Standard { .. } => write!(f, "Standard"),
-            ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
-        }
-    }
 }
 
 impl ActionResult {

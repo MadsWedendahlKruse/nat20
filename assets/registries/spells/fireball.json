@@ -9,23 +9,27 @@
     ],
     "kind": {
         "standard": {
-            "condition": {
-                "saving_throw": "spell_save_dc;dexterity"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "(8 + spell_level - 3)d6;fire",
-                        "damage_on_failure": "half"
-                    }
-                ],
-                "delivery": {
-                    "projectile": {
-                        "trajectory": "ray",
-                        "velocity": "40 m/s"
+            "phases": [
+                {
+                    "condition": {
+                        "saving_throw": "spell_save_dc;dexterity"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "(8 + spell_level - 3)d6;fire",
+                                "damage_on_failure": "half"
+                            }
+                        ],
+                        "delivery": {
+                            "projectile": {
+                                "trajectory": "ray",
+                                "velocity": "40 m/s"
+                            }
+                        }
                     }
                 }
-            }
+            ]
         }
     },
     "resource_cost": {

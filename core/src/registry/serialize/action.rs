@@ -7,7 +7,8 @@ use crate::{
     components::{
         actions::action::{
             Action, ActionCondition, ActionContext, ActionKind, ActionPayload,
-            ActionPayloadComponent, ActionTimeline, DamageOnFailure, PayloadDelivery,
+            ActionPayloadComponent, ActionPhaseSpec, ActionTimeline, DamageOnFailure,
+            PayloadDelivery, PhaseRequirement, PhaseTargets,
         },
         id::ActionId,
         resource::{RechargeRule, ResourceAmountMap},
@@ -22,7 +23,7 @@ use crate::{
             parser::{Evaluable, EvaluationError},
             quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
             reaction::{ReactionBody, ReactionTrigger},
-            targeting::TargetingDefinition,
+            targeting::{AreaShapeDefinition, TargetingDefinition, TargetingKindDefinition},
             variables::{PARSER_VARIABLES, VariableMap},
         },
     },
@@ -63,8 +64,48 @@ impl RegistryReferenceCollector for ActionDefinition {
     }
 }
 
+impl ActionDefinition {
+    /// A phase gate reads the previous phase's single outcome, which is
+    /// ambiguous when that phase hit multiple entities from one chosen target.
+    /// Per-entity riders belong in that phase's payload components instead,
+    /// where they share its per-entity condition resolution.
+    fn validate_phase_requirements(&self) {
+        let ActionKindDefinition::Standard { phases } = &self.kind else {
+            return;
+        };
+        for (index, phase) in phases.iter().enumerate() {
+            if phase.requires == PhaseRequirement::None {
+                continue;
+            }
+            assert!(
+                index > 0,
+                "{}: the first phase cannot have `requires` — there is no previous phase",
+                self.id
+            );
+            let previous_is_area = match &phases[index - 1].targets {
+                PhaseTargetsDefinition::Shape { .. } => true,
+                PhaseTargetsDefinition::Inherited => matches!(
+                    &self.targeting,
+                    TargetingDefinition::Custom(custom)
+                        if matches!(custom.kind, TargetingKindDefinition::Area { .. })
+                ),
+            };
+            assert!(
+                !previous_is_area,
+                "{}: phase {} has `requires` but phase {} targets an area; gate outcomes \
+                 are per chosen target, not per entity. Put per-entity riders in the \
+                 previous phase's payload components",
+                self.id,
+                index,
+                index - 1
+            );
+        }
+    }
+}
+
 impl From<ActionDefinition> for Action {
     fn from(value: ActionDefinition) -> Self {
+        value.validate_phase_requirements();
         Action {
             id: value.id,
             description: value.description,
@@ -258,33 +299,76 @@ pub struct ActionPayloadDefinition {
     pub delivery: PayloadDeliveryDefinition,
 }
 
+/// How a phase derives its targets. Follow-up phases never re-select targets;
+/// they either inherit the action's chosen targets or expand each of them into
+/// the entities inside a shape centered on it (e.g. Ice Knife's 5 ft AoE damage).
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PhaseTargetsDefinition {
+    #[default]
+    Inherited,
+    Shape(AreaShapeDefinition),
+}
+
+impl From<PhaseTargetsDefinition> for PhaseTargets {
+    fn from(value: PhaseTargetsDefinition) -> Self {
+        match value {
+            PhaseTargetsDefinition::Inherited => PhaseTargets::Inherited,
+            PhaseTargetsDefinition::Shape(shape) => {
+                PhaseTargets::Shape(Arc::new(move |world, entity, action_context| {
+                    shape
+                        .evaluate(world, entity, action_context, &PARSER_VARIABLES)
+                        .unwrap()
+                }))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ActionPhaseDefinition {
+    /// Gate on the previous phase's condition outcome (per target)
+    #[serde(default)]
+    pub requires: PhaseRequirement,
+    #[serde(default)]
+    pub condition: Option<ActionConditionDefinition>,
+    pub payload: ActionPayloadDefinition,
+    #[serde(default)]
+    pub targets: PhaseTargetsDefinition,
+}
+
+impl From<ActionPhaseDefinition> for ActionPhaseSpec {
+    fn from(value: ActionPhaseDefinition) -> Self {
+        ActionPhaseSpec {
+            requires: value.requires,
+            condition: value.condition.map_or(ActionCondition::None, Into::into),
+            payload: ActionPayload::new(
+                value
+                    .payload
+                    .components
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                value.payload.delivery.into(),
+            )
+            .unwrap(),
+            targets: value.targets.into(),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionKindDefinition {
-    Standard {
-        #[serde(default)]
-        condition: Option<ActionConditionDefinition>,
-        payload: ActionPayloadDefinition,
-    },
-    Variants {
-        variants: Vec<ActionId>,
-    },
+    Standard { phases: Vec<ActionPhaseDefinition> },
+    Variants { variants: Vec<ActionId> },
 }
 
 impl From<ActionKindDefinition> for ActionKind {
     fn from(spec: ActionKindDefinition) -> Self {
         match spec {
-            ActionKindDefinition::Standard { condition, payload } => ActionKind::Standard {
-                condition: if let Some(condition) = condition {
-                    condition.into()
-                } else {
-                    ActionCondition::None
-                },
-                payload: ActionPayload::new(
-                    payload.components.into_iter().map(Into::into).collect(),
-                    payload.delivery.into(),
-                )
-                .unwrap(),
+            ActionKindDefinition::Standard { phases } => ActionKind::Standard {
+                phases: phases.into_iter().map(Into::into).collect(),
             },
 
             ActionKindDefinition::Variants { variants } => ActionKind::Variant { variants },
@@ -295,8 +379,8 @@ impl From<ActionKindDefinition> for ActionKind {
 impl RegistryReferenceCollector for ActionKindDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         match self {
-            ActionKindDefinition::Standard { payload, .. } => {
-                for component in &payload.components {
+            ActionKindDefinition::Standard { phases } => {
+                for component in phases.iter().flat_map(|phase| &phase.payload.components) {
                     match component {
                         ActionPayloadComponentDefinition::Effect { effect } => {
                             collector.add(RegistryReference::Effect(effect.effect_id.clone()));

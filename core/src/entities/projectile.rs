@@ -5,11 +5,8 @@ use uom::si::{f32::Velocity, velocity::meter_per_second};
 
 use crate::{
     components::{
-        actions::{
-            action_step::ActionPhase,
-            targeting::{
-                LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
-            },
+        actions::targeting::{
+            LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
         },
         activity::{ActivityCommand, ActivityState},
     },
@@ -26,7 +23,8 @@ pub struct Projectile {
     pub trajectory: RaycastMode,
     pub flight_time: f32,
     pub time_of_impact: f32,
-    pub delivery_phase: ActionPhase,
+    /// The entity whose action execution is waiting on this projectile
+    pub owner: Entity,
     pub paused: bool,
 }
 
@@ -43,20 +41,17 @@ impl Projectile {
         }
 
         if self.flight_time >= self.time_of_impact {
-            debug!(
-                "Projectile {:?} has reached its target: {:?}",
-                entity, self.delivery_phase.target
-            );
+            debug!("Projectile {:?} has reached its target", entity);
+            let owner = self.owner;
             vec![
                 ActivityCommand::new(move |game_state: &mut GameState| {
                     game_state
                         .despawn(entity)
                         .expect("Failed to despawn projectile entity");
                 }),
-                ActivityCommand::perform_phase(
-                    self.delivery_phase.action.actor.id(),
-                    self.delivery_phase.clone(),
-                ),
+                ActivityCommand::new(move |game_state: &mut GameState| {
+                    systems::actions::projectile_impact(game_state, owner);
+                }),
             ]
         } else {
             vec![]
@@ -93,7 +88,6 @@ impl ProjectileTemplate {
         game_state: &mut GameState,
         action: &ActionData,
         target: &TargetInstance,
-        delivery_phase: ActionPhase,
     ) -> Result<Projectile, ProjectileError> {
         let trajectory = match self {
             ProjectileTemplate::Ray { .. } => LineOfSightTrajectory::Ray,
@@ -150,7 +144,7 @@ impl ProjectileTemplate {
             trajectory: raycast_result.mode.clone(),
             flight_time: 0.0,
             time_of_impact,
-            delivery_phase,
+            owner: action.actor.id(),
             paused: systems::helpers::get_component::<ActivityState>(
                 &game_state.world,
                 action.actor.id(),

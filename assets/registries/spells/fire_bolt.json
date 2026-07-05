@@ -9,22 +9,26 @@
     ],
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "spell_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "(1 + (character_level + 1) / 6)d10;fire"
-                    }
-                ],
-                "delivery": {
-                    "projectile": {
-                        "trajectory": "ray",
-                        "velocity": "40 m/s"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "spell_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "(1 + (character_level + 1) / 6)d10;fire"
+                            }
+                        ],
+                        "delivery": {
+                            "projectile": {
+                                "trajectory": "ray",
+                                "velocity": "40 m/s"
+                            }
+                        }
                     }
                 }
-            }
+            ]
         }
     },
     "resource_cost": {

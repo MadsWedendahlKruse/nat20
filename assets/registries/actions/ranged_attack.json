@@ -3,22 +3,26 @@
     "description": "Make a ranged weapon attack with a weapon you are wielding.",
     "kind": {
         "standard": {
-            "condition": {
-                "attack_roll": "ranged_attack_roll"
-            },
-            "payload": {
-                "components": [
-                    {
-                        "damage": "ranged_damage_roll"
-                    }
-                ],
-                "delivery": {
-                    "projectile": {
-                        "trajectory": "parabola",
-                        "velocity": "60 m/s"
+            "phases": [
+                {
+                    "condition": {
+                        "attack_roll": "ranged_attack_roll"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "ranged_damage_roll"
+                            }
+                        ],
+                        "delivery": {
+                            "projectile": {
+                                "trajectory": "parabola",
+                                "velocity": "60 m/s"
+                            }
+                        }
                     }
                 }
-            }
+            ]
         }
     },
     "targeting": "ranged_targeting",

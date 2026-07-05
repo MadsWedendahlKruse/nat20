@@ -7,7 +7,7 @@ use nat20_core::{
         ability::AbilityScoreMap,
         actions::{
             action::{
-                ActionCondition, ActionKind, ActionPayloadComponent, AttackRollFunction,
+                ActionCondition, ActionPayloadComponent, AttackRollFunction,
                 SavingThrowFunction,
             },
             action_builder::{ActionBuilder, ActionBuilderState},
@@ -922,18 +922,22 @@ fn render_target_chance_tooltips(
         return;
     };
 
-    let ActionKind::Standard { condition, .. } = action_def.kind() else {
-        return;
-    };
-
-    match condition {
-        ActionCondition::AttackRoll(attack_roll) => {
-            render_attack_hit_chance_tooltip(ui, game_state, action, entity.id(), attack_roll);
+    for phase in action_def.kind().phases() {
+        match &phase.condition {
+            ActionCondition::AttackRoll(attack_roll) => {
+                render_attack_hit_chance_tooltip(ui, game_state, action, entity.id(), attack_roll);
+            }
+            ActionCondition::SavingThrow(saving_throw) => {
+                render_save_success_chance_tooltip(
+                    ui,
+                    game_state,
+                    action,
+                    entity.id(),
+                    saving_throw,
+                );
+            }
+            _ => {}
         }
-        ActionCondition::SavingThrow(saving_throw) => {
-            render_save_success_chance_tooltip(ui, game_state, action, entity.id(), saving_throw);
-        }
-        _ => {}
     }
 }
 
@@ -1214,22 +1218,16 @@ fn get_displacement_component(
     action_data: &ActionData,
 ) -> Option<DisplacementTemplate> {
     let action = systems::actions::get_action(&action_data.action_id)?;
-    match action.kind() {
-        ActionKind::Standard { payload, .. } => {
-            for component in payload.components() {
-                match component {
-                    ActionPayloadComponent::Displacement(displacement_fn) => {
-                        return Some(displacement_fn(
-                            &game_state.world,
-                            action_data.actor.id(),
-                            &action_data.context,
-                        ));
-                    }
-                    _ => {}
-                }
+    for phase in action.kind().phases() {
+        for component in phase.payload.components() {
+            if let ActionPayloadComponent::Displacement(displacement_fn) = component {
+                return Some(displacement_fn(
+                    &game_state.world,
+                    action_data.actor.id(),
+                    &action_data.context,
+                ));
             }
         }
-        _ => {}
     }
 
     return None;
