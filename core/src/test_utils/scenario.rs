@@ -79,6 +79,24 @@ impl Scenario {
         }
     }
 
+    pub fn probes(
+        &mut self,
+        handles: impl IntoIterator<Item = impl Into<String>>,
+    ) -> ScenarioProbes<'_> {
+        ScenarioProbes {
+            scenario: self,
+            handles: handles.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    fn probe_parts(&mut self, handle: &str) -> (&mut CreatureProbe, &mut GameState) {
+        let probe = self
+            .creatures
+            .get_mut(handle)
+            .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"));
+        (probe, &mut self.game_state)
+    }
+
     pub fn spawn(
         &mut self,
         handle: impl Into<String>,
@@ -278,6 +296,12 @@ impl ScenarioActionBuilder<'_> {
         self
     }
 
+    pub fn context_spell_level(mut self, spell_level: u8) -> Self {
+        self.builder
+            .context_spell_level(&self.scenario.game_state.world, spell_level);
+        self
+    }
+
     pub fn target(mut self, target: TargetInstance) -> Self {
         self.builder.target(&mut self.scenario.game_state, target);
         self
@@ -365,20 +389,35 @@ impl ScenarioReactionBuilder<'_> {
     }
 }
 
+/// Emits the same delegated probe methods on both `ScenarioProbe` (one
+/// creature) and `ScenarioProbes` (several creatures, arguments cloned per
+/// creature), so the two can never drift apart.
 macro_rules! delegate_probe_methods {
     ( $( fn $name:ident($($param:ident : $type:ty),*) );* $(;)? ) => {
-        $(
-            #[track_caller]
-            pub fn $name(&mut self, $($param: $type),*) -> &mut Self {
-                let probe: &mut CreatureProbe = self
-                    .scenario
-                    .creatures
-                    .get_mut(&self.handle)
-                    .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
-                probe.$name(&mut self.scenario.game_state, $($param),*);
-                self
-            }
-        )*
+        impl ScenarioProbe<'_> {
+            $(
+                #[track_caller]
+                pub fn $name(&mut self, $($param: $type),*) -> &mut Self {
+                    let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+                    probe.$name(game_state, $($param),*);
+                    self
+                }
+            )*
+        }
+
+        impl ScenarioProbes<'_> {
+            $(
+                #[track_caller]
+                pub fn $name(&mut self, $($param: $type),*) -> &mut Self {
+                    for handle in &self.handles {
+                        let (probe, game_state) = self.scenario.probe_parts(handle);
+                        // UFCS so a &T parameter clones the reference, not the T
+                        probe.$name(game_state, $(Clone::clone(&$param)),*);
+                    }
+                    self
+                }
+            )*
+        }
     };
 }
 
@@ -387,31 +426,36 @@ pub struct ScenarioProbe<'s> {
     handle: String,
 }
 
+pub struct ScenarioProbes<'s> {
+    scenario: &'s mut Scenario,
+    handles: Vec<String>,
+}
+
+delegate_probe_methods! {
+    fn start_turn();
+
+    fn damage_raw(amount: u32);
+    fn d20_force_outcome(kind: D20CheckKind, outcome: D20CheckOutcome);
+    fn d20_clear_forced_outcome(kind: D20CheckKind);
+    fn d20_check(dc: &D20CheckDCKind);
+    fn d20_check_with_callback(dc: &D20CheckDCKind, callback: EventCallback);
+
+    fn assert_has_action(action: impl Into<ActionId> + Clone);
+    fn assert_resource(resource: impl Into<ResourceId> + Clone, operator: Operator<u8>);
+    fn assert_no_resource(resource: impl Into<ResourceId> + Clone);
+    fn assert_effect(effect: impl Into<EffectId> + Clone);
+    fn assert_no_effect(effect: impl Into<EffectId> + Clone);
+    fn assert_on_cooldown(action: impl Into<ActionId> + Clone);
+    fn assert_hp(amount: Operator<u32>);
+    fn assert_movement_speed(operator: Operator<Length>);
+    fn assert_free_movement(source: ModifierSource, operator: Operator<f32>);
+    fn assert_d20_advantage(kind: &D20CheckKind, source: &ModifierSource, advantage_type: AdvantageType);
+    fn assert_d20_crit_threshold_reduction(kind: &D20CheckKind, source: &ModifierSource, operator: Operator<i32>);
+    fn assert_concentration(effect: impl Into<EffectId> + Clone);
+    fn assert_no_concentration();
+}
+
 impl ScenarioProbe<'_> {
-    delegate_probe_methods! {
-        fn start_turn();
-
-        fn damage_raw(amount: u32);
-        fn d20_force_outcome(kind: D20CheckKind, outcome: D20CheckOutcome);
-        fn d20_clear_forced_outcome(kind: D20CheckKind);
-        fn d20_check(dc: &D20CheckDCKind);
-        fn d20_check_with_callback(dc: &D20CheckDCKind, callback: EventCallback);
-
-        fn assert_has_action(action: impl Into<ActionId>);
-        fn assert_resource(resource: impl Into<ResourceId>, operator: Operator<u8>);
-        fn assert_no_resource(resource: impl Into<ResourceId>);
-        fn assert_effect(effect: impl Into<EffectId>);
-        fn assert_no_effect(effect: impl Into<EffectId>);
-        fn assert_on_cooldown(action: impl Into<ActionId>);
-        fn assert_hp(amount: Operator<u32>);
-        fn assert_movement_speed(operator: Operator<Length>);
-        fn assert_free_movement(source: ModifierSource, operator: Operator<f32>);
-        fn assert_d20_advantage(kind: &D20CheckKind, source: &ModifierSource, advantage_type: AdvantageType);
-        fn assert_d20_crit_threshold_reduction(kind: &D20CheckKind, source: &ModifierSource, operator: Operator<i32>);
-        fn assert_concentration(effect: impl Into<EffectId>);
-        fn assert_no_concentration();
-    }
-
     pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {
         self.scenario.act(&self.handle, action)
     }
@@ -420,32 +464,19 @@ impl ScenarioProbe<'_> {
         self.scenario.react(&self.handle)
     }
 
-    // TODO: Would be nice to avoid this very verbose probe get
     pub fn hp(&mut self) -> u32 {
-        let probe: &mut CreatureProbe = self
-            .scenario
-            .creatures
-            .get_mut(&self.handle)
-            .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
-        probe.hp(&mut self.scenario.game_state)
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.hp(game_state)
     }
 
     pub fn max_hp(&mut self) -> u32 {
-        let probe: &mut CreatureProbe = self
-            .scenario
-            .creatures
-            .get_mut(&self.handle)
-            .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
-        probe.max_hp(&mut self.scenario.game_state)
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.max_hp(game_state)
     }
 
     pub fn movement_speed(&mut self) -> Length {
-        let probe: &mut CreatureProbe = self
-            .scenario
-            .creatures
-            .get_mut(&self.handle)
-            .unwrap_or_else(|| panic!("No creature with handle {} in scenario", self.handle));
-        probe.movement_speed(&mut self.scenario.game_state)
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.movement_speed(game_state)
     }
 }
 

@@ -86,7 +86,8 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
     scenario
         .event_filter()
         .actor("wizard")
-        .damage_roll(
+        .damage_dealt(
+            "goblin",
             DamageComponent::new(
                 DiceSet::new(expected_dice_num, DieSize::D10), // rolls twice on crit
                 DamageType::Fire,
@@ -121,7 +122,8 @@ fn ray_of_frost() {
     scenario
         .event_filter()
         .actor("wizard")
-        .damage_roll(
+        .damage_dealt(
+            "goblin",
             DamageComponent::new(
                 DiceSet::new(2, DieSize::D8), // rolls twice on crit
                 DamageType::Cold,

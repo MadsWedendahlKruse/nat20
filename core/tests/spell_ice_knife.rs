@@ -36,35 +36,24 @@ fn ice_knife_scenario(wizard_level: u8) -> Scenario {
 }
 
 fn force_saving_throws(scenario: &mut Scenario, outcome: D20CheckOutcome) {
-    for handle in ["goblin_1", "goblin_2"] {
-        scenario.probe(handle).d20_force_outcome(
-            D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
-            outcome,
-        );
-    }
+    scenario.probes(["goblin_1", "goblin_2"]).d20_force_outcome(
+        D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
+        outcome,
+    );
 }
 
 fn cast_ice_knife(scenario: &mut Scenario, attack_outcome: D20CheckOutcome, slot_level: u8) {
-    let mut probe = scenario.probe("wizard");
-
-    let mut action_builder = probe
+    scenario
+        .probe("wizard")
         .assert_has_action("action.ice_knife")
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
             attack_outcome,
         )
-        .act("action.ice_knife");
-
-    if slot_level > 1 {
-        action_builder = action_builder.context_filter(move |context, _| {
-            context
-                .spell
-                .as_ref()
-                .is_some_and(|spell| spell.level == slot_level)
-        });
-    }
-
-    action_builder.target_entity("goblin_1").perform();
+        .act("action.ice_knife")
+        .context_spell_level(slot_level)
+        .target_entity("goblin_1")
+        .perform();
 }
 
 fn assert_damage_rolls(scenario: &Scenario, damage: DamageComponent, count: usize) {
@@ -76,10 +65,10 @@ fn assert_damage_rolls(scenario: &Scenario, damage: DamageComponent, count: usiz
 }
 
 #[rstest]
-#[case(1, 1, 2)]
-#[case(3, 2, 3)] // +1d6 Cold per slot level above 1
-fn ice_knife_hit(#[case] wizard_level: u8, #[case] slot_level: u8, #[case] cold_dice_num: u32) {
-    let mut scenario = ice_knife_scenario(wizard_level);
+#[case(1, 2)]
+#[case(2, 3)] // +1d6 Cold per slot level above 1
+fn ice_knife_hit(#[case] slot_level: u8, #[case] cold_dice_num: u32) {
+    let mut scenario = ice_knife_scenario(5);
     force_saving_throws(&mut scenario, D20CheckOutcome::CriticalFailure);
     let goblin_1_hp = scenario.probe("goblin_1").hp();
     let goblin_2_hp = scenario.probe("goblin_2").hp();

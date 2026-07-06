@@ -144,6 +144,15 @@ impl ActionBuilder {
         self
     }
 
+    pub fn context_spell_level(&mut self, world: &World, spell_level: u8) -> &mut Self {
+        self.context_filter(world, |context, _cost| {
+            context
+                .spell
+                .as_ref()
+                .is_some_and(|spell| spell.level == spell_level)
+        })
+    }
+
     pub fn target(&mut self, game_state: &mut GameState, target: TargetInstance) -> &mut Self {
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Targets { action, .. }) => {
