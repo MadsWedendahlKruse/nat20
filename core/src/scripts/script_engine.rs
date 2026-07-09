@@ -253,19 +253,13 @@ impl ScriptEngine {
         script: &Script,
         game_state: &mut GameState,
         action: &ActionData,
-        results: &Vec<ActionResult>,
+        results: &ActionResult,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionResultHook)?;
-
-        let entity = self
-            .lua
-            .create_userdata(ScriptEntity::from(action.actor.id()))
-            .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
                 func.call::<()>((
                     scope.create_userdata_ref_mut(game_state)?,
-                    entity,
                     scope.create_userdata_ref(action)?,
                     results.clone(),
                 ))

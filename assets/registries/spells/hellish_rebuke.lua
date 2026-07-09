@@ -1,27 +1,27 @@
 ---@type ReactionTriggerFn
 local function reaction_trigger(game_state, reactor, event)
-    if not event:is_action_performed() then
+    if not event:is_action_result() then
         return false
     end
 
-    local action, results = event:as_action_performed()
-    if not action or not results then
+    local result, actor = event:as_action_result()
+    if not result then
+        return false
+    end
+
+    -- Only trigger if the reactor is the target of the action
+    if result.target ~= reactor then
         return false
     end
 
     -- Cannot target yourself
-    if action.actor == reactor then
+    if actor and actor == reactor then
         return false
     end
 
-    for _, result in ipairs(results) do
-        local standard_kind = result.kind:as_standard()
-        if result.target:entity() == reactor and standard_kind then
-            for _, damage in ipairs(standard_kind:damage()) do
-                if damage:damage_taken_total() > 0 then
-                    return true
-                end
-            end
+    for _, damage in ipairs(result:damage()) do
+        if damage:damage_taken_total() > 0 then
+            return true
         end
     end
 

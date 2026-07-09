@@ -9,7 +9,7 @@ use uom::si::f32::Length;
 use crate::{
     components::{
         actions::{
-            action::{ActionContext, ActionKindResult, ActionOutcome},
+            action::{ActionContext, ActionResultComponent},
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
@@ -163,7 +163,7 @@ impl Scenario {
                 .encounters
                 .get(encounter_id)
                 .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in game state"))
-                .combat_log()
+                .event_log()
         } else {
             &self.game_state.event_log
         };
@@ -595,11 +595,40 @@ impl ScenarioEventFilterBuilder<'_> {
         let events = self.filter();
         assert!(
             events.len() == expected_count,
-            "Expected {} events matching filter, but found {}. Events: {:#?}",
+            "Expected {} events matching filter, but found {}. \
+            \n--- \
+            \nFilter: {:?} \
+            \n--- \
+            \nEvents: {:?}",
             expected_count,
             events.len(),
-            self.scenario.game_state.event_log.events
+            self,
+            self.event_log()
         );
+    }
+
+    fn event_log(&self) -> &Vec<Event> {
+        if let Some(encounter_id) = &self.scenario.encounter_id {
+            &self
+                .scenario
+                .game_state
+                .encounters
+                .get(encounter_id)
+                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in game state"))
+                .event_log()
+                .events
+        } else {
+            &self.scenario.game_state.event_log.events
+        }
+    }
+}
+
+impl std::fmt::Debug for ScenarioEventFilterBuilder<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScenarioEventFilterBuilder")
+            .field("actor", &self.actor)
+            .field("kind", &self.kind)
+            .finish()
     }
 }
 
@@ -630,7 +659,7 @@ impl EventFilterKind {
                     modifier,
                     advantage,
                 },
-                EventKind::D20CheckResolved(_actor, result, dc),
+                EventKind::D20CheckResolved { result, dc, .. },
             ) => {
                 if *kind != dc.kind() {
                     return false;
@@ -666,7 +695,7 @@ impl EventFilterKind {
                     damage: expected_damage,
                     source: expected_source,
                 },
-                EventKind::DamageRollResolved(_actor, result),
+                EventKind::DamageRollResolved { result, .. },
             ) => {
                 let mut found_matching_component = false;
 
@@ -698,49 +727,30 @@ impl EventFilterKind {
                     damage: expected_damage,
                     source: expected_source,
                 },
-                EventKind::ActionPerformed { action, results },
+                EventKind::ActionResult { result, .. },
             ) => {
-                let mut found_matching_result = false;
+                if result.target.id() != *expected_target {
+                    return false;
+                }
 
-                'result: for result in results {
-                    if let ActionKindResult::Standard(outcome) = &result.kind
-                        && let TargetInstance::Entity { entity, .. } = &result.target
-                        && entity.id() == *expected_target
+                for component in result.components() {
+                    if let ActionResultComponent::Damage(damage_result) = component
+                        && let Some(damage_result) = &damage_result.damage_taken
                     {
-                        for component in outcome.components() {
-                            if let ActionOutcome::Damage(damage_outcome) = component
-                                && let Some(damage_result) = &damage_outcome.damage_taken
+                        for component in &damage_result.components {
+                            let expected_dice = &expected_damage.dice_roll.dice;
+                            if component.damage_type == expected_damage.damage_type
+                                && expected_dice.die_size == component.original.die_size
+                                && expected_dice.num_dice == component.original.rolls.len() as u32
+                                && damage_result.source == *expected_source
                             {
-                                let mut found_matching_component = false;
-
-                                for component in &damage_result.components {
-                                    let expected_dice = &expected_damage.dice_roll.dice;
-                                    if component.damage_type == expected_damage.damage_type
-                                        && expected_dice.die_size == component.original.die_size
-                                        && expected_dice.num_dice
-                                            == component.original.rolls.len() as u32
-                                    {
-                                        found_matching_component = true;
-                                        break;
-                                    }
-                                }
-
-                                if found_matching_component
-                                    && damage_result.source == *expected_source
-                                {
-                                    found_matching_result = true;
-                                    break 'result;
-                                }
+                                return true;
                             }
                         }
                     }
                 }
 
-                if !found_matching_result {
-                    return false;
-                }
-
-                true
+                false
             }
 
             _ => false,

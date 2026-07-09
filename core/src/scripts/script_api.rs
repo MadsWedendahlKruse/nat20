@@ -9,38 +9,24 @@ use mlua::{
 
 use crate::{
     components::{
-        ability::AbilityScoreMap,
-        actions::{
+        ability::AbilityScoreMap, actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionOutcome, ActionOutcomeBundle, ActionResult, DamageOutcome
-            },
-            targeting::TargetInstance,
-        },
-        damage::{
+                ActionCondition, ActionConditionResolution, ActionContext, ActionResultComponent, ActionResult, DamageResult, EffectResult, EffectResultKind, HealingResult
+            }, targeting::TargetInstance,
+        }, damage::{
             AttackSource, CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageRollResult, MitigationOperation,
-        },
-        dice::{DiceSet, DiceSetRoll, DieSize},
-        effects::effect::{
+        }, dice::{DiceSet, DiceSetRoll, DieSize}, effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
-        },
-        health::hit_points::HitPoints,
-        id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId},
-        level::CharacterLevels,
-        modifier::{Modifiable, ModifierSet, ModifierSource},
-        resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
-        time::{TimeDuration, TurnBoundary},
-    },
-    engine::{
+        }, health::hit_points::HitPoints, id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId}, level::CharacterLevels, modifier::{Modifiable, ModifierSet, ModifierSource}, resource::{ResourceAmount, ResourceAmountMap, ResourceMap}, time::{TimeDuration, TurnBoundary},
+    }, engine::{
         action_prompt::ActionData,
         event::{Event, EventKind},
         game_state::GameState,
-    },
-    registry::serialize::{
+    }, registry::serialize::{
         parser::{DiceExpression, Evaluable, IntExpression, Parser},
         variables::PARSER_VARIABLES,
-    },
-    systems::{
+    }, systems::{
         self,
         d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
     },
@@ -203,10 +189,8 @@ impl_from_lua_userdata!(
     ActionContext,
     ActionData,
     ActionConditionResolution,
-    DamageOutcome,
-    ActionOutcomeBundle,
+    DamageResult,
     ActionResult,
-    ActionKindResult,
     Event,
     DamageRollResult,
     DamageMitigationResult,
@@ -517,7 +501,7 @@ impl UserData for ActionConditionResolution {
     }
 }
 
-impl UserData for DamageOutcome {
+impl UserData for DamageResult {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("damage_roll", |_, this, ()| Ok(this.damage_roll.clone()));
         methods.add_method("damage_taken", |_, this, ()| Ok(this.damage_taken.clone()));
@@ -538,40 +522,25 @@ impl UserData for DamageOutcome {
     }
 }
 
-impl UserData for ActionOutcomeBundle {
+impl UserData for ActionResult {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("target", |_, this| {
+            Ok(ScriptEntity::from(this.target.id()))
+        });
+    }
+
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("damage", |_, this, ()| {
             Ok(this.components()
                 .iter()
                 .filter_map(|component| match &component {
-                    ActionOutcome::Damage(damage_outcome) => Some(damage_outcome.clone()),
+                    ActionResultComponent::Damage(damage_result) => Some(damage_result.clone()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
             )
         });
         methods.add_method("resolution", |_, this, ()| Ok(this.resolution().clone()));
-    }
-}
-
-impl UserData for ActionKindResult {
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("as_standard", |_, this, ()| {
-            Ok(match this {
-                ActionKindResult::Standard(outcome) => Some(outcome.clone()),
-                _ => None,
-            })
-        });
-    }
-}
-
-impl UserData for ActionResult {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("performer", |_, this| {
-            Ok(ScriptEntity::from(this.performer.id()))
-        });
-        fields.add_field_method_get("target", |_, this| Ok(this.target.clone()));
-        fields.add_field_method_get("kind", |_, this| Ok(this.kind.clone()));
     }
 }
 
@@ -589,20 +558,20 @@ impl UserData for TargetInstance {
 impl UserData for Event {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("is_d20_check_performed", |_, this, ()| {
-            Ok(matches!(this.kind, EventKind::D20CheckPerformed(_, _, _)))
+            Ok(matches!(this.kind, EventKind::D20CheckPerformed { .. }))
         });
         methods.add_method("as_d20_check_performed", |_, this, ()| {
-            let EventKind::D20CheckPerformed(actor, kind, result) = &this.kind else {
+            let EventKind::D20CheckPerformed { actor, result, dc } = &this.kind else {
                 return Ok((None, None, None));
             };
             Ok((
                 Some(ScriptEntity::from(actor.id())),
-                Some(kind.clone()),
                 Some(result.clone()),
+                Some(dc.clone()),
             ))
         });
         methods.add_method_mut("with_d20_check", |lua, this, callback: Function| {
-            let EventKind::D20CheckPerformed(_, result, dc) = &mut this.kind else {
+            let EventKind::D20CheckPerformed { result, dc, .. } = &mut this.kind else {
                 return Ok(());
             };
             lua.scope(|scope| {
@@ -622,14 +591,17 @@ impl UserData for Event {
             };
             Ok(Some(action.clone()))
         });
-        methods.add_method("is_action_performed", |_, this, ()| {
-            Ok(matches!(this.kind, EventKind::ActionPerformed { .. }))
+        methods.add_method("is_action_result", |_, this, ()| {
+            Ok(matches!(this.kind, EventKind::ActionResult { .. }))
         });
-        methods.add_method("as_action_performed", |_, this, ()| {
-            let EventKind::ActionPerformed { action, results } = &this.kind else {
+        methods.add_method("as_action_result", |_, this, ()| {
+            let EventKind::ActionResult { result, actor } = &this.kind else {
                 return Ok((None, None));
             };
-            Ok((Some(action.clone()), Some(results.clone())))
+            Ok((
+                Some(result.clone()),
+                actor.as_ref().map(|p| ScriptEntity::from(p.id())),
+            ))
         });
         methods.add_method("is_moving_out_of_reach", |_, this, ()| {
             Ok(matches!(this.kind, EventKind::MovingOutOfReach { .. }))
@@ -842,12 +814,14 @@ impl UserData for GameState {
 
                 let healing = dice_roll.roll();
                 let target_entity: hecs::Entity = target.into();
-                systems::health::heal(&mut this.world, target_entity, healing.subtotal as u32);
-                let event = Event::new(EventKind::Healing {
-                    entity: EntityIdentifier::from_world(&this.world, target_entity),
-                    amount: healing,
-                    source,
-                });
+                let new_life_state = systems::health::heal(&mut this.world, target_entity, healing.subtotal as u32);
+                let event = Event::action_result_event(
+                    EntityIdentifier::from_world(&this.world, target_entity),
+                    ActionResultComponent::Healing(HealingResult {
+                        healing,
+                        new_life_state,
+                    }),
+                );
                 this.process_event(event);
                 Ok(())
             },
@@ -878,10 +852,14 @@ fn apply_effect_impl(
 
     let target_entity: Entity = target.into();
 
-    game_state.process_event(Event::new(EventKind::GainedEffect {
-        entity: EntityIdentifier::from_world(&game_state.world, target_entity),
-        effect: effect_id.clone(),
-    }));
+    game_state.process_event(Event::action_result_event(
+        EntityIdentifier::from_world(&game_state.world, target_entity),
+        ActionResultComponent::Effect(EffectResult {
+            resolution: resolution.clone(),
+            effect: effect_id.clone(),
+            result: EffectResultKind::Applied,
+        }),
+    ));
 
     systems::effects::add_effect_template(
         game_state,

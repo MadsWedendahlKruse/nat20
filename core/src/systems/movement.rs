@@ -13,9 +13,12 @@ use uom::si::{
 
 use crate::{
     components::{
-        actions::targeting::{
-            LineOfSight, LineOfSightTrajectory, TargetInstance, TargetingCheck, TargetingError,
-            TargetingKind,
+        actions::{
+            action::{ActionConditionResolution, ActionResultComponent, DamageResult},
+            targeting::{
+                LineOfSight, LineOfSightTrajectory, TargetInstance, TargetingCheck, TargetingError,
+                TargetingKind,
+            },
         },
         activity::ActivityState,
         damage::{DamageRoll, DamageSource, DamageType},
@@ -575,12 +578,25 @@ pub fn apply_fall_damage(game_state: &mut GameState, entity: Entity, fall_distan
         return;
     }
 
-    let damage_roll = DamageRoll::new(
+    let mut damage_roll = DamageRoll::new(
         DiceSetRoll::new(damage_dice, FALL_DAMAGE_DIE, ModifierSet::new()),
         DamageType::Bludgeoning,
         DamageSource::Environmental,
-    );
-    // TODO: Decouple damage events from the action performed events so stufff like
-    // this also shows up in the combat log
-    systems::health::damage(game_state, entity, &mut damage_roll.roll(false));
+    )
+    .roll(false);
+
+    let (damage_taken, new_life_state) =
+        systems::health::damage(game_state, entity, &mut damage_roll);
+
+    // TODO: Some kind of damage source so we can see it was from fall damage in the logs?
+
+    game_state.process_event(Event::action_result_event(
+        EntityIdentifier::from_world(&game_state.world, entity),
+        ActionResultComponent::Damage(DamageResult {
+            resolution: ActionConditionResolution::Unconditional,
+            damage_roll: Some(damage_roll),
+            damage_taken,
+            new_life_state,
+        }),
+    ));
 }

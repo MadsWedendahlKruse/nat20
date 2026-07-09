@@ -229,8 +229,8 @@ pub fn damage(
         let callback = EventCallback::new({
             move |game_state, event, _| {
                 match &event.kind {
-                    EventKind::D20CheckResolved(_, check_result, dc) => {
-                        if !check_result.is_success(dc) {
+                    EventKind::D20CheckResolved { result, dc, .. } => {
+                        if !result.is_success(dc) {
                             systems::spells::break_concentration(game_state, target);
                         }
                     }

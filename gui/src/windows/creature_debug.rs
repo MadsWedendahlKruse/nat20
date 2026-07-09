@@ -262,8 +262,6 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                                     boundary: TurnBoundary::Start,
                                 },
                             );
-                            // TODO: Temporary, should be handled in advance_time
-                            systems::time::on_turn_start(game_state, self.creature);
                         }
                         1 | 2 => {
                             let rest_kind = match index {

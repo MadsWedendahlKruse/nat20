@@ -6,9 +6,8 @@ use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap}, actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionKindResult, ActionOutcome, ActionPayloadComponent, ActionResult, ReactionOutcome
-            },
-            targeting::{AreaShape, TargetInstance, TargetingKind, TargetingRange},
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionResultComponent, ActionPayloadComponent, EffectResultKind, ReactionResult
+            }, targeting::{AreaShape, TargetingKind, TargetingRange},
         }, activity::{ActivityState, ActivityStateKind}, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
             AttackRollResult, DamageComponentMitigation, DamageComponentResult,
             DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
@@ -22,9 +21,7 @@ use nat20_core::{
             item::{Item, ItemRarity},
             money::MonetaryValue,
         }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{Modifiable, ModifierSet, ModifierSource}, proficiency::{Proficiency, ProficiencyLevel}, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
-    },
-    registry::registry::{FeatsRegistry, SpellsRegistry},
-    systems::{
+    }, registry::registry::{FeatsRegistry, SpellsRegistry}, systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind}, geometry::{Displacement, DisplacementTemplate},
     },
@@ -36,7 +33,7 @@ use uom::si::{angle::degree, length::meter, mass::kilogram};
 use crate::{
     render::{common::{colors::Color, utils::Renderable}, ui::{
         engine::render_event_description,
-        text::{TextKind, TextSegment, TextSegments, indent_text, item_rarity_color},
+        text::{TextKind, TextSegment, TextSegments, item_rarity_color},
         utils::{
             ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext,
             ProgressBarColor, render_progress_bar,
@@ -79,12 +76,13 @@ impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
                     if value == &0 {
                         continue;
                     }
+                    ui.indent();
                     TextSegments::new(vec![
                         (signed_value(value), TextKind::Normal),
                         (source.to_string(), TextKind::Details),
                     ])
-                    .with_indent(indent_level)
                     .render(ui);
+                    ui.unindent();
                 }
             }
 
@@ -239,12 +237,13 @@ impl ImguiRenderable for AbilityScore {
         ])
         .render(ui);
 
+        ui.indent();
         TextSegments::new(vec![
             (self.base.to_string(), TextKind::Normal),
             ("Base".to_string(), TextKind::Details),
         ])
-        .with_indent(1)
         .render(ui);
+        ui.unindent();
 
         self.modifiers
             .render_with_context(ui, ModifierSetRenderMode::List(1));
@@ -768,7 +767,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for Armor {
 impl ImguiRenderable for ArmorDexterityBonus {
     fn render(&self, ui: &imgui::Ui) {
         if self != &ArmorDexterityBonus::Unlimited {
-            indent_text(ui, 1);
+            ui.indent();
             let max_dexterity_bonus = self.max_bonus();
             if max_dexterity_bonus == 0 {
                 TextSegments::new(vec![
@@ -787,6 +786,7 @@ impl ImguiRenderable for ArmorDexterityBonus {
                 ])
                 .render(ui);
             }
+            ui.unindent();
         }
     }
 }
@@ -844,12 +844,13 @@ impl ImguiRenderable for DamageRoll {
         damage_components.extend(self.bonus.clone());
 
         for component in damage_components {
-            indent_text(ui, 1);
+            ui.indent();
             TextSegment::new(
                 &component.to_string(),
                 TextKind::Damage(component.damage_type),
             )
             .render(ui);
+            ui.unindent();
         }
     }
 }
@@ -974,38 +975,10 @@ impl ImguiRenderable for DamageComponentMitigation {
     }
 }
 
-impl ImguiRenderableWithContext<u8> for ActionResult {
-    fn render_with_context(&self, ui: &imgui::Ui, indent_level: u8) {
-        let target_name = match &self.target {
-            TargetInstance::Entity{entity, ..} => {
-                entity.name().as_str()
-            }
-            TargetInstance::Point(point) => todo!(),
-        };
-
-        match &self.kind {
-            ActionKindResult::Standard(action_outcome) => {
-                if action_outcome.is_empty() {
-                    ui.same_line();
-                    TextSegment::new(
-                        "with no effect",
-                        TextKind::Normal,
-                    ).render(ui);
-                    return;
-                }
-
-                for component in &action_outcome.components {
-                    component.render_with_context(ui, (indent_level, self.performer.name().as_str(), target_name));
-                }
-            }
-        }
-    }
-}
-
-impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
-    fn render_with_context(&self, ui: &imgui::Ui, (indent_level, performer_name, target_name): (u8, &str, &str)) {
+impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionResultComponent {
+    fn render_with_context(&self, ui: &imgui::Ui, (actor, target_name): (&Option<&EntityIdentifier>, &str)) {
         match self {
-            ActionOutcome::Damage(damage) => {
+            ActionResultComponent::Damage(damage) => {
                 let no_damage_text = match damage.resolution {
                     ActionConditionResolution::Unconditional => "took no damage",
                     ActionConditionResolution::AttackRoll { .. } => "was not hit",
@@ -1015,14 +988,13 @@ impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
                 ui.group(|| {
                     damage.damage_taken.render_with_context(
                         ui,
-                        (&target_name, indent_level + 1, no_damage_text, None),
+                        (&target_name, no_damage_text, None),
                     );
                     damage.new_life_state.render_with_context(
                         ui,
                         (
                             &target_name,
-                            Some(performer_name),
-                            indent_level + 1,
+                            actor.as_ref().map(|p| p.name().as_str()),
                         ),
                     );
                 });
@@ -1100,39 +1072,47 @@ impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
                     });
                 }
             },
-            ActionOutcome::Effect(effect) => {
-                if !effect.applied {
-                    TextSegments::new(vec![
-                        (target_name, TextKind::Target),
-                        ("was unaffected by", TextKind::Normal),
-                        (&effect.effect.to_string(), TextKind::Effect),
-                    ]).with_indent(indent_level + 1).render(ui);
-                    return;
+            ActionResultComponent::Effect(effect) => {
+                match effect.result {
+                    EffectResultKind::Applied => {
+                        TextSegments::new(vec![
+                            (target_name, TextKind::Target),
+                            ("gained effect", TextKind::Normal),
+                            (&effect.effect.to_string(), TextKind::Effect),
+                        ])
+                        .render(ui);
+                    },
+                    EffectResultKind::Removed => {
+                        TextSegments::new(vec![
+                            (target_name, TextKind::Target),
+                            ("lost effect", TextKind::Normal),
+                            (&effect.effect.to_string(), TextKind::Effect),
+                        ])
+                        .render(ui);
+                    },
+                    EffectResultKind::None => {
+                        TextSegments::new(vec![
+                            (target_name, TextKind::Target),
+                            ("was unaffected by", TextKind::Normal),
+                            (&effect.effect.to_string(), TextKind::Effect),
+                        ])
+                        .render(ui);
+                    }
                 }
-
-                TextSegments::new(vec![
-                    (target_name, TextKind::Target),
-                    ("gained effect", TextKind::Normal),
-                    (&effect.effect.to_string(), TextKind::Effect),
-                ])
-                .with_indent(indent_level + 1)
-                .render(ui);
             },
-            ActionOutcome::Healing(healing) => {
+            ActionResultComponent::Healing(healing) => {
                 ui.group(|| {
                     TextSegments::new(vec![
                         (target_name, TextKind::Target),
                         ("was healed for", TextKind::Normal),
                         (&format!("{} HP", healing.healing.subtotal), TextKind::Healing),
                     ])
-                    .with_indent(indent_level + 1)
                     .render(ui);
                     healing.new_life_state.render_with_context(
                         ui,
                         (
                             &target_name,
-                            Some(performer_name),
-                            indent_level + 1,
+                            actor.as_ref().map(|p| p.name().as_str()),
                         ),
                     );
                 });
@@ -1148,10 +1128,18 @@ impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
                     });
                 }
             },
-            ActionOutcome::Reaction(reaction) => {
+            ActionResultComponent::Reaction(reaction) => {
+                let Some(actor) = actor else {
+                    TextSegment::new("Reaction result without actor", TextKind::Red).render(ui);
+                    return;
+                };
+
                 match reaction {
-                    ReactionOutcome::ModifyEvent { before, after } => {
-                        TextSegment::new("\tmodifying", TextKind::Normal).render(ui);
+                    ReactionResult::ModifyEvent { before, after } => {
+                        TextSegments::new(
+                            vec![(format!("{}'s", actor.name().as_str()).as_str(), TextKind::Actor),
+                            ("reaction modified", TextKind::Normal)],
+                        ).render(ui);
                         ui.same_line();
                         render_event_description(ui, before);
 
@@ -1165,36 +1153,42 @@ impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
                         }
                     }
 
-                    ReactionOutcome::CancelEvent {
+                    ReactionResult::CancelEvent {
                         event,
                         resources_refunded,
                     } => {
-                        // ui.same_line();
-                        TextSegment::new("\tcancelling", TextKind::Normal).render(ui);
+                        TextSegments::new(
+                            vec![(format!("{}'s", actor.name().as_str()).as_str(), TextKind::Actor),
+                            ("reaction canceled", TextKind::Normal)],
+                        ).render(ui);
                         ui.same_line();
                         render_event_description(ui, event);
                     }
 
-                    ReactionOutcome::NoEffect => {
-                        ui.same_line();
-                        TextSegment::new("with no effect", TextKind::Normal).render(ui)
+                    ReactionResult::NoEffect => {
+                        TextSegments::new(
+                            vec![(format!("{}'s", actor.name().as_str()).as_str(), TextKind::Actor),
+                            ("reaction had no effect on", TextKind::Normal),
+                            (target_name, TextKind::Target)],
+                        ).render(ui);
                     }
                 }
             },
-            ActionOutcome::Displacement(displacement) => {
+            // TODO: Consider changing the "*verb*-ing *target*" wording here
+            ActionResultComponent::Displacement(displacement) => {
                 match displacement {
                     Displacement::Teleport => {
-                        TextSegment::new("\tteleporting", TextKind::Normal).render(ui);
+                        TextSegment::new("teleporting", TextKind::Normal).render(ui);
                         ui.same_line();
                         TextSegment::new(target_name, TextKind::Target).render(ui);
                     },
                     Displacement::Push { trajectory } => {
-                        TextSegment::new("\tpushing", TextKind::Normal).render(ui);
+                        TextSegment::new("pushing", TextKind::Normal).render(ui);
                         ui.same_line();
                         TextSegment::new(target_name, TextKind::Target).render(ui);
                     },
                     Displacement::Pull { trajectory } => {
-                        TextSegment::new("\tpulling", TextKind::Normal).render(ui);
+                        TextSegment::new("pulling", TextKind::Normal).render(ui);
                         ui.same_line();
                         TextSegment::new(target_name, TextKind::Target).render(ui);
                     },
@@ -1204,12 +1198,10 @@ impl ImguiRenderableWithContext<(u8, &str, &str)> for ActionOutcome {
     }
 }
 
-impl ImguiRenderableWithContext<(&str, u8, &Option<AttackRollResult>)>
+impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)>
     for DamageComponentMitigation
 {
-    fn render_with_context(&self, ui: &imgui::Ui, context: (&str, u8, &Option<AttackRollResult>)) {
-        let (target_name, indent_level, attack_roll) = context;
-
+    fn render_with_context(&self, ui: &imgui::Ui, (target_name, attack_roll): (&str, &Option<AttackRollResult>)) {
         let mut segments = vec![
             (target_name.to_string(), TextKind::Target),
             ("was hit for".to_string(), TextKind::Normal),
@@ -1224,25 +1216,23 @@ impl ImguiRenderableWithContext<(&str, u8, &Option<AttackRollResult>)>
             }
         }
         TextSegments::new(segments)
-            .with_indent(indent_level)
             .render(ui);
     }
 }
 
-impl ImguiRenderableWithContext<(&str, u8, &str, Option<AttackRollResult>)>
+impl ImguiRenderableWithContext<(&str, &str, Option<AttackRollResult>)>
     for Option<DamageMitigationResult>
 {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        context: (&str, u8, &str, Option<AttackRollResult>),
+        (target_name, no_damage_text, attack_roll): (&str, &str, Option<AttackRollResult>),
     ) {
-        let (target_name, indent_level, no_damage_text, attack_roll) = context;
         ui.group(|| match self {
             // Some damage was taken
             Some(result) => {
                 for component in &result.components {
-                    component.render_with_context(ui, (target_name, indent_level, &attack_roll));
+                    component.render_with_context(ui, (target_name, &attack_roll));
                 }
             }
             // No damage was taken
@@ -1257,7 +1247,6 @@ impl ImguiRenderableWithContext<(&str, u8, &str, Option<AttackRollResult>)>
                     }
                 }
                 TextSegments::new(segments)
-                    .with_indent(indent_level)
                     .render(ui);
             }
         });
@@ -1347,13 +1336,11 @@ pub fn new_life_state_text(
     }
 }
 
-impl ImguiRenderableWithContext<(&str, Option<&str>, u8)> for Option<LifeState> {
+impl ImguiRenderableWithContext<(&str, Option<&str>)> for Option<LifeState> {
     // This is used to render a LifeState which is being transitioned to
-    fn render_with_context(&self, ui: &imgui::Ui, context: (&str, Option<&str>, u8)) {
-        let (entity, actor, indent_level) = context;
+    fn render_with_context(&self, ui: &imgui::Ui, (entity, actor): (&str, Option<&str>)) {
         if let Some(life_state) = self {
             TextSegments::new(new_life_state_text(entity, life_state, actor))
-                .with_indent(indent_level)
                 .render(ui);
         }
     }
@@ -1422,31 +1409,14 @@ impl ImguiRenderable for D20CheckDCKind {
 impl ImguiRenderable for D20ResultKind {
     fn render(&self, ui: &imgui::Ui) {
         match self {
-            // D20ResultKind::SavingThrow { kind, result } => {
-            //     TextSegments::new(vec![
-            //         ("Saving Throw:".to_string(), TextKind::Normal),
-            //         (kind.to_string(), TextKind::Ability),
-            //     ])
-            //     .render(ui);
-            //     indent_text(ui, 1);
-            //     result.render(ui);
-            // }
-            // D20ResultKind::Skill { skill, result } => {
-            //     TextSegments::new(vec![
-            //         ("Skill Check:".to_string(), TextKind::Normal),
-            //         (skill.to_string(), TextKind::Skill),
-            //     ])
-            //     .render(ui);
-            //     indent_text(ui, 1);
-            //     result.render(ui);
-            // }
             D20ResultKind::SavingThrow { result, .. } | D20ResultKind::Skill { result, .. } => {
                 result.render(ui);
             }
             D20ResultKind::AttackRoll { result } => {
                 TextSegment::new("Attack Roll:", TextKind::Normal).render(ui);
-                indent_text(ui, 1);
+                ui.indent();
                 result.render(ui);
+                ui.unindent();
             }
         }
     }
@@ -1586,28 +1556,39 @@ impl ImguiRenderable for CreatureType {
 
 impl ImguiRenderableWithContext<&World> for Vec<EntityIdentifier> {
     fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
-        if self.len() == 1 {
+        // Hashset has random order, so we can't just convert the vec to a set
+        // since this will cause the order to change on each render
+        let mut unique_targets = Vec::new();
+        let mut rendered_targets = HashSet::new();
+        for action_target in self.iter() {
+            if rendered_targets.contains(action_target) {
+                continue;
+            }
+            unique_targets.push(action_target);
+            rendered_targets.insert(action_target);
+        }
+
+        if unique_targets.len() == 1 {
             ui.same_line();
             TextSegment::new(
-                self[0].name().as_str(),
+                unique_targets[0].name().as_str(),
                 TextKind::Target,
             )
             .render(ui);
-        } else if self.len() > 1 {
-            // Hashset has random order, so we can't just convert the vec to a set
-            // since this will cause the order to change on each render
-            let mut rendered_targets = HashSet::new();
-            for action_target in self.iter() {
-                if rendered_targets.contains(action_target) {
-                    continue;
-                }
-                indent_text(ui, 1);
-                TextSegment::new(
-                    action_target.name().as_str(),
-                    TextKind::Target,
-                )
-                .render(ui);
-                rendered_targets.insert(action_target);
+        } else if unique_targets.len() > 1 {
+            ui.same_line();
+            TextSegment::new("multiple targets", TextKind::Target).render(ui);
+
+            if ui.is_item_hovered() {
+                ui.tooltip(|| {
+                    for target in unique_targets.iter() {
+                        TextSegment::new(
+                            target.name().as_str(),
+                            TextKind::Target,
+                        )
+                        .render(ui);
+                    }
+                });
             }
         }
     }
@@ -1779,12 +1760,13 @@ impl ImguiRenderable for Speed {
                 ])
                 .render(ui);
                 for (source, flat_bonus) in flat_bonuses {
+                    ui.indent();
                     TextSegments::new(vec![
                         (format!("{:.1} m", flat_bonus), TextKind::Normal),
                         (source.to_string(), TextKind::Details),
                     ])
-                    .with_indent(1)
                     .render(ui);
+                    ui.unindent();
                 }
 
                 let multipliers = self.multipliers();
@@ -1799,12 +1781,13 @@ impl ImguiRenderable for Speed {
                     ])
                     .render(ui);
                     for (source, multiplier) in self.multipliers() {
+                        ui.indent();
                         TextSegments::new(vec![
                             (format!("x{:.2}", multiplier), TextKind::Normal),
                             (source.to_string(), TextKind::Details),
                         ])
-                        .with_indent(1)
                         .render(ui);
+                        ui.unindent();
                     }
                 }
 
@@ -1823,12 +1806,13 @@ impl ImguiRenderable for Speed {
                     ])
                     .render(ui);
                     for (source, multiplier) in self.free_movement_multipliers() {
+                        ui.indent();
                         TextSegments::new(vec![
                             (format!("x{:.2}", multiplier), TextKind::Normal),
                             (source.to_string(), TextKind::Details),
                         ])
-                        .with_indent(1)
                         .render(ui);
+                        ui.unindent();
                     }
                 }
             });

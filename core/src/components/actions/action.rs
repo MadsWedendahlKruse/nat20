@@ -46,7 +46,7 @@ pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
 pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
 pub type ReactionBodyFunction =
-    dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionOutcome> + Send + Sync;
+    dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionResult> + Send + Sync;
 pub type DisplacementFunction =
     dyn Fn(&World, Entity, &ActionContext) -> DisplacementTemplate + Send + Sync;
 pub type AreaShapeFunction = dyn Fn(&World, Entity, &ActionContext) -> AreaShape + Send + Sync;
@@ -326,7 +326,7 @@ pub trait AttackRollProvider {
     fn attack_roll(
         &self,
         world: &World,
-        performer: Entity,
+        actor: Entity,
         target: Entity,
         context: &ActionContext,
     ) -> AttackRoll;
@@ -336,7 +336,7 @@ pub trait SavingThrowProvider {
     fn saving_throw(
         &self,
         world: &World,
-        performer: Entity,
+        actor: Entity,
         context: &ActionContext,
         kind: SavingThrowKind,
     ) -> SavingThrowDC;
@@ -531,20 +531,20 @@ impl ActionConditionResolution {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DamageOutcome {
+pub struct DamageResult {
     pub resolution: ActionConditionResolution,
     pub damage_roll: Option<DamageRollResult>,
     pub damage_taken: Option<DamageMitigationResult>,
     pub new_life_state: Option<LifeState>,
 }
 
-impl DamageOutcome {
+impl DamageResult {
     pub fn unconditional(
         damage_roll: Option<DamageRollResult>,
         damage_taken: Option<DamageMitigationResult>,
         new_life_state: Option<LifeState>,
     ) -> Self {
-        DamageOutcome {
+        DamageResult {
             resolution: ActionConditionResolution::Unconditional,
             damage_roll,
             damage_taken,
@@ -559,7 +559,7 @@ impl DamageOutcome {
         attack_roll: AttackRollResult,
         armor_class: ArmorClass,
     ) -> Self {
-        DamageOutcome {
+        DamageResult {
             resolution: ActionConditionResolution::AttackRoll {
                 attack_roll,
                 armor_class,
@@ -577,7 +577,7 @@ impl DamageOutcome {
         saving_throw_dc: SavingThrowDC,
         saving_throw_result: D20CheckResult,
     ) -> Self {
-        DamageOutcome {
+        DamageResult {
             resolution: ActionConditionResolution::SavingThrow {
                 saving_throw_dc,
                 saving_throw_result,
@@ -589,7 +589,7 @@ impl DamageOutcome {
     }
 
     pub fn empty(resolution: ActionConditionResolution) -> Self {
-        DamageOutcome {
+        DamageResult {
             resolution,
             damage_roll: None,
             damage_taken: None,
@@ -599,21 +599,28 @@ impl DamageOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EffectOutcome {
-    pub resolution: ActionConditionResolution,
-    pub effect: EffectId,
-    pub applied: bool,
+pub enum EffectResultKind {
+    Applied,
+    Removed,
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HealingOutcome {
+pub struct EffectResult {
+    pub resolution: ActionConditionResolution,
+    pub effect: EffectId,
+    pub result: EffectResultKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HealingResult {
     // TODO: Dedicated type for healing rolls?
     pub healing: DiceSetRollResult,
     pub new_life_state: Option<LifeState>,
 }
 
 #[derive(Debug, Clone)]
-pub enum ReactionOutcome {
+pub enum ReactionResult {
     ModifyEvent {
         before: Event,
         after: Event,
@@ -625,53 +632,54 @@ pub enum ReactionOutcome {
     NoEffect,
 }
 
-impl PartialEq for ReactionOutcome {
+impl PartialEq for ReactionResult {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (
-                ReactionOutcome::ModifyEvent {
+                ReactionResult::ModifyEvent {
                     before: b1,
                     after: a1,
                 },
-                ReactionOutcome::ModifyEvent {
+                ReactionResult::ModifyEvent {
                     before: b2,
                     after: a2,
                 },
             ) => b1.id == b2.id && a1.id == a2.id,
             (
-                ReactionOutcome::CancelEvent { event: e1, .. },
-                ReactionOutcome::CancelEvent { event: e2, .. },
+                ReactionResult::CancelEvent { event: e1, .. },
+                ReactionResult::CancelEvent { event: e2, .. },
             ) => e1.id == e2.id,
-            (ReactionOutcome::NoEffect, ReactionOutcome::NoEffect) => true,
+            (ReactionResult::NoEffect, ReactionResult::NoEffect) => true,
             _ => false,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Kinded)]
-pub enum ActionOutcome {
-    Damage(DamageOutcome),
-    Effect(EffectOutcome),
-    Healing(HealingOutcome),
-    Reaction(ReactionOutcome),
+pub enum ActionResultComponent {
+    Damage(DamageResult),
+    Effect(EffectResult),
+    Healing(HealingResult),
+    Reaction(ReactionResult),
     Displacement(Displacement),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ActionOutcomeBundle {
-    pub components: Vec<ActionOutcome>,
+pub struct ActionResult {
+    pub target: EntityIdentifier,
+    pub components: Vec<ActionResultComponent>,
 }
 
-impl ActionOutcomeBundle {
+impl ActionResult {
     pub fn is_empty(&self) -> bool {
         self.components.is_empty()
     }
 
-    pub fn components(&self) -> &Vec<ActionOutcome> {
+    pub fn components(&self) -> &Vec<ActionResultComponent> {
         &self.components
     }
 
-    pub fn component(&self, kind: ActionOutcomeKind) -> Vec<&ActionOutcome> {
+    pub fn component(&self, kind: ActionResultComponentKind) -> Vec<&ActionResultComponent> {
         self.components
             .iter()
             .filter(|component| component.kind() == kind)
@@ -681,28 +689,13 @@ impl ActionOutcomeBundle {
     pub fn resolution(&self) -> &ActionConditionResolution {
         for component in &self.components {
             match component {
-                ActionOutcome::Damage(damage) => return &damage.resolution,
-                ActionOutcome::Effect(effect) => return &effect.resolution,
+                ActionResultComponent::Damage(damage) => return &damage.resolution,
+                ActionResultComponent::Effect(effect) => return &effect.resolution,
                 _ => {}
             }
         }
         &ActionConditionResolution::Unconditional
     }
-}
-
-// TODO: Might not be worth to use an enum since now we only have one variant
-#[derive(Debug, Clone, PartialEq)]
-pub enum ActionKindResult {
-    Standard(ActionOutcomeBundle),
-}
-
-/// Represents the result of performing an action on a single target. For actions
-/// that affect multiple targets, multiple `ActionResult` instances can be collected.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ActionResult {
-    pub performer: EntityIdentifier,
-    pub target: TargetInstance,
-    pub kind: ActionKindResult,
 }
 
 /// Represents a provider of actions, which can be used to retrieve available actions
@@ -716,20 +709,6 @@ pub trait ActionProvider {
     /// about how the action can be performed (e.g. weapon type, spell level, etc.)
     /// as well as the resource cost of the action.
     fn actions(&self, world: &World, entity: Entity) -> ActionMap;
-}
-
-impl ActionResult {
-    pub fn new(
-        performer: EntityIdentifier,
-        target: EntityIdentifier,
-        kind: ActionKindResult,
-    ) -> Self {
-        ActionResult {
-            performer,
-            target: TargetInstance::entity(target),
-            kind,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

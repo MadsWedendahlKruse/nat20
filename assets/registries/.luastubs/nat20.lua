@@ -41,19 +41,19 @@ function DamageRollResult:add_damage(dice, damage_type) end
 local DamageMitigationResult = {}
 function DamageMitigationResult:add_immunity() end
 
----@class DamageOutcome
-local DamageOutcome = {}
+---@class DamageResult
+local DamageResult = {}
 ---@return DamageRollResult?
-function DamageOutcome:damage_roll() end
+function DamageResult:damage_roll() end
 
 ---@return DamageMitigationResult?
-function DamageOutcome:damage_taken() end
+function DamageResult:damage_taken() end
 
 ---@return integer
-function DamageOutcome:damage_roll_total() end
+function DamageResult:damage_roll_total() end
 
 ---@return integer
-function DamageOutcome:damage_taken_total() end
+function DamageResult:damage_taken_total() end
 
 ------------------------------------------------------------
 -- Effects
@@ -125,23 +125,14 @@ function ActionConditionResolution:is_success() end
 ---@return boolean
 function ActionConditionResolution:is_crit() end
 
----@class ActionOutcomeBundle
-local ActionOutcomeBundle = {}
----@return DamageOutcome[]
-function ActionOutcomeBundle:damage() end
+---@class ActionResult
+---@field target ScriptEntity
+local ActionResult = {}
+---@return DamageResult[]
+function ActionResult:damage() end
 
 ---@return ActionConditionResolution
-function ActionOutcomeBundle:resolution() end
-
----@class ActionKindResult
-local ActionKindResult = {}
----@return ActionOutcomeBundle?
-function ActionKindResult:as_standard() end
-
----@class ActionResult
----@field performer ScriptEntity
----@field target TargetInstance
----@field kind ActionKindResult
+function ActionResult:resolution() end
 
 ---@class TargetInstance
 local TargetInstance = {}
@@ -203,10 +194,10 @@ function Event:is_action_requested() end
 function Event:as_action_requested() end
 
 ---@return boolean
-function Event:is_action_performed() end
+function Event:is_action_result() end
 
----@return ActionData?, ActionResult[]?
-function Event:as_action_performed() end
+---@return ActionResult?, ScriptEntity?
+function Event:as_action_result() end
 
 ---@return boolean
 function Event:is_moving_out_of_reach() end
@@ -304,7 +295,7 @@ function ModifierSet:add_modifier(source, value) end
 
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity): integer
 ---@alias ActionHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData)
----@alias ActionResultHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, results: ActionResult[])
+---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)

@@ -184,10 +184,10 @@ impl Encounter {
                 death_saving_throw_event,
                 EventCallback::new({
                     move |game_state, event, source| match &event.kind {
-                        EventKind::D20CheckResolved(performer, result, dc) => {
+                        EventKind::D20CheckResolved { actor, result, dc } => {
                             let mut life_state = systems::helpers::get_component_mut::<LifeState>(
                                 &mut game_state.world,
-                                performer.id(),
+                                actor.id(),
                             );
 
                             if let LifeState::Unconscious(ref mut death_saving_throws) = *life_state
@@ -201,7 +201,7 @@ impl Encounter {
 
                                     return CallbackResult::Event(Event::new(
                                         EventKind::LifeStateChanged {
-                                            entity: performer.clone(),
+                                            entity: actor.clone(),
                                             new_state: next_state,
                                             actor: None,
                                         },
@@ -240,6 +240,10 @@ impl Encounter {
         self.event_log.push(event);
     }
 
+    pub(crate) fn event_log_mut(&mut self) -> &mut EventLog {
+        &mut self.event_log
+    }
+
     fn advance_time(&mut self, game_state: &mut GameState, boundary: TurnBoundary) {
         for entity in self.participants.iter() {
             systems::time::advance_time(
@@ -253,11 +257,11 @@ impl Encounter {
         }
     }
 
-    pub fn combat_log(&self) -> &EventLog {
+    pub fn event_log(&self) -> &EventLog {
         &self.event_log
     }
 
-    pub fn combat_log_move(&mut self) -> EventLog {
+    pub fn event_log_move(&mut self) -> EventLog {
         std::mem::take(&mut self.event_log)
     }
 

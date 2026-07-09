@@ -44,16 +44,17 @@ fn acid_splash() {
         .target_point([3.0, 0.0, 0.0])
         .perform();
 
-    scenario
-        .event_filter()
-        .actor("wizard")
-        .damage_roll(
-            DamageComponent::new(DiceSet::new(1, DieSize::D6), DamageType::Acid),
-            DamageSource::Spell("spell.acid_splash".into()),
-        )
-        .assert_event();
-
     for (handle, hp) in ["goblin_1", "goblin_2"].iter().zip(goblin_hp) {
+        scenario
+            .event_filter()
+            .actor("wizard")
+            .damage_dealt(
+                *handle,
+                DamageComponent::new(DiceSet::new(1, DieSize::D6), DamageType::Acid),
+                DamageSource::Spell("spell.acid_splash".into()),
+            )
+            .assert_event();
+
         scenario.probe(*handle).assert_hp(Operator::Less(hp));
     }
 }

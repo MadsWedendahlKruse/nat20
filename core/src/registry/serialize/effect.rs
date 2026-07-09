@@ -1,15 +1,12 @@
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tracing::debug;
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
-        actions::{
-            action::{ActionConditionResolution, ActionContext, ActionResult},
-            targeting::TargetInstance,
-        },
+        actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20CheckKey, D20CheckMap},
         damage::{
             AttackRoll, AttackRollTemplate, AttackSource, DamageMitigationEffect,
@@ -986,14 +983,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
                 Arc::new(
                     move |game_state: &mut GameState,
                           action_data: &ActionData,
-                          results: &Vec<ActionResult>| {
-                        // Skip if no entity targets — script has nothing to iterate over.
-                        let has_entity_target = results
-                            .iter()
-                            .any(|r| matches!(&r.target, TargetInstance::Entity { .. }));
-                        if !has_entity_target {
-                            return;
-                        }
+                          results: &ActionResult| {
                         systems::scripts::evaluate_action_result_hook(
                             &script_id,
                             game_state,
@@ -1008,9 +998,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
 
     fn combine_hooks(hooks: Vec<ActionResultHook>) -> ActionResultHook {
         Arc::new(
-            move |game_state: &mut GameState,
-                  action_data: &ActionData,
-                  results: &Vec<ActionResult>| {
+            move |game_state: &mut GameState, action_data: &ActionData, results: &ActionResult| {
                 for hook in &hooks {
                     hook(game_state, action_data, results);
                 }
@@ -1328,11 +1316,11 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
                                                 event,
                                                 EventCallback::new({
                                                     move |game_state, event, _| {
-                                                        if let EventKind::D20CheckResolved(
-                                                            _,
+                                                        if let EventKind::D20CheckResolved {
                                                             result,
                                                             dc,
-                                                        ) = &event.kind
+                                                            ..
+                                                        } = &event.kind
                                                         {
                                                             if result.is_success(dc) {
                                                                 systems::effects::remove_effect(

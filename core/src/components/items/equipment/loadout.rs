@@ -429,7 +429,7 @@ impl AttackRollProvider for Loadout {
     fn attack_roll(
         &self,
         world: &World,
-        performer: Entity,
+        actor: Entity,
         target: Entity,
         context: &ActionContext,
     ) -> AttackRoll {
@@ -449,16 +449,15 @@ impl AttackRollProvider for Loadout {
                     .weapon_in_hand(slot)
                     .expect("No weapon equipped in the specified slot");
                 let mut attack_roll = weapon.attack_roll(
-                    &systems::helpers::get_component::<AbilityScoreMap>(world, performer),
-                    &systems::helpers::get_component::<WeaponProficiencyMap>(world, performer)
+                    &systems::helpers::get_component::<AbilityScoreMap>(world, actor),
+                    &systems::helpers::get_component::<WeaponProficiencyMap>(world, actor)
                         .proficiency(&weapon.category()),
                 );
 
                 let range = weapon.range();
                 if range.normal() < range.max() {
                     let distance =
-                        systems::geometry::distance_between_entities(world, performer, target)
-                            .unwrap();
+                        systems::geometry::distance_between_entities(world, actor, target).unwrap();
                     if distance > range.normal() {
                         attack_roll.d20_check.advantage_tracker_mut().add(
                             AdvantageType::Disadvantage,
@@ -480,7 +479,7 @@ impl AttackRollProvider for Loadout {
                     ModifierSource::Base,
                 ));
                 let strength_modifier =
-                    systems::helpers::get_component::<AbilityScoreMap>(world, performer)
+                    systems::helpers::get_component::<AbilityScoreMap>(world, actor)
                         .ability_modifier(&Ability::Strength)
                         .total();
                 d20_check.add_modifier(
@@ -503,7 +502,7 @@ impl SavingThrowProvider for Loadout {
     fn saving_throw(
         &self,
         world: &World,
-        performer: Entity,
+        actor: Entity,
         context: &ActionContext,
         kind: SavingThrowKind,
     ) -> SavingThrowDC {
@@ -511,7 +510,7 @@ impl SavingThrowProvider for Loadout {
             .attack
             .as_ref()
             .expect("Action context must contain attack metadata");
-        let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, performer);
+        let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, actor);
 
         let (weapon_kind, ability) = match attack_context.kind {
             ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => {
@@ -530,7 +529,7 @@ impl SavingThrowProvider for Loadout {
             ActionAttackKind::Unarmed => (WeaponKind::Unarmed, Ability::Strength),
         };
 
-        let proficiency_bonus = systems::helpers::level(world, performer)
+        let proficiency_bonus = systems::helpers::level(world, actor)
             .unwrap()
             .proficiency_bonus() as i32;
         let ability_modifier = ability_scores.ability_modifier(&ability).total();

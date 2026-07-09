@@ -89,7 +89,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                         ui.text("No reactions available.");
                     }
 
-                    event.render_with_context(ui, &(&game_state.world, &LogLevel::Info));
+                    event.render_with_context(ui, &(&game_state.world, &LogLevel::Info, None));
 
                     ui.text("Choose how to react:");
 

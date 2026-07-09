@@ -8,11 +8,11 @@ use crate::{
     components::{
         actions::{
             action::{
-                ActionCondition, ActionConditionKind, ActionConditionResolution, ActionKindResult,
-                ActionOutcome, ActionOutcomeBundle, ActionPayload, ActionPayloadComponent,
-                ActionPhaseSpec, DamageOnFailure, DamageOutcome, EffectOutcome, HealingOutcome,
+                ActionCondition, ActionConditionKind, ActionConditionResolution, ActionPayload,
+                ActionPayloadComponent, ActionPhaseSpec, ActionResult, ActionResultComponent,
+                DamageOnFailure, DamageResult, EffectResult, EffectResultKind, HealingResult,
                 PayloadDelivery, PhaseOutcomes, PhaseRequirement, PhaseTargets,
-                ReactionBodyFunction, ReactionOutcome,
+                ReactionBodyFunction, ReactionResult,
             },
             targeting::TargetInstance,
         },
@@ -363,7 +363,7 @@ impl StepState {
     fn is_applied(&self) -> bool {
         self.components
             .iter()
-            .all(|component| component.outcome.is_some())
+            .all(|component| component.action_result.is_some())
     }
 
     /// Returns false while waiting on an event round-trip
@@ -418,20 +418,25 @@ impl StepState {
 
                 let armor_class = systems::loadout::armor_class(game_state, self.target);
 
-                let attack_event = Event::new(EventKind::D20CheckPerformed(
-                    action.actor.clone(),
-                    D20ResultKind::AttackRoll {
+                let attack_event = Event::new(EventKind::D20CheckPerformed {
+                    actor: action.actor.clone(),
+                    result: D20ResultKind::AttackRoll {
                         result: attack_roll_result.clone(),
                     },
-                    D20CheckDCKind::AttackRoll(
+                    dc: D20CheckDCKind::AttackRoll(
                         EntityIdentifier::from_world(&game_state.world, self.target),
                         attack_roll_result.source.clone(),
                         armor_class,
                     ),
-                ));
+                })
+                .with_parent(
+                    game_state
+                        .event_log(action.actor.id())
+                        .action_event_id(&action.instance_id),
+                );
 
                 let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
-                    EventKind::D20CheckResolved(_, result, dc) => {
+                    EventKind::D20CheckResolved { result, dc, .. } => {
                         let armor_class = match dc {
                             D20CheckDCKind::AttackRoll(_, _, armor_class) => armor_class.clone(),
                             _ => panic!("Expected AttackRoll DC in callback, got {:?}", dc),
@@ -473,10 +478,15 @@ impl StepState {
                     game_state,
                     self.target,
                     &D20CheckDCKind::SavingThrow(saving_throw_dc.clone()),
+                )
+                .with_parent(
+                    game_state
+                        .event_log(actor)
+                        .action_event_id(&action.instance_id),
                 );
 
                 let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
-                    EventKind::D20CheckResolved(_, result, dc) => {
+                    EventKind::D20CheckResolved { result, dc, .. } => {
                         let saving_throw_dc = match dc {
                             D20CheckDCKind::SavingThrow(dc) => dc.clone(),
                             _ => panic!("Expected SavingThrow DC in callback, got {:?}", dc),
@@ -538,21 +548,26 @@ impl StepState {
             component.apply(game_state, action, self.target, &resolution);
         }
 
-        let result = ActionKindResult::Standard(ActionOutcomeBundle {
+        let result = ActionResult {
+            target: EntityIdentifier::from_world(&game_state.world, self.target),
             components: self
                 .components
                 .iter()
-                .filter_map(|component| component.outcome.clone())
+                .filter_map(|component| component.action_result.clone())
                 .collect(),
-        });
+        };
 
-        game_state.process_event(Event::action_performed_event(
-            action,
-            vec![(
-                EntityIdentifier::from_world(&game_state.world, self.target),
-                result,
-            )],
-        ));
+        let event = Event::new(EventKind::ActionResult {
+            result,
+            actor: Some(action.actor.clone()),
+        })
+        .with_parent(
+            game_state
+                .event_log(action.actor.id())
+                .action_event_id(&action.instance_id),
+        );
+
+        game_state.process_event(event);
     }
 }
 
@@ -561,8 +576,8 @@ impl StepState {
 #[derive(Clone)]
 struct StepComponent {
     payload: ActionPayloadComponent,
-    result: Awaitable<PayloadResult>,
-    outcome: Option<ActionOutcome>,
+    payload_result: Awaitable<PayloadResult>,
+    action_result: Option<ActionResultComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -580,8 +595,8 @@ impl StepComponent {
     fn new(payload: &ActionPayloadComponent) -> Self {
         Self {
             payload: payload.clone(),
-            result: Awaitable::NotRequested,
-            outcome: None,
+            payload_result: Awaitable::NotRequested,
+            action_result: None,
         }
     }
 
@@ -593,14 +608,15 @@ impl StepComponent {
         action: &ActionData,
         resolution: &ActionConditionResolution,
     ) -> bool {
-        if self.result.is_ready() {
+        if self.payload_result.is_ready() {
             return true;
         }
 
-        if matches!(self.result, Awaitable::Requested) {
+        if matches!(self.payload_result, Awaitable::Requested) {
             return match game_state.execution_mailbox.remove(&action.actor.id()) {
                 Some(ResumePayload::DamageRoll(damage_result)) => {
-                    self.result = Awaitable::Ready(PayloadResult::Damage(Some(damage_result)));
+                    self.payload_result =
+                        Awaitable::Ready(PayloadResult::Damage(Some(damage_result)));
                     true
                 }
                 Some(other) => panic!("Expected damage roll in mail, got {:?}", other),
@@ -632,7 +648,7 @@ impl StepComponent {
                 };
 
                 let Some(damage_fn) = damage_fn else {
-                    self.result = Awaitable::Ready(PayloadResult::Damage(None));
+                    self.payload_result = Awaitable::Ready(PayloadResult::Damage(None));
                     return true;
                 };
 
@@ -667,17 +683,22 @@ impl StepComponent {
                     damage_roll.recalculate_total();
                 }
 
-                let damage_event = Event::new(EventKind::DamageRollPerformed(
-                    action.actor.clone(),
-                    damage_roll,
-                ));
+                let damage_event = Event::new(EventKind::DamageRollPerformed {
+                    actor: action.actor.clone(),
+                    result: damage_roll,
+                })
+                .with_parent(
+                    game_state
+                        .event_log(action.actor.id())
+                        .action_event_id(&action.instance_id),
+                );
 
                 let actor = action.actor.id();
                 let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
-                    EventKind::DamageRollResolved(_, damage_result) => {
+                    EventKind::DamageRollResolved { result, .. } => {
                         game_state
                             .execution_mailbox
-                            .insert(actor, ResumePayload::DamageRoll(damage_result.clone()));
+                            .insert(actor, ResumePayload::DamageRoll(result.clone()));
                         CallbackResult::None
                     }
                     _ => panic!(
@@ -686,12 +707,13 @@ impl StepComponent {
                     ),
                 });
 
-                self.result = Awaitable::Requested;
+                self.payload_result = Awaitable::Requested;
                 game_state.process_event_with_response_callback(damage_event, callback);
 
                 match game_state.execution_mailbox.remove(&actor) {
                     Some(ResumePayload::DamageRoll(damage_result)) => {
-                        self.result = Awaitable::Ready(PayloadResult::Damage(Some(damage_result)));
+                        self.payload_result =
+                            Awaitable::Ready(PayloadResult::Damage(Some(damage_result)));
                         true
                     }
                     Some(other) => panic!("Expected damage roll in mail, got {:?}", other),
@@ -703,25 +725,25 @@ impl StepComponent {
                 // TODO: No events yet for healing, might introduce them in the future?
                 let healing_amount =
                     healing(&game_state.world, action.actor.id(), &action.context).roll();
-                self.result = Awaitable::Ready(PayloadResult::Healing(healing_amount));
+                self.payload_result = Awaitable::Ready(PayloadResult::Healing(healing_amount));
                 true
             }
 
             ActionPayloadComponent::Effect(effect) => {
                 let effect = resolution.is_success().then(|| effect.clone());
-                self.result = Awaitable::Ready(PayloadResult::Effect(effect));
+                self.payload_result = Awaitable::Ready(PayloadResult::Effect(effect));
                 true
             }
 
             ActionPayloadComponent::Reaction(_) => {
-                self.result = Awaitable::Ready(PayloadResult::Reaction);
+                self.payload_result = Awaitable::Ready(PayloadResult::Reaction);
                 true
             }
 
             ActionPayloadComponent::Displacement(displacement) => {
                 let displacement =
                     displacement(&game_state.world, action.actor.id(), &action.context);
-                self.result = Awaitable::Ready(PayloadResult::Displacement(displacement));
+                self.payload_result = Awaitable::Ready(PayloadResult::Displacement(displacement));
                 true
             }
         }
@@ -734,14 +756,14 @@ impl StepComponent {
         target: Entity,
         resolution: &ActionConditionResolution,
     ) {
-        if self.outcome.is_some() {
+        if self.action_result.is_some() {
             return;
         }
-        let Some(result) = self.result.ready() else {
+        let Some(result) = self.payload_result.ready() else {
             panic!("Cannot apply unresolved payload component");
         };
 
-        self.outcome = Some(match result.clone() {
+        self.action_result = Some(match result.clone() {
             PayloadResult::Damage(damage_result) => {
                 Self::apply_damage(game_state, target, resolution, damage_result)
             }
@@ -762,12 +784,12 @@ impl StepComponent {
                 Self::apply_reaction(game_state, action, resolution, Arc::clone(reaction_fn))
             }
             PayloadResult::Displacement(displacement) => {
-                let Some(outcome) =
+                let Some(result) =
                     Self::apply_displacement(game_state, action, target, displacement)
                 else {
                     return;
                 };
-                outcome
+                result
             }
         });
     }
@@ -777,21 +799,21 @@ impl StepComponent {
         target: Entity,
         resolution: &ActionConditionResolution,
         mut damage_result: Option<DamageRollResult>,
-    ) -> ActionOutcome {
+    ) -> ActionResultComponent {
         let (damage_taken, new_life_state) = if let Some(damage_result) = &mut damage_result {
             systems::health::damage(game_state, target, damage_result)
         } else {
             (None, None)
         };
 
-        let outcome = match resolution {
+        let result = match resolution {
             ActionConditionResolution::Unconditional => {
-                DamageOutcome::unconditional(damage_result, damage_taken, new_life_state)
+                DamageResult::unconditional(damage_result, damage_taken, new_life_state)
             }
             ActionConditionResolution::AttackRoll {
                 attack_roll,
                 armor_class,
-            } => DamageOutcome::attack_roll(
+            } => DamageResult::attack_roll(
                 damage_result,
                 damage_taken,
                 new_life_state,
@@ -801,7 +823,7 @@ impl StepComponent {
             ActionConditionResolution::SavingThrow {
                 saving_throw_dc,
                 saving_throw_result,
-            } => DamageOutcome::saving_throw(
+            } => DamageResult::saving_throw(
                 damage_result,
                 damage_taken,
                 new_life_state,
@@ -810,21 +832,21 @@ impl StepComponent {
             ),
         };
 
-        ActionOutcome::Damage(outcome)
+        ActionResultComponent::Damage(result)
     }
 
     fn apply_healing(
         game_state: &mut GameState,
         target: Entity,
         healing_amount: DiceSetRollResult,
-    ) -> ActionOutcome {
+    ) -> ActionResultComponent {
         let new_life_state = systems::health::heal(
             &mut game_state.world,
             target,
             healing_amount.subtotal as u32,
         );
 
-        ActionOutcome::Healing(HealingOutcome {
+        ActionResultComponent::Healing(HealingResult {
             healing: healing_amount,
             new_life_state,
         })
@@ -837,12 +859,12 @@ impl StepComponent {
         resolution: &ActionConditionResolution,
         effect_id: EffectId,
         effect: Option<EffectInstanceTemplate>,
-    ) -> ActionOutcome {
+    ) -> ActionResultComponent {
         let Some(effect) = effect else {
-            return ActionOutcome::Effect(EffectOutcome {
+            return ActionResultComponent::Effect(EffectResult {
                 resolution: resolution.clone(),
                 effect: effect_id,
-                applied: false,
+                result: EffectResultKind::None,
             });
         };
 
@@ -873,10 +895,10 @@ impl StepComponent {
             }
         }
 
-        ActionOutcome::Effect(EffectOutcome {
+        ActionResultComponent::Effect(EffectResult {
             resolution: resolution.clone(),
             effect: effect.effect_id.clone(),
-            applied: true,
+            result: EffectResultKind::Applied,
         })
     }
 
@@ -885,9 +907,9 @@ impl StepComponent {
         action: &ActionData,
         resolution: &ActionConditionResolution,
         reaction_fn: Arc<ReactionBodyFunction>,
-    ) -> ActionOutcome {
+    ) -> ActionResultComponent {
         if !resolution.is_success() {
-            return ActionOutcome::Reaction(ReactionOutcome::NoEffect);
+            return ActionResultComponent::Reaction(ReactionResult::NoEffect);
         }
 
         let Some(trigger_event) = action.trigger_event.as_ref() else {
@@ -912,23 +934,23 @@ impl StepComponent {
         };
         let mut pending = pending_events.remove(index).unwrap();
 
-        let outcome = reaction_fn(game_state, action, &mut pending.event);
+        let result = reaction_fn(game_state, action, &mut pending.event);
 
-        let outcome = outcome.unwrap_or_else(|| {
+        let result = result.unwrap_or_else(|| {
             // TODO: Not sure if this check actually works
             if **trigger_event != pending.event {
-                ReactionOutcome::ModifyEvent {
+                ReactionResult::ModifyEvent {
                     before: trigger_event.as_ref().clone(),
                     after: pending.event.clone(),
                 }
             } else {
-                ReactionOutcome::NoEffect // TEMP
+                ReactionResult::NoEffect // TEMP
             }
         });
 
         let mut should_reinsert = true;
 
-        if let ReactionOutcome::CancelEvent { event, .. } = &outcome {
+        if let ReactionResult::CancelEvent { event, .. } = &result {
             if event.id == pending.event.id {
                 debug!(
                     "Reaction cancelled event {:?}, removing from pending events",
@@ -952,7 +974,7 @@ impl StepComponent {
                 .insert(index, pending);
         }
 
-        ActionOutcome::Reaction(outcome)
+        ActionResultComponent::Reaction(result)
     }
 
     fn apply_displacement(
@@ -960,7 +982,7 @@ impl StepComponent {
         action: &ActionData,
         target: Entity,
         displacement: DisplacementTemplate,
-    ) -> Option<ActionOutcome> {
+    ) -> Option<ActionResultComponent> {
         let Some(displacement) = displacement.instantiate(game_state, action, target) else {
             error!("Failed to instantiate displacement, cannot apply");
             return None;
@@ -984,14 +1006,14 @@ impl StepComponent {
                     &target_position,
                 );
 
-                Some(ActionOutcome::Displacement(Displacement::Teleport))
+                Some(ActionResultComponent::Displacement(Displacement::Teleport))
             }
 
             Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
                 systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, target)
                     .set_displaced(trajectory.clone());
 
-                Some(ActionOutcome::Displacement(displacement))
+                Some(ActionResultComponent::Displacement(displacement))
             }
         }
     }
@@ -1000,8 +1022,8 @@ impl StepComponent {
 impl Debug for StepComponent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StepComponent")
-            .field("result", &self.result)
-            .field("outcome", &self.outcome)
+            .field("payload_result", &self.payload_result)
+            .field("action_result", &self.action_result)
             .finish()
     }
 }

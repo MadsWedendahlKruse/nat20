@@ -464,7 +464,7 @@ impl MainMenuWindow {
                     game_state
                         .encounters
                         .get(&id)
-                        .map(|e| e.combat_log())
+                        .map(|e| e.event_log())
                         .unwrap_or(&game_state.event_log)
                 };
 

@@ -9,7 +9,7 @@ use tracing::debug;
 
 use crate::{
     components::{
-        actions::action::{ReactionBodyFunction, ReactionOutcome, ReactionTriggerFunction},
+        actions::action::{ReactionBodyFunction, ReactionResult, ReactionTriggerFunction},
         id::ScriptId,
         resource::{RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION, ResourceAmountMap},
     },
@@ -59,7 +59,7 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                         ResourceAmountMap::new()
                     };
 
-                    Some(ReactionOutcome::CancelEvent {
+                    Some(ReactionResult::CancelEvent {
                         event: event.clone().into(),
                         resources_refunded,
                     })

@@ -43,23 +43,19 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::Encounter(encounter_event) => LogLevel::Info,
         EventKind::MovingOutOfReach { .. } => LogLevel::Debug,
         EventKind::ActionRequested { .. } => LogLevel::Info,
-        EventKind::ActionPerformed { .. } => LogLevel::Info,
-        EventKind::ReactionTriggered { .. } => LogLevel::Info,
         EventKind::LifeStateChanged { .. } => LogLevel::Info,
-        EventKind::D20CheckPerformed(_, result_kind, _)
-        | EventKind::D20CheckResolved(_, result_kind, _) => match result_kind {
+        EventKind::D20CheckPerformed { result, .. }
+        | EventKind::D20CheckResolved { result, .. } => match result {
             D20ResultKind::SavingThrow { .. } | D20ResultKind::Skill { .. } => LogLevel::Info,
             systems::d20::D20ResultKind::AttackRoll { .. } => LogLevel::Debug,
         },
-        EventKind::DamageRollPerformed(_, _) => LogLevel::Debug,
-        EventKind::DamageRollResolved(_, _) => LogLevel::Debug,
+        EventKind::DamageRollPerformed { .. } => LogLevel::Debug,
+        EventKind::DamageRollResolved { .. } => LogLevel::Debug,
         EventKind::TurnBoundary { .. } => LogLevel::Info,
         EventKind::RestStarted { .. } => LogLevel::Info,
         EventKind::RestFinished { .. } => LogLevel::Info,
         EventKind::LostConcentration { .. } => LogLevel::Info,
-        EventKind::GainedEffect { .. } => LogLevel::Info,
-        EventKind::LostEffect { .. } => LogLevel::Info,
-        EventKind::Healing { .. } => LogLevel::Info,
+        EventKind::ActionResult { .. } => LogLevel::Info,
     }
 }
 
@@ -76,12 +72,28 @@ pub fn render_action_description(ui: &imgui::Ui, action: &ActionData) {
 
 pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
     match &event.kind {
-        EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
+        EventKind::ActionRequested { action } => {
             render_action_description(ui, action);
         }
-        EventKind::D20CheckPerformed(entity, _, dc_kind) => {
-            let label = get_dc_description(dc_kind);
-            let mut segments = vec![(format!("{}'s", entity.name().as_str()), TextKind::Actor)];
+        EventKind::ActionResult { result, actor } => {
+            if let Some(actor) = actor {
+                TextSegments::new(vec![
+                    (format!("{}'s", actor.name().as_str()), TextKind::Actor),
+                    ("action targeting".to_string(), TextKind::Normal),
+                    (
+                        format!("{}", result.target.name().as_str()),
+                        TextKind::Target,
+                    ),
+                ])
+                .render(ui);
+            } else {
+                TextSegments::new(vec![("TODO: Action result".to_string(), TextKind::Details)])
+                    .render(ui);
+            }
+        }
+        EventKind::D20CheckPerformed { actor, dc, .. } => {
+            let label = get_dc_description(dc);
+            let mut segments = vec![(format!("{}'s", actor.name().as_str()), TextKind::Actor)];
             segments.extend(label);
             TextSegments::new(segments).render(ui);
         }
@@ -100,50 +112,96 @@ pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
 pub fn events_match(event1: &Event, event2: &Event) -> bool {
     match (&event1.kind, &event2.kind) {
         (
-            EventKind::ActionRequested { action: a1 },
-            EventKind::ActionPerformed { action: a2, .. },
-        ) => a1.actor == a2.actor && a1.action_id == a2.action_id && a1.targets == a2.targets,
+            EventKind::D20CheckPerformed { actor: e1, .. },
+            EventKind::D20CheckResolved { actor: e2, .. },
+        ) => e1 == e2,
 
-        (EventKind::D20CheckPerformed(e1, _, _), EventKind::D20CheckResolved(e2, _, _)) => e1 == e2,
-
-        (EventKind::DamageRollPerformed(e1, _), EventKind::DamageRollResolved(e2, _)) => e1 == e2,
+        (
+            EventKind::DamageRollPerformed { actor: e1, .. },
+            EventKind::DamageRollResolved { actor: e2, .. },
+        ) => e1 == e2,
 
         _ => false,
     }
 }
 
+pub fn filter_matching_events(events: Vec<&Event>) -> Vec<&Event> {
+    let mut filtered_events = Vec::new();
+
+    for (i, event) in events.iter().enumerate() {
+        if i < events.len() - 1 {
+            let next_event = events[i + 1];
+            if events_match(event, next_event) {
+                continue;
+            }
+        }
+
+        filtered_events.push(*event);
+    }
+
+    filtered_events
+}
+
+fn should_render_as_top_level(log: &EventLog, event: &Event) -> bool {
+    if event.parent.is_none() {
+        return true;
+    }
+
+    // If the parent event triggered a reaction, it's going to look weird regarding
+    // the "chronology" of the events if we render the child event as a child of the
+    // event which triggerd the reaction. Suppose you have something like:
+    // Event A (triggers reaction)
+    // Event B (reaction to A)
+    //
+    // If we render a new Event C as a child of Event A, it will look like:
+    // Event A
+    //   Event C
+    // Event B
+    //
+    // This makes it look like Event C happened after Event A but before Event B,
+    // which is not true. So, if the parent event triggered a reaction, we will render
+    // the child event as a top-level event instead of a child of the parent event.
+    if let Some(parent_event) = event.parent
+        && log.triggered_reactions(&parent_event)
+    {
+        return true;
+    }
+
+    false
+}
+
 impl ImguiRenderableWithContext<&(&World, &LogLevel)> for EventLog {
     fn render_with_context(&self, ui: &imgui::Ui, context: &(&World, &LogLevel)) {
-        let (_, log_level) = context;
+        let (world, log_level) = context;
 
-        let log_level_events = self
+        let mut log_level_events = self
             .events
             .iter()
+            .filter(|event| should_render_as_top_level(self, event))
             .filter(|event| event_log_level(event) <= **log_level)
             .collect::<Vec<_>>();
 
-        for (i, entry) in log_level_events.iter().enumerate() {
-            // For visual clarity at 'Info' level, we don't need to see e.g. both
-            // the 'ActionRequested' and 'ActionPerformed' events, so if two
-            // consecutive events "match" then we only show the first one, e.g.
-            // for an action we would only show the 'ActionPerformed' event.
-            // Similarly for composite actions we might have multiple 'ActionPerformed'
-            // events in a row that we can collapse into one.
-            if **log_level == LogLevel::Info && i < log_level_events.len() - 1 {
-                let next_entry = &log_level_events[i + 1];
-                if events_match(entry, next_entry) {
-                    continue;
-                }
-            }
+        if **log_level == LogLevel::Info {
+            log_level_events = filter_matching_events(log_level_events);
+        }
 
-            entry.render_with_context(ui, context);
+        for event in log_level_events {
+            event.render_with_context(ui, &(world, log_level, Some(self)));
         }
     }
 }
 
-impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
-    fn render_with_context(&self, ui: &imgui::Ui, context: &(&World, &LogLevel)) {
-        let (world, _) = context;
+impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Event {
+    fn render_with_context(
+        &self,
+        ui: &imgui::Ui,
+        context: &(&World, &LogLevel, Option<&EventLog>),
+    ) {
+        let (world, log_level, event_log) = context;
+
+        if event_log_level(self) > **log_level {
+            return;
+        }
 
         let group_token = ui.begin_group();
 
@@ -155,7 +213,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 EncounterEvent::EncounterEnded(encounter_id, combat_log) => {
                     if ui.collapsing_header(format!("Log##{}", encounter_id), TreeNodeFlags::FRAMED)
                     {
-                        combat_log.render_with_context(ui, context);
+                        combat_log.render_with_context(ui, &(world, log_level));
                     }
                     ui.separator();
                 }
@@ -175,52 +233,10 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 action.render_with_context(ui, world);
 
                 if let Some(trigger_event) = action.trigger_event.as_ref() {
-                    TextSegment::new("\tas a response to".to_string(), TextKind::Normal).render(ui);
+                    TextSegment::new("as a response to".to_string(), TextKind::Normal).render(ui);
                     ui.same_line();
                     render_event_description(ui, trigger_event);
                 }
-            }
-            EventKind::ActionPerformed { action, results } => {
-                TextSegments::new(vec![
-                    (action.actor.name().as_str(), TextKind::Actor),
-                    ("used", TextKind::Normal),
-                    (action.action_id.to_string().as_str(), TextKind::Action),
-                ])
-                .render(ui);
-
-                if action.is_self_target() {
-                    let target = match &action.targets[0] {
-                        TargetInstance::Entity { entity, .. } => entity.name().as_str(),
-                        TargetInstance::Point(point) => {
-                            &format!("point ({:.1}, {:.1}, {:.1})", point.x, point.y, point.z)
-                        }
-                    };
-
-                    ui.same_line();
-                    TextSegments::new(vec![("on", TextKind::Normal), (target, TextKind::Target)])
-                        .render(ui);
-                }
-
-                for result in results {
-                    result.render_with_context(ui, 0);
-                }
-            }
-            EventKind::ReactionTriggered {
-                trigger_event,
-                reactors,
-            } => {
-                render_event_description(ui, &trigger_event);
-
-                ui.same_line();
-
-                TextSegment::new("triggered a reaction from".to_string(), TextKind::Normal)
-                    .render(ui);
-
-                reactors
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .render_with_context(ui, &world);
             }
             EventKind::LifeStateChanged {
                 entity,
@@ -234,14 +250,14 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 );
                 TextSegments::new(segments).render(ui);
             }
-            EventKind::D20CheckResolved(entity, result_kind, dc_kind)
-            | EventKind::D20CheckPerformed(entity, result_kind, dc_kind) => {
-                let dc_text_segments = get_dc_description(dc_kind);
+            EventKind::D20CheckResolved { actor, result, dc }
+            | EventKind::D20CheckPerformed { actor, result, dc } => {
+                let dc_text_segments = get_dc_description(dc);
 
                 let mut segments = vec![
-                    (entity.name().to_string(), TextKind::Actor),
+                    (actor.name().to_string(), TextKind::Actor),
                     (
-                        if result_kind.is_success(dc_kind) {
+                        if result.is_success(dc) {
                             "succeeded a".to_string()
                         } else {
                             "failed a".to_string()
@@ -258,13 +274,13 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     ui.tooltip(|| {
                         ui.text("DC:");
                         ui.same_line();
-                        dc_kind.render(ui);
+                        dc.render(ui);
                         ui.text("");
                         ui.text("D20 Check:");
                         ui.same_line();
-                        result_kind.render(ui);
+                        result.render(ui);
                         ui.same_line();
-                        if result_kind.is_success(dc_kind) {
+                        if result.is_success(dc) {
                             TextSegment::new("Success", TextKind::Green).render(ui);
                         } else {
                             TextSegment::new("Failure", TextKind::Red).render(ui);
@@ -272,19 +288,19 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     });
                 }
             }
-            EventKind::DamageRollPerformed(entity, damage_roll_result)
-            | EventKind::DamageRollResolved(entity, damage_roll_result) => {
+            EventKind::DamageRollPerformed { actor, result }
+            | EventKind::DamageRollResolved { actor, result } => {
                 TextSegments::new(vec![
-                    (entity.name().as_str(), TextKind::Details),
+                    (actor.name().as_str(), TextKind::Details),
                     ("rolled", TextKind::Details),
-                    (&format!("{}", damage_roll_result.total), TextKind::Details),
+                    (&format!("{}", result.total), TextKind::Details),
                     ("damage", TextKind::Details),
                 ])
                 .render(ui);
 
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
-                        damage_roll_result.render(ui);
+                        result.render(ui);
                     });
                 }
             }
@@ -368,46 +384,11 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                 //         .render(ui);
                 // }
             }
-            EventKind::GainedEffect { entity, effect } => {
-                TextSegments::new(vec![
-                    (entity.name().as_str(), TextKind::Actor),
-                    ("gained effect", TextKind::Normal),
-                    (&effect.to_string(), TextKind::Effect),
-                ])
-                .render(ui);
-            }
-            EventKind::LostEffect { entity, effect } => {
-                TextSegments::new(vec![
-                    (entity.name().as_str(), TextKind::Actor),
-                    ("lost effect", TextKind::Normal),
-                    (&effect.to_string(), TextKind::Effect),
-                ])
-                .render(ui);
-            }
-            EventKind::Healing {
-                entity,
-                amount,
-                source,
-            } => {
-                let group_token = ui.begin_group();
-                TextSegments::new(vec![
-                    (entity.name().as_str(), TextKind::Actor),
-                    ("was healed for", TextKind::Normal),
-                    (&format!("{} HP", amount.subtotal), TextKind::Healing),
-                    ("by", TextKind::Normal),
-                ])
-                .render(ui);
-                ui.same_line();
-                source.render(ui);
-                group_token.end();
 
-                // TODO: Better healing rendering
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        ui.text("Healing:");
-                        ui.same_line();
-                        TextSegment::new(&format!("{} HP", amount), TextKind::Healing).render(ui);
-                    });
+            EventKind::ActionResult { result, actor } => {
+                for component in result.components.iter() {
+                    component
+                        .render_with_context(ui, (&actor.as_ref(), result.target.name().as_str()));
                 }
             }
         }
@@ -428,6 +409,31 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for Event {
                     ui.text(debug_text);
                 });
         });
+
+        if let Some(event_log) = event_log {
+            let mut child_events = event_log
+                .child_events(&self.id)
+                .iter()
+                .filter(|child_event| !should_render_as_top_level(event_log, child_event))
+                .filter_map(|child_event| {
+                    if event_log_level(*child_event) <= **log_level {
+                        Some(*child_event)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            if **log_level == LogLevel::Info {
+                child_events = filter_matching_events(child_events);
+            }
+
+            for child_event in child_events {
+                ui.indent();
+                child_event.render_with_context(ui, context);
+                ui.unindent();
+            }
+        }
     }
 }
 

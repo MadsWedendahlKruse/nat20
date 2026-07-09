@@ -180,9 +180,9 @@ pub fn check_no_event(world: &World, entity: Entity, dc: &D20CheckDCKind) -> D20
 
 #[must_use]
 pub fn check(game_state: &mut GameState, entity: Entity, dc: &D20CheckDCKind) -> Event {
-    Event::new(EventKind::D20CheckPerformed(
-        EntityIdentifier::from_world(&game_state.world, entity),
-        check_no_event(&game_state.world, entity, dc),
-        dc.clone(),
-    ))
+    Event::new(EventKind::D20CheckPerformed {
+        actor: EntityIdentifier::from_world(&game_state.world, entity),
+        result: check_no_event(&game_state.world, entity, dc),
+        dc: dc.clone(),
+    })
 }

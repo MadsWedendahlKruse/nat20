@@ -50,15 +50,15 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
             );
 
             if turn_entity == entity {
-                match boundary {
-                    TurnBoundary::Start => systems::time::on_turn_start(game_state, entity),
-                    TurnBoundary::End => systems::time::on_turn_end(&mut game_state.world, entity),
-                }
-
                 game_state.process_event(Event::new(EventKind::TurnBoundary {
                     entity: EntityIdentifier::from_world(&game_state.world, entity),
                     boundary,
                 }));
+
+                match boundary {
+                    TurnBoundary::Start => systems::time::on_turn_start(game_state, entity),
+                    TurnBoundary::End => systems::time::on_turn_end(&mut game_state.world, entity),
+                }
             }
         }
         _ => { /* no special logging for other time steps */ }

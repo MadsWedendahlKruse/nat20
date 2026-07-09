@@ -7,8 +7,7 @@ use nat20_core::{
         ability::AbilityScoreMap,
         actions::{
             action::{
-                ActionCondition, ActionPayloadComponent, AttackRollFunction,
-                SavingThrowFunction,
+                ActionCondition, ActionPayloadComponent, AttackRollFunction, SavingThrowFunction,
             },
             action_builder::{ActionBuilder, ActionBuilderState},
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
@@ -1008,12 +1007,13 @@ fn render_attack_hit_chance_tooltip(
                 ])
                 .render(ui);
 
+                ui.indent();
                 TextSegments::new(vec![
                     (format!("{}", target_ac.base.0), TextKind::Normal),
                     (format!("({})", target_ac.base.1), TextKind::Details),
                 ])
-                .with_indent(1)
                 .render(ui);
+                ui.unindent();
 
                 target_ac
                     .modifiers

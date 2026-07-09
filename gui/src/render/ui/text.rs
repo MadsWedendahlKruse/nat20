@@ -32,13 +32,6 @@ pub fn item_rarity_color(rarity: &ItemRarity) -> [f32; 4] {
     }
 }
 
-pub fn indent_text(ui: &imgui::Ui, indent_level: u8) {
-    for _ in 0..indent_level {
-        ui.text("\t");
-        ui.same_line();
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum TextKind {
     Actor,
@@ -116,7 +109,6 @@ impl ImguiRenderable for TextSegment<'_> {
 
 pub struct TextSegments<'a> {
     segments: Vec<TextSegment<'a>>,
-    indent_level: u8,
 }
 
 impl<'a> TextSegments<'a> {
@@ -130,13 +122,7 @@ impl<'a> TextSegments<'a> {
                 .into_iter()
                 .map(|(text, kind)| TextSegment::new(text.to_string(), kind))
                 .collect(),
-            indent_level: 0,
         }
-    }
-
-    pub fn with_indent(mut self, indent_level: u8) -> Self {
-        self.indent_level = indent_level;
-        self
     }
 }
 
@@ -146,7 +132,6 @@ impl ImguiRenderable for TextSegments<'_> {
             return;
         }
         ui.group(|| {
-            indent_text(ui, self.indent_level);
             for (i, segment) in self.segments.iter().enumerate() {
                 if i > 0 {
                     ui.same_line();

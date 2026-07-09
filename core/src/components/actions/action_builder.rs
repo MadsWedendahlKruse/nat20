@@ -135,6 +135,18 @@ impl ActionBuilder {
                     options: contexts_and_costs.clone(),
                 }),
             },
+            Ok(ActionBuilderState::Targets { action, .. }) => {
+                // Check if we already have the right context and cost
+                let context = &action.context;
+                let cost = &action.resource_cost;
+                if filter_fn(context, cost) {
+                    return self;
+                } else {
+                    Err(ActionBuilderError::NoMatchingContext {
+                        options: vec![(context.clone(), cost.clone())],
+                    })
+                }
+            }
             Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Context",
                 actual: other.kind_name(),

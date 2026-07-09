@@ -121,7 +121,7 @@ impl GameState {
             self.event_log
                 .push(Event::encounter_event(EncounterEvent::EncounterEnded(
                     encounter_id.clone(),
-                    encounter.combat_log_move(),
+                    encounter.event_log_move(),
                 )));
         }
     }
@@ -349,7 +349,14 @@ impl GameState {
                     );
                 }
 
-                ActionDecisionKind::Reaction { choice, .. } => {
+                ActionDecisionKind::Reaction {
+                    event,
+                    reactor,
+                    choice,
+                } => {
+                    self.event_log_mut(*reactor)
+                        .record_reaction(event.id, *reactor);
+
                     // Declined – reactor is no longer a blocker on any pending event.
                     let Some(reaction_data) = choice else {
                         debug!(
@@ -546,7 +553,7 @@ impl GameState {
         let mut reaction_options = HashMap::new();
 
         for reactor in &reactors {
-            if self.event_log.has_reacted(&event.id, reactor) {
+            if self.event_log(*reactor).has_reacted(&event.id, reactor) {
                 continue;
             }
 
@@ -634,18 +641,24 @@ impl GameState {
                 systems::actions::perform_action(self, action);
             }
 
-            EventKind::ActionPerformed { action, results } => {
-                let hooks = systems::effects::effects(&self.world, action.actor.id())
-                    .collect_hooks(|effect| effect.on_action_result.as_ref());
-                for hook in hooks {
-                    hook(self, action, results);
+            EventKind::ActionResult { result, .. } => {
+                if let Some(parent) = event.parent.as_ref()
+                    && let Some(parent_event) = self.event_log(result.target.id()).get(parent)
+                    && let EventKind::ActionRequested { action } = &parent_event.kind
+                {
+                    let action = action.clone();
+                    let hooks = systems::effects::effects(&self.world, action.actor.id())
+                        .collect_hooks(|effect| effect.on_action_result.as_ref());
+                    for hook in hooks {
+                        hook(self, &action, result);
+                    }
                 }
             }
 
-            EventKind::D20CheckPerformed(entity, kind, dc_kind) => {
-                let dc = match dc_kind {
+            EventKind::D20CheckPerformed { actor, result, dc } => {
+                let dc = match dc {
                     // TODO: Do we ever need to recalculate DCs for saving throws or skills?
-                    D20CheckDCKind::SavingThrow(_) | D20CheckDCKind::Skill(_) => dc_kind.clone(),
+                    D20CheckDCKind::SavingThrow(_) | D20CheckDCKind::Skill(_) => dc.clone(),
                     D20CheckDCKind::AttackRoll(target, source, _) => {
                         // Recalculate AC in case it changed due to reactions
                         let armor_class = systems::loadout::armor_class(self, target.id());
@@ -654,24 +667,26 @@ impl GameState {
                 };
 
                 let _ = self.process_event_scoped(
-                    self.scope_for_entity(entity.id()),
-                    Event::new(EventKind::D20CheckResolved(
-                        entity.clone(),
-                        kind.clone(),
+                    self.scope_for_entity(actor.id()),
+                    Event::new(EventKind::D20CheckResolved {
+                        actor: actor.clone(),
+                        result: result.clone(),
                         dc,
-                    ))
-                    .as_response_to(event.id),
+                    })
+                    .as_response_to(event.id)
+                    .with_parent(event.parent.as_ref()),
                 );
             }
 
-            EventKind::DamageRollPerformed(entity, damage) => {
+            EventKind::DamageRollPerformed { actor, result } => {
                 let _ = self.process_event_scoped(
-                    self.scope_for_entity(entity.id()),
-                    Event::new(EventKind::DamageRollResolved(
-                        entity.clone(),
-                        damage.clone(),
-                    ))
-                    .as_response_to(event.id),
+                    self.scope_for_entity(actor.id()),
+                    Event::new(EventKind::DamageRollResolved {
+                        actor: actor.clone(),
+                        result: result.clone(),
+                    })
+                    .as_response_to(event.id)
+                    .with_parent(event.parent.as_ref()),
                 );
             }
 
@@ -690,16 +705,38 @@ impl GameState {
     }
 
     fn log_event(&mut self, scope: &InteractionScopeId, event: Event) {
-        match scope {
-            InteractionScopeId::Global => self.event_log.push(event),
+        let event_log = match scope {
+            InteractionScopeId::Global => &mut self.event_log,
             InteractionScopeId::Encounter(encounter_id) => {
                 if let Some(encounter) = self.encounters.get_mut(&encounter_id) {
-                    encounter.log_event(event);
+                    encounter.event_log_mut()
                 } else {
                     // In case the encounter is gone or doesn't exist yet, log globally
-                    self.event_log.push(event);
+                    &mut self.event_log
                 }
             }
+        };
+
+        event_log.push(event);
+    }
+
+    pub fn event_log(&self, entity: Entity) -> &EventLog {
+        if let Some(encounter_id) = self.in_combat.get(&entity)
+            && let Some(encounter) = self.encounters.get(encounter_id)
+        {
+            encounter.event_log()
+        } else {
+            &self.event_log
+        }
+    }
+
+    pub fn event_log_mut(&mut self, entity: Entity) -> &mut EventLog {
+        if let Some(encounter_id) = self.in_combat.get(&entity)
+            && let Some(encounter) = self.encounters.get_mut(encounter_id)
+        {
+            encounter.event_log_mut()
+        } else {
+            &mut self.event_log
         }
     }
 

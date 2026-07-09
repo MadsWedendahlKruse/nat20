@@ -61,8 +61,56 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                         ui.separator();
                     }
                 }
+
                 if ui.collapsing_header("Interaction Engine", TreeNodeFlags::empty()) {
                     ui.text(format!("{:#?}", game_state.interaction_engine));
+                }
+
+                if ui.collapsing_header("Event Log", TreeNodeFlags::empty()) {
+                    ui.indent();
+                    if ui.collapsing_header("Events", TreeNodeFlags::empty()) {
+                        for (i, event) in game_state.event_log.events.iter().enumerate() {
+                            ui.indent();
+                            if ui.collapsing_header(
+                                &format!("Event {}: {:?}", i, event.id),
+                                TreeNodeFlags::empty(),
+                            ) {
+                                ui.text(format!("{:#?}", event));
+                            }
+                            ui.unindent();
+                        }
+                    }
+                    ui.unindent();
+
+                    ui.indent();
+                    if ui.collapsing_header("Reactors", TreeNodeFlags::empty()) {
+                        for (event_id, reactors) in game_state.event_log.reactors.iter() {
+                            ui.indent();
+                            if ui.collapsing_header(
+                                &format!("Event {:?} Reactors", event_id),
+                                TreeNodeFlags::empty(),
+                            ) {
+                                for reactor in reactors {
+                                    ui.text(format!("{:?}", reactor));
+                                }
+                            }
+                            ui.unindent();
+                        }
+                    }
+                    ui.unindent();
+
+                    ui.indent();
+                    if ui.collapsing_header("Action Events", TreeNodeFlags::empty()) {
+                        for (action_instance_id, event_id) in
+                            game_state.event_log.action_events.iter()
+                        {
+                            ui.text(format!(
+                                "Action Instance {:?} -> Event {:?}",
+                                action_instance_id, event_id
+                            ));
+                        }
+                    }
+                    ui.unindent();
                 }
             },
         );

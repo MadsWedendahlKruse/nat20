@@ -3,7 +3,10 @@ use tracing::debug;
 
 use crate::{
     components::{
-        actions::action::{ActionConditionResolution, ActionContext},
+        actions::action::{
+            ActionConditionResolution, ActionContext, ActionResultComponent, EffectResult,
+            EffectResultKind,
+        },
         effects::{
             effect::{
                 EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectLifetimeTemplate,
@@ -15,7 +18,7 @@ use crate::{
         modifier::ModifierSource,
     },
     engine::{
-        event::{Event, EventKind, EventListener, ListenerSource},
+        event::{Event, EventListener, ListenerSource},
         game_state::GameState,
     },
     systems,
@@ -185,10 +188,14 @@ pub fn remove_effect(
                 );
 
                 if effect_instance.is_parent() {
-                    game_state.process_event(Event::new(EventKind::LostEffect {
-                        entity: EntityIdentifier::from_world(&game_state.world, entity),
-                        effect: effect.id.clone(),
-                    }));
+                    game_state.process_event(Event::action_result_event(
+                        EntityIdentifier::from_world(&game_state.world, entity),
+                        ActionResultComponent::Effect(EffectResult {
+                            resolution: ActionConditionResolution::Unconditional,
+                            effect: effect_instance.effect_id.clone(),
+                            result: EffectResultKind::Removed,
+                        }),
+                    ));
                 }
             }
 

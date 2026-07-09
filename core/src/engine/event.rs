@@ -8,20 +8,19 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        actions::{
-            action::{ActionKindResult, ActionResult},
-            targeting::TargetInstance,
-        },
+        actions::action::{ActionResult, ActionResultComponent},
         damage::DamageRollResult,
-        dice::DiceSetRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
-        id::{EffectId, EntityIdentifier},
-        modifier::ModifierSource,
+        id::EntityIdentifier,
         spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
-    engine::{action_prompt::ActionData, encounter::EncounterId, game_state::GameState},
+    engine::{
+        action_prompt::{ActionData, ActionExecutionInstanceId},
+        encounter::EncounterId,
+        game_state::GameState,
+    },
     systems::{
         d20::{D20CheckDCKind, D20ResultKind},
         time::RestKind,
@@ -35,6 +34,8 @@ pub struct Event {
     pub id: EventId,
     pub kind: EventKind,
     pub response_to: Option<EventId>,
+    pub parent: Option<EventId>,
+    pub children: Vec<EventId>,
 }
 
 impl Event {
@@ -43,11 +44,18 @@ impl Event {
             id: Uuid::new_v4(),
             kind,
             response_to: None,
+            parent: None,
+            children: Vec::new(),
         }
     }
 
     pub fn as_response_to(mut self, event_id: EventId) -> Self {
         self.response_to = Some(event_id);
+        self
+    }
+
+    pub fn with_parent(mut self, parent_id: Option<&EventId>) -> Self {
+        self.parent = parent_id.copied();
         self
     }
 
@@ -57,11 +65,14 @@ impl Event {
 
     pub fn actor(&self) -> Option<Entity> {
         match &self.kind {
-            EventKind::MovingOutOfReach { mover, .. } => Some(mover.id()),
             EventKind::ActionRequested { action } => Some(action.actor.id()),
-            EventKind::ActionPerformed { action, .. } => Some(action.actor.id()),
-            // TODO: What to do here? Multiple reactors?
-            EventKind::ReactionTriggered { reactors, .. } => Some(reactors.iter().next()?.id()),
+            EventKind::ActionResult { actor, result, .. } => {
+                if let Some(actor) = actor {
+                    Some(actor.id())
+                } else {
+                    Some(result.target.id())
+                }
+            }
             EventKind::LifeStateChanged { entity, actor, .. } => {
                 if let Some(actor) = actor {
                     Some(actor.id())
@@ -69,59 +80,33 @@ impl Event {
                     Some(entity.id())
                 }
             }
-            EventKind::D20CheckPerformed(entity, _, _) => Some(entity.id()),
-            EventKind::D20CheckResolved(entity, _, _) => Some(entity.id()),
-            EventKind::DamageRollPerformed(entity, _) => Some(entity.id()),
-            EventKind::DamageRollResolved(entity, _) => Some(entity.id()),
+            EventKind::D20CheckPerformed { actor, .. } => Some(actor.id()),
+            EventKind::D20CheckResolved { actor, .. } => Some(actor.id()),
+            EventKind::DamageRollPerformed { actor, .. } => Some(actor.id()),
+            EventKind::DamageRollResolved { actor, .. } => Some(actor.id()),
             EventKind::Encounter(_) => None,
             EventKind::TurnBoundary { entity, .. } => Some(entity.id()),
             // TODO: Same problem as ReactionTriggered
             EventKind::RestStarted { participants, .. } => Some(participants.first()?.id()),
             EventKind::RestFinished { participants, .. } => Some(participants.first()?.id()),
             EventKind::LostConcentration { entity, .. } => Some(entity.id()),
-            EventKind::GainedEffect { entity, .. } => Some(entity.id()),
-            EventKind::LostEffect { entity, .. } => Some(entity.id()),
-            EventKind::Healing { entity, .. } => Some(entity.id()),
+            EventKind::MovingOutOfReach { mover, .. } => Some(mover.id()),
         }
     }
 
-    pub fn target(&self) -> Option<Entity> {
-        match &self.kind {
-            EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
-                if let Some(TargetInstance::Entity { entity, .. }) = action.targets.first() {
-                    Some(entity.id())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    pub fn action_performed_event(
-        action_data: &ActionData,
-        results: Vec<(EntityIdentifier, ActionKindResult)>,
-    ) -> Event {
-        let results = results
-            .into_iter()
-            .map(|(entity, result)| ActionResult::new(action_data.actor.clone(), entity, result))
-            .collect();
-        Event::new(EventKind::ActionPerformed {
-            action: action_data.clone(),
-            results: results,
+    pub fn action_result_event(target: EntityIdentifier, result: ActionResultComponent) -> Event {
+        Event::new(EventKind::ActionResult {
+            result: ActionResult {
+                target,
+                components: vec![result],
+            },
+            actor: None,
         })
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventKind {
-    Encounter(EncounterEvent),
-
-    MovingOutOfReach {
-        mover: EntityIdentifier,
-        entity: EntityIdentifier,
-    },
-
     /// An entity has declared they want to take an action. The engine can then
     /// validate that the entity can perform the action and either approve or
     /// deny it. Other entities might also react to the request, e.g. if someone
@@ -130,17 +115,15 @@ pub enum EventKind {
     ActionRequested {
         action: ActionData,
     },
-    /// The action was successfully performed, and the results are applied to the targets.
-    ActionPerformed {
-        action: ActionData,
-        results: Vec<ActionResult>,
+    /// The result of performing an action.
+    /// Despite the name it can also be used outside of actions.
+    /// TODO: Maybe a better name then?
+    ActionResult {
+        result: ActionResult,
+        actor: Option<EntityIdentifier>,
     },
-    ReactionTriggered {
-        /// The event that triggered the reaction, e.g. an ActionRequested event
-        /// might trigger a Counterspell reaction.
-        trigger_event: Arc<Event>,
-        reactors: HashSet<EntityIdentifier>,
-    },
+    Encounter(EncounterEvent),
+
     LifeStateChanged {
         entity: EntityIdentifier,
         new_state: LifeState,
@@ -148,11 +131,25 @@ pub enum EventKind {
         actor: Option<EntityIdentifier>,
     },
     /// The initial D20 roll which can be reacted to, e.g. with the Lucky feat.
-    D20CheckPerformed(EntityIdentifier, D20ResultKind, D20CheckDCKind),
+    D20CheckPerformed {
+        actor: EntityIdentifier,
+        result: D20ResultKind,
+        dc: D20CheckDCKind,
+    },
     /// The final result of a D20 check after reactions have been applied.
-    D20CheckResolved(EntityIdentifier, D20ResultKind, D20CheckDCKind),
-    DamageRollPerformed(EntityIdentifier, DamageRollResult),
-    DamageRollResolved(EntityIdentifier, DamageRollResult),
+    D20CheckResolved {
+        actor: EntityIdentifier,
+        result: D20ResultKind,
+        dc: D20CheckDCKind,
+    },
+    DamageRollPerformed {
+        actor: EntityIdentifier,
+        result: DamageRollResult,
+    },
+    DamageRollResolved {
+        actor: EntityIdentifier,
+        result: DamageRollResult,
+    },
 
     TurnBoundary {
         entity: EntityIdentifier,
@@ -173,21 +170,9 @@ pub enum EventKind {
         instances: Vec<ConcentrationInstance>,
     },
 
-    GainedEffect {
+    MovingOutOfReach {
+        mover: EntityIdentifier,
         entity: EntityIdentifier,
-        effect: EffectId,
-    },
-    LostEffect {
-        entity: EntityIdentifier,
-        effect: EffectId,
-    },
-
-    // TODO: What's the best way to do this? Seems like we in general need to create
-    // more specific events for things otherwise usually happens during actions
-    Healing {
-        entity: EntityIdentifier,
-        amount: DiceSetRollResult,
-        source: ModifierSource,
     },
 }
 
@@ -201,22 +186,51 @@ pub enum EncounterEvent {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EventLog {
     pub events: Vec<Event>,
+    pub indices: HashMap<EventId, usize>,
     /// Track which entities have reacted to which events in this log. This is
     /// used to prevent an entity from reacting to the same event multiple times.
     /// TODO: Not sure if this is the best solution.
     pub reactors: HashMap<EventId, HashSet<Entity>>,
+    pub action_events: HashMap<ActionExecutionInstanceId, EventId>,
 }
 
 impl EventLog {
     pub fn new() -> Self {
         Self {
             events: Vec::new(),
+            indices: HashMap::new(),
             reactors: HashMap::new(),
+            action_events: HashMap::new(),
         }
     }
 
     pub fn push(&mut self, event: Event) {
+        match &event.kind {
+            // EventKind::ActionRequested { action } | EventKind::ActionPerformed { action, .. } => {
+            EventKind::ActionRequested { action } => {
+                self.action_events.insert(action.instance_id, event.id);
+            }
+            _ => {}
+        }
+        if let Some(parent_id) = event.parent
+            && let Some(parent_index) = self.indices.get(&parent_id)
+            && let Some(parent_event) = self.events.get_mut(*parent_index)
+        {
+            parent_event.children.push(event.id);
+        }
+        self.indices.insert(event.id, self.events.len());
         self.events.push(event);
+    }
+
+    pub fn get(&self, event_id: &EventId) -> Option<&Event> {
+        if let Some(index) = self.indices.get(event_id) {
+            return self.events.get(*index);
+        }
+        None
+    }
+
+    pub fn filter_events(&self, filter: &EventFilter) -> Vec<&Event> {
+        self.events.iter().filter(|e| filter.matches(e)).collect()
     }
 
     pub fn record_reaction(&mut self, event_id: EventId, reactor: Entity) {
@@ -233,8 +247,35 @@ impl EventLog {
         false
     }
 
-    pub fn filter_events(&self, filter: &EventFilter) -> Vec<&Event> {
-        self.events.iter().filter(|e| filter.matches(e)).collect()
+    pub fn triggered_reactions(&self, event_id: &EventId) -> bool {
+        self.reactors
+            .get(event_id)
+            .map_or(false, |reactors| !reactors.is_empty())
+    }
+
+    pub fn child_events(&self, event_id: &EventId) -> Vec<&Event> {
+        if let Some(index) = self.indices.get(event_id)
+            && let Some(event) = self.events.get(*index)
+        {
+            return event
+                .children
+                .iter()
+                .filter_map(|child_id| {
+                    if let Some(child_index) = self.indices.get(child_id) {
+                        return self.events.get(*child_index);
+                    }
+                    None
+                })
+                .collect();
+        }
+        Vec::new()
+    }
+
+    pub fn action_event_id(
+        &self,
+        action_instance_id: &ActionExecutionInstanceId,
+    ) -> Option<&EventId> {
+        self.action_events.get(action_instance_id)
     }
 }
 
