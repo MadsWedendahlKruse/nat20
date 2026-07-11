@@ -9,13 +9,14 @@ use crate::{
         },
         effects::{
             effect::{
-                EffectInstance, EffectInstanceId, EffectInstanceTemplate, EffectLifetimeTemplate,
-                EffectsMap,
+                EffectGrantedAction, EffectInstance, EffectInstanceId, EffectInstanceTemplate,
+                EffectLifetimeTemplate, EffectsMap,
             },
             effect_manager::EffectManager,
         },
         id::{EffectId, EntityIdentifier},
         modifier::ModifierSource,
+        spells::spellbook::{GrantedSpellSource, SpellSource},
     },
     engine::{
         event::{Event, EventListener, ListenerSource},
@@ -154,6 +155,31 @@ fn apply_and_replace(
         on_apply(game_state, entity, context);
     }
 
+    for action in &effect.actions {
+        debug!(
+            "Applying action granted by effect {:?} to entity {:?}: {:?}",
+            effect.id, entity, action
+        );
+
+        match action {
+            EffectGrantedAction::Action { id } => {
+                // TODO: Might need some work under the hood
+                systems::actions::add_actions(&mut game_state.world, entity, &[id.clone()]);
+            }
+            EffectGrantedAction::Spell { id, level } => {
+                let _ = systems::spells::add_spell(
+                    game_state,
+                    entity,
+                    id,
+                    &SpellSource::Granted {
+                        source: GrantedSpellSource::Effect(effect.id.clone()),
+                        level: *level,
+                    },
+                );
+            }
+        }
+    }
+
     if let Some(replaces) = &effect.replaces {
         // TODO: Not sure how best to find the instance that should be replaced.
         // It's probably always just one?
@@ -177,6 +203,35 @@ pub fn remove_effect(
             let effect = effect_instance.effect();
             if let Some(on_unapply) = &effect.on_unapply {
                 on_unapply(game_state, entity);
+            }
+
+            for action in &effect.actions {
+                debug!(
+                    "Removing action granted by effect {:?} from entity {:?}: {:?}",
+                    effect.id, entity, action
+                );
+
+                match action {
+                    EffectGrantedAction::Action { id } => {
+                        todo!(
+                            "Remove action granted by effect {:?} from entity {:?}: {:?}",
+                            effect.id,
+                            entity,
+                            id
+                        );
+                    }
+                    EffectGrantedAction::Spell { id, level } => {
+                        let _ = systems::spells::remove_spell(
+                            game_state,
+                            entity,
+                            id,
+                            &SpellSource::Granted {
+                                source: GrantedSpellSource::Effect(effect.id.clone()),
+                                level: *level,
+                            },
+                        );
+                    }
+                }
             }
 
             if !effect_instance.is_permanent() {
@@ -271,4 +326,10 @@ fn remove_effects_by_filter(
     }
 
     removed_effects
+}
+
+pub fn has_effect(game_state: &GameState, entity: Entity, effect_id: &EffectId) -> bool {
+    effects(&game_state.world, entity)
+        .iter()
+        .any(|(_, effect_instance)| effect_instance.effect_id == *effect_id)
 }

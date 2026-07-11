@@ -1,20 +1,20 @@
 use std::{cmp::max, collections::HashMap, sync::LazyLock};
 
 use hecs::{Entity, World};
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::{
     components::{
         class::{
             ClassAndSubclass, SpellAccessModel, SpellReplacementModel, SpellcastingProgression,
         },
-        id::{EntityIdentifier, ResourceId},
+        id::{EntityIdentifier, ResourceId, SpellId},
         level::CharacterLevels,
         level_up::LevelUpPrompt,
         resource::{ResourceAmount, ResourceBudgetKind, ResourceMap},
         spells::{
             spell::{ConcentrationInstance, SpellFlag},
-            spellbook::{ClassSpellcastingState, Spellbook},
+            spellbook::{ClassSpellcastingState, SpellSource, Spellbook, SpellbookError},
         },
     },
     engine::{
@@ -75,6 +75,45 @@ static SPELL_SLOTS_PER_LEVEL: LazyLock<HashMap<u8, Vec<u8>>> = LazyLock::new(|| 
         (20, vec![4, 3, 3, 3, 3, 2, 2, 1, 1]),
     ])
 });
+
+pub fn add_spell(
+    game_state: &mut GameState,
+    entity: Entity,
+    spell_id: &SpellId,
+    source: &SpellSource,
+) -> Result<(), SpellbookError> {
+    if let Ok((spellbook, resources)) = game_state
+        .world
+        .query_one_mut::<(&mut Spellbook, &ResourceMap)>(entity)
+    {
+        spellbook
+            .add_spell(spell_id, source, resources)
+            .inspect_err(|err| {
+                error!(
+                    "Failed to add spell {:?} to entity {:?} from source {:?}: {:?}",
+                    spell_id, entity, source, err
+                )
+            })
+    } else {
+        Err(SpellbookError::NotFound)
+    }
+}
+
+pub fn remove_spell(
+    game_state: &mut GameState,
+    entity: Entity,
+    spell_id: &SpellId,
+    source: &SpellSource,
+) -> Result<(), SpellbookError> {
+    systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, entity)
+        .remove_spell(spell_id, source)
+        .inspect_err(|err| {
+            error!(
+                "Failed to remove spell {:?} from entity {:?} from source {:?}: {:?}",
+                spell_id, entity, source, err
+            )
+        })
+}
 
 pub fn update_spellbook(
     world: &mut World,

@@ -29,15 +29,6 @@ pub struct SpellDefinition {
     pub targeting: TargetingDefinition,
     #[serde(default)]
     pub reaction_trigger: Option<ReactionTrigger>,
-    /// TODO: Is there a better way to represent this?
-    ///
-    /// Some spells like Hex or Hunter's Mark grant an alternative version of themselves
-    /// which doesn't cost a spell slot, but can only be cast under certain conditions.
-    /// It seems like easiest way is just to grant those alternative spells directly,
-    /// though they won't be able to be used until the conditions are met, e.g. killing
-    /// an enemy marked by the original spell.
-    #[serde(default)]
-    pub granted_spells: Vec<(SpellId, u8)>,
     pub timeline: ActionTimeline,
 }
 
@@ -53,7 +44,6 @@ impl From<SpellDefinition> for Spell {
             value.resource_cost,
             value.targeting.function(),
             value.reaction_trigger.map(|trigger| trigger.function),
-            value.granted_spells,
             value.timeline,
         )
     }

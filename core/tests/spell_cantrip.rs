@@ -39,7 +39,7 @@ fn acid_splash() {
 
     scenario
         .probe("wizard")
-        .assert_has_action("action.acid_splash")
+        .assert_action_available("action.acid_splash")
         .act("action.acid_splash")
         .target_point([3.0, 0.0, 0.0])
         .perform();
@@ -75,7 +75,7 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
 
     scenario
         .probe("wizard")
-        .assert_has_action("action.fire_bolt")
+        .assert_action_available("action.fire_bolt")
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
             D20CheckOutcome::CriticalSuccess,
@@ -111,7 +111,7 @@ fn ray_of_frost() {
 
     scenario
         .probe("wizard")
-        .assert_has_action("action.ray_of_frost")
+        .assert_action_available("action.ray_of_frost")
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
             D20CheckOutcome::CriticalSuccess,

@@ -15,7 +15,8 @@ use crate::{
         effects::{
             effect::{
                 Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
-                EffectInstance, EffectInstanceTemplate, EffectKind, EffectLifetimeTemplate,
+                EffectGrantedAction, EffectInstance, EffectInstanceTemplate, EffectKind,
+                EffectLifetimeTemplate,
             },
             hooks::{
                 ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, DamageRollResultHook,
@@ -88,6 +89,9 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub children: Vec<EffectId>,
 
+    #[serde(default)]
+    pub actions: Vec<EffectGrantedAction>,
+
     /// Simple effect modifiers like:
     /// - Ability score changes
     /// - Skill modifiers
@@ -130,6 +134,8 @@ impl From<EffectDefinition> for Effect {
         let mut effect = Effect::new(effect_id.clone(), definition.kind, definition.description);
         effect.replaces = definition.replaces;
         effect.children = definition.children;
+
+        effect.actions = definition.actions;
 
         // 1. Simple persistent modifiers
         // Build on_apply from all modifiers

@@ -204,3 +204,71 @@ fn warlock_hex_damage() {
         )
         .assert_event_count(2);
 }
+
+#[test]
+fn warlock_hex_reapply_on_kill() {
+    let mut scenario = Scenario::new();
+    scenario.spawn("warlock", "hero.warlock").level(5).spawn();
+    scenario
+        .spawn("goblin", "monster.goblin_warrior")
+        .level(1)
+        .position([1.0, 0.0, 0.0], false)
+        .spawn();
+
+    // Force goblin to be killed by the Eldritch Blast so we can test the reapplication of Hex
+    scenario.probe("goblin").damage_raw(9);
+
+    scenario
+        .probe("warlock")
+        .assert_no_concentration()
+        .act("action.hex")
+        .variant("action.hex.strength")
+        .target_entity("goblin")
+        .perform();
+
+    scenario
+        .probe("warlock")
+        .assert_concentration("effect.spell.hex.strength");
+
+    // Kill the goblin to trigger the reapplication of Hex
+    scenario
+        .probe("warlock")
+        // Force Eldritch Blast to hit so we can kill the goblin
+        .d20_force_outcome(
+            D20CheckKind::AttackRoll(AttackSource::Spell),
+            D20CheckOutcome::CriticalSuccess,
+        )
+        .act("action.eldritch_blast")
+        .target_entities(vec!["goblin"; 2])
+        .perform();
+
+    scenario
+        .probe("warlock")
+        .assert_effect("effect.spell.hex_reapply")
+        .assert_has_action("action.hex_reapply");
+
+    // Start a new turn to recharge the bonus action for Hex reapplication
+    scenario.probe("warlock").start_turn();
+
+    // Spawn a new goblin to reapply Hex to
+    scenario
+        .spawn("goblin2", "monster.goblin_warrior")
+        .level(1)
+        .position([2.0, 0.0, 0.0], false)
+        .spawn();
+
+    scenario
+        .probe("warlock")
+        .assert_action_available("action.hex_reapply")
+        .act("action.hex_reapply")
+        .variant("action.hex.strength")
+        .target_entity("goblin2")
+        .perform();
+
+    // Hex reapply effect consumes itself
+    scenario
+        .probe("warlock")
+        .assert_concentration("effect.spell.hex.strength")
+        .assert_no_effect("effect.spell.hex_reapply")
+        .assert_no_action("action.hex_reapply");
+}

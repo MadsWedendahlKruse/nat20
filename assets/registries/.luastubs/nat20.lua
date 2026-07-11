@@ -254,7 +254,7 @@ function GameState:wielding_with_both_hands(entity, weapon_kind) end
 ---@param target ScriptEntity
 ---@param effect_id string
 ---@param source_effect string
----@param context ActionContext
+---@param context ActionContext?
 function GameState:apply_effect(applier, target, effect_id, source_effect, context) end
 
 ---@param applier ScriptEntity
@@ -263,12 +263,17 @@ function GameState:apply_effect(applier, target, effect_id, source_effect, conte
 ---@param turns integer
 ---@param one_shot boolean
 ---@param source_effect string
----@param context ActionContext
----@param resolution ActionConditionResolution
+---@param context ActionContext?
+---@param resolution ActionConditionResolution?
 function GameState:apply_effect_for_turns(
     applier, target, effect_id, turns, one_shot, source_effect, context, resolution
 )
 end
+
+--- @param target ScriptEntity
+--- @param effect_id string
+--- @return boolean
+function GameState:has_effect(target, effect_id) end
 
 ---@param target ScriptEntity
 ---@param effect_id string

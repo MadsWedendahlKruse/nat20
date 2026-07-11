@@ -715,7 +715,7 @@ impl UserData for GameState {
                 ScriptEntity,
                 String,
                 String,
-                ActionContext,
+                Value,
             )| {
                 apply_effect_impl(
                     this,
@@ -725,7 +725,7 @@ impl UserData for GameState {
                     None,
                     false,
                     parse_id::<EffectId>(&source_effect)?,
-                    context,
+                    get_type_from_value(context)?,
                     ActionConditionResolution::Unconditional,
                 );
                 Ok(())
@@ -743,14 +743,15 @@ impl UserData for GameState {
                 i64,
                 bool,
                 String,
-                ActionContext,
-                ActionConditionResolution,
+                Value,
+                Value,
             )| {
                 if turns <= 0 {
                     return Err(LuaError::RuntimeError(
                         "turns must be greater than 0".into(),
                     ));
                 }
+                let resolution = get_type_from_value(resolution)?;
                 apply_effect_impl(
                     this,
                     applier,
@@ -759,10 +760,18 @@ impl UserData for GameState {
                     Some(turns as u32),
                     one_shot,
                     parse_id::<EffectId>(&source_effect)?,
-                    context,
-                    resolution,
+                    get_type_from_value(context)?,
+                    resolution.unwrap_or(ActionConditionResolution::Unconditional),
                 );
                 Ok(())
+            },
+        );
+
+        methods.add_method(
+            "has_effect",
+            |_, this, (target, effect_id): (ScriptEntity, String)| {
+                let id = parse_id::<EffectId>(&effect_id)?;
+                Ok(systems::effects::has_effect(this, target.into(), &id))
             },
         );
 
@@ -829,6 +838,21 @@ impl UserData for GameState {
     }
 }
 
+fn get_type_from_value<T: UserData + Clone + 'static>(value: Value) -> LuaResult<Option<T>> {
+    match value {
+        Value::Nil => Ok(None),
+        Value::UserData(ud) => {
+            let ctx = ud.borrow::<T>()?;
+            Ok(Some(ctx.clone()))
+        }
+        other => Err(LuaError::RuntimeError(format!(
+            "Expected {} or nil, got {}",
+            std::any::type_name::<T>(),
+            other.type_name()
+        ))),
+    }
+}
+
 /// Helper: queue an apply-effect command via the existing system path.
 fn apply_effect_impl(
     game_state: &mut GameState,
@@ -838,7 +862,7 @@ fn apply_effect_impl(
     turns: Option<u32>,
     one_shot: bool,
     source: EffectId,
-    context: ActionContext,
+    context: Option<ActionContext>,
     resolution: ActionConditionResolution,
 ) {
     let lifetime = match turns {
@@ -872,7 +896,7 @@ fn apply_effect_impl(
             end_condition: None,
             one_shot,
         },
-        Some(&context),
+        context.as_ref(),
         resolution,
     );
 }

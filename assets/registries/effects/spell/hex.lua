@@ -1,5 +1,3 @@
-local HEX_REAPPLY_RESOURCE_ID = "nat20_core::resource.warlock.hex_reapply"
-
 ---@type PreDamageMitigationHookFn
 local function pre_damage_mitigation_hook(game_state, victim, effect, damage_roll_result)
     local actor = damage_roll_result.actor
@@ -13,8 +11,17 @@ end
 
 ---@type DeathHookFn
 local function death_hook(game_state, victim, killer, applier)
-    if applier and not game_state:can_afford_resource(applier, HEX_REAPPLY_RESOURCE_ID, "1") then
-        game_state:add_resource(applier, HEX_REAPPLY_RESOURCE_ID, "1")
+    if applier and not game_state:has_effect(applier, "nat20_core::effect.spell.hex_reapply") then
+        game_state:apply_effect_for_turns(
+            applier,
+            applier,
+            "nat20_core::effect.spell.hex_reapply",
+            600, -- TODO: Not realy sure about the duration here? 1 hour for now
+            false,
+            "nat20_core::effect.hex",
+            nil,
+            nil
+        )
     end
 end
 

@@ -45,7 +45,7 @@ fn force_saving_throws(scenario: &mut Scenario, outcome: D20CheckOutcome) {
 fn cast_ice_knife(scenario: &mut Scenario, attack_outcome: D20CheckOutcome, slot_level: u8) {
     scenario
         .probe("wizard")
-        .assert_has_action("action.ice_knife")
+        .assert_action_available("action.ice_knife")
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
             attack_outcome,

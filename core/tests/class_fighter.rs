@@ -25,7 +25,7 @@ fn fighter_action_surge() {
         .time_mode(TimeMode::TurnBased { encounter_id: None })
         .probe(&mut game_state);
 
-    fighter.assert_has_action(&game_state, "action.fighter.action_surge");
+    fighter.assert_action_available(&game_state, "action.fighter.action_surge");
     fighter.assert_resource(
         &game_state,
         "resource.fighter.action_surge",
@@ -64,7 +64,7 @@ fn fighter_second_wind() {
         .time_mode(TimeMode::TurnBased { encounter_id: None })
         .probe(&mut game_state);
 
-    fighter.assert_has_action(&game_state, "action.fighter.second_wind");
+    fighter.assert_action_available(&game_state, "action.fighter.second_wind");
     fighter.assert_resource(
         &game_state,
         "resource.fighter.second_wind",
@@ -98,7 +98,7 @@ fn fighter_tactical_mind() {
 
     scenario
         .probe("fighter")
-        .assert_has_action("action.fighter.tactical_mind")
+        .assert_action_available("action.fighter.tactical_mind")
         .assert_resource("resource.fighter.second_wind", Operator::Equal(2))
         // Force the fighter to fail a skill check to trigger Tactical Mind
         .d20_force_outcome(
@@ -226,7 +226,7 @@ fn fighter_indomitable() {
 
     scenario
         .probe("fighter")
-        .assert_has_action("action.fighter.indomitable")
+        .assert_action_available("action.fighter.indomitable")
         .assert_resource("resource.fighter.indomitable", Operator::Equal(1))
         // Force the fighter to fail a saving throw to trigger Indomitable
         .d20_force_outcome(

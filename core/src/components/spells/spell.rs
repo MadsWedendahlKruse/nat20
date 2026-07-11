@@ -1,6 +1,6 @@
 use std::{hash::Hash, sync::Arc};
 
-use hecs::{Entity, World};
+use hecs::Entity;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -11,13 +11,10 @@ use crate::{
             Action, ActionKind, ActionTimeline, ReactionTriggerFunction, TargetingFunction,
         },
         effects::effect::EffectInstanceId,
-        id::{EffectId, IdProvider, ScriptId, SpellId},
+        id::{EffectId, IdProvider, SpellId},
         resource::ResourceAmountMap,
     },
-    engine::{
-        action_prompt::ActionExecutionInstanceId,
-        game_state::{self, GameState},
-    },
+    engine::{action_prompt::ActionExecutionInstanceId, game_state::GameState},
     registry::serialize::spell::SpellDefinition,
     systems,
 };
@@ -51,14 +48,6 @@ pub struct Spell {
     school: MagicSchool,
     flags: Vec<SpellFlag>,
     action: Action,
-    /// TODO: Is there a better way to represent this?
-    ///
-    /// Some spells like Hex or Hunter's Mark grant an alternative version of themselves
-    /// which doesn't cost a spell slot, but can only be cast under certain conditions.
-    /// It seems like easiest way is just to grant those alternative spells directly,
-    /// though they won't be able to be used until the conditions are met, e.g. killing
-    /// an enemy marked by the original spell.
-    granted_spells: Vec<(SpellId, u8)>,
 }
 
 impl Spell {
@@ -72,7 +61,6 @@ impl Spell {
         resource_cost: ResourceAmountMap,
         targeting: Arc<TargetingFunction>,
         reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
-        granted_spells: Vec<(SpellId, u8)>,
         timeline: ActionTimeline,
     ) -> Self {
         let action_id = id.clone().into();
@@ -92,7 +80,6 @@ impl Spell {
                 reaction_trigger,
                 timeline,
             },
-            granted_spells,
         }
     }
 
@@ -122,10 +109,6 @@ impl Spell {
 
     pub fn has_flag(&self, flag: SpellFlag) -> bool {
         self.flags.contains(&flag)
-    }
-
-    pub fn granted_spells(&self) -> &Vec<(SpellId, u8)> {
-        &self.granted_spells
     }
 }
 

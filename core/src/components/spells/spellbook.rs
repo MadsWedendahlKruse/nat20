@@ -19,6 +19,7 @@ use std::{
 
 use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
+use strum::Display;
 
 use crate::{
     components::{
@@ -185,11 +186,9 @@ pub enum GrantedSpellSource {
     Feat(FeatId),
     Species(SpeciesId),
     Effect(EffectId),
-    ParentSpell(SpellId),
 }
 
 /// A class-independent spell source (items/feats/race/boons).
-/// Keep this small at first; you can grow it later into “charges”, “once per rest”, etc.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrantedSpellMap {
     /// Spells that are castable without being prepared/known by any class state.
@@ -215,7 +214,7 @@ pub enum SpellSource {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum SpellbookError {
     ClassNotFound,
     SpellNotOnClassList,
@@ -570,20 +569,6 @@ impl Spellbook {
                     .or_insert_with(GrantedSpellMap::new)
                     .spells
                     .insert(spell_id.clone(), *level);
-            }
-        }
-
-        // TODO: Little bit funky
-        if let Some(spell) = SpellsRegistry::get(spell_id) {
-            for (spell_id, level) in spell.granted_spells() {
-                self.add_spell(
-                    spell_id,
-                    &SpellSource::Granted {
-                        source: GrantedSpellSource::ParentSpell(spell.id().clone()),
-                        level: *level,
-                    },
-                    resources,
-                )?;
             }
         }
 

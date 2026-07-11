@@ -18,7 +18,7 @@ use crate::{
             PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, TurnStartHook,
             UnapplyEffectHook,
         },
-        id::{EffectId, IdProvider},
+        id::{ActionId, EffectId, IdProvider, SpellId},
         modifier::ModifierSource,
         saving_throw::SavingThrowKind,
         skill::Skill,
@@ -43,6 +43,8 @@ pub struct Effect {
     pub description: String,
     pub replaces: Option<EffectId>,
     pub children: Vec<EffectId>,
+
+    pub actions: Vec<EffectGrantedAction>,
 
     // TODO: Do we need to differentiate between when an effect explicitly expires and when
     // the effect is removed from the character?
@@ -73,6 +75,8 @@ impl Effect {
             description,
             replaces: None,
             children: Vec::new(),
+
+            actions: Vec::new(),
 
             on_apply: None,
             on_unapply: None,
@@ -417,4 +421,12 @@ impl fmt::Debug for EffectEndConditionTemplate {
             .field("callback", &"...")
             .finish()
     }
+}
+
+/// Represents an action that is granted by an effect, such as a spell or a special action.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EffectGrantedAction {
+    Action { id: ActionId },
+    Spell { id: SpellId, level: u8 },
 }

@@ -1,0 +1,16 @@
+{
+    "id": "nat20_core::effect.spell.hex_reapply",
+    "kind": "buff",
+    "description": "You've killed a target affected by your Hex spell. You can use a bonus action to apply Hex to a new target without expending a spell slot.",
+    "actions": [
+        {
+            "id": "nat20_core::spell.hex_reapply",
+            "level": 1
+        }
+    ],
+    "on_action": [
+        {
+            "script": "nat20_core::script.effect.hex_reapply"
+        }
+    ]
+}

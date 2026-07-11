@@ -441,6 +441,9 @@ delegate_probe_methods! {
     fn d20_check_with_callback(dc: &D20CheckDCKind, callback: EventCallback);
 
     fn assert_has_action(action: impl Into<ActionId> + Clone);
+    fn assert_no_action(action: impl Into<ActionId> + Clone);
+    fn assert_action_available(action: impl Into<ActionId> + Clone);
+    fn assert_action_unavailable(action: impl Into<ActionId> + Clone);
     fn assert_resource(resource: impl Into<ResourceId> + Clone, operator: Operator<u8>);
     fn assert_resource_tiered(resource: impl Into<ResourceId> + Clone, tier: u8, operator: Operator<u8>);
     fn assert_position(expected: impl Into<Point3<f32>> + Clone, tolerance: Length);

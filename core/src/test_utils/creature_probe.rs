@@ -145,10 +145,49 @@ impl CreatureProbe {
     #[track_caller]
     pub fn assert_has_action(&self, game_state: &GameState, action: impl Into<ActionId>) {
         let action: ActionId = action.into();
+        let actions = systems::actions::all_actions(&game_state.world, self.creature.id());
+        assert!(
+            actions.contains_key(&action),
+            "Expected creature {:?} to have action {:?}, but it was not found. Available actions: {:#?}",
+            self.creature,
+            action,
+            actions
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_no_action(&self, game_state: &GameState, action: impl Into<ActionId>) {
+        let action: ActionId = action.into();
+        let actions = systems::actions::all_actions(&game_state.world, self.creature.id());
+        assert!(
+            !actions.contains_key(&action),
+            "Expected creature {:?} to not have action {:?}, but it was found. Available actions: {:#?}",
+            self.creature,
+            action,
+            actions
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_action_available(&self, game_state: &GameState, action: impl Into<ActionId>) {
+        let action: ActionId = action.into();
         let actions = systems::actions::available_actions(game_state, self.creature.id());
         assert!(
             actions.contains_key(&action),
             "Expected creature {:?} to have action {:?}, but it was not found. Available actions: {:#?}",
+            self.creature,
+            action,
+            actions
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_action_unavailable(&self, game_state: &GameState, action: impl Into<ActionId>) {
+        let action: ActionId = action.into();
+        let actions = systems::actions::available_actions(game_state, self.creature.id());
+        assert!(
+            !actions.contains_key(&action),
+            "Expected creature {:?} to not have action {:?}, but it was found. Available actions: {:#?}",
             self.creature,
             action,
             actions
