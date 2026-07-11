@@ -679,7 +679,7 @@ impl ActionResult {
         &self.components
     }
 
-    pub fn component(&self, kind: ActionResultComponentKind) -> Vec<&ActionResultComponent> {
+    pub fn components_kind(&self, kind: ActionResultComponentKind) -> Vec<&ActionResultComponent> {
         self.components
             .iter()
             .filter(|component| component.kind() == kind)

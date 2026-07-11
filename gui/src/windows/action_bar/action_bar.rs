@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use hecs::Entity;
 use imgui::{ChildFlags, MouseButton};
@@ -7,7 +10,9 @@ use nat20_core::{
         ability::AbilityScoreMap,
         actions::{
             action::{
-                ActionCondition, ActionPayloadComponent, AttackRollFunction, SavingThrowFunction,
+                ActionCondition, ActionPayloadComponent, ActionResultComponent,
+                ActionResultComponentKind, AttackRollFunction, EffectResultKind,
+                SavingThrowFunction,
             },
             action_builder::{ActionBuilder, ActionBuilderState},
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
@@ -21,8 +26,13 @@ use nat20_core::{
     },
     engine::{
         action_prompt::{ActionData, ActionPromptKind},
+        event::{
+            CallbackResult, EventCallback, EventFilter, EventKind, EventListener, EventListenerId,
+            ListenerSource,
+        },
         game_state::GameState,
     },
+    registry::registry::EffectsRegistry,
     systems::{
         self,
         geometry::{Displacement, DisplacementTemplate, RaycastHitKind},
@@ -67,6 +77,8 @@ const ACTION_LIST_HEIGHT: f32 = MAX_ACTIONS as f32 * ACTION_HEIGHT;
 pub struct ActionBarWindow {
     pub builder: ActionBuilder,
     pub movement_preview: MovementPreview,
+    invalidated: Arc<AtomicBool>,
+    listener_id: EventListenerId,
 }
 
 impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
@@ -82,6 +94,12 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
             unsafe { &mut *(&mut gui_state.window_manager as *mut WindowManager) };
 
         let mut opened = true;
+
+        if matches!(self.builder.state(), Ok(ActionBuilderState::Action { .. }))
+            && self.invalidated.swap(false, Ordering::Relaxed)
+        {
+            self.builder = ActionBuilder::all(game_state, self.actor());
+        }
 
         window_manager_ptr.render_window(
             ui,
@@ -170,15 +188,62 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
 
         if !opened {
             gui_state.selected_entity.take();
+            game_state
+                .event_dispatcher
+                .remove_listener_by_id(&self.listener_id);
         }
     }
 }
 
 impl ActionBarWindow {
     pub fn new(game_state: &mut GameState, entity: Entity) -> Self {
+        let invalidated = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&invalidated);
+
+        // Register a listerner to check if any effects applied to the entity give
+        // new actions/spells, and if so invalidate the action bar so it can be rebuilt
+        let listener = EventListener::new(
+            EventFilter::new(|_event| {
+                // I think we can just do all the filtering in the callback?
+                true
+            }),
+            EventCallback::new(move |_game_state, event, _source| {
+                let EventKind::ActionResult { result, .. } = &event.kind else {
+                    return CallbackResult::None;
+                };
+
+                if result.target.id() != entity {
+                    return CallbackResult::None;
+                }
+
+                let components = result.components_kind(ActionResultComponentKind::Effect);
+                for component in components {
+                    let ActionResultComponent::Effect(effect_result) = component else {
+                        continue;
+                    };
+                    if let Some(effect) = EffectsRegistry::get(&effect_result.effect)
+                        && !effect.actions.is_empty()
+                        && effect_result.result == EffectResultKind::Applied
+                    {
+                        flag.store(true, Ordering::Relaxed);
+                        return CallbackResult::None;
+                    }
+                }
+
+                CallbackResult::None
+            }),
+            ListenerSource::Other,
+            false,
+        );
+        let listener_id = listener.id;
+
+        game_state.event_dispatcher.register_listener(listener);
+
         Self {
             builder: ActionBuilder::all(game_state, entity),
             movement_preview: MovementPreview::new(entity),
+            invalidated,
+            listener_id,
         }
     }
 

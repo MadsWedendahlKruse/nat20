@@ -346,6 +346,7 @@ pub enum ListenerSource {
     EventResponse {
         trigger_id: EventId,
     },
+    Other,
 }
 
 #[derive(Clone)]
