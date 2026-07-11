@@ -68,7 +68,7 @@ fn fighter_second_wind() {
     fighter.assert_resource(
         &game_state,
         "resource.fighter.second_wind",
-        Operator::Equal(2),
+        Operator::Equal(3),
     );
 
     // Let the fighter take some damage
@@ -87,7 +87,7 @@ fn fighter_second_wind() {
     fighter.assert_resource(
         &game_state,
         "resource.fighter.second_wind",
-        Operator::Equal(1),
+        Operator::Equal(2),
     );
 }
 

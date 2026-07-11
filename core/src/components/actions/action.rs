@@ -661,7 +661,7 @@ pub enum ActionResultComponent {
     Effect(EffectResult),
     Healing(HealingResult),
     Reaction(ReactionResult),
-    Displacement(Displacement),
+    Displacement(Option<Displacement>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1176,23 +1176,15 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
             },
             // TODO: Consider changing the "*verb*-ing *target*" wording here
             ActionResultComponent::Displacement(displacement) => {
-                match displacement {
-                    Displacement::Teleport => {
-                        TextSegment::new("teleporting", TextKind::Normal).render(ui);
-                        ui.same_line();
-                        TextSegment::new(target_name, TextKind::Target).render(ui);
-                    },
-                    Displacement::Push { trajectory } => {
-                        TextSegment::new("pushing", TextKind::Normal).render(ui);
-                        ui.same_line();
-                        TextSegment::new(target_name, TextKind::Target).render(ui);
-                    },
-                    Displacement::Pull { trajectory } => {
-                        TextSegment::new("pulling", TextKind::Normal).render(ui);
-                        ui.same_line();
-                        TextSegment::new(target_name, TextKind::Target).render(ui);
-                    },
-                }
+                let verb = match displacement {
+                    Some(Displacement::Teleport) => "teleporting",
+                    Some(Displacement::Push { .. }) => "pushing",
+                    Some(Displacement::Pull { .. }) => "pulling",
+                    None => "failing to displace",
+                };
+                TextSegment::new(verb, TextKind::Normal).render(ui);
+                ui.same_line();
+                TextSegment::new(target_name, TextKind::Target).render(ui);
             }
         }
     }

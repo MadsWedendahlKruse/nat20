@@ -312,7 +312,8 @@ impl ActivityStateKind {
             } => {
                 *elapsed_time += delta_time;
 
-                let new_position = trajectory.position_at_time(*elapsed_time);
+                let new_position =
+                    trajectory.position_at_time(elapsed_time.min(trajectory.max_time));
                 commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
                     systems::movement::move_entity(
                         game_state,

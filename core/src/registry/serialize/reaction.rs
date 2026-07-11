@@ -51,7 +51,7 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                         }
                         let _ = systems::resources::restore(
                             &mut game_state.world,
-                            reaction_data.actor.id(),
+                            action.actor.id(),
                             &resources_to_refund,
                         );
                         resources_to_refund

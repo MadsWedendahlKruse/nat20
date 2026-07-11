@@ -588,7 +588,8 @@ enum PayloadResult {
     /// None: the condition failed, so the effect is not applied
     Effect(Option<EffectInstanceTemplate>),
     Reaction,
-    Displacement(DisplacementTemplate),
+    /// None: the condition failed, so the target is not displaced
+    Displacement(Option<DisplacementTemplate>),
 }
 
 impl StepComponent {
@@ -741,8 +742,9 @@ impl StepComponent {
             }
 
             ActionPayloadComponent::Displacement(displacement) => {
-                let displacement =
-                    displacement(&game_state.world, action.actor.id(), &action.context);
+                let displacement = resolution
+                    .is_success()
+                    .then(|| displacement(&game_state.world, action.actor.id(), &action.context));
                 self.payload_result = Awaitable::Ready(PayloadResult::Displacement(displacement));
                 true
             }
@@ -784,12 +786,9 @@ impl StepComponent {
                 Self::apply_reaction(game_state, action, resolution, Arc::clone(reaction_fn))
             }
             PayloadResult::Displacement(displacement) => {
-                let Some(result) =
+                ActionResultComponent::Displacement(displacement.and_then(|displacement| {
                     Self::apply_displacement(game_state, action, target, displacement)
-                else {
-                    return;
-                };
-                result
+                }))
             }
         });
     }
@@ -982,7 +981,7 @@ impl StepComponent {
         action: &ActionData,
         target: Entity,
         displacement: DisplacementTemplate,
-    ) -> Option<ActionResultComponent> {
+    ) -> Option<Displacement> {
         let Some(displacement) = displacement.instantiate(game_state, action, target) else {
             error!("Failed to instantiate displacement, cannot apply");
             return None;
@@ -1006,14 +1005,14 @@ impl StepComponent {
                     &target_position,
                 );
 
-                Some(ActionResultComponent::Displacement(Displacement::Teleport))
+                Some(Displacement::Teleport)
             }
 
             Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
                 systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, target)
                     .set_displaced(trajectory.clone());
 
-                Some(ActionResultComponent::Displacement(displacement))
+                Some(displacement)
             }
         }
     }

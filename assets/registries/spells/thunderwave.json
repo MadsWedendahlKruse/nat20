@@ -11,6 +11,9 @@
         "standard": {
             "phases": [
                 {
+                    "condition": {
+                        "saving_throw": "spell_save_dc;constitution"
+                    },
                     "payload": {
                         "components": [
                             {

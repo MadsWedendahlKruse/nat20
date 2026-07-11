@@ -442,6 +442,8 @@ delegate_probe_methods! {
 
     fn assert_has_action(action: impl Into<ActionId> + Clone);
     fn assert_resource(resource: impl Into<ResourceId> + Clone, operator: Operator<u8>);
+    fn assert_resource_tiered(resource: impl Into<ResourceId> + Clone, tier: u8, operator: Operator<u8>);
+    fn assert_position(expected: impl Into<Point3<f32>> + Clone, tolerance: Length);
     fn assert_no_resource(resource: impl Into<ResourceId> + Clone);
     fn assert_effect(effect: impl Into<EffectId> + Clone);
     fn assert_no_effect(effect: impl Into<EffectId> + Clone);
@@ -477,6 +479,21 @@ impl ScenarioProbe<'_> {
     pub fn movement_speed(&mut self) -> Length {
         let (probe, game_state) = self.scenario.probe_parts(&self.handle);
         probe.movement_speed(game_state)
+    }
+
+    pub fn position(&mut self) -> Point3<f32> {
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.position(game_state)
+    }
+
+    pub fn reource(&mut self, resource: impl Into<ResourceId>) -> u8 {
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.resource(game_state, resource)
+    }
+
+    pub fn resource_tiered(&mut self, resource: impl Into<ResourceId>, tier: u8) -> u8 {
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.resource_tiered(game_state, resource, tier)
     }
 }
 

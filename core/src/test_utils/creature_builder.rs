@@ -6,6 +6,7 @@ use parry3d::na::Point3;
 use crate::{
     components::{
         id::EntityIdentifier,
+        resource::RechargeRule,
         time::{EntityClock, TimeMode},
     },
     engine::game_state::GameState,
@@ -95,6 +96,8 @@ impl CreatureBuilder {
             .set_mode(self.time_mode);
 
         let _ = systems::health::heal_full(&mut game_state.world, entity);
+
+        systems::resources::recharge(&mut game_state.world, entity, &RechargeRule::Daily);
 
         entity_id
     }

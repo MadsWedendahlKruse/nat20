@@ -735,7 +735,7 @@ pub mod engine {
 
     pub fn game_state() -> GameState {
         GameState::new(WorldGeometry::from_obj_path(
-            "../assets/models/geometry/test_terrain.obj",
+            "../assets/models/geometry/scenario_terrain.obj",
             &ConfigBuilder::default().build(),
         ))
     }

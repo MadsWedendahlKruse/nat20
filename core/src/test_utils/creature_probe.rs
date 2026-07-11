@@ -1,4 +1,5 @@
-use uom::si::f32::Length;
+use parry3d::na::Point3;
+use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
@@ -110,6 +111,32 @@ impl CreatureProbe {
         });
     }
 
+    pub fn position(&self, game_state: &GameState) -> Point3<f32> {
+        systems::geometry::get_foot_position(&game_state.world, self.creature.id())
+            .unwrap_or_else(|| panic!("No position for creature {:?}", self.creature))
+    }
+
+    #[track_caller]
+    pub fn assert_position(
+        &self,
+        game_state: &GameState,
+        expected: impl Into<Point3<f32>>,
+        tolerance: Length,
+    ) {
+        let expected = expected.into();
+        let position = self.position(game_state);
+        let distance = (position - expected).norm();
+        assert!(
+            distance <= tolerance.get::<meter>(),
+            "Expected creature {:?} to be within {:?} m of {:?}, but it was at {:?} ({:?} m away)",
+            self.creature,
+            tolerance.get::<meter>(),
+            expected,
+            position,
+            distance
+        );
+    }
+
     pub fn movement_speed(&self, game_state: &GameState) -> Length {
         let speed = systems::helpers::get_component::<Speed>(&game_state.world, self.creature.id());
         speed.total_speed()
@@ -126,6 +153,27 @@ impl CreatureProbe {
             action,
             actions
         );
+    }
+
+    pub fn resource(&self, game_state: &GameState, resource: impl Into<ResourceId>) -> u8 {
+        let resource = resource.into();
+        let resources =
+            systems::helpers::get_component::<ResourceMap>(&game_state.world, self.creature.id());
+        let Some(amount) = resources.get(&resource) else {
+            panic!(
+                "Expected creature {:?} to have resource {:?}, but it was not found. Current resources: {:#?}",
+                self.creature, resource, resources
+            );
+        };
+
+        let ResourceBudgetKind::Flat(budget) = amount else {
+            panic!(
+                "Expected resource {:?} to have a flat budget, but it was {:?}",
+                resource, amount
+            );
+        };
+
+        budget.current_uses
     }
 
     #[track_caller]
@@ -159,6 +207,62 @@ impl CreatureProbe {
             resource,
             operator,
             budget
+        );
+    }
+
+    #[track_caller]
+    pub fn resource_tiered(
+        &self,
+        game_state: &GameState,
+        resource: impl Into<ResourceId>,
+        tier: u8,
+    ) -> u8 {
+        let resource = resource.into();
+        let resources =
+            systems::helpers::get_component::<ResourceMap>(&game_state.world, self.creature.id());
+        let Some(amount) = resources.get(&resource) else {
+            panic!(
+                "Expected creature {:?} to have resource {:?}, but it was not found. Current resources: {:#?}",
+                self.creature, resource, resources
+            );
+        };
+
+        let ResourceBudgetKind::Tiered(budgets) = amount else {
+            panic!(
+                "Expected resource {:?} to have a tiered budget, but it was {:?}",
+                resource, amount
+            );
+        };
+
+        let Some(budget) = budgets.get(&tier) else {
+            panic!(
+                "Expected resource {:?} to have a tier {} budget, but it has tiers {:?}",
+                resource,
+                tier,
+                budgets.keys().collect::<Vec<_>>()
+            );
+        };
+
+        budget.current_uses
+    }
+
+    #[track_caller]
+    pub fn assert_resource_tiered(
+        &self,
+        game_state: &GameState,
+        resource: impl Into<ResourceId>,
+        tier: u8,
+        operator: Operator<u8>,
+    ) {
+        let resource = resource.into();
+        let current_uses = self.resource_tiered(game_state, resource.clone(), tier);
+        assert!(
+            operator.evaluate(&current_uses),
+            "Resource {:?} tier {} expected to satisfy condition {:?} but was {:?}",
+            resource,
+            tier,
+            operator,
+            current_uses
         );
     }
 
