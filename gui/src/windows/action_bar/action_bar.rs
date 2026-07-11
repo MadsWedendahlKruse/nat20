@@ -223,7 +223,7 @@ impl ActionBarWindow {
                     };
                     if let Some(effect) = EffectsRegistry::get(&effect_result.effect)
                         && !effect.actions.is_empty()
-                        && effect_result.result == EffectResultKind::Applied
+                        && effect_result.result != EffectResultKind::None
                     {
                         flag.store(true, Ordering::Relaxed);
                         return CallbackResult::None;
