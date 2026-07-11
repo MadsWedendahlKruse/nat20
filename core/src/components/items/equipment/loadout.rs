@@ -590,10 +590,32 @@ impl ActionProvider for Loadout {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::id::ActionId;
-    use crate::test_utils::fixtures;
+    use std::str::FromStr;
+
+    use uom::si::f32::Mass;
+    use uom::si::mass::pound;
+
+    use crate::components::{
+        id::ActionId,
+        items::{equipment::equipment::EquipmentKind, item::ItemRarity, money::MonetaryValue},
+    };
 
     use super::*;
+
+    fn boots() -> EquipmentItem {
+        EquipmentItem {
+            item: Item {
+                id: ItemId::new("nat20_core", "item.boots"),
+                name: "Boots".to_string(),
+                description: "A test pair of boots.".to_string(),
+                weight: Mass::new::<pound>(1.8),
+                value: MonetaryValue::from_str("10 GP").unwrap(),
+                rarity: ItemRarity::Common,
+            },
+            kind: EquipmentKind::Boots,
+            effects: Vec::new(),
+        }
+    }
 
     #[test]
     fn empty_loadout() {
@@ -660,7 +682,7 @@ mod tests {
     fn equip_unequip_item() {
         let mut loadout = Loadout::new();
 
-        let item = fixtures::equipment::boots();
+        let item = boots();
         let slot = item.valid_slots()[0].clone();
         let unequipped = loadout.equip_in_slot(&slot, EquipmentInstance::Equipment(item.clone()));
         assert!(unequipped.unwrap().is_empty());
@@ -679,13 +701,13 @@ mod tests {
     fn equip_item_twice() {
         let mut loadout = Loadout::new();
 
-        let item1 = fixtures::equipment::boots();
+        let item1 = boots();
         let slot = EquipmentSlot::Boots;
         let unequipped1 = loadout.equip_in_slot(&slot, EquipmentInstance::Equipment(item1.clone()));
         assert!(unequipped1.unwrap().is_empty());
         assert!(loadout.item_in_slot(&slot).is_some());
 
-        let item2 = fixtures::equipment::boots();
+        let item2 = boots();
         let unequipped2 = loadout.equip_in_slot(&slot, EquipmentInstance::Equipment(item2.clone()));
         assert!(
             unequipped2
@@ -774,7 +796,7 @@ mod tests {
     fn equip_in_wrong_slot() {
         let mut loadout = Loadout::new();
 
-        let item = fixtures::equipment::boots();
+        let item = boots();
         // Try to equip boots in the Headwear slot, which should be invalid
         let slot = EquipmentSlot::Headwear;
         let result = loadout.equip_in_slot(&slot, EquipmentInstance::Equipment(item.clone()));
