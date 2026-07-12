@@ -6,6 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::registry::serialize::schema::impl_string_schema;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Currency {
     Copper,
@@ -65,6 +67,14 @@ pub struct MonetaryValue {
 pub enum MonetaryValueError {
     InsufficientFunds,
 }
+
+impl_string_schema!(
+    MonetaryValue,
+    "MonetaryValue",
+    "description": "A monetary value: comma-separated `<amount> <currency>` parts, where the \
+         currency is `CP`, `SP`, `EP`, `GP` or `PP`.",
+    "examples": ["10 GP", "1 PP, 5 SP"]
+);
 
 impl MonetaryValue {
     pub fn new() -> Self {

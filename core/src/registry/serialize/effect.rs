@@ -1,4 +1,5 @@
 use hecs::{Entity, World};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 use tracing::debug;
@@ -58,7 +59,7 @@ use crate::{
 };
 
 // TODO: Should this be it's own time module?
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TimeDurationDefinition {
     RealTime { time: TimeExpressionDefinition },
@@ -76,7 +77,7 @@ impl From<TimeDurationDefinition> for TimeDuration {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EffectDefinition {
     pub id: EffectId,
     pub kind: EffectKind,
@@ -359,7 +360,7 @@ impl RegistryReferenceCollector for EffectDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum EffectModifier {
     Ability {
@@ -747,7 +748,7 @@ where
         .collect::<Vec<HookFn>>()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum AttackedHookDefinition {
     Modifier {
@@ -846,7 +847,7 @@ pub enum DamageRollHookDefinition {
     // …
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DamageRollResultHookDefinition {
     Script { script: ScriptId },
@@ -886,7 +887,7 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ArmorClassHookDefinition {
     Modifier {
@@ -934,7 +935,7 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionHookDefinition {
     Script { script: ScriptId },
@@ -965,7 +966,7 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionResultHookDefinition {
     Script { script: ScriptId },
@@ -1013,7 +1014,7 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ResourceCostHookDefinition {
     Script { script: ScriptId },
@@ -1059,7 +1060,7 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum PreDamageMitigationHookDefinition {
     Script { script: ScriptId },
@@ -1102,7 +1103,7 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum PostDamageMitigationHookDefinition {
     Script { script: ScriptId },
@@ -1142,7 +1143,7 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DeathHookDefinition {
     Script { script: ScriptId },
@@ -1181,7 +1182,7 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TurnStartHookDefinition {
     Script { script: ScriptId },
@@ -1208,7 +1209,7 @@ impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EffectInstanceDefinition {
     pub effect_id: EffectId,
     pub lifetime: EffectLifetimeTemplate,
@@ -1218,7 +1219,7 @@ pub struct EffectInstanceDefinition {
     pub one_shot: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectEventFilterDefinition {
     TurnBoundary {
@@ -1244,7 +1245,7 @@ impl From<EffectEventFilterDefinition> for EffectEventFilter {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum EffectEndConditionDefinition {
     Script {
@@ -1256,7 +1257,7 @@ pub enum EffectEndConditionDefinition {
     },
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EventCallbackDefinition {
     RepeatApplyCondition,

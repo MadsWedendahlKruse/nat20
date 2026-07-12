@@ -1,0 +1,56 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SubspeciesDefinition",
+    "type": "object",
+    "properties": {
+        "actions_by_level": {
+            "type": "object",
+            "additionalProperties": false,
+            "default": {},
+            "patternProperties": {
+                "^\\d+$": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ActionId"
+                    }
+                }
+            }
+        },
+        "effects_by_level": {
+            "type": "object",
+            "additionalProperties": false,
+            "default": {},
+            "patternProperties": {
+                "^\\d+$": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/EffectId"
+                    }
+                }
+            }
+        },
+        "id": {
+            "$ref": "#/definitions/SubspeciesId"
+        }
+    },
+    "required": [
+        "id"
+    ],
+    "definitions": {
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "EffectId": {
+            "description": "Registry id `[namespace::]effect.<name>`, e.g. `nat20_core::effect.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?effect[A-Za-z0-9_.]*$"
+        },
+        "SubspeciesId": {
+            "description": "Registry id `[namespace::]subspecies.<name>`, e.g. `nat20_core::subspecies.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?subspecies[A-Za-z0-9_.]*$"
+        }
+    }
+}

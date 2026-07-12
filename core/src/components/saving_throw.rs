@@ -10,6 +10,7 @@ use crate::{
         d20::{D20CheckDC, D20CheckMap},
         effects::hooks::D20CheckHooks,
     },
+    registry::serialize::schema::impl_string_schema,
     systems::{self},
 };
 
@@ -77,6 +78,14 @@ impl TryFrom<String> for SavingThrowKind {
         value.parse()
     }
 }
+
+impl_string_schema!(
+    SavingThrowKind,
+    "SavingThrowKind",
+    "description": "A saving throw kind: an ability (full name or acronym), `death` or \
+         `concentration`.",
+    "examples": ["dexterity", "constitution", "death", "concentration"]
+);
 
 impl From<SavingThrowKind> for String {
     fn from(kind: SavingThrowKind) -> Self {

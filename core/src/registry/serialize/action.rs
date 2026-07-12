@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use hecs::{Entity, World};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -31,7 +32,7 @@ use crate::{
     systems::geometry::DisplacementTemplate,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ActionDefinition {
     pub id: ActionId,
     pub description: String,
@@ -119,7 +120,7 @@ impl From<ActionDefinition> for Action {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageOnFailureDefinition {
     Half,
@@ -137,7 +138,7 @@ impl From<DamageOnFailureDefinition> for DamageOnFailure {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionConditionDefinition {
     AttackRoll { attack_roll: AttackRollDefinition },
@@ -157,14 +158,14 @@ impl From<ActionConditionDefinition> for ActionCondition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TrajectoryTemplateDefinition {
     Ray,
     Parabola,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PayloadDeliveryDefinition {
     #[default]
@@ -196,7 +197,7 @@ impl From<PayloadDeliveryDefinition> for PayloadDelivery {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DisplacementTemplateDefinition {
     Teleport,
@@ -232,7 +233,7 @@ impl Evaluable for DisplacementTemplateDefinition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionPayloadComponentDefinition {
     DamageFailure {
@@ -292,7 +293,7 @@ impl From<ActionPayloadComponentDefinition> for ActionPayloadComponent {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ActionPayloadDefinition {
     #[serde(default)]
     pub components: Vec<ActionPayloadComponentDefinition>,
@@ -302,7 +303,7 @@ pub struct ActionPayloadDefinition {
 /// How a phase derives its targets. Follow-up phases never re-select targets;
 /// they either inherit the action's chosen targets or expand each of them into
 /// the entities inside a shape centered on it (e.g. Ice Knife's 5 ft AoE damage).
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PhaseTargetsDefinition {
     #[default]
@@ -325,7 +326,7 @@ impl From<PhaseTargetsDefinition> for PhaseTargets {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ActionPhaseDefinition {
     /// Gate on the previous phase's condition outcome (per target)
     #[serde(default)]
@@ -357,7 +358,7 @@ impl From<ActionPhaseDefinition> for ActionPhaseSpec {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionKindDefinition {
     Standard { phases: Vec<ActionPhaseDefinition> },

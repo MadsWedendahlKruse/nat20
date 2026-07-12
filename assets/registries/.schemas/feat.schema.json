@@ -1,0 +1,837 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "FeatDefinition",
+    "type": "object",
+    "properties": {
+        "description": {
+            "type": "string"
+        },
+        "effects": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/EffectId"
+            }
+        },
+        "id": {
+            "$ref": "#/definitions/FeatId"
+        },
+        "prerequisite": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/FeatPrerequisiteDefinition"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
+        "prompts": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/LevelUpPrompt"
+            }
+        },
+        "repeatable": {
+            "type": "boolean",
+            "default": false
+        }
+    },
+    "required": [
+        "id",
+        "description"
+    ],
+    "definitions": {
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "BackgroundId": {
+            "description": "Registry id `[namespace::]background.<name>`, e.g. `nat20_core::background.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?background[A-Za-z0-9_.]*$"
+        },
+        "ChoiceItem": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "$ref": "#/definitions/ActionId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "action"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "spell": {
+                            "type": "array",
+                            "items": [
+                                {
+                                    "$ref": "#/definitions/SpellId"
+                                },
+                                {
+                                    "$ref": "#/definitions/SpellSource"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "spell"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "background": {
+                            "$ref": "#/definitions/BackgroundId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "background"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "class": {
+                            "$ref": "#/definitions/ClassId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "class"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "subclass": {
+                            "$ref": "#/definitions/SubclassId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "subclass"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "effect": {
+                            "$ref": "#/definitions/EffectId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "effect"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "feat": {
+                            "$ref": "#/definitions/FeatId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "feat"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "species": {
+                            "$ref": "#/definitions/SpeciesId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "species"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "subspecies": {
+                            "$ref": "#/definitions/SubspeciesId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "subspecies"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "equipment": {
+                            "type": "object",
+                            "properties": {
+                                "items": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": [
+                                            {
+                                                "type": "integer",
+                                                "format": "uint8",
+                                                "maximum": 255,
+                                                "minimum": 0
+                                            },
+                                            {
+                                                "$ref": "#/definitions/ItemId"
+                                            }
+                                        ],
+                                        "maxItems": 2,
+                                        "minItems": 2
+                                    }
+                                },
+                                "money": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "items",
+                                "money"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "equipment"
+                    ]
+                }
+            ]
+        },
+        "ChoiceSpec": {
+            "type": "object",
+            "properties": {
+                "allow_duplicates": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ChoiceItem"
+                    }
+                },
+                "picks": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                }
+            },
+            "required": [
+                "id",
+                "label",
+                "options",
+                "picks",
+                "allow_duplicates"
+            ]
+        },
+        "ClassAndSubclass": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "$ref": "#/definitions/ClassId"
+                },
+                "subclass": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/SubclassId"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "ClassId": {
+            "description": "Registry id `[namespace::]class.<name>`, e.g. `nat20_core::class.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?class[A-Za-z0-9_.]*$"
+        },
+        "EffectId": {
+            "description": "Registry id `[namespace::]effect.<name>`, e.g. `nat20_core::effect.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?effect[A-Za-z0-9_.]*$"
+        },
+        "FeatId": {
+            "description": "Registry id `[namespace::]feat.<name>`, e.g. `nat20_core::feat.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?feat[A-Za-z0-9_.]*$"
+        },
+        "FeatPrerequisiteDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "minimum_level": {
+                            "type": "integer",
+                            "format": "uint8",
+                            "maximum": 255,
+                            "minimum": 0
+                        }
+                    },
+                    "required": [
+                        "minimum_level"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "feat": {
+                            "$ref": "#/definitions/FeatId"
+                        }
+                    },
+                    "required": [
+                        "feat"
+                    ]
+                }
+            ]
+        },
+        "GrantedSpellSource": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "Item": {
+                            "$ref": "#/definitions/ItemId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Item"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Feat": {
+                            "$ref": "#/definitions/FeatId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Feat"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Species": {
+                            "$ref": "#/definitions/SpeciesId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Species"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Effect": {
+                            "$ref": "#/definitions/EffectId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Effect"
+                    ]
+                }
+            ]
+        },
+        "ItemId": {
+            "description": "Registry id `[namespace::]item.<name>`, e.g. `nat20_core::item.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?item[A-Za-z0-9_.]*$"
+        },
+        "LevelUpPrompt": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "choice": {
+                            "$ref": "#/definitions/ChoiceSpec"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "choice"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "ability_scores": {
+                            "type": "array",
+                            "items": [
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "patternProperties": {
+                                        "^\\d+$": {
+                                            "type": "integer",
+                                            "format": "uint8",
+                                            "maximum": 255,
+                                            "minimum": 0
+                                        }
+                                    }
+                                },
+                                {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "ability_scores"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "ability_score_improvement": {
+                            "type": "object",
+                            "properties": {
+                                "abilities": {
+                                    "type": "array",
+                                    "items": {
+                                        "description": "An ability, by full name or acronym (`str`, `dex`, ...), case-insensitive.",
+                                        "type": "string",
+                                        "examples": [
+                                            "strength",
+                                            "dexterity",
+                                            "constitution",
+                                            "intelligence",
+                                            "wisdom",
+                                            "charisma"
+                                        ]
+                                    },
+                                    "uniqueItems": true
+                                },
+                                "budget": {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                },
+                                "feat": {
+                                    "$ref": "#/definitions/FeatId"
+                                },
+                                "max_score": {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                }
+                            },
+                            "required": [
+                                "feat",
+                                "budget",
+                                "abilities",
+                                "max_score"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "ability_score_improvement"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "skill_proficiency": {
+                            "type": "array",
+                            "items": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/Skill"
+                                    },
+                                    "uniqueItems": true
+                                },
+                                {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                },
+                                {
+                                    "$ref": "#/definitions/ModifierSource"
+                                }
+                            ],
+                            "maxItems": 3,
+                            "minItems": 3
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "skill_proficiency"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "replace_spells": {
+                            "type": "object",
+                            "properties": {
+                                "replacements": {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                },
+                                "source": {
+                                    "$ref": "#/definitions/SpellSource"
+                                },
+                                "spells": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/SpellId"
+                                    }
+                                }
+                            },
+                            "required": [
+                                "spells",
+                                "source",
+                                "replacements"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "replace_spells"
+                    ]
+                }
+            ]
+        },
+        "ModifierSource": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "Base",
+                        "None"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Background": {
+                            "$ref": "#/definitions/BackgroundId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Background"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Item": {
+                            "$ref": "#/definitions/ItemId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Item"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "ClassFeature": {
+                            "$ref": "#/definitions/ClassId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "ClassFeature"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "ClassLevel": {
+                            "$ref": "#/definitions/ClassId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "ClassLevel"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "SubclassFeature": {
+                            "$ref": "#/definitions/SubclassId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "SubclassFeature"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Action": {
+                            "$ref": "#/definitions/ActionId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Action"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Effect": {
+                            "$ref": "#/definitions/EffectId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Effect"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Ability": {
+                            "description": "An ability, by full name or acronym (`str`, `dex`, ...), case-insensitive.",
+                            "type": "string",
+                            "examples": [
+                                "strength",
+                                "dexterity",
+                                "constitution",
+                                "intelligence",
+                                "wisdom",
+                                "charisma"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Ability"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Proficiency": {
+                            "$ref": "#/definitions/ProficiencyLevel"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Proficiency"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Feat": {
+                            "$ref": "#/definitions/FeatId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Feat"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "FeatRepeatable": {
+                            "type": "array",
+                            "items": [
+                                {
+                                    "$ref": "#/definitions/FeatId"
+                                },
+                                {
+                                    "type": "string",
+                                    "format": "uuid"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "FeatRepeatable"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Species": {
+                            "$ref": "#/definitions/SpeciesId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Species"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Subspecies": {
+                            "$ref": "#/definitions/SubspeciesId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Subspecies"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Custom": {
+                            "type": "string"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Custom"
+                    ]
+                }
+            ]
+        },
+        "ProficiencyLevel": {
+            "type": "string",
+            "enum": [
+                "none",
+                "proficient",
+                "expertise",
+                "half"
+            ]
+        },
+        "Skill": {
+            "type": "string",
+            "enum": [
+                "athletics",
+                "acrobatics",
+                "sleight_of_hand",
+                "stealth",
+                "initiative",
+                "arcana",
+                "history",
+                "investigation",
+                "nature",
+                "religion",
+                "animal_handling",
+                "insight",
+                "medicine",
+                "perception",
+                "survival",
+                "deception",
+                "intimidation",
+                "performance",
+                "persuasion"
+            ]
+        },
+        "SpeciesId": {
+            "description": "Registry id `[namespace::]species.<name>`, e.g. `nat20_core::species.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?species[A-Za-z0-9_.]*$"
+        },
+        "SpellId": {
+            "description": "Registry id `[namespace::]spell.<name>`, e.g. `nat20_core::spell.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?spell[A-Za-z0-9_.]*$"
+        },
+        "SpellSource": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "Class": {
+                            "$ref": "#/definitions/ClassAndSubclass"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Class"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Granted": {
+                            "type": "object",
+                            "properties": {
+                                "level": {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                },
+                                "source": {
+                                    "$ref": "#/definitions/GrantedSpellSource"
+                                }
+                            },
+                            "required": [
+                                "source",
+                                "level"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Granted"
+                    ]
+                }
+            ]
+        },
+        "SubclassId": {
+            "description": "Registry id `[namespace::]subclass.<name>`, e.g. `nat20_core::subclass.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?subclass[A-Za-z0-9_.]*$"
+        },
+        "SubspeciesId": {
+            "description": "Registry id `[namespace::]subspecies.<name>`, e.g. `nat20_core::subspecies.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?subspecies[A-Za-z0-9_.]*$"
+        }
+    }
+}

@@ -5,6 +5,7 @@ use std::{
 };
 
 use hecs::{Entity, World};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -20,12 +21,13 @@ use crate::{
         modifier::{Modifiable, ModifierSource},
         proficiency::Proficiency,
     },
+    registry::serialize::schema::impl_string_schema,
     systems::{self},
 };
 
 pub const CRIT_DICE_MULTIPLIER: u32 = 2;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageType {
     Acid,
@@ -159,6 +161,13 @@ impl Into<String> for DamageSource {
         self.to_string()
     }
 }
+
+impl_string_schema!(
+    DamageSource,
+    "DamageSource",
+    "description": "The source of damage: `melee`, `ranged`, `unarmed` or a spell id.",
+    "examples": ["melee", "nat20_core::spell.fireball"]
+);
 
 impl Default for DamageSource {
     fn default() -> Self {
@@ -593,7 +602,7 @@ impl Default for DamageMitigationResult {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AttackSource {
     Weapon(WeaponKind),

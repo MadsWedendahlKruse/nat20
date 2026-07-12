@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -14,7 +15,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SpeciesDefinition {
     pub id: SpeciesId,
     pub creature_type: CreatureType,
@@ -61,7 +62,7 @@ impl RegistryReferenceCollector for SpeciesDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SubspeciesDefinition {
     pub id: SubspeciesId,
     #[serde(default)]

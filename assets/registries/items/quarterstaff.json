@@ -3,7 +3,7 @@
     "id": "nat20_core::item.quarterstaff",
     "name": "Quarterstaff",
     "description": "A sturdy quarterstaff, useful for both combat and support.",
-    "weight": 1.8143696,
+    "weight": "4 lb",
     "value": "2 SP",
     "rarity": "common"
   },

@@ -5,6 +5,7 @@ use std::{
     sync::LazyLock,
 };
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter};
 use uom::si::length::foot;
@@ -24,17 +25,20 @@ use crate::{
         modifier::{KeyedModifiable, Modifiable, ModifierSet, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
     },
-    registry::serialize::item::WeaponDefinition,
+    registry::serialize::{
+        item::WeaponDefinition,
+        schema::{impl_schema_via, impl_string_schema},
+    },
 };
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Display, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Display, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WeaponCategory {
     Simple,
     Martial,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WeaponKind {
     Melee,
@@ -150,6 +154,15 @@ impl Into<String> for WeaponProperties {
     }
 }
 
+impl_string_schema!(
+    WeaponProperties,
+    "WeaponProperties",
+    "description": "A weapon property: `finesse`, `heavy`, `light`, `reach`, `two-handed`, \
+         `enchantment +<N>`, `versatile (<dice>)`, `range (<normal>/<max> m)` or \
+         `thrown (<normal>/<max> m)`.",
+    "examples": ["finesse", "versatile (1d10)", "range (10/40 m)", "enchantment +1"]
+);
+
 // These are really extra abilities, so might have to handle them differently
 // TODO: Handle these as weapon_actions
 // pub enum MasteryProperty {
@@ -191,6 +204,8 @@ pub static MELEE_RANGE_DEFAULT: LazyLock<TargetingRange> =
     LazyLock::new(|| TargetingRange::new::<foot>(5.0));
 pub static MELEE_RANGE_REACH: LazyLock<TargetingRange> =
     LazyLock::new(|| TargetingRange::new::<foot>(10.0));
+
+impl_schema_via!(Weapon, WeaponDefinition);
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(from = "WeaponDefinition")]

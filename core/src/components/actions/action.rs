@@ -6,13 +6,14 @@ use std::{
 
 use hecs::{Entity, World};
 use kinded::Kinded;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
         actions::{
             execution::PhaseState,
-            targeting::{AreaShape, TargetInstance, TargetingContext},
+            targeting::{AreaShape, TargetingContext},
         },
         d20::D20CheckResult,
         damage::{
@@ -442,7 +443,7 @@ impl ActionPayload {
 
 /// In case of multiple phases, this describes the requirement for a phase to be
 /// executed, e.g. only execute if the previous phase succeeded or failed.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PhaseRequirement {
     #[default]
@@ -711,7 +712,7 @@ pub trait ActionProvider {
     fn actions(&self, world: &World, entity: Entity) -> ActionMap;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ActionTimeline {
     pub total_duration: f32,
     pub perform_time: f32,

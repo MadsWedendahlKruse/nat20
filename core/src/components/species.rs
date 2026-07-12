@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -12,7 +13,7 @@ use crate::{
 };
 
 // TODO: Mutliple creature types? e.g. Undead Dragon
-#[derive(Debug, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CreatureType {
     Aberration,
@@ -31,7 +32,7 @@ pub enum CreatureType {
     Undead,
 }
 
-#[derive(Debug, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CreatureSize {
     Tiny,
@@ -51,7 +52,7 @@ pub enum CreatureSize {
 //     pub swim: Option<u8>,
 // }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SpeciesBase {
     pub effects_by_level: HashMap<u8, Vec<EffectId>>,
     pub actions_by_level: HashMap<u8, Vec<ActionId>>,

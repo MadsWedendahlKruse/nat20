@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use hecs::Entity;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::components::id::{FactionId, IdProvider};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Attitude {
     Friendly,
@@ -15,7 +16,7 @@ pub enum Attitude {
 
 pub type FactionSet = HashSet<FactionId>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Faction {
     id: FactionId,
     name: String,

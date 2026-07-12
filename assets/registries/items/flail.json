@@ -3,7 +3,7 @@
     "id": "nat20_core::item.flail",
     "name": "Flail",
     "description": "A flail with a spiked head, effective against armored foes.",
-    "weight": 0.9071848,
+    "weight": "2 lb",
     "value": "10 GP",
     "rarity": "common"
   },

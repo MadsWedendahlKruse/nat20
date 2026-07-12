@@ -1,0 +1,584 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "EffectDefinition",
+    "type": "object",
+    "properties": {
+        "actions": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/EffectGrantedAction"
+            }
+        },
+        "children": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/EffectId"
+            }
+        },
+        "description": {
+            "type": "string"
+        },
+        "id": {
+            "$ref": "#/definitions/EffectId"
+        },
+        "kind": {
+            "$ref": "#/definitions/EffectKind"
+        },
+        "modifiers": {
+            "description": "Simple effect modifiers like:\n- Ability score changes\n- Skill modifiers\n- Saving throw modifiers\n- Damage resistances\n- Resource changes",
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/EffectModifier"
+            }
+        },
+        "on_action": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/ActionHookDefinition"
+            }
+        },
+        "on_action_result": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/ActionResultHookDefinition"
+            }
+        },
+        "on_armor_class": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/ArmorClassHookDefinition"
+            }
+        },
+        "on_attacked": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/AttackedHookDefinition"
+            }
+        },
+        "on_death": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/DeathHookDefinition"
+            }
+        },
+        "on_resource_cost": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/ResourceCostHookDefinition"
+            }
+        },
+        "on_turn_start": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/TurnStartHookDefinition"
+            }
+        },
+        "post_damage_mitigation": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/PostDamageMitigationHookDefinition"
+            }
+        },
+        "post_damage_roll": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/DamageRollResultHookDefinition"
+            }
+        },
+        "pre_damage_mitigation": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/PreDamageMitigationHookDefinition"
+            }
+        },
+        "replaces": {
+            "description": "If present, this effect replaces another effect with the given id",
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/EffectId"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        }
+    },
+    "required": [
+        "id",
+        "kind",
+        "description"
+    ],
+    "definitions": {
+        "ActionHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "ActionResultHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "ArmorClassHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "modifier": {
+                            "description": "Flat armor class delta, e.g. `2` or `-1`.",
+                            "type": "string",
+                            "examples": [
+                                "2",
+                                "-1"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "modifier"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "AttackedHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "attacked_by": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/definitions/EffectEntiyReference"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "default": null
+                        },
+                        "distance": {
+                            "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "modifier": {
+                            "description": "A d20 roll modifier: `advantage`, `disadvantage`, a flat bonus/penalty (`+2`, `-1`), a forced outcome (`success`, `failure`, `critical_success`, `critical_failure`) or a lowered crit threshold (`crit(-N)`).",
+                            "type": "string",
+                            "examples": [
+                                "advantage",
+                                "+2",
+                                "crit(-1)"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "modifier"
+                    ]
+                }
+            ]
+        },
+        "DamageRollResultHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "DeathHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "EffectEntiyReference": {
+            "type": "string",
+            "enum": [
+                "applier",
+                "target"
+            ]
+        },
+        "EffectGrantedAction": {
+            "description": "Represents an action that is granted by an effect, such as a spell or a special action.",
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "$ref": "#/definitions/ActionId"
+                        }
+                    },
+                    "required": [
+                        "id"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "$ref": "#/definitions/SpellId"
+                        },
+                        "level": {
+                            "type": "integer",
+                            "format": "uint8",
+                            "maximum": 255,
+                            "minimum": 0
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "level"
+                    ]
+                }
+            ]
+        },
+        "EffectId": {
+            "description": "Registry id `[namespace::]effect.<name>`, e.g. `nat20_core::effect.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?effect[A-Za-z0-9_.]*$"
+        },
+        "EffectKind": {
+            "type": "string",
+            "enum": [
+                "buff",
+                "debuff"
+            ]
+        },
+        "EffectModifier": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "ability": {
+                            "description": "`<ability><+/-delta>`, e.g. `strength+2`, `intelligence-1`.",
+                            "type": "string",
+                            "examples": [
+                                "strength+2",
+                                "intelligence-1"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "ability"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "skill": {
+                            "description": "`<check kind or `all`> <modifier>` where the modifier is `advantage`, `disadvantage`, a flat bonus/penalty (`+2`, `-1`), a forced outcome (`success`, ..., `critical_failure`) or `crit(-N)`.",
+                            "type": "string",
+                            "examples": [
+                                "perception advantage",
+                                "stealth+2",
+                                "all disadvantage"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "skill"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "saving_throw": {
+                            "description": "`<check kind or `all`> <modifier>` where the modifier is `advantage`, `disadvantage`, a flat bonus/penalty (`+2`, `-1`), a forced outcome (`success`, ..., `critical_failure`) or `crit(-N)`.",
+                            "type": "string",
+                            "examples": [
+                                "perception advantage",
+                                "stealth+2",
+                                "all disadvantage"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "saving_throw"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "attack_roll_modifier": {
+                            "description": "A d20 roll modifier: `advantage`, `disadvantage`, a flat bonus/penalty (`+2`, `-1`), a forced outcome (`success`, `failure`, `critical_success`, `critical_failure`) or a lowered crit threshold (`crit(-N)`).",
+                            "type": "string",
+                            "examples": [
+                                "advantage",
+                                "+2",
+                                "crit(-1)"
+                            ]
+                        },
+                        "attack_roll_source": {
+                            "description": "The source of an attack.",
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null,
+                            "enum": [
+                                "melee_weapon",
+                                "ranged_weapon",
+                                "unarmed",
+                                "spell",
+                                null
+                            ]
+                        }
+                    },
+                    "required": [
+                        "attack_roll_modifier"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "resistance": {
+                            "description": "`<damage type> <mitigation>` where the mitigation is `resistance`, `vulnerability`, `immunity` or a flat reduction (`-2`).",
+                            "type": "string",
+                            "examples": [
+                                "fire resistance",
+                                "cold immunity",
+                                "force -2"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "resistance"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "amount": {
+                            "anyOf": [
+                                {
+                                    "description": "A flat amount (`1`) or a tiered amount `<tier>:<amount>` (e.g. `2:1` for one level-2 spell slot).",
+                                    "anyOf": [
+                                        {
+                                            "type": "integer",
+                                            "minimum": 0
+                                        },
+                                        {
+                                            "type": "string",
+                                            "pattern": "^[0-9]+:[0-9]+$"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "default": null
+                        },
+                        "disable": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "resource": {
+                            "$ref": "#/definitions/ResourceId"
+                        }
+                    },
+                    "required": [
+                        "resource"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "speed": {
+                            "description": "Flat speed bonus as a length expression (`10 feet`) or a multiplier (`x2`).",
+                            "type": "string",
+                            "examples": [
+                                "10 feet",
+                                "x2"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "speed"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "free_movement": {
+                            "type": "number",
+                            "format": "float"
+                        }
+                    },
+                    "required": [
+                        "free_movement"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "temporary_hit_points": {
+                            "description": "Healing roll as a dice expression. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": "string",
+                            "examples": [
+                                "1d8 + spell_level",
+                                "2d4 + 2"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "temporary_hit_points"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "break_concentration": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "break_concentration"
+                    ]
+                }
+            ]
+        },
+        "PostDamageMitigationHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "PreDamageMitigationHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "ResourceCostHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "ResourceId": {
+            "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
+        },
+        "ScriptId": {
+            "description": "Registry id `[namespace::]script.<name>`, e.g. `nat20_core::script.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?script[A-Za-z0-9_.]*$"
+        },
+        "SpellId": {
+            "description": "Registry id `[namespace::]spell.<name>`, e.g. `nat20_core::spell.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?spell[A-Za-z0-9_.]*$"
+        },
+        "TurnStartHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        }
+    }
+}

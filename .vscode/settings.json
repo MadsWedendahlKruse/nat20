@@ -1,0 +1,52 @@
+{
+    "json.schemas": [
+        {
+            "fileMatch": ["/assets/registries/actions/**/*.json"],
+            "url": "./assets/registries/.schemas/action.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/backgrounds/**/*.json"],
+            "url": "./assets/registries/.schemas/background.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/classes/**/*.json"],
+            "url": "./assets/registries/.schemas/class.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/effects/**/*.json"],
+            "url": "./assets/registries/.schemas/effect.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/factions/**/*.json"],
+            "url": "./assets/registries/.schemas/faction.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/feats/**/*.json"],
+            "url": "./assets/registries/.schemas/feat.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/items/**/*.json"],
+            "url": "./assets/registries/.schemas/item.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/resources/**/*.json"],
+            "url": "./assets/registries/.schemas/resource.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/species/**/*.json"],
+            "url": "./assets/registries/.schemas/species.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/spells/**/*.json"],
+            "url": "./assets/registries/.schemas/spell.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/subclasses/**/*.json"],
+            "url": "./assets/registries/.schemas/subclass.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/subspecies/**/*.json"],
+            "url": "./assets/registries/.schemas/subspecies.schema.json"
+        }
+    ]
+}

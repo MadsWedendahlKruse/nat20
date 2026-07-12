@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -11,7 +12,7 @@ use crate::components::id::{
 
 use super::{ability::Ability, proficiency::ProficiencyLevel};
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub enum ModifierSource {
     Base, // The base value, no specific source
     Background(BackgroundId),

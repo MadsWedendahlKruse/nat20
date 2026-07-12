@@ -5,6 +5,7 @@ use std::{
 };
 
 use hecs::{Entity, World};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -41,7 +42,7 @@ static ABILITY_SCORE_POINT_COST: LazyLock<HashMap<u8, u8>> = LazyLock::new(|| {
 
 static ABILITY_SCORE_POINTS: u8 = 27;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChoiceItem {
     Action(ActionId),
@@ -118,7 +119,7 @@ impl std::fmt::Display for ChoiceItem {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChoiceSpec {
     pub id: String,
     pub label: String,
@@ -158,7 +159,7 @@ impl ChoiceSpec {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LevelUpPrompt {
     Choice(ChoiceSpec),

@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
     scripts::script::ScriptFunction,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SpellDefinition {
     pub id: SpellId,
     pub description: String,

@@ -6,6 +6,7 @@ use std::{
 };
 
 use hecs::Entity;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -278,7 +279,7 @@ impl EffectInstanceTemplate {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectKind {
     Buff,
@@ -299,7 +300,7 @@ pub enum EffectLifetime {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectEntiyReference {
     Applier,
@@ -309,7 +310,7 @@ pub enum EffectEntiyReference {
 /// Effect lifetimes are unique in the sense that they can refer to different entities,
 /// but those entities are only known at runtime. Therefore, we need a template
 /// that can be instantiated into a concrete `EffectLifetime` when the effect is applied.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectLifetimeTemplate {
     Permanent,
@@ -424,7 +425,7 @@ impl fmt::Debug for EffectEndConditionTemplate {
 }
 
 /// Represents an action that is granted by an effect, such as a spell or a special action.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum EffectGrantedAction {
     Action { id: ActionId },

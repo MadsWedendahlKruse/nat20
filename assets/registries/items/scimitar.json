@@ -3,7 +3,7 @@
     "id": "nat20_core::item.scimitar",
     "name": "Scimitar",
     "description": "A curved sword, favored for its speed and agility.",
-    "weight": 1.3607771,
+    "weight": "3 lb",
     "value": "25 GP",
     "rarity": "common"
   },

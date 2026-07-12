@@ -9,6 +9,7 @@ pub mod modifier;
 pub mod parser;
 pub mod quantity;
 pub mod reaction;
+pub mod schema;
 pub mod species;
 pub mod spell;
 pub mod targeting;

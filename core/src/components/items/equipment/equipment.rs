@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
@@ -10,7 +11,7 @@ use crate::components::{
     },
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EquipmentKind {
     Headwear,
@@ -21,7 +22,7 @@ pub enum EquipmentKind {
     Ring,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct EquipmentItem {
     pub item: Item,
     pub kind: EquipmentKind,

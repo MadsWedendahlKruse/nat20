@@ -1,19 +1,23 @@
-use std::{collections::HashSet, str::FromStr};
+use std::collections::HashSet;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use crate::components::{
-    ability::{Ability, AbilityScoreMap},
-    id::EffectId,
-    items::{
-        equipment::slots::{EquipmentSlot, SlotProvider},
-        item::Item,
+use crate::{
+    components::{
+        ability::{Ability, AbilityScoreMap},
+        id::EffectId,
+        items::{
+            equipment::slots::{EquipmentSlot, SlotProvider},
+            item::Item,
+        },
+        modifier::{Modifiable, ModifierSet, ModifierSource},
     },
-    modifier::{Modifiable, ModifierSet, ModifierSource},
+    registry::serialize::{item::ArmorDefinition, schema::impl_schema_via},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArmorType {
     Clothing,
@@ -22,7 +26,7 @@ pub enum ArmorType {
     Heavy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArmorDexterityBonus {
     Unlimited,   // No limit on Dexterity bonus
@@ -90,7 +94,10 @@ impl Modifiable for ArmorClass {
     }
 }
 
+impl_schema_via!(Armor, ArmorDefinition);
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "ArmorDefinition")]
 pub struct Armor {
     pub item: Item,
     pub armor_type: ArmorType,

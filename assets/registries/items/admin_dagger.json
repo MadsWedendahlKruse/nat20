@@ -3,7 +3,7 @@
     "id": "nat20_core::item.admin_dagger",
     "name": "Admin Dagger",
     "description": "Test dagger, please ignore.",
-    "weight": 0.4535924,
+    "weight": "1 lb",
     "value": "2 GP",
     "rarity": "legendary"
   },

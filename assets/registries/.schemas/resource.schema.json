@@ -1,0 +1,43 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Resource",
+    "type": "object",
+    "properties": {
+        "id": {
+            "$ref": "#/definitions/ResourceId"
+        },
+        "kind": {
+            "$ref": "#/definitions/ResourceDefinitionKind"
+        },
+        "recharge": {
+            "description": "When the resource recharges.",
+            "type": "string",
+            "enum": [
+                "turn",
+                "short_rest",
+                "long_rest",
+                "daily",
+                "never"
+            ]
+        }
+    },
+    "required": [
+        "id",
+        "kind",
+        "recharge"
+    ],
+    "definitions": {
+        "ResourceDefinitionKind": {
+            "type": "string",
+            "enum": [
+                "flat",
+                "tiered"
+            ]
+        },
+        "ResourceId": {
+            "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
+        }
+    }
+}

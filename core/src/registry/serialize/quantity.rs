@@ -4,8 +4,9 @@ use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 use uom::si::{
     angle::{degree, radian},
-    f32::{Angle, Length, Time, Velocity},
+    f32::{Angle, Length, Mass, Time, Velocity},
     length::{foot, meter},
+    mass::{kilogram, pound},
     time::{hour, minute, second},
     velocity::{foot_per_second, kilometer_per_hour, meter_per_second, mile_per_hour},
 };
@@ -14,6 +15,7 @@ use crate::{
     components::actions::action::ActionContext,
     registry::serialize::{
         parser::{Evaluable, EvaluationError, IntExpression, Parser},
+        schema::EXPRESSION_VARIABLES_DOC,
         variables::VariableMap,
     },
 };
@@ -22,6 +24,11 @@ use crate::{
 pub trait QuantityDimension: Clone + 'static {
     /// The uom quantity type for this dimension (e.g. `uom::si::f32::Length`).
     type Quantity;
+
+    /// Name for the JSON schema of expressions in this dimension.
+    const SCHEMA_NAME: &'static str;
+    /// Accepted unit names, for the JSON schema documentation.
+    const SCHEMA_UNITS: &'static str;
 
     /// Parse the unit name and construct the quantity.
     fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String>;
@@ -33,6 +40,9 @@ pub struct LengthDim;
 
 impl QuantityDimension for LengthDim {
     type Quantity = Length;
+
+    const SCHEMA_NAME: &'static str = "LengthExpression";
+    const SCHEMA_UNITS: &'static str = "`m`/`meter(s)`, `ft`/`foot`/`feet`";
 
     fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
         match unit_name.to_ascii_lowercase().as_str() {
@@ -49,6 +59,9 @@ pub struct TimeDim;
 impl QuantityDimension for TimeDim {
     type Quantity = Time;
 
+    const SCHEMA_NAME: &'static str = "TimeExpression";
+    const SCHEMA_UNITS: &'static str = "`s`/`sec`/`second(s)`, `min`/`minute(s)`, `hr`/`hour(s)`";
+
     fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
         match unit_name.to_ascii_lowercase().as_str() {
             "s" | "sec" | "second" | "seconds" => Ok(Time::new::<second>(value)),
@@ -64,6 +77,9 @@ pub struct VelocityDim;
 
 impl QuantityDimension for VelocityDim {
     type Quantity = Velocity;
+
+    const SCHEMA_NAME: &'static str = "VelocityExpression";
+    const SCHEMA_UNITS: &'static str = "`m/s`, `ft/s`, `km/h`, `mph`";
 
     fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
         match unit_name.to_ascii_lowercase().as_str() {
@@ -86,11 +102,32 @@ pub struct AngleDim;
 impl QuantityDimension for AngleDim {
     type Quantity = Angle;
 
+    const SCHEMA_NAME: &'static str = "AngleExpression";
+    const SCHEMA_UNITS: &'static str = "`deg`/`degree(s)`, `rad`/`radian(s)`";
+
     fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
         match unit_name.to_ascii_lowercase().as_str() {
             "deg" | "degree" | "degrees" => Ok(Angle::new::<degree>(value)),
             "rad" | "radian" | "radians" => Ok(Angle::new::<radian>(value)),
             other => Err(format!("Unknown angle unit: '{}'", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MassDim;
+
+impl QuantityDimension for MassDim {
+    type Quantity = uom::si::f32::Mass;
+
+    const SCHEMA_NAME: &'static str = "MassExpression";
+    const SCHEMA_UNITS: &'static str = "`kg`/`kilogram(s)`, `lb`/`pound(s)`";
+
+    fn make_quantity(value: f32, unit_name: &str) -> Result<Self::Quantity, String> {
+        match unit_name.to_ascii_lowercase().as_str() {
+            "kg" | "kilogram" | "kilograms" => Ok(Mass::new::<kilogram>(value)),
+            "lb" | "pound" | "pounds" => Ok(Mass::new::<pound>(value)),
+            other => Err(format!("Unknown mass unit: '{}'", other)),
         }
     }
 }
@@ -105,6 +142,26 @@ pub struct QuantityExpressionDefinition<D: QuantityDimension> {
     pub unit_name: String,
     #[serde(skip)]
     marker: PhantomData<D>,
+}
+
+impl<D: QuantityDimension> schemars::JsonSchema for QuantityExpressionDefinition<D> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed(D::SCHEMA_NAME)
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": format!(
+                "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) \
+                 where the unit is one of {}. {}",
+                D::SCHEMA_UNITS, EXPRESSION_VARIABLES_DOC),
+        })
+    }
 }
 
 impl<D: QuantityDimension> FromStr for QuantityExpressionDefinition<D> {
@@ -186,6 +243,7 @@ pub type LengthExpressionDefinition = QuantityExpressionDefinition<LengthDim>;
 pub type TimeExpressionDefinition = QuantityExpressionDefinition<TimeDim>;
 pub type VelocityExpressionDefinition = QuantityExpressionDefinition<VelocityDim>;
 pub type AngleExpressionDefinition = QuantityExpressionDefinition<AngleDim>;
+pub type MassExpressionDefinition = QuantityExpressionDefinition<MassDim>;
 
 #[cfg(test)]
 mod tests {
@@ -264,5 +322,38 @@ mod tests {
             .unwrap();
 
         assert_eq!(time.get::<minute>(), 6.0);
+    }
+
+    #[test]
+    fn mass_expression_parsing() {
+        let expr_str = "5 + spell_level kg";
+        let expr: MassExpressionDefinition = expr_str.parse().unwrap();
+
+        assert_eq!(expr.raw, expr_str);
+        assert_eq!(expr.unit_name, "kg");
+    }
+
+    #[test]
+    fn mass_expression_evaluation() {
+        let expr_str = "5 + spell_level kg";
+        let expr: MassExpressionDefinition = expr_str.parse().unwrap();
+
+        let mut world = World::new();
+        let entity = world.spawn(());
+
+        let action_context = ActionContext::spell(
+            SpellId::new("nat20_core", "spell.test"),
+            SpellSource::Class(ClassAndSubclass {
+                class: ClassId::new("nat20_core", "class.wizard"),
+                subclass: None,
+            }),
+            4,
+        );
+
+        let mass = expr
+            .evaluate(&world, entity, &action_context, &PARSER_VARIABLES)
+            .unwrap();
+
+        assert_eq!(mass.get::<kilogram>(), 9.0);
     }
 }

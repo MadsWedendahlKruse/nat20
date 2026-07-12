@@ -3,7 +3,7 @@
     "id": "nat20_core::item.longsword",
     "name": "Longsword",
     "description": "A versatile longsword, effective in both one-handed and two-handed combat.",
-    "weight": 1.3607771,
+    "weight": "3 lb",
     "value": "15 GP",
     "rarity": "common"
   },

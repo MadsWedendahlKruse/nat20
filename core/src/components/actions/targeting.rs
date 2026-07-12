@@ -23,6 +23,7 @@ use crate::{
     },
     engine::geometry::WorldGeometry,
     entities::{character::CharacterTag, monster::MonsterTag},
+    registry::serialize::schema::impl_string_schema,
     systems::{self, geometry::EPSILON},
 };
 
@@ -806,6 +807,16 @@ impl fmt::Display for TargetingRange {
         }
     }
 }
+
+// TODO: Proper deserialzation to support more units than meters
+
+impl_string_schema!(
+    TargetingRange,
+    "TargetingRange",
+    "description": "Range in meters: `<range>` or `<normal>/<max>` (targeting beyond normal \
+         range has disadvantage).",
+    "examples": ["1.5", "10/40"]
+);
 
 impl FromStr for TargetingRange {
     type Err = String;

@@ -3,7 +3,7 @@
     "id": "nat20_core::item.chainmail",
     "name": "Chainmail",
     "description": "A suit of chainmail armor, providing good protection.",
-    "weight": 24.947582,
+    "weight": "55 lb",
     "value": "75 GP",
     "rarity": "uncommon"
   },

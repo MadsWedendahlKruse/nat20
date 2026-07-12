@@ -16,7 +16,9 @@ Cargo.lock
 # Line coverage reports
 lcov.info
 
-/.vscode
+# Keep settings.json tracked: it maps the registry JSONs to their schemas
+/.vscode/*
+!/.vscode/settings.json
 /.local
 /.idea
 /.claude

@@ -93,6 +93,22 @@ macro_rules! id_newtypes {
                     value.to_string()
                 }
             }
+
+            impl schemars::JsonSchema for $name {
+                fn schema_name() -> std::borrow::Cow<'static, str> {
+                    std::borrow::Cow::Borrowed(stringify!($name))
+                }
+
+                fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                    schemars::json_schema!({
+                        "type": "string",
+                        "description": concat!(
+                            "Registry id `[namespace::]", $prefix, ".<name>`, e.g. `",
+                            "nat20_core::", $prefix, ".example`. The namespace defaults to `nat20_core`."),
+                        "pattern": concat!("^([A-Za-z0-9_]+::)?", $prefix, "[A-Za-z0-9_.]*$")
+                    })
+                }
+            }
         )+
 
         pub enum Id {

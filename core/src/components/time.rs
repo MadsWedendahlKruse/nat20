@@ -1,11 +1,15 @@
 use hecs::Entity;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{engine::encounter::EncounterId, registry::serialize::effect::TimeDurationDefinition};
+use crate::{
+    engine::encounter::EncounterId,
+    registry::serialize::{effect::TimeDurationDefinition, schema::impl_schema_via},
+};
 
 pub const TURN_DURATION_SECONDS: f32 = 6.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TimeMode {
     RealTime,
@@ -13,7 +17,7 @@ pub enum TimeMode {
     Paused,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnBoundary {
     Start,
@@ -31,6 +35,8 @@ pub enum TimeStep {
         boundary: TurnBoundary,
     },
 }
+
+impl_schema_via!(TimeDuration, TimeDurationDefinition);
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(from = "TimeDurationDefinition")]
@@ -72,7 +78,7 @@ impl TimeDuration {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct EntityClock {
     mode: TimeMode,
     local_time_seconds: f32,

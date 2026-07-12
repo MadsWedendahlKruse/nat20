@@ -3,7 +3,7 @@
     "id": "nat20_core::item.studded_leather_armor",
     "name": "Studded Leather Armor",
     "description": "A suit of studded leather armor, providing good protection with minimal weight.",
-    "weight": 5.896701,
+    "weight": "13 lb",
     "value": "45 GP",
     "rarity": "uncommon"
   },

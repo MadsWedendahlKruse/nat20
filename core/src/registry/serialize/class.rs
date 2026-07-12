@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
     },
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ResourceBudgetKindDefinition {
     Flat(ResourceBudget),
@@ -27,7 +28,7 @@ pub enum ResourceBudgetKindDefinition {
     Tiered(BTreeMap<String, ResourceBudget>),
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClassResourceDefinition {
     pub id: ResourceId,
     pub budget: ResourceBudgetKindDefinition,
@@ -35,7 +36,7 @@ pub struct ClassResourceDefinition {
     pub override_existing: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClassDefinition {
     pub id: ClassId,
     pub hit_die: DieSize,

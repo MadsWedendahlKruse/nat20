@@ -6,6 +6,7 @@ use std::{
 };
 
 use hecs::{Entity, World};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uom::si::{
     f32::{Length, Velocity},
@@ -31,6 +32,7 @@ use crate::{
         quantity::{
             AngleExpressionDefinition, LengthExpressionDefinition, VelocityExpressionDefinition,
         },
+        schema::{EXPRESSION_VARIABLES_DOC, impl_string_schema},
         variables::{PARSER_VARIABLES, VariableMap},
     },
     systems,
@@ -63,7 +65,7 @@ static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
         ])
     });
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TargetingDefinition {
     Default(String),
@@ -202,7 +204,14 @@ impl Display for IntExpressionDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl_string_schema!(
+    IntExpressionDefinition,
+    "IntExpression",
+    "description": format!("Integer expression. {}", EXPRESSION_VARIABLES_DOC),
+    "examples": ["1", "2 + spell_level"]
+);
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AreaShapeDefinition {
     Sphere {
@@ -273,7 +282,7 @@ impl Evaluable for AreaShapeDefinition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetingKindDefinition {
     SelfTarget,
@@ -330,7 +339,7 @@ impl Evaluable for TargetingKindDefinition {
 }
 
 // TODO: This looks pretty weird in JSON format, see "Hold Person"
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum EntityFilterDefinition {
     Tags {
@@ -353,7 +362,7 @@ pub enum EntityFilterDefinition {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityFilterTag {
     All,
@@ -405,7 +414,7 @@ impl EntityFilterDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AreaFilterDefinition {
     Unoccupied,
@@ -421,7 +430,7 @@ impl From<AreaFilterDefinition> for AreaFilter {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LineOfSightTrajectoryDefinition {
     Ignore,
@@ -453,7 +462,7 @@ impl Evaluable for LineOfSightTrajectoryDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LineOfSightExtentTemplateDefinition {
     #[default]
@@ -487,7 +496,7 @@ impl Evaluable for LineOfSightExtentTemplateDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LineOfSightDefinition {
     pub trajectory: LineOfSightTrajectoryDefinition,
     #[serde(default)]
@@ -513,7 +522,7 @@ impl Evaluable for LineOfSightDefinition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TargetingContextDefinition {
     pub kind: TargetingKindDefinition,
     pub range: LengthExpressionDefinition,

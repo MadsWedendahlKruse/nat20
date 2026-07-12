@@ -18,6 +18,7 @@ use std::{
 };
 
 use hecs::{Entity, World};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -180,7 +181,7 @@ impl ClassSpellcastingState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum GrantedSpellSource {
     Item(ItemId),
     Feat(FeatId),
@@ -205,7 +206,7 @@ impl GrantedSpellMap {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum SpellSource {
     Class(ClassAndSubclass),
     Granted {

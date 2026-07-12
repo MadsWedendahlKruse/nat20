@@ -12,8 +12,30 @@ use crate::{
         saving_throw::SavingThrowKind,
         spells::spellbook::Spellbook,
     },
+    registry::serialize::schema::impl_string_schema,
     systems,
 };
+
+impl_string_schema!(
+    AttackRollDefinition,
+    "AttackRollDefinition",
+    "description": "How the attack roll is made.",
+    "enum": [
+        "melee_weapon_attack_roll",
+        "melee_attack_roll",
+        "ranged_attack_roll",
+        "unarmed_attack_roll",
+        "spell_attack_roll"
+    ]
+);
+
+impl_string_schema!(
+    SavingThrowDefinition,
+    "SavingThrowDefinition",
+    "description": "`<dc provider>;<ability>` where the DC provider is `spell_save_dc` or \
+         `weapon_save_dc`, e.g. `spell_save_dc;dexterity`.",
+    "examples": ["spell_save_dc;dexterity", "weapon_save_dc;constitution"]
+);
 
 #[derive(Clone, Copy)]
 enum AttackRollScope {

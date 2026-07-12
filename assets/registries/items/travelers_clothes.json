@@ -3,7 +3,7 @@
     "id": "nat20_core::item.travelers_clothes",
     "name": "Traveler's Clothes",
     "description": "Resilient garments designed for travel in various environments.",
-    "weight": 1.8143696,
+    "weight": "4 lb",
     "value": "2 GP",
     "rarity": "common"
   },

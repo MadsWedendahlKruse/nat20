@@ -1,0 +1,283 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ItemInstance",
+    "anyOf": [
+        {
+            "$ref": "#/definitions/ItemDefinition"
+        },
+        {
+            "$ref": "#/definitions/ArmorDefinition"
+        },
+        {
+            "$ref": "#/definitions/WeaponDefinition"
+        },
+        {
+            "$ref": "#/definitions/EquipmentItem"
+        }
+    ],
+    "definitions": {
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "ArmorDefinition": {
+            "type": "object",
+            "properties": {
+                "armor_class": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "armor_type": {
+                    "$ref": "#/definitions/ArmorType"
+                },
+                "dexterity_bonus": {
+                    "$ref": "#/definitions/ArmorDexterityBonus"
+                },
+                "effects": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/EffectId"
+                    }
+                },
+                "item": {
+                    "$ref": "#/definitions/ItemDefinition"
+                }
+            },
+            "required": [
+                "item",
+                "armor_type",
+                "armor_class",
+                "dexterity_bonus"
+            ]
+        },
+        "ArmorDexterityBonus": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "unlimited"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "limited": {
+                            "type": "integer",
+                            "format": "uint8",
+                            "maximum": 255,
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "limited"
+                    ]
+                }
+            ]
+        },
+        "ArmorType": {
+            "type": "string",
+            "enum": [
+                "clothing",
+                "light",
+                "medium",
+                "heavy"
+            ]
+        },
+        "DamageType": {
+            "type": "string",
+            "enum": [
+                "acid",
+                "bludgeoning",
+                "cold",
+                "fire",
+                "force",
+                "lightning",
+                "necrotic",
+                "piercing",
+                "poison",
+                "psychic",
+                "radiant",
+                "slashing",
+                "thunder"
+            ]
+        },
+        "EffectId": {
+            "description": "Registry id `[namespace::]effect.<name>`, e.g. `nat20_core::effect.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?effect[A-Za-z0-9_.]*$"
+        },
+        "EquipmentItem": {
+            "type": "object",
+            "properties": {
+                "effects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/EffectId"
+                    }
+                },
+                "item": {
+                    "$ref": "#/definitions/ItemDefinition"
+                },
+                "kind": {
+                    "$ref": "#/definitions/EquipmentKind"
+                }
+            },
+            "required": [
+                "item",
+                "kind",
+                "effects"
+            ]
+        },
+        "EquipmentKind": {
+            "type": "string",
+            "enum": [
+                "headwear",
+                "cloak",
+                "gloves",
+                "boots",
+                "amulet",
+                "ring"
+            ]
+        },
+        "ItemDefinition": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "$ref": "#/definitions/ItemId"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rarity": {
+                    "$ref": "#/definitions/ItemRarity"
+                },
+                "value": {
+                    "description": "A monetary value: comma-separated `<amount> <currency>` parts, where the currency is `CP`, `SP`, `EP`, `GP` or `PP`.",
+                    "type": "string",
+                    "examples": [
+                        "10 GP",
+                        "1 PP, 5 SP"
+                    ]
+                },
+                "weight": {
+                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `kg`/`kilogram(s)`, `lb`/`pound(s)`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "description",
+                "weight",
+                "value",
+                "rarity"
+            ]
+        },
+        "ItemId": {
+            "description": "Registry id `[namespace::]item.<name>`, e.g. `nat20_core::item.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?item[A-Za-z0-9_.]*$"
+        },
+        "ItemRarity": {
+            "type": "string",
+            "enum": [
+                "common",
+                "uncommon",
+                "rare",
+                "very_rare",
+                "legendary"
+            ]
+        },
+        "WeaponCategory": {
+            "type": "string",
+            "enum": [
+                "simple",
+                "martial"
+            ]
+        },
+        "WeaponDefinition": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "$ref": "#/definitions/WeaponCategory"
+                },
+                "damage": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": [
+                            {
+                                "description": "A set of dice as `<count>d<size>`, e.g. `1d8`.",
+                                "type": "string",
+                                "examples": [
+                                    "1d8",
+                                    "2d6"
+                                ]
+                            },
+                            {
+                                "$ref": "#/definitions/DamageType"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2
+                    }
+                },
+                "effects": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/EffectId"
+                    }
+                },
+                "extra_weapon_actions": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/ActionId"
+                    }
+                },
+                "item": {
+                    "$ref": "#/definitions/ItemDefinition"
+                },
+                "kind": {
+                    "$ref": "#/definitions/WeaponKind"
+                },
+                "properties": {
+                    "type": "array",
+                    "items": {
+                        "description": "A weapon property: `finesse`, `heavy`, `light`, `reach`, `two-handed`, `enchantment +<N>`, `versatile (<dice>)`, `range (<normal>/<max> m)` or `thrown (<normal>/<max> m)`.",
+                        "type": "string",
+                        "examples": [
+                            "finesse",
+                            "versatile (1d10)",
+                            "range (10/40 m)",
+                            "enchantment +1"
+                        ]
+                    },
+                    "uniqueItems": true
+                }
+            },
+            "required": [
+                "item",
+                "kind",
+                "category",
+                "properties",
+                "damage"
+            ]
+        },
+        "WeaponKind": {
+            "type": "string",
+            "enum": [
+                "melee",
+                "ranged",
+                "unarmed"
+            ]
+        }
+    }
+}

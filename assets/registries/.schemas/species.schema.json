@@ -1,0 +1,112 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SpeciesDefinition",
+    "type": "object",
+    "properties": {
+        "actions_by_level": {
+            "type": "object",
+            "additionalProperties": false,
+            "default": {},
+            "patternProperties": {
+                "^\\d+$": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ActionId"
+                    }
+                }
+            }
+        },
+        "creature_type": {
+            "$ref": "#/definitions/CreatureType"
+        },
+        "effects_by_level": {
+            "type": "object",
+            "additionalProperties": false,
+            "default": {},
+            "patternProperties": {
+                "^\\d+$": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/EffectId"
+                    }
+                }
+            }
+        },
+        "id": {
+            "$ref": "#/definitions/SpeciesId"
+        },
+        "size": {
+            "$ref": "#/definitions/CreatureSize"
+        },
+        "speed": {
+            "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+            "type": "string"
+        },
+        "subspecies": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/SubspeciesId"
+            },
+            "uniqueItems": true
+        }
+    },
+    "required": [
+        "id",
+        "creature_type",
+        "size",
+        "subspecies",
+        "speed"
+    ],
+    "definitions": {
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "CreatureSize": {
+            "type": "string",
+            "enum": [
+                "tiny",
+                "small",
+                "medium",
+                "large",
+                "huge",
+                "gargantuan"
+            ]
+        },
+        "CreatureType": {
+            "type": "string",
+            "enum": [
+                "aberration",
+                "beast",
+                "celestial",
+                "construct",
+                "dragon",
+                "elemental",
+                "fey",
+                "fiend",
+                "giant",
+                "humanoid",
+                "monstrosity",
+                "ooze",
+                "plant",
+                "undead"
+            ]
+        },
+        "EffectId": {
+            "description": "Registry id `[namespace::]effect.<name>`, e.g. `nat20_core::effect.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?effect[A-Za-z0-9_.]*$"
+        },
+        "SpeciesId": {
+            "description": "Registry id `[namespace::]species.<name>`, e.g. `nat20_core::species.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?species[A-Za-z0-9_.]*$"
+        },
+        "SubspeciesId": {
+            "description": "Registry id `[namespace::]subspecies.<name>`, e.g. `nat20_core::subspecies.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?subspecies[A-Za-z0-9_.]*$"
+        }
+    }
+}

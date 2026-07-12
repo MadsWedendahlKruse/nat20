@@ -1,0 +1,1224 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SpellDefinition",
+    "type": "object",
+    "properties": {
+        "base_level": {
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+        },
+        "description": {
+            "type": "string"
+        },
+        "flags": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/SpellFlag"
+            }
+        },
+        "id": {
+            "$ref": "#/definitions/SpellId"
+        },
+        "kind": {
+            "$ref": "#/definitions/ActionKindDefinition"
+        },
+        "reaction_trigger": {
+            "description": "Script id of a Lua reaction trigger, e.g. `nat20_core::script.shield`.",
+            "type": [
+                "string",
+                "null"
+            ],
+            "default": null,
+            "examples": [
+                "nat20_core::script.shield"
+            ]
+        },
+        "resource_cost": {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$": {
+                    "description": "A flat amount (`1`) or a tiered amount `<tier>:<amount>` (e.g. `2:1` for one level-2 spell slot).",
+                    "anyOf": [
+                        {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^[0-9]+:[0-9]+$"
+                        }
+                    ]
+                }
+            }
+        },
+        "school": {
+            "$ref": "#/definitions/MagicSchool"
+        },
+        "targeting": {
+            "$ref": "#/definitions/TargetingDefinition"
+        },
+        "timeline": {
+            "$ref": "#/definitions/ActionTimeline"
+        }
+    },
+    "required": [
+        "id",
+        "description",
+        "base_level",
+        "school",
+        "kind",
+        "resource_cost",
+        "targeting",
+        "timeline"
+    ],
+    "definitions": {
+        "ActionConditionDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "attack_roll": {
+                            "description": "How the attack roll is made.",
+                            "type": "string",
+                            "enum": [
+                                "melee_weapon_attack_roll",
+                                "melee_attack_roll",
+                                "ranged_attack_roll",
+                                "unarmed_attack_roll",
+                                "spell_attack_roll"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "attack_roll"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "saving_throw": {
+                            "description": "`<dc provider>;<ability>` where the DC provider is `spell_save_dc` or `weapon_save_dc`, e.g. `spell_save_dc;dexterity`.",
+                            "type": "string",
+                            "examples": [
+                                "spell_save_dc;dexterity",
+                                "weapon_save_dc;constitution"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "saving_throw"
+                    ]
+                }
+            ]
+        },
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "ActionKindDefinition": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "standard": {
+                            "type": "object",
+                            "properties": {
+                                "phases": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/ActionPhaseDefinition"
+                                    }
+                                }
+                            },
+                            "required": [
+                                "phases"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "standard"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "variants": {
+                            "type": "object",
+                            "properties": {
+                                "variants": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/ActionId"
+                                    }
+                                }
+                            },
+                            "required": [
+                                "variants"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "variants"
+                    ]
+                }
+            ]
+        },
+        "ActionPayloadComponentDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "damage": {
+                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, `ranged_damage_roll`, `unarmed_damage_roll`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": "string",
+                            "examples": [
+                                "8d6;fire",
+                                "(1 + spell_level)d4;force",
+                                "melee_weapon_damage_roll"
+                            ]
+                        },
+                        "damage_on_failure": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/definitions/DamageOnFailureDefinition"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        }
+                    },
+                    "required": [
+                        "damage"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "damage": {
+                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, `ranged_damage_roll`, `unarmed_damage_roll`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": "string",
+                            "examples": [
+                                "8d6;fire",
+                                "(1 + spell_level)d4;force",
+                                "melee_weapon_damage_roll"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "damage"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "effect": {
+                            "$ref": "#/definitions/EffectInstanceDefinition"
+                        }
+                    },
+                    "required": [
+                        "effect"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "healing": {
+                            "description": "Healing roll as a dice expression. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": "string",
+                            "examples": [
+                                "1d8 + spell_level",
+                                "2d4 + 2"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "healing"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "reaction": {
+                            "description": "Script id of a Lua reaction body, e.g. `nat20_core::script.shield`, or the built-in `cancel_event`.",
+                            "type": "string",
+                            "examples": [
+                                "nat20_core::script.shield",
+                                "cancel_event"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "reaction"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "displacement": {
+                            "$ref": "#/definitions/DisplacementTemplateDefinition"
+                        }
+                    },
+                    "required": [
+                        "displacement"
+                    ]
+                }
+            ]
+        },
+        "ActionPayloadDefinition": {
+            "type": "object",
+            "properties": {
+                "components": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/ActionPayloadComponentDefinition"
+                    }
+                },
+                "delivery": {
+                    "$ref": "#/definitions/PayloadDeliveryDefinition"
+                }
+            },
+            "required": [
+                "delivery"
+            ]
+        },
+        "ActionPhaseDefinition": {
+            "type": "object",
+            "properties": {
+                "condition": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/ActionConditionDefinition"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "payload": {
+                    "$ref": "#/definitions/ActionPayloadDefinition"
+                },
+                "requires": {
+                    "description": "Gate on the previous phase's condition outcome (per target)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PhaseRequirement"
+                        }
+                    ],
+                    "default": "none"
+                },
+                "targets": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PhaseTargetsDefinition"
+                        }
+                    ],
+                    "default": "inherited"
+                }
+            },
+            "required": [
+                "payload"
+            ]
+        },
+        "ActionTimeline": {
+            "type": "object",
+            "properties": {
+                "perform_time": {
+                    "type": "number",
+                    "format": "float"
+                },
+                "step_spacing": {
+                    "type": "number",
+                    "format": "float",
+                    "default": 0.0
+                },
+                "total_duration": {
+                    "type": "number",
+                    "format": "float"
+                }
+            },
+            "required": [
+                "total_duration",
+                "perform_time"
+            ]
+        },
+        "AreaFilterDefinition": {
+            "type": "string",
+            "enum": [
+                "unoccupied",
+                "walkable"
+            ]
+        },
+        "AreaShapeDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "actor"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "sphere": {
+                            "type": "object",
+                            "properties": {
+                                "radius": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "radius"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "sphere"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "cone": {
+                            "type": "object",
+                            "properties": {
+                                "angle": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `deg`/`degree(s)`, `rad`/`radian(s)`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                },
+                                "length": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "angle",
+                                "length"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "cone"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "cube": {
+                            "type": "object",
+                            "properties": {
+                                "side": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "side"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "cube"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "cylinder": {
+                            "type": "object",
+                            "properties": {
+                                "height": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                },
+                                "radius": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "radius",
+                                "height"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "cylinder"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "line": {
+                            "type": "object",
+                            "properties": {
+                                "length": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                },
+                                "width": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "length",
+                                "width"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "line"
+                    ]
+                }
+            ]
+        },
+        "Attitude": {
+            "type": "string",
+            "enum": [
+                "friendly",
+                "neutral",
+                "hostile"
+            ]
+        },
+        "CreatureType": {
+            "type": "string",
+            "enum": [
+                "aberration",
+                "beast",
+                "celestial",
+                "construct",
+                "dragon",
+                "elemental",
+                "fey",
+                "fiend",
+                "giant",
+                "humanoid",
+                "monstrosity",
+                "ooze",
+                "plant",
+                "undead"
+            ]
+        },
+        "DamageOnFailureDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "half"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "custom": {
+                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, `ranged_damage_roll`, `unarmed_damage_roll`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": "string",
+                            "examples": [
+                                "8d6;fire",
+                                "(1 + spell_level)d4;force",
+                                "melee_weapon_damage_roll"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "custom"
+                    ]
+                }
+            ]
+        },
+        "DeathSavingThrows": {
+            "type": "object",
+            "properties": {
+                "failures": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "successes": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                }
+            },
+            "required": [
+                "successes",
+                "failures"
+            ]
+        },
+        "DisplacementTemplateDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "teleport"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "push": {
+                            "type": "object",
+                            "properties": {
+                                "distance": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "distance"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "push"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "pull": {
+                            "type": "object",
+                            "properties": {
+                                "distance": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "distance"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "pull"
+                    ]
+                }
+            ]
+        },
+        "EffectEndConditionDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "callback": {
+                            "$ref": "#/definitions/EventCallbackDefinition"
+                        },
+                        "event": {
+                            "$ref": "#/definitions/EffectEventFilterDefinition"
+                        }
+                    },
+                    "required": [
+                        "event",
+                        "callback"
+                    ]
+                }
+            ]
+        },
+        "EffectEntiyReference": {
+            "type": "string",
+            "enum": [
+                "applier",
+                "target"
+            ]
+        },
+        "EffectEventFilterDefinition": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "turn_boundary": {
+                            "type": "object",
+                            "properties": {
+                                "boundary": {
+                                    "$ref": "#/definitions/TurnBoundary"
+                                },
+                                "entity": {
+                                    "$ref": "#/definitions/EffectEntiyReference"
+                                }
+                            },
+                            "required": [
+                                "entity",
+                                "boundary"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "turn_boundary"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "type": "object",
+                            "properties": {
+                                "script": {
+                                    "$ref": "#/definitions/ScriptId"
+                                }
+                            },
+                            "required": [
+                                "script"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "EffectId": {
+            "description": "Registry id `[namespace::]effect.<name>`, e.g. `nat20_core::effect.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?effect[A-Za-z0-9_.]*$"
+        },
+        "EffectInstanceDefinition": {
+            "type": "object",
+            "properties": {
+                "effect_id": {
+                    "$ref": "#/definitions/EffectId"
+                },
+                "end_condition": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/EffectEndConditionDefinition"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "lifetime": {
+                    "$ref": "#/definitions/EffectLifetimeTemplate"
+                },
+                "one_shot": {
+                    "type": "boolean",
+                    "default": false
+                }
+            },
+            "required": [
+                "effect_id",
+                "lifetime"
+            ]
+        },
+        "EffectLifetimeTemplate": {
+            "description": "Effect lifetimes are unique in the sense that they can refer to different entities,\nbut those entities are only known at runtime. Therefore, we need a template\nthat can be instantiated into a concrete `EffectLifetime` when the effect is applied.",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "permanent"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "turn_boundary": {
+                            "type": "object",
+                            "properties": {
+                                "boundary": {
+                                    "$ref": "#/definitions/TurnBoundary"
+                                },
+                                "duration": {
+                                    "$ref": "#/definitions/TimeDurationDefinition"
+                                },
+                                "entity": {
+                                    "$ref": "#/definitions/EffectEntiyReference"
+                                }
+                            },
+                            "required": [
+                                "entity",
+                                "boundary",
+                                "duration"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "turn_boundary"
+                    ]
+                }
+            ]
+        },
+        "EntityFilterDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "tag": {
+                            "$ref": "#/definitions/EntityFilterTag"
+                        }
+                    },
+                    "required": [
+                        "tag"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "invert": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "life_states": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/LifeState"
+                            },
+                            "uniqueItems": true
+                        }
+                    },
+                    "required": [
+                        "life_states"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "creature_types": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/CreatureType"
+                            },
+                            "uniqueItems": true
+                        },
+                        "invert": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    "required": [
+                        "creature_types"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "attitudes": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Attitude"
+                            },
+                            "uniqueItems": true
+                        },
+                        "invert": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    "required": [
+                        "attitudes"
+                    ]
+                }
+            ]
+        },
+        "EntityFilterTag": {
+            "type": "string",
+            "enum": [
+                "all",
+                "characters",
+                "monsters",
+                "not_self"
+            ]
+        },
+        "EventCallbackDefinition": {
+            "type": "string",
+            "enum": [
+                "repeat_apply_condition"
+            ]
+        },
+        "LifeState": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "normal",
+                        "stable",
+                        "dead"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "unconscious": {
+                            "$ref": "#/definitions/DeathSavingThrows"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "unconscious"
+                    ]
+                }
+            ]
+        },
+        "LineOfSightDefinition": {
+            "type": "object",
+            "properties": {
+                "extent": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/LineOfSightExtentTemplateDefinition"
+                        }
+                    ],
+                    "default": "point"
+                },
+                "trajectory": {
+                    "$ref": "#/definitions/LineOfSightTrajectoryDefinition"
+                }
+            },
+            "required": [
+                "trajectory"
+            ]
+        },
+        "LineOfSightExtentTemplateDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "point"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "shape": {
+                            "type": "object",
+                            "properties": {
+                                "fixed_on_actor": {
+                                    "type": "boolean"
+                                },
+                                "shape": {
+                                    "$ref": "#/definitions/AreaShapeDefinition"
+                                }
+                            },
+                            "required": [
+                                "shape",
+                                "fixed_on_actor"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "shape"
+                    ]
+                }
+            ]
+        },
+        "LineOfSightTrajectoryDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "ignore",
+                        "ray"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "parabola": {
+                            "type": "object",
+                            "properties": {
+                                "launch_velocity": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m/s`, `ft/s`, `km/h`, `mph`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "launch_velocity"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "parabola"
+                    ]
+                }
+            ]
+        },
+        "MagicSchool": {
+            "type": "string",
+            "enum": [
+                "abjuration",
+                "conjuration",
+                "divination",
+                "enchantment",
+                "evocation",
+                "illusion",
+                "necromancy",
+                "transmutation"
+            ]
+        },
+        "PayloadDeliveryDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "immediate"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "projectile": {
+                            "type": "object",
+                            "properties": {
+                                "trajectory": {
+                                    "$ref": "#/definitions/TrajectoryTemplateDefinition"
+                                },
+                                "velocity": {
+                                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m/s`, `ft/s`, `km/h`, `mph`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "trajectory",
+                                "velocity"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "projectile"
+                    ]
+                }
+            ]
+        },
+        "PhaseRequirement": {
+            "description": "In case of multiple phases, this describes the requirement for a phase to be\nexecuted, e.g. only execute if the previous phase succeeded or failed.",
+            "type": "string",
+            "enum": [
+                "none",
+                "success",
+                "failure"
+            ]
+        },
+        "PhaseTargetsDefinition": {
+            "description": "How a phase derives its targets. Follow-up phases never re-select targets;\nthey either inherit the action's chosen targets or expand each of them into\nthe entities inside a shape centered on it (e.g. Ice Knife's 5 ft AoE damage).",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "inherited"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "shape": {
+                            "$ref": "#/definitions/AreaShapeDefinition"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "shape"
+                    ]
+                }
+            ]
+        },
+        "ScriptId": {
+            "description": "Registry id `[namespace::]script.<name>`, e.g. `nat20_core::script.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?script[A-Za-z0-9_.]*$"
+        },
+        "SpellFlag": {
+            "type": "string",
+            "enum": [
+                "concentration",
+                "verbal",
+                "somatic"
+            ]
+        },
+        "SpellId": {
+            "description": "Registry id `[namespace::]spell.<name>`, e.g. `nat20_core::spell.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?spell[A-Za-z0-9_.]*$"
+        },
+        "TargetingContextDefinition": {
+            "type": "object",
+            "properties": {
+                "allowed_targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/EntityFilterDefinition"
+                    }
+                },
+                "kind": {
+                    "$ref": "#/definitions/TargetingKindDefinition"
+                },
+                "line_of_sight": {
+                    "$ref": "#/definitions/LineOfSightDefinition"
+                },
+                "range": {
+                    "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "kind",
+                "range",
+                "line_of_sight",
+                "allowed_targets"
+            ]
+        },
+        "TargetingDefinition": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "$ref": "#/definitions/TargetingContextDefinition"
+                }
+            ]
+        },
+        "TargetingKindDefinition": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "self_target",
+                        "single"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "multiple": {
+                            "type": "object",
+                            "properties": {
+                                "allow_duplicates": {
+                                    "type": "boolean"
+                                },
+                                "max_targets": {
+                                    "description": "Integer expression. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                                    "type": "string",
+                                    "examples": [
+                                        "1",
+                                        "2 + spell_level"
+                                    ]
+                                }
+                            },
+                            "required": [
+                                "max_targets",
+                                "allow_duplicates"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "multiple"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "area": {
+                            "type": "object",
+                            "properties": {
+                                "filters": {
+                                    "type": "array",
+                                    "default": [],
+                                    "items": {
+                                        "$ref": "#/definitions/AreaFilterDefinition"
+                                    }
+                                },
+                                "fixed_on_actor": {
+                                    "type": "boolean"
+                                },
+                                "shape": {
+                                    "$ref": "#/definitions/AreaShapeDefinition"
+                                }
+                            },
+                            "required": [
+                                "shape",
+                                "fixed_on_actor"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "area"
+                    ]
+                }
+            ]
+        },
+        "TimeDurationDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "time": {
+                            "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `s`/`sec`/`second(s)`, `min`/`minute(s)`, `hr`/`hour(s)`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "time"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "turns": {
+                            "type": "integer",
+                            "format": "uint32",
+                            "minimum": 0
+                        }
+                    },
+                    "required": [
+                        "turns"
+                    ]
+                }
+            ]
+        },
+        "TrajectoryTemplateDefinition": {
+            "type": "string",
+            "enum": [
+                "ray",
+                "parabola"
+            ]
+        },
+        "TurnBoundary": {
+            "type": "string",
+            "enum": [
+                "start",
+                "end"
+            ]
+        }
+    }
+}

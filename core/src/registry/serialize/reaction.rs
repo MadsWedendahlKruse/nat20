@@ -18,8 +18,24 @@ use crate::{
         event::{Event, EventKind},
         game_state::GameState,
     },
+    registry::serialize::schema::impl_string_schema,
     systems,
 };
+
+impl_string_schema!(
+    ReactionTrigger,
+    "ReactionTrigger",
+    "description": "Script id of a Lua reaction trigger, e.g. `nat20_core::script.shield`.",
+    "examples": ["nat20_core::script.shield"]
+);
+
+impl_string_schema!(
+    ReactionBody,
+    "ReactionBody",
+    "description": "Script id of a Lua reaction body, e.g. `nat20_core::script.shield`, \
+         or the built-in `cancel_event`.",
+    "examples": ["nat20_core::script.shield", "cancel_event"]
+);
 
 static REACTION_TRIGGER_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionTriggerFunction>>> =
     LazyLock::new(|| HashMap::new());

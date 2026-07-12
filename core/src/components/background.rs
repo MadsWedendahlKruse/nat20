@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
@@ -7,7 +8,7 @@ use crate::components::{
     skill::Skill,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Background {
     pub id: BackgroundId,
     // TODO: Not sure if we want to use this?

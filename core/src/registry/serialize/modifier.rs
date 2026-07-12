@@ -12,7 +12,10 @@ use crate::{
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
-    registry::serialize::quantity::LengthExpressionDefinition,
+    registry::serialize::{
+        quantity::LengthExpressionDefinition,
+        schema::impl_string_schema,
+    },
 };
 
 /// For spec types that:
@@ -106,6 +109,15 @@ impl FromStr for D20Modifier {
 
 impl_display_roundtrip_spec!(D20Modifier);
 
+impl_string_schema!(
+    D20Modifier,
+    "D20Modifier",
+    "description": "A d20 roll modifier: `advantage`, `disadvantage`, a flat bonus/penalty \
+         (`+2`, `-1`), a forced outcome (`success`, `failure`, `critical_success`, \
+         `critical_failure`) or a lowered crit threshold (`crit(-N)`).",
+    "examples": ["advantage", "+2", "crit(-1)"]
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct D20CheckModifierProvider<T: Clone + DeserializeOwned + IntoEnumIterator> {
@@ -172,6 +184,32 @@ where
     }
 }
 
+impl<T> schemars::JsonSchema for D20CheckModifierProvider<T>
+where
+    T: Clone + DeserializeOwned + IntoEnumIterator,
+{
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Owned(format!(
+            "D20CheckModifierProvider<{}>",
+            std::any::type_name::<T>().rsplit("::").next().unwrap()
+        ))
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "`<check kind or `all`> <modifier>` where the modifier is \
+                 `advantage`, `disadvantage`, a flat bonus/penalty (`+2`, `-1`), a forced \
+                 outcome (`success`, ..., `critical_failure`) or `crit(-N)`.",
+            "examples": ["perception advantage", "stealth+2", "all disadvantage"]
+        })
+    }
+}
+
 pub type SkillModifierProvider = D20CheckModifierProvider<Skill>;
 pub type SavingThrowModifierProvider = D20CheckModifierProvider<SavingThrowKind>;
 
@@ -211,6 +249,13 @@ impl FromStr for AbilityModifierProvider {
 }
 
 impl_string_backed_spec!(AbilityModifierProvider);
+
+impl_string_schema!(
+    AbilityModifierProvider,
+    "AbilityModifierProvider",
+    "description": "`<ability><+/-delta>`, e.g. `strength+2`, `intelligence-1`.",
+    "examples": ["strength+2", "intelligence-1"]
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -262,6 +307,14 @@ impl FromStr for DamageResistanceProvider {
 
 impl_string_backed_spec!(DamageResistanceProvider);
 
+impl_string_schema!(
+    DamageResistanceProvider,
+    "DamageResistanceProvider",
+    "description": "`<damage type> <mitigation>` where the mitigation is `resistance`, \
+         `vulnerability`, `immunity` or a flat reduction (`-2`).",
+    "examples": ["fire resistance", "cold immunity", "force -2"]
+);
+
 // TODO: Not sure if this is the correct place
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -292,6 +345,13 @@ impl FromStr for AttackSourceDefinition {
 
 impl_string_backed_spec!(AttackSourceDefinition);
 
+impl_string_schema!(
+    AttackSourceDefinition,
+    "AttackSourceDefinition",
+    "description": "The source of an attack.",
+    "enum": ["melee_weapon", "ranged_weapon", "unarmed", "spell"]
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct ArmorClassModifierProvider {
@@ -318,6 +378,13 @@ impl FromStr for ArmorClassModifierProvider {
 }
 
 impl_string_backed_spec!(ArmorClassModifierProvider);
+
+impl_string_schema!(
+    ArmorClassModifierProvider,
+    "ArmorClassModifierProvider",
+    "description": "Flat armor class delta, e.g. `2` or `-1`.",
+    "examples": ["2", "-1"]
+);
 
 fn find_index_of_first(s: &str, chars: &[char]) -> Option<usize> {
     s.char_indices()
@@ -411,6 +478,13 @@ impl FromStr for SpeedModifier {
 
 impl_display_roundtrip_spec!(SpeedModifier);
 
+impl_string_schema!(
+    SpeedModifier,
+    "SpeedModifier",
+    "description": "Flat speed bonus as a length expression (`10 feet`) or a multiplier (`x2`).",
+    "examples": ["10 feet", "x2"]
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct SpeedModifierProvider {
@@ -432,6 +506,13 @@ impl FromStr for SpeedModifierProvider {
 }
 
 impl_string_backed_spec!(SpeedModifierProvider);
+
+impl_string_schema!(
+    SpeedModifierProvider,
+    "SpeedModifierProvider",
+    "description": "Flat speed bonus as a length expression (`10 feet`) or a multiplier (`x2`).",
+    "examples": ["10 feet", "x2"]
+);
 
 #[cfg(test)]
 mod tests {

@@ -28,6 +28,7 @@ tracing-subscriber = { version = "0.3.22", features = ["fmt", "time", "env-filte
 strsim = "0.11.1"
 kinded = "0.5.0"
 enum_dispatch = "0.3.13"
+schemars = { version = "1.2.1", features = ["uuid1"] }
 
 [lib]
 name = "nat20_core"

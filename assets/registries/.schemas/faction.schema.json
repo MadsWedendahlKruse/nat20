@@ -1,0 +1,60 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Faction",
+    "type": "object",
+    "properties": {
+        "attitudes": {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^([A-Za-z0-9_]+::)?faction[A-Za-z0-9_.]*$": {
+                    "$ref": "#/definitions/Attitude"
+                }
+            }
+        },
+        "default_cross_attitude": {
+            "description": "Default attitude towards other factions not explicitly listed in `attitudes`",
+            "allOf": [
+                {
+                    "$ref": "#/definitions/Attitude"
+                }
+            ]
+        },
+        "default_intra_attitude": {
+            "description": "Default attitude towards members of the same faction",
+            "allOf": [
+                {
+                    "$ref": "#/definitions/Attitude"
+                }
+            ]
+        },
+        "id": {
+            "$ref": "#/definitions/FactionId"
+        },
+        "name": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "name",
+        "attitudes",
+        "default_cross_attitude",
+        "default_intra_attitude"
+    ],
+    "definitions": {
+        "Attitude": {
+            "type": "string",
+            "enum": [
+                "friendly",
+                "neutral",
+                "hostile"
+            ]
+        },
+        "FactionId": {
+            "description": "Registry id `[namespace::]faction.<name>`, e.g. `nat20_core::faction.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?faction[A-Za-z0-9_.]*$"
+        }
+    }
+}

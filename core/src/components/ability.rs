@@ -5,10 +5,14 @@ use std::{
     str::FromStr,
 };
 
-use crate::components::modifier::{KeyedModifiable, Modifiable};
+use crate::{
+    components::modifier::{KeyedModifiable, Modifiable},
+    registry::serialize::schema::impl_string_schema,
+};
 
 use super::modifier::{ModifierSet, ModifierSource};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter, IntoEnumIterator};
 
@@ -83,6 +87,13 @@ impl From<Ability> for String {
     }
 }
 
+impl_string_schema!(
+    Ability,
+    "Ability",
+    "description": "An ability, by full name or acronym (`str`, `dex`, ...), case-insensitive.",
+    "examples": ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+);
+
 #[derive(Debug, Clone)]
 pub struct AbilityScore {
     pub ability: Ability,
@@ -140,7 +151,7 @@ impl fmt::Display for AbilityScore {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AbilityScoreDistribution {
     pub scores: HashMap<Ability, u8>,
     pub plus_2_bonus: Ability,

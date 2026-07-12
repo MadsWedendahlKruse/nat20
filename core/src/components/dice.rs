@@ -4,11 +4,15 @@ use std::{
 };
 
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::components::modifier::{Modifiable, ModifierSet, ModifierSource};
+use crate::{
+    components::modifier::{Modifiable, ModifierSet, ModifierSource},
+    registry::serialize::schema::impl_string_schema,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DieSize {
     D4 = 4,
@@ -75,6 +79,13 @@ impl From<DiceSet> for String {
         spec.to_string()
     }
 }
+
+impl_string_schema!(
+    DiceSet,
+    "DiceSet",
+    "description": "A set of dice as `<count>d<size>`, e.g. `1d8`.",
+    "examples": ["1d8", "2d6"]
+);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

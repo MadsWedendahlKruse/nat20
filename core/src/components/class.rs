@@ -3,6 +3,7 @@ use std::{
     hash::Hash,
 };
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -20,7 +21,7 @@ use crate::{
 };
 
 /// Classes and subclasses share a lot of common properties, so we define a base struct
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClassBase {
     /// Skills that can be chosen from when gaining the (sub)class
     #[serde(default)]
@@ -55,7 +56,7 @@ pub struct ClassBase {
 }
 
 /// How a class gets access to spells (i.e., what the "known pool" means).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SpellAccessModel {
     /// Known spells are explicitly selected over time (e.g. Sorcerer).
@@ -65,7 +66,7 @@ pub enum SpellAccessModel {
 }
 
 /// Whether a class must "prepare" a subset before casting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CastingReadinessModel {
     /// Must prepare a subset before casting.
@@ -75,7 +76,7 @@ pub enum CastingReadinessModel {
 }
 
 /// Defines how a class gains spellcasting abilities.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SpellcastingProgression {
     /// Full spellcasting progression, e.g. Wizard.
@@ -88,7 +89,7 @@ pub enum SpellcastingProgression {
     None,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SpellReplacementModel {
     LevelUp,
@@ -96,7 +97,7 @@ pub enum SpellReplacementModel {
 }
 
 /// Rules that define a class’ spellcasting *mechanics*.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SpellcastingRules {
     pub progression: SpellcastingProgression,
     pub spellcasting_ability: Ability,
@@ -235,7 +236,7 @@ impl IdProvider for Class {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Subclass {
     pub id: SubclassId,
     pub base: ClassBase,
@@ -261,7 +262,7 @@ impl IdProvider for Subclass {
 // up and choosing a subclass, it breaks the subsequent lookups (e.g. determining
 // how many spells to select in a level up prompt) because the subclass (and thus
 // the key) is now different.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClassAndSubclass {
     pub class: ClassId,
     pub subclass: Option<SubclassId>,

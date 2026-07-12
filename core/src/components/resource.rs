@@ -7,6 +7,7 @@ use std::{
     sync::LazyLock,
 };
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
@@ -14,6 +15,7 @@ use crate::{
         id::{IdProvider, ResourceId},
         modifier::ModifierSource,
     },
+    registry::serialize::schema::{impl_schema_via, impl_string_schema},
     systems::time::RestKind,
 };
 
@@ -79,6 +81,13 @@ impl Into<String> for RechargeRule {
         }
     }
 }
+
+impl_string_schema!(
+    RechargeRule,
+    "RechargeRule",
+    "description": "When the resource recharges.",
+    "enum": ["turn", "short_rest", "long_rest", "daily", "never"]
+);
 
 impl RechargeRule {
     /// Checks if this recharge rule is recharged by another rule.
@@ -268,7 +277,14 @@ impl From<ResourceBudget> for String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl_string_schema!(
+    ResourceBudget,
+    "ResourceBudget",
+    "description": "A resource budget: `<max uses>` (spawns full) or `<current>/<max>`.",
+    "examples": ["2", "1/4"]
+);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ResourceBudgetKind {
     Flat(ResourceBudget),
@@ -412,14 +428,14 @@ impl From<ResourceAmount> for ResourceBudgetKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceDefinitionKind {
     Flat,
     Tiered,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Resource {
     pub id: ResourceId,
     pub kind: ResourceDefinitionKind,
@@ -559,7 +575,7 @@ impl<'de> Deserialize<'de> for ResourceAmount {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
+        #[derive(Deserialize, JsonSchema)]
         #[serde(untagged)]
         enum Helper {
             Int(u8),
@@ -579,6 +595,27 @@ impl From<ResourceAmount> for String {
             ResourceAmount::Flat(amt) => amt.to_string(),
             ResourceAmount::Tiered { tier, amount } => format!("{}:{}", tier, amount),
         }
+    }
+}
+
+impl schemars::JsonSchema for ResourceAmount {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ResourceAmount")
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A flat amount (`1`) or a tiered amount `<tier>:<amount>` \
+                 (e.g. `2:1` for one level-2 spell slot).",
+            "anyOf": [
+                { "type": "integer", "minimum": 0 },
+                { "type": "string", "pattern": "^[0-9]+:[0-9]+$" }
+            ]
+        })
     }
 }
 
@@ -641,6 +678,8 @@ impl<'de> Deserialize<'de> for ResourceAmountMap {
         Ok(ResourceAmountMap { map })
     }
 }
+
+impl_schema_via!(ResourceAmountMap, HashMap<ResourceId, ResourceAmount>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMap {

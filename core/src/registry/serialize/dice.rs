@@ -15,10 +15,28 @@ use crate::{
     },
     registry::serialize::{
         parser::{Evaluable, Parser},
+        schema::{EXPRESSION_VARIABLES_DOC, impl_string_schema},
         variables::PARSER_VARIABLES,
     },
     systems,
 };
+
+impl_string_schema!(
+    DamageEquation,
+    "DamageEquation",
+    "description": format!(
+        "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) \
+         or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, \
+         `ranged_damage_roll`, `unarmed_damage_roll`. {}", EXPRESSION_VARIABLES_DOC),
+    "examples": ["8d6;fire", "(1 + spell_level)d4;force", "melee_weapon_damage_roll"]
+);
+
+impl_string_schema!(
+    HealEquation,
+    "HealEquation",
+    "description": format!("Healing roll as a dice expression. {}", EXPRESSION_VARIABLES_DOC),
+    "examples": ["1d8 + spell_level", "2d4 + 2"]
+);
 
 #[derive(Clone, Copy)]
 enum DamageRollScope {
