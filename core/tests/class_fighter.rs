@@ -5,8 +5,9 @@ use nat20_core::{
         ability::Ability,
         d20::{AdvantageType, D20CheckOutcome},
         damage::AttackSource,
+        dice::{DiceSet, DieSize},
         items::equipment::weapon::WeaponKind,
-        modifier::{ModifierSet, ModifierSource},
+        modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
         skill::Skill,
         time::TimeMode,
@@ -107,7 +108,7 @@ fn fighter_tactical_mind() {
         )
         .d20_check(&D20CheckDCKind::skill_check(
             Skill::Stealth,
-            ModifierSet::from(ModifierSource::Custom("Test skill check".into()), 3),
+            ModifierMap::from(ModifierSource::Custom("Test skill check".into()), 3).evaluate(),
         ))
         .react()
         .option_id("action.fighter.tactical_mind")
@@ -123,7 +124,7 @@ fn fighter_tactical_mind() {
         .d20_modifier(
             D20CheckKind::Skill(Skill::Stealth),
             ModifierSource::Action("action.fighter.tactical_mind".into()),
-            Operator::AtLeast(1), // bonus is 1d10, so it should be at least 1
+            DiceSet::new(1, DieSize::D10),
         )
         .assert_event();
 }
@@ -235,10 +236,11 @@ fn fighter_indomitable() {
         )
         .d20_check(&D20CheckDCKind::saving_throw(
             saving_throw,
-            ModifierSet::from(
+            ModifierMap::from(
                 ModifierSource::Custom("Test saving throw DC".to_string()),
                 99,
-            ),
+            )
+            .evaluate(),
         ))
         .react()
         .option_id("action.fighter.indomitable")
@@ -255,7 +257,7 @@ fn fighter_indomitable() {
         .d20_modifier(
             D20CheckKind::SavingThrow(saving_throw),
             ModifierSource::Action("action.fighter.indomitable".into()),
-            Operator::Equal(9),
+            9,
         )
         .assert_event();
 }

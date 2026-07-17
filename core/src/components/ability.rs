@@ -1,16 +1,15 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     hash::Hash,
     str::FromStr,
 };
 
 use crate::{
-    components::modifier::{KeyedModifiable, Modifiable},
+    components::modifier::{FlatModifierMap, KeyedFlatModifiable},
     registry::serialize::schema::impl_string_schema,
 };
 
-use super::modifier::{ModifierSet, ModifierSource};
+use super::modifier::ModifierSource;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -98,7 +97,7 @@ impl_string_schema!(
 pub struct AbilityScore {
     pub ability: Ability,
     pub base: i32,
-    pub modifiers: ModifierSet,
+    pub modifiers: FlatModifierMap,
 }
 
 impl AbilityScore {
@@ -106,7 +105,7 @@ impl AbilityScore {
         Self {
             ability,
             base: 10,
-            modifiers: ModifierSet::new(),
+            modifiers: FlatModifierMap::default(),
         }
     }
 
@@ -114,13 +113,22 @@ impl AbilityScore {
         Self {
             ability,
             base,
-            modifiers: ModifierSet::new(),
+            modifiers: FlatModifierMap::default(),
         }
     }
 
-    pub fn ability_modifier(&self) -> ModifierSet {
+    pub fn ability_modifier(&self) -> FlatModifierMap {
         let mut ability_modifiers = self.modifiers.clone();
-        ability_modifiers.scale_modifiers(0.5);
+        let mut zero_sources = Vec::new();
+        for (source, value) in ability_modifiers.iter_mut() {
+            *value = *value / 2;
+            if *value == 0 {
+                zero_sources.push(source.clone());
+            }
+        }
+        for source in zero_sources {
+            ability_modifiers.remove_modifier(&source);
+        }
         let base_modifier = (self.base - 10) / 2;
         ability_modifiers.add_modifier(ModifierSource::Ability(self.ability), base_modifier);
         ability_modifiers
@@ -128,26 +136,6 @@ impl AbilityScore {
 
     pub fn total(&self) -> i32 {
         self.base + self.modifiers.total()
-    }
-}
-
-impl fmt::Display for AbilityScore {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let modifier = self.ability_modifier().total();
-        let sign = if modifier >= 0 { "+" } else { "-" };
-        write!(
-            f,
-            "{}: {} ({}{})",
-            self.ability,
-            self.total(),
-            sign,
-            modifier.abs()
-        )?;
-        if self.modifiers.is_empty() {
-            return Ok(());
-        }
-        write!(f, " ({} {})", self.base, self.modifiers)?;
-        Ok(())
     }
 }
 
@@ -184,7 +172,7 @@ impl AbilityScoreMap {
         self.scores.insert(ability, score);
     }
 
-    pub fn ability_modifier(&self, ability: &Ability) -> ModifierSet {
+    pub fn ability_modifier(&self, ability: &Ability) -> FlatModifierMap {
         self.get(ability).ability_modifier()
     }
 
@@ -202,20 +190,20 @@ impl AbilityScoreMap {
     }
 }
 
-impl KeyedModifiable<Ability> for AbilityScoreMap {
-    fn add_modifier<T>(&mut self, ability: &Ability, source: ModifierSource, value: T)
+impl KeyedFlatModifiable<Ability> for AbilityScoreMap {
+    fn add_modifier<T>(&mut self, key: &Ability, source: ModifierSource, value: T)
     where
         T: Into<i32>,
     {
-        self.get_mut(ability).modifiers.add_modifier(source, value);
+        self.get_mut(key).modifiers.add_modifier(source, value);
     }
 
-    fn remove_modifier(&mut self, ability: &Ability, source: &ModifierSource) {
-        self.get_mut(ability).modifiers.remove_modifier(source);
+    fn remove_modifier(&mut self, key: &Ability, source: &ModifierSource) {
+        self.get_mut(key).modifiers.remove_modifier(source);
     }
 
-    fn total(&self, ability: &Ability) -> i32 {
-        self.get(ability).total()
+    fn total(&self, key: &Ability) -> i32 {
+        self.get(key).total()
     }
 }
 

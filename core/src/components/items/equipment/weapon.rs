@@ -15,14 +15,14 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::targeting::TargetingRange,
         d20::D20Check,
-        damage::{AttackRoll, AttackSource, DamageRoll, DamageSource, DamageType},
-        dice::{DiceSet, DiceSetRoll},
+        damage::{AttackRoll, AttackSource, DamageComponent, DamageRoll, DamageSource, DamageType},
+        dice::DiceSet,
         id::{ActionId, EffectId},
         items::{
             equipment::slots::{EquipmentSlot, SlotProvider},
             item::Item,
         },
-        modifier::{KeyedModifiable, Modifiable, ModifierSet, ModifierSource},
+        modifier::{KeyedFlatModifiable, ModifierKind, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
     },
     registry::serialize::{
@@ -38,7 +38,9 @@ pub enum WeaponCategory {
     Martial,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum WeaponKind {
     Melee,
@@ -251,26 +253,20 @@ impl Weapon {
         if damage.is_empty() {
             panic!("Weapon must have at least one damage type");
         }
-        let (dice, damage_type) = damage[0];
         let source = DamageSource::Weapon(kind.clone());
-        let mut damage_roll = DamageRoll::new(
-            DiceSetRoll {
-                dice,
-                modifiers: ModifierSet::new(),
-            },
-            damage_type,
-            source.clone(),
-        );
-        for i in 1..damage.len() {
-            let (dice, damage_type) = damage[i];
-            damage_roll.add_bonus(
-                DiceSetRoll {
-                    dice,
-                    modifiers: ModifierSet::new(),
-                },
-                damage_type,
-            );
-        }
+
+        let damage_roll = DamageRoll {
+            components: damage
+                .iter()
+                .map(|(dice, damage_type)| {
+                    DamageComponent::new(
+                        ModifierMap::from(ModifierSource::Base, ModifierKind::Dice(dice.clone())),
+                        *damage_type,
+                    )
+                })
+                .collect(),
+            source: source.clone(),
+        };
 
         Self {
             item,
@@ -337,15 +333,20 @@ impl Weapon {
                 None
             }
         });
+
         if versatile_dice.is_some() && wielding_both_hands {
-            damage_roll.primary.dice_roll.dice = versatile_dice.unwrap().clone();
+            // Override the base damage dice with the versatile damage dice
+            damage_roll.components[0].damage.replace_modifier(
+                ModifierSource::Base,
+                ModifierKind::Dice(versatile_dice.unwrap().clone()),
+            );
         }
 
-        self.add_ability_modifier(ability_scores, &mut damage_roll.primary.dice_roll.modifiers);
+        self.add_ability_modifier(ability_scores, &mut damage_roll.components[0].damage);
 
         let enchantment = self.enchantment();
         if enchantment > 0 {
-            damage_roll.primary.dice_roll.modifiers.add_modifier(
+            damage_roll.components[0].damage.add_modifier(
                 ModifierSource::Custom("Enchantment".to_string()),
                 enchantment as i32,
             );
@@ -354,7 +355,7 @@ impl Weapon {
         damage_roll
     }
 
-    fn add_ability_modifier(&self, ability_scores: &AbilityScoreMap, modifiers: &mut ModifierSet) {
+    fn add_ability_modifier(&self, ability_scores: &AbilityScoreMap, modifiers: &mut ModifierMap) {
         let ability = self.determine_ability(ability_scores);
         modifiers.add_modifier(
             ModifierSource::Ability(ability),
@@ -482,10 +483,15 @@ mod tests {
         assert_eq!(weapon.category(), &WeaponCategory::Martial);
         assert_eq!(weapon.kind(), &WeaponKind::Melee);
         assert_eq!(weapon.properties().len(), 2);
-        assert_eq!(weapon.damage_roll.primary.dice_roll.dice.num_dice, 1);
         assert_eq!(
-            weapon.damage_roll.primary.dice_roll.dice.die_size,
-            DieSize::D8
+            weapon.damage_roll.components[0]
+                .damage
+                .modifiers
+                .get(&ModifierSource::Base),
+            Some(&ModifierKind::Dice(DiceSet {
+                die_size: DieSize::D8,
+                num_dice: 1,
+            }))
         );
         assert_eq!(weapon.item.name, "Longsword");
         println!("{:?}", weapon);

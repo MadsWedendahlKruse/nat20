@@ -4,6 +4,7 @@ use nat20_core::{
         d20::D20CheckOutcome,
         damage::{DamageComponent, DamageSource, DamageType},
         dice::{DiceSet, DieSize},
+        modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
     },
     systems::d20::D20CheckKind,
@@ -52,7 +53,10 @@ fn assert_thunder_rolls(scenario: &Scenario, count: usize) {
         .event_filter()
         .actor("wizard")
         .damage_roll(
-            DamageComponent::new(DiceSet::new(2, DieSize::D8), DamageType::Thunder),
+            DamageComponent::new(
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(2, DieSize::D8)),
+                DamageType::Thunder,
+            ),
             DamageSource::Spell("spell.thunderwave".into()),
         )
         .assert_event_count(count);

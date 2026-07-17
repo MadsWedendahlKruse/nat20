@@ -8,7 +8,7 @@ use crate::{
         actions::targeting::EntityFilter,
         d20::{D20CheckDC, D20CheckResult},
         health::life_state::{DEATH_SAVING_THROW_DC, LifeState},
-        modifier::{ModifierSet, ModifierSource},
+        modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
         skill::{Skill, SkillSet},
         time::{TimeStep, TurnBoundary},
@@ -172,10 +172,11 @@ impl Encounter {
                 game_state,
                 current_entity,
                 &D20CheckDCKind::SavingThrow(D20CheckDC {
-                    dc: ModifierSet::from_iter([(
+                    dc: ModifierMap::from(
                         ModifierSource::Custom("Death Saving Throw".to_string()),
                         DEATH_SAVING_THROW_DC as i32,
-                    )]),
+                    )
+                    .evaluate(),
                     key: SavingThrowKind::Death,
                 }),
             );

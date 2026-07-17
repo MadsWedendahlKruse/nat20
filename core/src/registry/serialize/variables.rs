@@ -4,9 +4,14 @@ use std::{
 };
 
 use hecs::{Entity, World};
+use strum::IntoEnumIterator;
 
 use crate::{
-    components::{actions::action::ActionContext, level::CharacterLevels},
+    components::{
+        ability::{Ability, AbilityScoreMap},
+        actions::action::ActionContext,
+        level::CharacterLevels,
+    },
     registry::registry::ClassesRegistry,
     systems,
 };
@@ -48,6 +53,20 @@ pub static PARSER_VARIABLES: LazyLock<VariableMap> = LazyLock::new(|| {
             Arc::new(
                 move |world: &World, entity: Entity, _context: &ActionContext| {
                     systems::class::class_level(world, entity, &class_id) as i32
+                },
+            ) as Arc<VariableFunction>,
+        );
+    }
+
+    for ability in Ability::iter() {
+        let variable_name = format!("{}.modifier", ability);
+        map.insert(
+            variable_name,
+            Arc::new(
+                move |world: &World, entity: Entity, _context: &ActionContext| {
+                    systems::helpers::get_component::<AbilityScoreMap>(world, entity)
+                        .ability_modifier(&ability)
+                        .total()
                 },
             ) as Arc<VariableFunction>,
         );

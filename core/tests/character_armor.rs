@@ -6,7 +6,7 @@ mod tests {
             ability::{Ability, AbilityScore, AbilityScoreMap},
             id::{EffectId, ItemId},
             items::equipment::slots::EquipmentSlot,
-            modifier::{KeyedModifiable, Modifiable, ModifierSource},
+            modifier::{KeyedFlatModifiable, ModifierSource},
         },
         entities::character::Character,
         registry::registry::ItemsRegistry,

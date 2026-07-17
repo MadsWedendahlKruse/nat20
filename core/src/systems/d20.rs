@@ -6,7 +6,7 @@ use crate::{
         damage::{AttackRollResult, AttackSource},
         id::EntityIdentifier,
         items::equipment::{armor::ArmorClass, loadout::Loadout},
-        modifier::ModifierSet,
+        modifier::ModifierResult,
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
         spells::spellbook::Spellbook,
@@ -69,11 +69,11 @@ pub enum D20CheckDCKind {
 }
 
 impl D20CheckDCKind {
-    pub fn saving_throw(kind: SavingThrowKind, dc: ModifierSet) -> Self {
+    pub fn saving_throw(kind: SavingThrowKind, dc: ModifierResult) -> Self {
         D20CheckDCKind::SavingThrow(D20CheckDC { key: kind, dc })
     }
 
-    pub fn skill_check(skill: Skill, dc: ModifierSet) -> Self {
+    pub fn skill_check(skill: Skill, dc: ModifierResult) -> Self {
         D20CheckDCKind::Skill(D20CheckDC { key: skill, dc })
     }
 

@@ -16,7 +16,7 @@ use crate::{
         d20::{AdvantageType, D20CheckOutcome},
         damage::{DamageComponent, DamageSource},
         id::{ActionId, EffectId, ResourceId},
-        modifier::{Modifiable, ModifierSource},
+        modifier::{ModifierKind, ModifierMap, ModifierResult, ModifierSource},
         resource::ResourceAmountMap,
         skill::{Skill, SkillSet},
         time::TimeMode,
@@ -521,15 +521,13 @@ impl ScenarioEventFilterBuilder<'_> {
         self
     }
 
-    pub fn d20_modifier(
-        mut self,
-        kind: D20CheckKind,
-        source: ModifierSource,
-        value: Operator<i32>,
-    ) -> Self {
+    pub fn d20_modifier<T>(mut self, kind: D20CheckKind, source: ModifierSource, value: T) -> Self
+    where
+        T: Into<ModifierKind>,
+    {
         self.kind = Some(EventFilterKind::D20Check {
             kind,
-            modifier: Some((source, value)),
+            modifier: Some((source, value.into())),
             advantage: None,
         });
         self
@@ -605,7 +603,7 @@ impl ScenarioEventFilterBuilder<'_> {
     pub fn assert_event(&self) {
         assert!(
             !self.filter().is_empty(),
-            "Expected event matching filter, but no such event was found. Events: {:#?}",
+            "Expected event matching filter, but no such event was found. Events: {:?}",
             self.scenario.game_state.event_log.events
         );
     }
@@ -656,7 +654,7 @@ impl std::fmt::Debug for ScenarioEventFilterBuilder<'_> {
 pub enum EventFilterKind {
     D20Check {
         kind: D20CheckKind,
-        modifier: Option<(ModifierSource, Operator<i32>)>,
+        modifier: Option<(ModifierSource, ModifierKind)>,
         advantage: Option<(ModifierSource, AdvantageType)>,
     },
     DamageRoll {
@@ -686,13 +684,17 @@ impl EventFilterKind {
                 }
 
                 if let Some((modifier_source, modifier_value)) = modifier {
-                    let Some(event_modifier) =
-                        result.d20_result().check.modifiers().get(modifier_source)
+                    let Some(event_modifier) = result
+                        .d20_result()
+                        .check
+                        .modifiers()
+                        .modifiers
+                        .get(modifier_source)
                     else {
                         return false;
                     };
 
-                    if !modifier_value.evaluate(&event_modifier) {
+                    if event_modifier != modifier_value {
                         return false;
                     }
                 }
@@ -717,28 +719,19 @@ impl EventFilterKind {
                 },
                 EventKind::DamageRollResolved { result, .. },
             ) => {
-                let mut found_matching_component = false;
-
-                for component in &result.components {
-                    let expected_dice = &expected_damage.dice_roll.dice;
-                    if component.damage_type == expected_damage.damage_type
-                        && expected_dice.die_size == component.result.die_size
-                        && expected_dice.num_dice == component.result.rolls.len() as u32
-                    {
-                        found_matching_component = true;
-                        break;
-                    }
-                }
-
-                if !found_matching_component {
-                    return false;
-                }
-
                 if &result.source != expected_source {
                     return false;
                 }
 
-                true
+                for component in &result.components {
+                    if component.damage_type == expected_damage.damage_type
+                        && result_contains_expected(&expected_damage.damage, &component.result)
+                    {
+                        return true;
+                    }
+                }
+
+                false
             }
 
             (
@@ -756,13 +749,14 @@ impl EventFilterKind {
                 for component in result.components() {
                     if let ActionResultComponent::Damage(damage_result) = component
                         && let Some(damage_result) = &damage_result.damage_taken
+                        && damage_result.source == *expected_source
                     {
                         for component in &damage_result.components {
-                            let expected_dice = &expected_damage.dice_roll.dice;
                             if component.damage_type == expected_damage.damage_type
-                                && expected_dice.die_size == component.original.die_size
-                                && expected_dice.num_dice == component.original.rolls.len() as u32
-                                && damage_result.source == *expected_source
+                                && result_contains_expected(
+                                    &expected_damage.damage,
+                                    &component.original,
+                                )
                             {
                                 return true;
                             }
@@ -776,4 +770,14 @@ impl EventFilterKind {
             _ => false,
         }
     }
+}
+
+fn result_contains_expected(expected: &ModifierMap, result: &ModifierResult) -> bool {
+    expected.modifiers.iter().all(|(source, expected_kind)| {
+        result
+            .results
+            .get(source)
+            .map(|r| r.matches_kind(expected_kind))
+            .unwrap_or(false)
+    })
 }

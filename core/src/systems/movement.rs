@@ -22,9 +22,9 @@ use crate::{
         },
         activity::ActivityState,
         damage::{DamageRoll, DamageSource, DamageType},
-        dice::{DiceSetRoll, DieSize},
+        dice::{DiceSet, DieSize},
         id::EntityIdentifier,
-        modifier::ModifierSet,
+        modifier::{ModifierKind, ModifierMap, ModifierSource},
         speed::Speed,
     },
     engine::{
@@ -579,7 +579,10 @@ pub fn apply_fall_damage(game_state: &mut GameState, entity: Entity, fall_distan
     }
 
     let mut damage_roll = DamageRoll::new(
-        DiceSetRoll::new(damage_dice, FALL_DAMAGE_DIE, ModifierSet::new()),
+        ModifierMap::from(
+            ModifierSource::Base,
+            ModifierKind::Dice(DiceSet::new(damage_dice, FALL_DAMAGE_DIE)),
+        ),
         DamageType::Bludgeoning,
         DamageSource::Environmental,
     )

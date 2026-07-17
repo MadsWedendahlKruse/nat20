@@ -4,6 +4,7 @@ use nat20_core::{
         d20::D20CheckOutcome,
         damage::{DamageComponent, DamageSource, DamageType},
         dice::{DiceSet, DieSize},
+        modifier::{ModifierKind, ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
     },
     systems::d20::D20CheckKind,
@@ -51,7 +52,16 @@ fn assert_missile_rolls(scenario: &Scenario, count: usize) {
         .event_filter()
         .actor("attacker")
         .damage_roll(
-            DamageComponent::new(DiceSet::new(1, DieSize::D4), DamageType::Force),
+            DamageComponent::new(
+                ModifierMap::from(
+                    ModifierSource::Base,
+                    ModifierKind::Composite(vec![
+                        ModifierKind::Dice(DiceSet::new(1, DieSize::D4)),
+                        ModifierKind::Flat(1),
+                    ]),
+                ),
+                DamageType::Force,
+            ),
             DamageSource::Spell("spell.magic_missile".into()),
         )
         .assert_event_count(count);

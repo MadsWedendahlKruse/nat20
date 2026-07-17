@@ -4,11 +4,7 @@ use hecs::{Entity, World};
 use strum::Display;
 
 use crate::{
-    components::{
-        actions::action::ActionContext,
-        dice::{DiceSet, DiceSetRoll},
-        modifier::{ModifierSet, ModifierSource},
-    },
+    components::{actions::action::ActionContext, dice::DiceSet, modifier::ModifierKind},
     registry::serialize::variables::VariableFunction,
 };
 
@@ -40,6 +36,12 @@ pub trait Evaluable {
         action_context: &ActionContext,
         variables: &HashMap<String, Arc<VariableFunction>>,
     ) -> Result<Self::Output, EvaluationError>;
+}
+
+pub trait EvaluableWithoutVariables {
+    type Output;
+
+    fn evaluate_without_variables(&self) -> Result<Self::Output, EvaluationError>;
 }
 
 impl Evaluable for IntExpression {
@@ -87,8 +89,10 @@ impl Evaluable for IntExpression {
     }
 }
 
-impl IntExpression {
-    pub fn evaluate_without_variables(&self) -> Result<i32, EvaluationError> {
+impl EvaluableWithoutVariables for IntExpression {
+    type Output = i32;
+
+    fn evaluate_without_variables(&self) -> Result<i32, EvaluationError> {
         match self {
             IntExpression::Literal(value) => Ok(*value),
             IntExpression::Variable(name) => Err(EvaluationError::UnknownVariable(name.clone())),
@@ -112,16 +116,15 @@ impl IntExpression {
         }
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct DiceExpression {
     pub count_expression: IntExpression,
     pub size_expression: IntExpression,
-    /// Optional flat modifier applied after rolling the dice (e.g. "1d4 + 1").
-    pub modifier_expression: Option<IntExpression>,
 }
 
 impl Evaluable for DiceExpression {
-    type Output = DiceSetRoll;
+    type Output = DiceSet;
 
     fn evaluate(
         &self,
@@ -132,40 +135,93 @@ impl Evaluable for DiceExpression {
             String,
             Arc<dyn Fn(&World, Entity, &ActionContext) -> i32 + Send + Sync>,
         >,
-    ) -> Result<DiceSetRoll, EvaluationError> {
+    ) -> Result<DiceSet, EvaluationError> {
         let count = self
             .count_expression
             .evaluate(world, entity, action_context, variables)?;
         let size = self
             .size_expression
             .evaluate(world, entity, action_context, variables)?;
-        let modifier = if let Some(mod_expr) = &self.modifier_expression {
-            mod_expr.evaluate(world, entity, action_context, variables)?
-        } else {
-            0
-        };
 
-        Ok(DiceSetRoll {
-            dice: DiceSet::from_str(format!("{}d{}", count, size).as_str()).unwrap(),
-            modifiers: ModifierSet::from(ModifierSource::Base, modifier),
-        })
+        Ok(DiceSet::from_str(format!("{}d{}", count, size).as_str()).unwrap())
     }
 }
 
-impl DiceExpression {
-    pub fn evaluate_without_variables(&self) -> Result<DiceSetRoll, EvaluationError> {
+impl EvaluableWithoutVariables for DiceExpression {
+    type Output = DiceSet;
+
+    fn evaluate_without_variables(&self) -> Result<DiceSet, EvaluationError> {
         let count = self.count_expression.evaluate_without_variables()?;
         let size = self.size_expression.evaluate_without_variables()?;
-        let modifier = if let Some(mod_expr) = &self.modifier_expression {
-            mod_expr.evaluate_without_variables()?
-        } else {
-            0
-        };
 
-        Ok(DiceSetRoll {
-            dice: DiceSet::from_str(format!("{}d{}", count, size).as_str()).unwrap(),
-            modifiers: ModifierSet::from(ModifierSource::Base, modifier),
-        })
+        Ok(DiceSet::from_str(format!("{}d{}", count, size).as_str()).unwrap())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ModifierExpression {
+    Int(IntExpression),
+    Dice(DiceExpression),
+    Composite(Vec<ModifierExpression>),
+}
+
+impl Evaluable for ModifierExpression {
+    type Output = ModifierKind;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        action_context: &ActionContext,
+        variables: &HashMap<String, Arc<VariableFunction>>,
+    ) -> Result<ModifierKind, EvaluationError> {
+        match self {
+            ModifierExpression::Int(int_expr) => {
+                let value = int_expr.evaluate(world, entity, action_context, variables)?;
+                Ok(ModifierKind::Flat(value))
+            }
+            ModifierExpression::Dice(dice_expr) => {
+                let dice_set = dice_expr.evaluate(world, entity, action_context, variables)?;
+                Ok(ModifierKind::Dice(dice_set))
+            }
+            ModifierExpression::Composite(expressions) => {
+                let mut modifier_source = ModifierKind::Composite(Vec::new());
+                for expr in expressions {
+                    let evaluated = expr.evaluate(world, entity, action_context, variables)?;
+                    if let ModifierKind::Composite(ref mut vec) = modifier_source {
+                        vec.push(evaluated);
+                    }
+                }
+                Ok(modifier_source)
+            }
+        }
+    }
+}
+
+impl EvaluableWithoutVariables for ModifierExpression {
+    type Output = ModifierKind;
+
+    fn evaluate_without_variables(&self) -> Result<ModifierKind, EvaluationError> {
+        match self {
+            ModifierExpression::Int(int_expr) => {
+                let value = int_expr.evaluate_without_variables()?;
+                Ok(ModifierKind::Flat(value))
+            }
+            ModifierExpression::Dice(dice_expr) => {
+                let dice_set = dice_expr.evaluate_without_variables()?;
+                Ok(ModifierKind::Dice(dice_set))
+            }
+            ModifierExpression::Composite(expressions) => {
+                let mut modifier_source = ModifierKind::Composite(Vec::new());
+                for expr in expressions {
+                    let evaluated = expr.evaluate_without_variables()?;
+                    if let ModifierKind::Composite(ref mut vec) = modifier_source {
+                        vec.push(evaluated);
+                    }
+                }
+                Ok(modifier_source)
+            }
+        }
     }
 }
 
@@ -385,50 +441,28 @@ impl<'a> Parser<'a> {
         self.parse_dice_count()
     }
 
-    /// dice_expr := dice_core (('+' | '-') expression)?
     /// dice_core := dice_count 'd' dice_size
-    pub fn parse_dice_expression(&mut self) -> Result<DiceExpression, String> {
-        // 1) Left side: strict dice count
+    fn parse_dice_core(&mut self) -> Result<DiceExpression, String> {
         let count_expression = self.parse_dice_count()?;
-        self.consume_whitespace();
-
-        // 2) The 'd'
         self.expect_char('d')?;
-
-        // 3) Right side: size of the dice
         let size_expression = self.parse_dice_size()?;
-        self.consume_whitespace();
 
-        // 4) Optional flat modifier, e.g. "+ 1" in "1d4 + 1" or variables like
-        // "1d10 + class.fighter.level"
-        let modifier_expression = match self.peek_char() {
-            Some('+') | Some('-') => {
-                let operator = self.next_char().unwrap(); // consume '+' or '-'
-                // Reuse full expression parsing (with * and / precedence)
-                let mut expression = self.parse_expression()?;
+        Ok(DiceExpression {
+            count_expression,
+            size_expression,
+        })
+    }
 
-                // If it is a minus, wrap the expression in a Negate so that
-                // "1d4 - 1" becomes "1d4 + (-1)" in terms of evaluation.
-                if operator == '-' {
-                    expression = IntExpression::Negate(Box::new(expression));
-                }
+    /// dice_expr := dice_core
+    pub fn parse_dice_expression(&mut self) -> Result<DiceExpression, String> {
+        let dice_expression = self.parse_dice_core()?;
 
-                Some(expression)
-            }
-            _ => None,
-        };
-
-        // 5) Ensure no trailing garbage
         self.consume_whitespace();
         if !self.is_at_end() {
             return Err("Unexpected characters after dice expression".to_string());
         }
 
-        Ok(DiceExpression {
-            count_expression,
-            size_expression,
-            modifier_expression,
-        })
+        Ok(dice_expression)
     }
 
     /// Parses a standalone integer expression and ensures there is no trailing junk.
@@ -440,11 +474,70 @@ impl<'a> Parser<'a> {
         }
         Ok(expression)
     }
+
+    /// A single term of a modifier expression: either a dice core or an
+    /// integer term ('*' and '/' bind tighter than the '+'/'-' between terms).
+    fn parse_modifier_term(&mut self, negated: bool) -> Result<ModifierExpression, String> {
+        let start = self.position;
+        if let Ok(dice_expression) = self.parse_dice_core() {
+            if negated {
+                return Err(
+                    "Subtracting dice is not supported in a modifier expression".to_string()
+                );
+            }
+            return Ok(ModifierExpression::Dice(dice_expression));
+        }
+
+        self.position = start;
+        let mut expression = self.parse_term()?;
+        if negated {
+            expression = IntExpression::Negate(Box::new(expression));
+        }
+        Ok(ModifierExpression::Int(expression))
+    }
+
+    /// modifier_expr := modifier_term (('+' | '-') modifier_term)*
+    /// modifier_term := dice_core | term
+    pub fn parse_modifier_expression(&mut self) -> Result<ModifierExpression, String> {
+        let mut terms = vec![self.parse_modifier_term(false)?];
+
+        loop {
+            self.consume_whitespace();
+            let negated = match self.peek_char() {
+                Some('+') => false,
+                Some('-') => true,
+                _ => break,
+            };
+            self.next_char(); // consume '+' or '-'
+            let term = self.parse_modifier_term(negated)?;
+
+            // Fold adjacent int terms so pure-integer input stays a single Int
+            // expression instead of a Composite of flat parts.
+            match (terms.last_mut(), term) {
+                (Some(ModifierExpression::Int(last)), ModifierExpression::Int(new_expression)) => {
+                    let left = std::mem::replace(last, IntExpression::Literal(0));
+                    *last = IntExpression::Add(Box::new(left), Box::new(new_expression));
+                }
+                (_, term) => terms.push(term),
+            }
+        }
+
+        self.consume_whitespace();
+        if !self.is_at_end() {
+            return Err("Unexpected characters after modifier expression".to_string());
+        }
+
+        if terms.len() == 1 {
+            Ok(terms.pop().unwrap())
+        } else {
+            Ok(ModifierExpression::Composite(terms))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{dice::DieSize, modifier::Modifiable};
+    use crate::components::dice::DieSize;
 
     use super::*;
 
@@ -518,15 +611,63 @@ mod tests {
     #[test]
     fn parses_dice_equation_with_modifier() {
         let mut parser = Parser::new("2d8 + 3");
-        let dice_expression = parser.parse_dice_expression().expect("failed to parse");
+        let modifier_expression = parser.parse_modifier_expression().expect("failed to parse");
 
-        expect_literal(&dice_expression.count_expression, 2);
-        expect_literal(&dice_expression.size_expression, 8);
+        let terms = match modifier_expression {
+            ModifierExpression::Composite(terms) => terms,
+            other => panic!("Expected composite, found {:?}", other),
+        };
+        assert_eq!(terms.len(), 2);
 
-        match dice_expression.modifier_expression {
-            Some(mod_expr) => expect_literal(&mod_expr, 3),
-            None => panic!("Expected modifier expression"),
+        match &terms[0] {
+            ModifierExpression::Dice(dice_expression) => {
+                expect_literal(&dice_expression.count_expression, 2);
+                expect_literal(&dice_expression.size_expression, 8);
+            }
+            other => panic!("Expected dice term, found {:?}", other),
         }
+
+        match &terms[1] {
+            ModifierExpression::Int(int_expression) => expect_literal(int_expression, 3),
+            other => panic!("Expected int term, found {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_single_term_modifier_expressions() {
+        match Parser::new("1d6").parse_modifier_expression() {
+            Ok(ModifierExpression::Dice(_)) => {}
+            other => panic!("Expected dice expression, found {:?}", other),
+        }
+
+        match Parser::new("spell_level + 2").parse_modifier_expression() {
+            Ok(ModifierExpression::Int(_)) => {}
+            other => panic!("Expected int expression, found {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parses_negated_flat_modifier_term() {
+        let mut parser = Parser::new("1d4 - 1");
+        let modifier_expression = parser.parse_modifier_expression().expect("failed to parse");
+
+        let terms = match modifier_expression {
+            ModifierExpression::Composite(terms) => terms,
+            other => panic!("Expected composite, found {:?}", other),
+        };
+
+        match &terms[1] {
+            ModifierExpression::Int(IntExpression::Negate(inner)) => {
+                expect_literal(inner.as_ref(), 1)
+            }
+            other => panic!("Expected negated int term, found {:?}", other),
+        }
+    }
+
+    #[test]
+    fn subtracting_dice_error() {
+        let result = Parser::new("1d4 - 1d6").parse_modifier_expression();
+        assert!(result.is_err());
     }
 
     #[test]
@@ -580,21 +721,25 @@ mod tests {
     }
 
     #[test]
-    fn evaluates_dice_equation_with_variables() {
+    fn evaluates_modifier_expression_with_variables() {
         let mut parser = Parser::new("(spell_level + 2) d (caster_level * 2) + character_level");
-        let dice_expression = parser.parse_dice_expression().expect("failed to parse");
+        let modifier_expression = parser.parse_modifier_expression().expect("failed to parse");
 
         let variables = variables();
         let mut world = World::new();
         let entity = world.spawn(());
         let action_context = ActionContext::default();
 
-        let dice_roll = dice_expression
+        let modifier = modifier_expression
             .evaluate(&world, entity, &action_context, &variables)
             .expect("failed to evaluate");
 
-        assert_eq!(dice_roll.dice.num_dice, 5); // spell_level (3) + 2
-        assert_eq!(dice_roll.dice.die_size, DieSize::D10); // caster_level (5) * 2
-        assert_eq!(dice_roll.modifiers.total(), 7); // character_level (7)
+        assert_eq!(
+            modifier,
+            ModifierKind::Composite(vec![
+                ModifierKind::Dice(DiceSet::new(5, DieSize::D10)), // (spell_level (3) + 2) d (caster_level (5) * 2)
+                ModifierKind::Flat(7),                             // character_level (7)
+            ])
+        );
     }
 }

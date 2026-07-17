@@ -28,7 +28,7 @@ use crate::{
         health::hit_points::{HitPoints, TemporaryHitPoints},
         id::{ActionId, EffectId, ResourceId, ScriptId},
         items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
-        modifier::{KeyedModifiable, Modifiable, ModifierSource},
+        modifier::{KeyedFlatModifiable, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         saving_throw::SavingThrowSet,
         skill::SkillSet,
@@ -613,8 +613,8 @@ impl EffectModifier {
                 if let Some(context) = context {
                     let amount =
                         (temporary_hit_points.function)(&mut game_state.world, entity, context)
-                            .roll()
-                            .subtotal as u32;
+                            .evaluate()
+                            .total() as u32;
                     let mut hit_points = systems::helpers::get_component_mut::<HitPoints>(
                         &mut game_state.world,
                         entity,

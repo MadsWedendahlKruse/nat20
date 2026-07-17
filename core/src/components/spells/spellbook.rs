@@ -32,7 +32,7 @@ use crate::{
         d20::{D20Check, D20CheckDC},
         damage::{AttackRoll, AttackRollTemplate, AttackSource},
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
-        modifier::{Modifiable, ModifierSet, ModifierSource},
+        modifier::{ModifierKind, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         saving_throw::{SavingThrowDC, SavingThrowKind},
@@ -238,7 +238,7 @@ pub struct Spellbook {
     granted: HashMap<GrantedSpellSource, GrantedSpellMap>,
     concentration: ConcentrationTracker,
 
-    saving_throw: ModifierSet,
+    saving_throw: ModifierMap,
     attack_roll: AttackRollTemplate,
 }
 
@@ -248,7 +248,10 @@ impl Spellbook {
             class_states: HashMap::new(),
             granted: HashMap::new(),
             concentration: ConcentrationTracker::default(),
-            saving_throw: ModifierSet::from(ModifierSource::Base, BASE_SPELL_SAVE_DC),
+            saving_throw: ModifierMap::from(
+                ModifierSource::Base,
+                ModifierKind::Flat(BASE_SPELL_SAVE_DC),
+            ),
             attack_roll: AttackRollTemplate::new(D20Check::new(Proficiency::new(
                 ProficiencyLevel::Proficient,
                 ModifierSource::Base,
@@ -744,7 +747,7 @@ impl Spellbook {
         }
     }
 
-    pub fn saving_throw_modifiers_mut(&mut self) -> &mut ModifierSet {
+    pub fn saving_throw_modifiers_mut(&mut self) -> &mut ModifierMap {
         &mut self.saving_throw
     }
 
@@ -822,7 +825,7 @@ impl SavingThrowProvider for Spellbook {
 
         D20CheckDC {
             key: kind,
-            dc: spell_save_dc,
+            dc: spell_save_dc.evaluate(),
         }
     }
 }

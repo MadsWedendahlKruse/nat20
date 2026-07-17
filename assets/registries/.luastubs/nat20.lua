@@ -238,7 +238,7 @@ function GameState:hp_max(entity) end
 
 ---@param entity ScriptEntity
 ---@param ability_name string  -- "strength" | "dexterity" | ...
----@return ModifierSet
+---@return FlatModifierMap
 function GameState:ability_modifier(entity, ability_name) end
 
 ---@param entity ScriptEntity
@@ -280,18 +280,20 @@ function GameState:has_effect(target, effect_id) end
 function GameState:remove_effect(target, effect_id) end
 
 ---@param target ScriptEntity
----@param base_amount string
----@param bonus ModifierSet
----@param source string
-function GameState:heal(target, base_amount, bonus, source) end
+---@param amount table
+function GameState:heal(target, amount) end
 
----@class ModifierSet
-local ModifierSet = {}
+---@class ModifierMap
+local ModifierMap = {}
 ---@param source ModifierSource
----@param value integer
-function ModifierSet:add_modifier(source, value) end
+---@param value string
+function ModifierMap:add_modifier(source, value) end
 
 ---@class ModifierSource
+
+---@class FlatModifierMap
+---@field total integer
+local FlatModifierMap = {}
 ------------------------------------------------------------
 -- Hook function signatures. Annotate your script-side functions with
 --   ---@type <HookName>Fn

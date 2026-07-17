@@ -19,11 +19,11 @@ use crate::{
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
         },
-        dice::{DiceSetRoll, DiceSetRollResult},
         effects::effect::EffectInstanceTemplate,
         health::life_state::LifeState,
         id::{ActionId, EffectId, EntityIdentifier, IdProvider, ResourceId, SpellId},
         items::equipment::{armor::ArmorClass, slots::EquipmentSlot},
+        modifier::{ModifierMap, ModifierResult},
         resource::{RechargeRule, ResourceAmountMap},
         saving_throw::{SavingThrowDC, SavingThrowKind},
         spells::spellbook::SpellSource,
@@ -42,7 +42,7 @@ pub type AttackRollFunction =
     dyn Fn(&World, Entity, Entity, &ActionContext) -> AttackRoll + Send + Sync;
 pub type SavingThrowFunction =
     dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
-pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> DiceSetRoll + Send + Sync;
+pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> ModifierMap + Send + Sync;
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
 pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
@@ -616,7 +616,7 @@ pub struct EffectResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct HealingResult {
     // TODO: Dedicated type for healing rolls?
-    pub healing: DiceSetRollResult,
+    pub healing: ModifierResult,
     pub new_life_state: Option<LifeState>,
 }
 

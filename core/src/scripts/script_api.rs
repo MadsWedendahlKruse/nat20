@@ -1,32 +1,48 @@
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use hecs::{Entity, World};
 use mlua::{
-    FromLua, Function, Lua, MetaMethod, UserData, UserDataFields, UserDataMethods,
+    FromLua, Function, Lua, MetaMethod, Table, UserData, UserDataFields, UserDataMethods,
     Value::{self},
     prelude::{LuaError, LuaResult},
 };
 
 use crate::{
     components::{
-        ability::AbilityScoreMap, actions::{
+        ability::{Ability, AbilityScoreMap},
+        actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionResultComponent, ActionResult, DamageResult, EffectResult, EffectResultKind, HealingResult
-            }, targeting::TargetInstance,
-        }, damage::{
-            AttackSource, CRIT_DICE_MULTIPLIER, DamageComponentResult, DamageMitigationEffect,
-            DamageMitigationResult, DamageRollResult, MitigationOperation,
-        }, dice::{DiceSet, DiceSetRoll, DieSize}, effects::effect::{
+                ActionCondition, ActionConditionResolution, ActionContext, ActionResult,
+                ActionResultComponent, DamageResult, EffectResult, EffectResultKind, HealingResult,
+            },
+            targeting::TargetInstance,
+        },
+        damage::{
+            AttackSource, DamageComponent, DamageMitigationEffect, DamageMitigationResult,
+            DamageRollResult, MitigationOperation,
+        },
+        effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
-        }, health::hit_points::HitPoints, id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId}, level::CharacterLevels, modifier::{Modifiable, ModifierSet, ModifierSource}, resource::{ResourceAmount, ResourceAmountMap, ResourceMap}, time::{TimeDuration, TurnBoundary},
-    }, engine::{
+        },
+        health::hit_points::HitPoints,
+        id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId},
+        level::CharacterLevels,
+        modifier::{FlatModifierMap, ModifierKindResult, ModifierMap, ModifierSource},
+        resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
+        time::{TimeDuration, TurnBoundary},
+    },
+    engine::{
         action_prompt::ActionData,
         event::{Event, EventKind},
         game_state::GameState,
-    }, registry::serialize::{
-        parser::{DiceExpression, Evaluable, IntExpression, Parser},
-        variables::PARSER_VARIABLES,
-    }, systems::{
+    },
+    registry::serialize::{
+        parser::{
+            Evaluable, EvaluableWithoutVariables, EvaluationError, ModifierExpression, Parser,
+        },
+        variables::{PARSER_VARIABLES, VariableMap},
+    },
+    systems::{
         self,
         d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
     },
@@ -65,66 +81,13 @@ impl From<u64> for ScriptEntity {
     }
 }
 
-#[derive(Clone)]
-pub enum ScriptDiceRollBonus {
-    Flat(IntExpression),
-    Dice(DiceExpression),
-}
-
-impl ScriptDiceRollBonus {
-    pub fn evaluate(
-        &self,
-        world: &World,
-        entity: Entity,
-        action_context: &ActionContext,
-    ) -> Result<i32, LuaError> {
-        match self {
-            ScriptDiceRollBonus::Flat(expr) => expr
-                .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                .map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to evaluate flat bonus expression: {e}"))
-                }),
-            ScriptDiceRollBonus::Dice(expr) => {
-                let dice_roll = expr
-                    .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                    .map_err(|e| {
-                        LuaError::RuntimeError(format!(
-                            "Failed to evaluate dice bonus expression: {e}"
-                        ))
-                    })?;
-
-                Ok(dice_roll.roll().subtotal)
-            }
-        }
-    }
-
-    pub fn evaluate_without_variables(&self) -> Result<i32, LuaError> {
-        match self {
-            ScriptDiceRollBonus::Flat(expr) => expr.evaluate_without_variables().map_err(|e| {
-                LuaError::RuntimeError(format!("Failed to evaluate flat bonus expression: {e}"))
-            }),
-            ScriptDiceRollBonus::Dice(expr) => {
-                let dice_roll = expr.evaluate_without_variables().map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to evaluate dice bonus expression: {e}"))
-                })?;
-
-                Ok(dice_roll.roll().subtotal)
-            }
-        }
-    }
-}
-
-impl FromStr for ScriptDiceRollBonus {
-    type Err = String;
+impl FromStr for ModifierExpression {
+    type Err = LuaError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(flat) = Parser::new(s).parse_int_expression() {
-            Ok(ScriptDiceRollBonus::Flat(flat))
-        } else if let Ok(expr) = Parser::new(s).parse_dice_expression() {
-            Ok(ScriptDiceRollBonus::Dice(expr))
-        } else {
-            Err(format!("Invalid ScriptDiceRollBonus expression: {}", s))
-        }
+        Parser::new(s).parse_modifier_expression().map_err(|e| {
+            LuaError::RuntimeError(format!("Failed to parse modifier expression: {e}"))
+        })
     }
 }
 
@@ -183,21 +146,22 @@ macro_rules! impl_from_lua_userdata {
 }
 
 impl_from_lua_userdata!(
-    ScriptEntity,
-    D20CheckDCKind,
-    D20ResultKind,
+    ActionConditionResolution,
     ActionContext,
     ActionData,
-    ActionConditionResolution,
-    DamageResult,
     ActionResult,
-    Event,
-    DamageRollResult,
+    D20CheckDCKind,
+    D20ResultKind,
     DamageMitigationResult,
+    DamageResult,
+    DamageRollResult,
     EffectInstance,
-    ModifierSet,
+    Event,
+    FlatModifierMap,
+    ModifierMap,
     ModifierSource,
     ResourceAmountMap,
+    ScriptEntity,
 );
 
 impl UserData for ScriptEntity {
@@ -238,12 +202,15 @@ impl UserData for DamageRollResult {
         methods.add_method_mut("clamp_damage_dice_min", |_, this, min: i64| {
             let minimum_roll = min as u32;
             for component in &mut this.components {
-                for roll in &mut component.result.rolls {
-                    if *roll < minimum_roll {
-                        *roll = minimum_roll;
+                for (_, modifier) in &mut component.result.results {
+                    if let ModifierKindResult::Dice(dice_set) = modifier {
+                        for roll in dice_set.rolls_mut() {
+                            if *roll < minimum_roll {
+                                *roll = minimum_roll;
+                            }
+                        }
                     }
                 }
-                component.result.recalculate_total();
             }
             this.recalculate_total();
             Ok(())
@@ -252,30 +219,19 @@ impl UserData for DamageRollResult {
         methods.add_method_mut(
             "add_damage",
             |_, this, (amount, damage_type): (String, String)| {
-                let bonus: ScriptDiceRollBonus = amount.parse().map_err(|e: String| {
-                    LuaError::RuntimeError(format!("Invalid bonus: {e}"))
-                })?;
+                let modifier: ModifierExpression = amount.parse()?;
                 let damage_type = serde_plain::from_str(&damage_type)
                     .map_err(|e| LuaError::RuntimeError(format!("Invalid damage type: {e}")))?;
 
-                match bonus {
-                    ScriptDiceRollBonus::Flat(_int_expression) => {
-                        // TODO: figure out how to add a flat bonus properly
-                        return Err(LuaError::RuntimeError(
-                            "Flat bonuses not implemented yet".to_string(),
-                        ));
-                    }
-                    ScriptDiceRollBonus::Dice(dice_expression) => {
-                        let mut dice_roll = dice_expression.evaluate_without_variables().unwrap();
-                        if this.crit {
-                            dice_roll.dice.num_dice *= CRIT_DICE_MULTIPLIER as u32;
-                        }
-                        this.add_component(DamageComponentResult {
-                            result: dice_roll.roll(),
-                            damage_type,
-                        });
-                    }
-                }
+                let modifier = modifier.evaluate_without_variables().map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to evaluate damage amount: {e}"))
+                })?;
+
+                this.add_component(DamageComponent {
+                    damage: ModifierMap::from(ModifierSource::Base, modifier),
+                    damage_type,
+                });
+
                 Ok(())
             },
         );
@@ -370,11 +326,11 @@ impl UserData for D20ResultKind {
         methods.add_method_mut(
             "reroll_bonus",
             |_, this, (bonus, source, force_use_new): (String, String, bool)| {
-                let bonus: ScriptDiceRollBonus = bonus.parse().map_err(|e: String| {
-                    LuaError::RuntimeError(format!("Invalid bonus: {e}"))
-                })?;
+                let bonus: ModifierExpression = bonus.parse()?;
                 let mut new_result = this.reroll();
-                let bonus_value = bonus.evaluate_without_variables()?;
+                let bonus_value = bonus.evaluate_without_variables().map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to evaluate bonus expression: {e}"))
+                })?;
                 let source = parse_source(&source)?;
                 new_result
                     .d20_result_mut()
@@ -391,27 +347,79 @@ impl UserData for D20ResultKind {
         methods.add_method_mut(
             "modify_result",
             |_, this, (bonus, source): (String, String)| {
-                let bonus: ScriptDiceRollBonus = bonus.parse().map_err(|e: String| {
-                    LuaError::RuntimeError(format!("Invalid bonus: {e}"))
+                let bonus: ModifierExpression = bonus.parse()?;
+                let bonus_value = bonus.evaluate_without_variables().map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to evaluate bonus expression: {e}"))
                 })?;
-                let bonus_value = bonus.evaluate_without_variables()?;
                 let source = parse_source(&source)?;
-                this.d20_result_mut()
-                    .add_modifier(source, bonus_value);
+                this.d20_result_mut().add_modifier(source, bonus_value);
                 Ok(())
             },
         );
     }
 }
 
+// TODO: Should this not live somewhere else?
 fn parse_source(source: &str) -> Result<ModifierSource, LuaError> {
     if source == "base" {
         return Ok(ModifierSource::Base);
     }
+    if let Ok(ability) = source.parse::<Ability>() {
+        return Ok(ModifierSource::Ability(ability));
+    }
     let id: Id = source.parse().map_err(|e| {
-        LuaError::RuntimeError(format!("Failed to parse modifier source ID '{}': {e}", source))
+        LuaError::RuntimeError(format!(
+            "Failed to parse modifier source ID '{}': {e}",
+            source
+        ))
     })?;
     Ok(ModifierSource::from(id))
+}
+
+type ModifierTable = BTreeMap<ModifierSource, ModifierExpression>;
+
+fn parse_modifier_table(table: Table) -> Result<ModifierTable, LuaError> {
+    let mut map = BTreeMap::new();
+    for pair in table.pairs::<String, String>() {
+        let (key, value) = pair
+            .map_err(|e| LuaError::RuntimeError(format!("Failed to parse modifier table: {e}")))?;
+        let source = parse_source(&key)?;
+        let modifier: ModifierExpression = value.parse()?;
+        map.insert(source, modifier);
+    }
+    Ok(map)
+}
+
+impl Evaluable for ModifierTable {
+    type Output = ModifierMap;
+
+    fn evaluate(
+        &self,
+        world: &World,
+        entity: Entity,
+        action_context: &ActionContext,
+        variables: &VariableMap,
+    ) -> Result<ModifierMap, EvaluationError> {
+        let mut map = ModifierMap::default();
+        for (source, modifier) in self {
+            let value = modifier.evaluate(world, entity, action_context, variables)?;
+            map.add_modifier(source.clone(), value);
+        }
+        Ok(map)
+    }
+}
+
+impl EvaluableWithoutVariables for ModifierTable {
+    type Output = ModifierMap;
+
+    fn evaluate_without_variables(&self) -> Result<ModifierMap, EvaluationError> {
+        let mut map = ModifierMap::default();
+        for (source, modifier) in self {
+            let value = modifier.evaluate_without_variables()?;
+            map.add_modifier(source.clone(), value);
+        }
+        Ok(map)
+    }
 }
 
 impl UserData for D20CheckDCKind {
@@ -430,15 +438,29 @@ impl UserData for D20CheckDCKind {
 
 impl UserData for ModifierSource {}
 
-impl UserData for ModifierSet {
+impl UserData for ModifierMap {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method_mut(
             "add_modifier",
-            |_, this, (source, value): (ModifierSource, i64)| {
-                this.add_modifier(source, value as i32);
+            |_, this, (source, value): (ModifierSource, String)| {
+                let modifier: ModifierExpression = value.parse()?;
+                this.add_modifier(
+                    source,
+                    modifier.evaluate_without_variables().map_err(|e| {
+                        LuaError::RuntimeError(format!(
+                            "Failed to evaluate modifier expression: {e}"
+                        ))
+                    })?,
+                );
                 Ok(())
             },
         );
+    }
+}
+
+impl UserData for FlatModifierMap {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("total", |_, this| Ok(this.total()));
     }
 }
 
@@ -524,21 +546,19 @@ impl UserData for DamageResult {
 
 impl UserData for ActionResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("target", |_, this| {
-            Ok(ScriptEntity::from(this.target.id()))
-        });
+        fields.add_field_method_get("target", |_, this| Ok(ScriptEntity::from(this.target.id())));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("damage", |_, this, ()| {
-            Ok(this.components()
+            Ok(this
+                .components()
                 .iter()
                 .filter_map(|component| match &component {
                     ActionResultComponent::Damage(damage_result) => Some(damage_result.clone()),
                     _ => None,
                 })
-                .collect::<Vec<_>>()
-            )
+                .collect::<Vec<_>>())
         });
         methods.add_method("resolution", |_, this, ()| Ok(this.resolution().clone()));
     }
@@ -607,11 +627,7 @@ impl UserData for Event {
             Ok(matches!(this.kind, EventKind::MovingOutOfReach { .. }))
         });
         methods.add_method("as_moving_out_of_reach", |_, this, ()| {
-            let EventKind::MovingOutOfReach {
-                mover,
-                entity,
-            } = &this.kind
-            else {
+            let EventKind::MovingOutOfReach { mover, entity } = &this.kind else {
                 return Ok((None, None));
             };
             Ok((
@@ -786,52 +802,37 @@ impl UserData for GameState {
 
         methods.add_method_mut(
             "heal",
-            |_,
-             this,
-             (target, amount, bonus, source): (
-                ScriptEntity,
-                String,
-                ModifierSet,
-                String,
-            )| {
-                let source = parse_source(&source)?;
+            |_, this, (target, amount): (ScriptEntity, Table)| {
+                let target: Entity = target.into();
 
-                let heal_expr: ScriptDiceRollBonus = amount.parse().map_err(|e| {
-                    LuaError::RuntimeError(format!("Invalid healing amount expression: {e}"))
-                })?;
+                let healing_table = parse_modifier_table(amount)?;
 
-                let mut dice_roll = match heal_expr {
-                    ScriptDiceRollBonus::Flat(expr) => {
-                        let value = expr.evaluate_without_variables().map_err(|e| {
-                            LuaError::RuntimeError(format!(
-                                "Failed to evaluate healing amount: {e}"
-                            ))
-                        })?;
-                        DiceSetRoll {
-                            dice: DiceSet::new(0, DieSize::D6),
-                            modifiers: ModifierSet::from(source.clone(), value),
-                        }
-                    }
-                    ScriptDiceRollBonus::Dice(expr) => {
-                        expr.evaluate_without_variables().map_err(|e| {
-                            LuaError::RuntimeError(format!("Failed to evaluate healing dice: {e}"))
-                        })?
-                    }
-                };
-                
-                dice_roll.modifiers.add_modifier_set(&bonus);
+                let healing_map = healing_table
+                    .evaluate(
+                        &this.world,
+                        target,
+                        &ActionContext::default(),
+                        &PARSER_VARIABLES,
+                    )
+                    .map_err(|e| {
+                        LuaError::RuntimeError(format!("Failed to evaluate healing amount: {e}"))
+                    })?;
 
-                let healing = dice_roll.roll();
-                let target_entity: hecs::Entity = target.into();
-                let new_life_state = systems::health::heal(&mut this.world, target_entity, healing.subtotal as u32);
+                let healing = healing_map.evaluate();
+
+                let new_life_state =
+                    systems::health::heal(&mut this.world, target, healing.total() as u32);
+
                 let event = Event::action_result_event(
-                    EntityIdentifier::from_world(&this.world, target_entity),
+                    EntityIdentifier::from_world(&this.world, target),
                     ActionResultComponent::Healing(HealingResult {
                         healing,
                         new_life_state,
                     }),
                 );
+
                 this.process_event(event);
+
                 Ok(())
             },
         );

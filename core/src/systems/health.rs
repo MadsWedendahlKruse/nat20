@@ -10,7 +10,7 @@ use crate::{
         damage::{DamageMitigationResult, DamageResistances, DamageRollResult},
         health::{hit_points::HitPoints, life_state::LifeState},
         level::CharacterLevels,
-        modifier::{Modifiable, ModifierSet, ModifierSource},
+        modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
         spells::{spell::CONCENTRATION_SAVING_THROW_DC_DEFAULT, spellbook::Spellbook},
     },
@@ -219,7 +219,7 @@ pub fn damage(
         );
         let saving_throw_dc = D20CheckDC {
             key: SavingThrowKind::Concentration,
-            dc: ModifierSet::from(ModifierSource::Base, dc),
+            dc: ModifierMap::from(ModifierSource::Base, dc).evaluate(),
         };
         let saving_throw_event = systems::d20::check(
             game_state,

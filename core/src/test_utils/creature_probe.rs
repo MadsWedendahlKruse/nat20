@@ -446,9 +446,11 @@ impl CreatureProbe {
             let kind = kind.clone();
             let source = source.clone();
             move |check| {
-                let reduction = check.crit_threshold_reduction().get(&source).unwrap_or(0);
+                let reduction = check.crit_threshold_reduction().modifiers.get(&source);
                 assert!(
-                    operator.evaluate(&reduction),
+                    reduction
+                        .map(|r| operator.evaluate(r))
+                        .unwrap_or(false),
                     "Expected creature {:?} to have critical threshold reduction from {:?} on {:?} check satisfying condition {:?}, but it was {:?}. Current reductions: {:#?}",
                     self.creature,
                     source,

@@ -12,13 +12,14 @@ use crate::{
     components::{
         actions::action::{ActionAttackKind, ActionContext},
         d20::{D20Check, D20CheckOutcome, D20CheckResult},
-        dice::{DiceSetRoll, DiceSetRollResult},
         id::{ActionId, SpellId},
         items::equipment::{
             armor::ArmorClass,
             weapon::{Weapon, WeaponKind},
         },
-        modifier::{Modifiable, ModifierSource},
+        modifier::{
+            ModifierKind, ModifierKindResult, ModifierMap, ModifierResult, ModifierSource, Range,
+        },
         proficiency::Proficiency,
     },
     registry::serialize::schema::impl_string_schema,
@@ -27,7 +28,7 @@ use crate::{
 
 pub const CRIT_DICE_MULTIPLIER: u32 = 2;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageType {
     Acid,
@@ -41,6 +42,7 @@ pub enum DamageType {
     Poison,
     Psychic,
     Radiant,
+    #[default]
     Slashing,
     Thunder,
 }
@@ -55,55 +57,30 @@ impl fmt::Display for DamageType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DamageComponent {
-    pub dice_roll: DiceSetRoll,
+    pub damage: ModifierMap,
     pub damage_type: DamageType,
 }
 
 impl DamageComponent {
-    pub fn new(dice_roll: impl Into<DiceSetRoll>, damage_type: DamageType) -> Self {
+    pub fn new(damage: impl Into<ModifierMap>, damage_type: DamageType) -> Self {
         Self {
-            dice_roll: dice_roll.into(),
+            damage: damage.into(),
             damage_type,
         }
     }
-}
 
-impl fmt::Display for DamageComponent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {}", self.dice_roll, self.damage_type)
+    pub fn evaluate(&self) -> DamageComponentResult {
+        DamageComponentResult {
+            result: self.damage.evaluate(),
+            damage_type: self.damage_type.clone(),
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DamageComponentResult {
-    pub result: DiceSetRollResult,
+    pub result: ModifierResult,
     pub damage_type: DamageType,
-}
-
-impl fmt::Display for DamageComponentResult {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {} ", self.result.subtotal, self.damage_type)?;
-        write!(
-            f,
-            "({} ({}d{})",
-            self.result.rolls.iter().sum::<u32>(),
-            self.result.rolls.len(),
-            self.result.die_size as u32,
-        )?;
-        if !self.result.modifiers.is_empty() {
-            write!(f, " {}", self.result.modifiers)?;
-        }
-        write!(f, ")")
-    }
-}
-
-impl Default for DamageComponentResult {
-    fn default() -> Self {
-        Self {
-            result: DiceSetRollResult::default(),
-            damage_type: DamageType::Slashing,
-        }
-    }
 }
 
 /// This is used in the attack roll hook so we e.g. only apply Fighting Style
@@ -187,43 +164,39 @@ impl Display for DamageSource {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DamageRoll {
-    /// Separate the primary so we know where to apply e.g. ability modifiers
-    /// TODO: Or just use index 0 as the primary and have all others be bonuses?
-    pub primary: DamageComponent,
-    pub bonus: Vec<DamageComponent>,
+    pub components: Vec<DamageComponent>,
     pub source: DamageSource,
 }
 
 impl DamageRoll {
-    pub fn new(dice: DiceSetRoll, damage_type: DamageType, source: DamageSource) -> Self {
+    pub fn new(damage: ModifierMap, damage_type: DamageType, source: DamageSource) -> Self {
         Self {
-            primary: DamageComponent::new(dice, damage_type),
-            bonus: Vec::new(),
+            components: vec![DamageComponent::new(damage, damage_type)],
             source,
         }
     }
 
-    pub fn add_bonus(&mut self, dice: DiceSetRoll, damage_type: DamageType) {
-        self.bonus.push(DamageComponent::new(dice, damage_type));
+    pub fn add_component(&mut self, damage: ModifierMap, damage_type: DamageType) {
+        self.components
+            .push(DamageComponent::new(damage, damage_type));
     }
 
     pub fn roll(&self, crit: bool) -> DamageRollResult {
         let mut results = Vec::new();
         let mut total = 0;
 
-        let mut damage_components = vec![self.primary.clone()];
-        damage_components.extend(self.bonus.iter().cloned());
-
         let dice_multiplier = if crit { CRIT_DICE_MULTIPLIER } else { 1 };
 
-        for component in damage_components {
-            let mut component_dice_roll = component.dice_roll.clone();
-            component_dice_roll.dice.num_dice *= dice_multiplier;
-            let result = component_dice_roll.roll();
-            total += result.subtotal;
+        for component in &self.components {
+            let mut result = ModifierResult::default();
+            for (source, modifier) in component.damage.modifiers.iter() {
+                let evaluated = evaluate_modifier_dice_multiplier(modifier, dice_multiplier);
+                result.results.insert(source.clone(), evaluated);
+            }
+            total += result.total();
             results.push(DamageComponentResult {
-                damage_type: component.damage_type,
                 result,
+                damage_type: component.damage_type.clone(),
             });
         }
 
@@ -237,30 +210,45 @@ impl DamageRoll {
     }
 
     pub fn min_max_rolls(&self) -> Vec<(i32, i32, DamageType)> {
-        let mut results = Vec::new();
-        results.push((
-            self.primary.dice_roll.min_roll(),
-            self.primary.dice_roll.max_roll(),
-            self.primary.damage_type.clone(),
-        ));
-        for comp in &self.bonus {
-            results.push((
-                comp.dice_roll.min_roll(),
-                comp.dice_roll.max_roll(),
-                comp.damage_type.clone(),
-            ));
-        }
-        results
+        self.components
+            .iter()
+            .map(|component| {
+                let min = component
+                    .damage
+                    .modifiers
+                    .iter()
+                    .map(|(_, modifier)| modifier.min())
+                    .sum();
+                let max = component
+                    .damage
+                    .modifiers
+                    .iter()
+                    .map(|(_, modifier)| modifier.max())
+                    .sum();
+                (min, max, component.damage_type.clone())
+            })
+            .collect()
     }
 }
 
-impl fmt::Display for DamageRoll {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({})", self.primary)?;
-        for comp in &self.bonus {
-            write!(f, " + ({})", comp)?;
+fn evaluate_modifier_dice_multiplier(
+    modifier: &ModifierKind,
+    multiplier: u32,
+) -> ModifierKindResult {
+    match modifier {
+        ModifierKind::Flat(value) => ModifierKindResult::Flat(*value),
+        ModifierKind::Dice(dice_set) => {
+            let mut new_dice_set = dice_set.clone();
+            new_dice_set.num_dice *= multiplier;
+            ModifierKindResult::Dice(new_dice_set.roll())
         }
-        Ok(())
+        ModifierKind::Composite(kinds) => {
+            let results = kinds
+                .iter()
+                .map(|kind| evaluate_modifier_dice_multiplier(kind, multiplier))
+                .collect();
+            ModifierKindResult::Composite(results)
+        }
     }
 }
 
@@ -277,29 +265,19 @@ pub struct DamageRollResult {
 
 impl DamageRollResult {
     pub fn recalculate_total(&mut self) {
-        self.total = self
-            .components
-            .iter_mut()
-            .map(|c| {
-                c.result.recalculate_total();
-                c.result.subtotal
-            })
-            .sum();
+        self.total = self.components.iter_mut().map(|c| c.result.total()).sum();
     }
 
-    pub fn add_component(&mut self, component: DamageComponentResult) {
-        self.total += component.result.subtotal;
-        self.components.push(component);
-    }
-}
-
-impl fmt::Display for DamageRollResult {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.components[0])?;
-        for comp in &self.components[1..] {
-            write!(f, " + {}", comp)?;
+    pub fn add_component(&mut self, mut component: DamageComponent) {
+        for (_, mut modifier) in component.damage.modifiers.iter_mut() {
+            if let ModifierKind::Dice(dice_set) = &mut modifier {
+                if self.crit {
+                    dice_set.num_dice *= CRIT_DICE_MULTIPLIER;
+                }
+            }
         }
-        write!(f, " = {}", self.total)
+        let component = component.evaluate();
+        self.components.push(component);
     }
 }
 
@@ -453,7 +431,7 @@ impl DamageResistances {
 
         for comp in &roll.components {
             let damage_type = comp.damage_type;
-            let mut value = comp.result.subtotal;
+            let mut value = comp.result.total();
             let mut applied_mods = Vec::new();
 
             if let Some(effects) = self.effects.get(&damage_type) {
@@ -516,7 +494,7 @@ impl fmt::Display for DamageResistances {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DamageComponentMitigation {
     pub damage_type: DamageType,
-    pub original: DiceSetRollResult,
+    pub original: ModifierResult,
     pub after_mods: i32,
     /// Sorted by priority
     pub modifiers: Vec<DamageMitigationEffect>,
@@ -524,37 +502,11 @@ pub struct DamageComponentMitigation {
 
 impl DamageComponentMitigation {
     pub fn recalculate_total(&mut self) {
-        let mut value = self.original.subtotal;
+        let mut value = self.original.total();
         for modifier in &self.modifiers {
             value = modifier.operation.apply(value);
         }
         self.after_mods = value;
-    }
-}
-
-impl fmt::Display for DamageComponentMitigation {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.original.subtotal == self.after_mods {
-            return write!(f, "{} {}", self.original.subtotal, self.damage_type);
-        }
-        if self.after_mods == 0 {
-            return write!(
-                f,
-                "0 {} ({:?})",
-                self.damage_type,
-                MitigationOperation::Immunity
-            );
-        }
-        write!(f, "{} {} ", self.after_mods, self.damage_type)?;
-        let mut amount = self.original.subtotal.to_string();
-        for modifier in &self.modifiers {
-            let explanation = match modifier.operation {
-                MitigationOperation::FlatReduction(_) => format!("{}", modifier.source),
-                _ => format!("{:?}", modifier.operation),
-            };
-            amount = format!("({} {} ({}))", amount, modifier.operation, explanation);
-        }
-        write!(f, "{}", amount)
     }
 }
 
@@ -578,16 +530,6 @@ impl DamageMitigationResult {
     pub fn add_component(&mut self, component: DamageComponentMitigation) {
         self.total += component.after_mods;
         self.components.push(component);
-    }
-}
-
-impl fmt::Display for DamageMitigationResult {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.components[0])?;
-        for comp in &self.components[1..] {
-            write!(f, " + {}", comp)?;
-        }
-        write!(f, " = {}", self.total)
     }
 }
 
@@ -623,7 +565,7 @@ impl AttackRollTemplate {
         attack_roll
             .d20_check
             .modifiers_mut()
-            .add_modifier_set(self.d20_check.modifiers());
+            .add_modifier_map(self.d20_check.modifiers());
 
         for (source, advantage) in self.d20_check.advantage_tracker().summary() {
             attack_roll
@@ -635,7 +577,7 @@ impl AttackRollTemplate {
         attack_roll
             .d20_check
             .crit_threshold_reduction_mut()
-            .add_modifier_set(self.d20_check.crit_threshold_reduction());
+            .add_modifier_map(self.d20_check.crit_threshold_reduction());
 
         if let Some((source, forced_outcome)) = self.d20_check.forced_outcome() {
             attack_roll
@@ -671,11 +613,10 @@ pub struct AttackRollResult {
 
 impl AttackRollResult {
     pub fn is_success(&self, armor_class: &ArmorClass) -> bool {
-        match self.roll_result.outcome {
-            Some(D20CheckOutcome::CriticalSuccess) => true,
-            Some(D20CheckOutcome::CriticalFailure) => false,
-            _ => self.roll_result.total() >= armor_class.total() as u32,
+        if let Some(outcome) = &self.roll_result.outcome {
+            return outcome.is_success();
         }
+        return self.roll_result.total() >= armor_class.total() as u32;
     }
 
     pub fn is_crit(&self) -> bool {
@@ -683,13 +624,6 @@ impl AttackRollResult {
             self.roll_result.outcome,
             Some(D20CheckOutcome::CriticalSuccess)
         )
-    }
-}
-
-impl fmt::Display for AttackRollResult {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO: Include source information?
-        write!(f, "{}", self.roll_result)
     }
 }
 
@@ -707,7 +641,7 @@ impl AttackRoll {
         }
     }
 
-    pub fn hit_chance(&self, world: &World, entity: Entity, target_ac: u32) -> f64 {
+    pub fn hit_chance(&self, world: &World, entity: Entity, target_ac: u32) -> Range<f32> {
         self.d20_check.success_probability(
             target_ac,
             systems::helpers::level(world, entity)
@@ -719,39 +653,41 @@ impl AttackRoll {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use rstest::{fixture, rstest};
 
     use crate::components::{
         ability::Ability,
-        dice::{DiceSet, DieSize},
+        dice::{DiceSet, DiceSetResult, DieSize},
         id::{EffectId, ItemId},
-        modifier::{Modifiable, ModifierSet, ModifierSource},
+        modifier::ModifierSource,
     };
 
     use super::*;
 
     #[rstest]
     fn damage_roll_values(damage_roll: DamageRoll) {
-        println!("Roll: {}", damage_roll);
+        println!("Roll: {:?}", damage_roll);
         let result = damage_roll.roll(false);
         assert_eq!(result.components.len(), 2);
         // 2d6 + 1d4 + 2 (str mod)
         // Min roll: 2 + 1 + 2 = 5
         // Max roll: 12 + 4 + 2 = 18
         assert!(result.total >= 5 && result.total <= 18);
-        println!("Roll result:{}", result);
+        println!("Roll result:{:?}", result);
     }
 
     #[rstest]
     fn damage_roll_crit(damage_roll: DamageRoll) {
-        println!("Roll: {}", damage_roll);
+        println!("Roll: {:?}", damage_roll);
         let result = damage_roll.roll(true);
         assert_eq!(result.components.len(), 2);
         // 4d6 (2 * 2d6) + 2d4 (2 * 1d4) + 2 (str mod)
         // Min roll: 4 + 2 + 2 = 8
         // Max roll: 24 + 8 + 2 = 34
         assert!(result.total >= 8 && result.total <= 34);
-        println!("Roll result: {}", result);
+        println!("Roll result: {:?}", result);
     }
 
     #[rstest]
@@ -771,10 +707,10 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // 7 / 2 + 2 = 3.5
-        // 3.5 + 2 = 5.5 -> round down to 5
-        assert_eq!(mitigation_result.total, 5);
-        println!("{}", mitigation_result);
+        // (7 + 2) / 2 = 4.5
+        // 4.5 + 2 = 4.5 -> round down to 6
+        assert_eq!(mitigation_result.total, 6);
+        println!("{:?}", mitigation_result);
     }
 
     #[rstest]
@@ -794,9 +730,9 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // 7 + 0 = 7
-        assert_eq!(mitigation_result.total, 7);
-        println!("{}", mitigation_result);
+        // 7 + 2 (Slashing) + 0 (Fire) = 9
+        assert_eq!(mitigation_result.total, 9);
+        println!("{:?}", mitigation_result);
     }
 
     #[rstest]
@@ -816,9 +752,9 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // 7 * 2 + 2 = 16
-        assert_eq!(mitigation_result.total, 16);
-        println!("{}", mitigation_result);
+        // (7 + 2) * 2 + 2 = 20
+        assert_eq!(mitigation_result.total, 20);
+        println!("{:?}", mitigation_result);
     }
 
     #[rstest]
@@ -838,9 +774,9 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // 7 - 3 + 2 = 6
-        assert_eq!(mitigation_result.total, 6);
-        println!("{}", mitigation_result);
+        // (7 + 2) - 3 Slashing + 2 Fire = 8
+        assert_eq!(mitigation_result.total, 8);
+        println!("{:?}", mitigation_result);
     }
 
     #[rstest]
@@ -869,10 +805,10 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // Slashing: (7 - 3) / 2 = 2
-        // 2 Slashing + 2 Fire = 4
-        assert_eq!(mitigation_result.total, 4);
-        println!("{}", mitigation_result);
+        // Slashing: (7 + 2 - 3) / 2 = 3
+        // 3 Slashing + 2 Fire = 5
+        assert_eq!(mitigation_result.total, 5);
+        println!("{:?}", mitigation_result);
     }
 
     #[rstest]
@@ -902,10 +838,10 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // Slashing: 7 / 2 = 3.5 -> round down to 3
+        // Slashing: (7 + 2) / 2 = 4.5 -> round down to 4
         // Fire: 2 * 0 = 0
-        assert_eq!(mitigation_result.total, 3);
-        println!("{}", mitigation_result);
+        assert_eq!(mitigation_result.total, 4);
+        println!("{:?}", mitigation_result);
     }
 
     #[rstest]
@@ -942,7 +878,7 @@ mod tests {
 
         let mitigation_result = resistances.apply(&damage_roll_result);
         // Slashing immunity takes priority
-        println!("{}", mitigation_result);
+        println!("{:?}", mitigation_result);
         // 7 * 0 = 0 slashing
         // 0 slashing + 2 fire = 2
         assert_eq!(mitigation_result.total, 2);
@@ -975,82 +911,43 @@ mod tests {
         );
 
         let mitigation_result = resistances.apply(&damage_roll_result);
-        // Slashing: (7 - 3) / 2 = 2
-        // 2 Slashing + 2 Fire = 4
-        assert_eq!(mitigation_result.total, 4);
-        println!("{}", mitigation_result);
+        // Slashing: (7 + 2 - 3) / 2 = 3
+        // 3 Slashing + 2 Fire = 5
+        assert_eq!(mitigation_result.total, 5);
+        println!("{:?}", mitigation_result);
     }
-
-    // TODO: Find a better way to test this
-    // #[test]
-    // fn attack_roll_crit_threshold() {
-    //     // Character is a level 5 Champion Fighter, so crit threshold is 19 (Improved Critical)
-    //     let character = fixtures::creatures::heroes::fighter();
-
-    //     // TODO: This is a pretty crazy complicated way to get the attack roll
-    //     let attack_action = character
-    //         .available_actions()
-    //         .iter()
-    //         .find(|(action, context)| {
-    //             **context
-    //                 == ActionContext::melee_weapon(...)
-    //                     weapon_type: WeaponType::Melee,
-    //                     hand: HandSlot::Main,
-    //                 }
-    //         })
-    //         .unwrap();
-
-    //     let attack_roll = match &attack_action.0.kind {
-    //         ActionKind::AttackRollDamage { attack_roll, .. } => {
-    //             attack_roll(&World, Entity, &attack_action.1.clone())
-    //         }
-    //         _ => panic!("Expected AttackRollDamage action"),
-    //     };
-
-    //     // TODO: This is a pretty hacky way to test this
-    //     let mut attack_roll_result = attack_roll.roll(&World, Entity);
-    //     while attack_roll_result.roll_result.selected_roll != 19 {
-    //         // Keep rolling until we get a 19 (could also check for 20, but that's always a crit, so doesn't
-    //         // really test the reduced crit threshold)
-    //         attack_roll_result = attack_roll.roll(&World, Entity);
-    //     }
-
-    //     assert_eq!(attack_roll_result.roll_result.selected_roll, 19);
-    //     assert!(attack_roll_result.roll_result.is_crit);
-    //     assert_eq!(
-    //         attack_roll_result.source,
-    //         DamageSource::Weapon(
-    //             WeaponType::Melee,
-    //             HashSet::from([WeaponProperties::TwoHanded])
-    //         )
-    //     );
-    // }
 
     #[fixture]
     fn damage_roll() -> DamageRoll {
-        let mut modifiers = ModifierSet::new();
-        modifiers.add_modifier(ModifierSource::Ability(Ability::Strength), 2);
         DamageRoll {
-            primary: DamageComponent {
-                dice_roll: DiceSetRoll {
-                    dice: DiceSet {
-                        num_dice: 2,
-                        die_size: DieSize::D6,
-                    },
-                    modifiers,
+            components: vec![
+                DamageComponent {
+                    damage: ModifierMap::from_iter(vec![
+                        (
+                            ModifierSource::Base,
+                            ModifierKind::Dice(DiceSet {
+                                num_dice: 2,
+                                die_size: DieSize::D6,
+                            }),
+                        ),
+                        (
+                            ModifierSource::Ability(Ability::Strength),
+                            ModifierKind::Flat(2),
+                        ),
+                    ]),
+                    damage_type: DamageType::Slashing,
                 },
-                damage_type: DamageType::Slashing,
-            },
-            bonus: vec![DamageComponent {
-                dice_roll: DiceSetRoll {
-                    dice: DiceSet {
-                        num_dice: 1,
-                        die_size: DieSize::D4,
-                    },
-                    modifiers: ModifierSet::new(),
+                DamageComponent {
+                    damage: ModifierMap::from(
+                        ModifierSource::Base,
+                        ModifierKind::Dice(DiceSet {
+                            num_dice: 1,
+                            die_size: DieSize::D4,
+                        }),
+                    ),
+                    damage_type: DamageType::Fire,
                 },
-                damage_type: DamageType::Fire,
-            }],
+            ],
             source: DamageSource::Weapon(WeaponKind::Melee),
         }
     }
@@ -1061,24 +958,42 @@ mod tests {
             components: vec![
                 DamageComponentResult {
                     damage_type: DamageType::Slashing,
-                    result: DiceSetRollResult {
-                        rolls: vec![3, 4],
-                        die_size: DieSize::D6,
-                        modifiers: ModifierSet::new(),
-                        subtotal: 7,
+                    result: ModifierResult {
+                        results: BTreeMap::from_iter(vec![
+                            (
+                                ModifierSource::Base,
+                                ModifierKindResult::Dice(DiceSetResult::new(
+                                    DiceSet {
+                                        num_dice: 2,
+                                        die_size: DieSize::D6,
+                                    },
+                                    vec![3, 4],
+                                )),
+                            ),
+                            (
+                                ModifierSource::Ability(Ability::Strength),
+                                ModifierKindResult::Flat(2),
+                            ),
+                        ]),
                     },
                 },
                 DamageComponentResult {
                     damage_type: DamageType::Fire,
-                    result: DiceSetRollResult {
-                        rolls: vec![2],
-                        die_size: DieSize::D4,
-                        modifiers: ModifierSet::new(),
-                        subtotal: 2,
+                    result: ModifierResult {
+                        results: BTreeMap::from_iter(vec![(
+                            ModifierSource::Base,
+                            ModifierKindResult::Dice(DiceSetResult::new(
+                                DiceSet {
+                                    num_dice: 1,
+                                    die_size: DieSize::D4,
+                                },
+                                vec![2],
+                            )),
+                        )]),
                     },
                 },
             ],
-            total: 9,
+            total: 11,
             source: DamageSource::Weapon(WeaponKind::Melee),
             action: None,
             crit: false,

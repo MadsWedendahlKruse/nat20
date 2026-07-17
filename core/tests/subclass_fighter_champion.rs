@@ -9,7 +9,7 @@ use nat20_core::{
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
-    systems::{self, d20::D20CheckKind},
+    systems::d20::D20CheckKind,
     test_utils::{
         creature_builder::CreatureBuilder, creature_probe::Operator, fixtures, scenario::Scenario,
     },

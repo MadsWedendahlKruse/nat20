@@ -8,7 +8,7 @@ mod tests {
             ability::{Ability, AbilityScore, AbilityScoreMap},
             actions::action::{ActionContext, AttackRollProvider},
             damage::DamageType,
-            dice::DieSize,
+            dice::{DiceSet, DieSize},
             id::ItemId,
             items::{
                 equipment::{
@@ -20,7 +20,7 @@ mod tests {
                 item::{Item, ItemRarity},
                 money::MonetaryValue,
             },
-            modifier::ModifierSource,
+            modifier::{ModifierMap, ModifierSource},
             proficiency::ProficiencyLevel,
         },
         entities::character::Character,
@@ -77,7 +77,7 @@ mod tests {
         assert!(
             damage_result.components[0]
                 .result
-                .modifiers
+                .results
                 .get(&ModifierSource::Ability(Ability::Dexterity))
                 .is_some()
         );
@@ -100,8 +100,10 @@ mod tests {
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
-        assert_eq!(roll.primary.dice_roll.dice.num_dice, 1);
-        assert_eq!(roll.primary.dice_roll.dice.die_size, DieSize::D10);
+        assert_eq!(
+            roll.components[0].damage,
+            ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10))
+        );
 
         systems::loadout::equip_in_slot(
             &mut game_state,
@@ -119,8 +121,10 @@ mod tests {
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
-        assert_eq!(roll.primary.dice_roll.dice.num_dice, 1);
-        assert_eq!(roll.primary.dice_roll.dice.die_size, DieSize::D8);
+        assert_eq!(
+            roll.components[0].damage,
+            ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D8))
+        );
 
         // Unequip dagger
         let _ = systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::MeleeOffHand)
@@ -132,7 +136,10 @@ mod tests {
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
-        assert_eq!(roll.primary.dice_roll.dice.die_size, DieSize::D10);
+        assert_eq!(
+            roll.components[0].damage,
+            ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10))
+        );
     }
 
     #[test]
@@ -219,19 +226,19 @@ mod tests {
         assert!(
             roll.d20_check
                 .modifiers()
-                .contains_key(&ModifierSource::Ability(Ability::Dexterity))
+                .contains_source(&ModifierSource::Ability(Ability::Dexterity))
         );
         assert!(
             !roll
                 .d20_check
                 .modifiers()
-                .contains_key(&ModifierSource::Proficiency(ProficiencyLevel::Proficient))
+                .contains_source(&ModifierSource::Proficiency(ProficiencyLevel::Proficient))
         );
         assert!(
             !roll
                 .d20_check
                 .modifiers()
-                .contains_key(&ModifierSource::Custom("Enchantment".to_string()))
+                .contains_source(&ModifierSource::Custom("Enchantment".to_string()))
         );
     }
 }

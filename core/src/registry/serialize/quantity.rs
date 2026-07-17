@@ -14,7 +14,7 @@ use uom::si::{
 use crate::{
     components::actions::action::ActionContext,
     registry::serialize::{
-        parser::{Evaluable, EvaluationError, IntExpression, Parser},
+        parser::{Evaluable, EvaluableWithoutVariables, EvaluationError, IntExpression, Parser},
         schema::EXPRESSION_VARIABLES_DOC,
         variables::VariableMap,
     },

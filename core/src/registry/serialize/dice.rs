@@ -12,6 +12,7 @@ use crate::{
     components::{
         actions::action::{ActionAttackKind, ActionContext, DamageFunction, HealingFunction},
         damage::{DamageRoll, DamageSource, DamageType},
+        modifier::{ModifierMap, ModifierSource},
     },
     registry::serialize::{
         parser::{Evaluable, Parser},
@@ -134,14 +135,14 @@ impl FromStr for DamageEquation {
         let dice_part = parts[0];
         let damage_type: DamageType = serde_plain::from_str(parts[1]).unwrap();
 
-        if let Ok(dice_expression) = Parser::new(dice_part).parse_dice_expression() {
+        if let Ok(modifier_expression) = Parser::new(dice_part).parse_modifier_expression() {
             let function = Arc::new(
                 move |world: &World, entity: Entity, action_context: &ActionContext| {
-                    let dice_roll = dice_expression
+                    let modifier = modifier_expression
                         .evaluate(world, entity, action_context, &PARSER_VARIABLES)
                         .unwrap();
                     DamageRoll::new(
-                        dice_roll,
+                        ModifierMap::from(ModifierSource::Base, modifier),
                         damage_type,
                         // TODO: Determine source properly
                         // Source is also included in AttackRoll, so maybe we only
@@ -194,12 +195,15 @@ impl FromStr for HealEquation {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Example format: "(1d8 + spell_level)"
 
-        if let Ok(dice_expression) = Parser::new(s).parse_dice_expression() {
+        if let Ok(modifier_expression) = Parser::new(s).parse_modifier_expression() {
             let function = Arc::new(
                 move |world: &World, entity: Entity, action_context: &ActionContext| {
-                    dice_expression
-                        .evaluate(world, entity, action_context, &PARSER_VARIABLES)
-                        .unwrap()
+                    ModifierMap::from(
+                        ModifierSource::Base,
+                        modifier_expression
+                            .evaluate(world, entity, action_context, &PARSER_VARIABLES)
+                            .unwrap(),
+                    )
                 },
             );
 

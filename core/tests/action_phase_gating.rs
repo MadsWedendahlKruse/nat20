@@ -9,6 +9,7 @@ use nat20_core::{
         d20::D20CheckOutcome,
         damage::{AttackSource, DamageComponent, DamageSource, DamageType},
         dice::{DiceSet, DieSize},
+        modifier::{ModifierMap, ModifierSource},
     },
     engine::action_prompt::ActionData,
     systems::{self, d20::D20CheckKind},
@@ -96,7 +97,10 @@ fn phase_gating(
             .event_filter()
             .actor("wizard")
             .damage_roll(
-                DamageComponent::new(DiceSet::new(dice_num, DieSize::D8), DamageType::Cold),
+                DamageComponent::new(
+                    ModifierMap::from(ModifierSource::Base, DiceSet::new(dice_num, DieSize::D8)),
+                    DamageType::Cold,
+                ),
                 DamageSource::Spell("spell.ray_of_frost".into()),
             )
             .assert_event_count(expected);

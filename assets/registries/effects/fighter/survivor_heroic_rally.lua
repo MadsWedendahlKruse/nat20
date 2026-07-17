@@ -5,9 +5,10 @@ local function turn_start_hook(game_state, entity)
     if current_hp > 0 and current_hp <= max_hp / 2 then
         game_state:heal(
             entity,
-            "5",
-            game_state:ability_modifier(entity, "constitution"),
-            "nat20_core::effect.fighter.champion.survivor.heroic_rally"
+            {
+                ["base"] = "5",
+                ["constitution"] = game_state:ability_modifier(entity, "constitution").total,
+            }
         )
     end
 end

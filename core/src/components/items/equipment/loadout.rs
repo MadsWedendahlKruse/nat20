@@ -17,7 +17,6 @@ use crate::{
         damage::{
             AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageSource, DamageType,
         },
-        dice::{DiceSet, DiceSetRoll, DieSize},
         id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
@@ -31,7 +30,7 @@ use crate::{
             inventory::{ItemContainer, ItemInstance},
             item::Item,
         },
-        modifier::{Modifiable, ModifierSet, ModifierSource},
+        modifier::{ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         saving_throw::{SavingThrowDC, SavingThrowKind},
     },
@@ -130,7 +129,7 @@ impl Into<EquipmentInstance> for &LazyLock<ItemId> {
 pub struct Loadout {
     equipment: HashMap<EquipmentSlot, EquipmentInstance>,
     attack_roll_templates: HashMap<WeaponKind, AttackRollTemplate>,
-    saving_throw_modifiers: HashMap<WeaponKind, ModifierSet>,
+    saving_throw_modifiers: HashMap<WeaponKind, ModifierMap>,
 }
 
 impl Loadout {
@@ -157,10 +156,10 @@ impl Loadout {
         self.attack_roll_templates.get_mut(weapon_kind).unwrap()
     }
 
-    pub fn saving_throw_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierSet {
+    pub fn saving_throw_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierMap {
         self.saving_throw_modifiers
             .entry(weapon_kind.clone())
-            .or_insert_with(ModifierSet::new)
+            .or_insert_with(ModifierMap::default)
     }
 
     pub fn item_in_slot(&self, slot: &EquipmentSlot) -> Option<&EquipmentInstance> {
@@ -301,11 +300,7 @@ impl Loadout {
             armor_class
         } else {
             // TODO: Not sure if this is the right way to handle unarmored characters
-            ArmorClass {
-                base: (10, ModifierSource::Base),
-                dexterity_bonus: ArmorDexterityBonus::Unlimited,
-                modifiers: ModifierSet::new(),
-            }
+            ArmorClass::new(10, ModifierSource::Base, ArmorDexterityBonus::Unlimited)
         }
     }
 
@@ -360,26 +355,21 @@ impl Loadout {
     }
 
     pub fn unarmed_damage_roll(&self, world: &World, entity: Entity) -> DamageRoll {
-        let mut damage_roll = DamageRoll::new(
-            DiceSetRoll::new(0, DieSize::D4, ModifierSet::new()),
-            DamageType::Bludgeoning,
-            DamageSource::Weapon(WeaponKind::Unarmed),
-        );
-
         let strength_modifier = systems::helpers::get_component::<AbilityScoreMap>(world, entity)
             .ability_modifier(&Ability::Strength)
             .total();
 
-        damage_roll
-            .primary
-            .dice_roll
-            .add_modifier(ModifierSource::Base, 1);
-        damage_roll.primary.dice_roll.add_modifier(
-            ModifierSource::Ability(Ability::Strength),
-            strength_modifier,
-        );
-
-        damage_roll
+        DamageRoll::new(
+            ModifierMap::from_iter(vec![
+                (ModifierSource::Base, 1),
+                (
+                    ModifierSource::Ability(Ability::Strength),
+                    strength_modifier,
+                ),
+            ]),
+            DamageType::Bludgeoning,
+            DamageSource::Weapon(WeaponKind::Unarmed),
+        )
     }
 
     pub fn damage_roll_from_context(
@@ -534,18 +524,23 @@ impl SavingThrowProvider for Loadout {
             .proficiency_bonus() as i32;
         let ability_modifier = ability_scores.ability_modifier(&ability).total();
 
-        let mut dc = ModifierSet::from(ModifierSource::Base, 8);
-        dc.add_modifier(
-            ModifierSource::Proficiency(ProficiencyLevel::Proficient),
-            proficiency_bonus,
-        );
-        dc.add_modifier(ModifierSource::Ability(ability), ability_modifier);
+        let mut dc = ModifierMap::from_iter(vec![
+            (ModifierSource::Base, 8),
+            (
+                ModifierSource::Proficiency(ProficiencyLevel::Proficient),
+                proficiency_bonus.into(),
+            ),
+            (ModifierSource::Ability(ability), ability_modifier.into()),
+        ]);
 
         if let Some(modifiers) = self.saving_throw_modifiers.get(&weapon_kind) {
-            dc.add_modifier_set(modifiers);
+            dc.add_modifier_map(modifiers);
         }
 
-        SavingThrowDC { key: kind, dc }
+        SavingThrowDC {
+            key: kind,
+            dc: dc.evaluate(),
+        }
     }
 }
 

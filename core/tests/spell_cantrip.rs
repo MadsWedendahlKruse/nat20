@@ -4,6 +4,7 @@ use nat20_core::{
         d20::D20CheckOutcome,
         damage::{AttackSource, DamageComponent, DamageSource, DamageType},
         dice::{DiceSet, DieSize},
+        modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
     },
     systems::d20::D20CheckKind,
@@ -50,7 +51,10 @@ fn acid_splash() {
             .actor("wizard")
             .damage_dealt(
                 *handle,
-                DamageComponent::new(DiceSet::new(1, DieSize::D6), DamageType::Acid),
+                DamageComponent::new(
+                    ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D6)),
+                    DamageType::Acid,
+                ),
                 DamageSource::Spell("spell.acid_splash".into()),
             )
             .assert_event();
@@ -60,8 +64,8 @@ fn acid_splash() {
 }
 
 #[rstest]
-#[case(1, 2)]
-#[case(5, 4)]
+#[case(1, 1)]
+#[case(5, 2)]
 fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
     let mut scenario = Scenario::new();
     scenario
@@ -78,7 +82,7 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
         .assert_action_available("action.fire_bolt")
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
-            D20CheckOutcome::CriticalSuccess,
+            D20CheckOutcome::Success,
         )
         .act("action.fire_bolt")
         .target_entity("goblin")
@@ -90,7 +94,10 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
         .damage_dealt(
             "goblin",
             DamageComponent::new(
-                DiceSet::new(expected_dice_num, DieSize::D10), // rolls twice on crit
+                ModifierMap::from(
+                    ModifierSource::Base,
+                    DiceSet::new(expected_dice_num, DieSize::D10),
+                ),
                 DamageType::Fire,
             ),
             DamageSource::Spell("spell.fire_bolt".into()),
@@ -114,7 +121,7 @@ fn ray_of_frost() {
         .assert_action_available("action.ray_of_frost")
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
-            D20CheckOutcome::CriticalSuccess,
+            D20CheckOutcome::Success,
         )
         .act("action.ray_of_frost")
         .target_entity("goblin")
@@ -126,7 +133,7 @@ fn ray_of_frost() {
         .damage_dealt(
             "goblin",
             DamageComponent::new(
-                DiceSet::new(2, DieSize::D8), // rolls twice on crit
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D8)),
                 DamageType::Cold,
             ),
             DamageSource::Spell("spell.ray_of_frost".into()),

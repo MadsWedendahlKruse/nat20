@@ -18,10 +18,9 @@ use crate::{
         },
         activity::ActivityState,
         damage::DamageRollResult,
-        dice::DiceSetRollResult,
         effects::effect::EffectInstanceTemplate,
         id::{EffectId, EntityIdentifier},
-        modifier::{Modifiable, ModifierSource},
+        modifier::{ModifierKindResult, ModifierResult, ModifierSource},
         spells::spell::{ConcentrationInstance, SpellFlag},
     },
     engine::{
@@ -584,7 +583,7 @@ struct StepComponent {
 enum PayloadResult {
     /// None: the condition failed and there is no fallback damage
     Damage(Option<DamageRollResult>),
-    Healing(DiceSetRollResult),
+    Healing(ModifierResult),
     /// None: the condition failed, so the effect is not applied
     Effect(Option<EffectInstanceTemplate>),
     Reaction,
@@ -675,10 +674,10 @@ impl StepComponent {
                     };
 
                     for component in damage_roll.components.iter_mut() {
-                        let total = component.result.subtotal;
-                        component.result.modifiers.add_modifier(
+                        let total = component.result.total();
+                        component.result.add_modifier_result(
                             ModifierSource::Custom(failure_label.clone()),
-                            -(total as f32 / 2.0).ceil() as i32,
+                            ModifierKindResult::Flat(-(total as f32 / 2.0).ceil() as i32),
                         );
                     }
                     damage_roll.recalculate_total();
@@ -725,7 +724,7 @@ impl StepComponent {
             ActionPayloadComponent::Healing(healing) => {
                 // TODO: No events yet for healing, might introduce them in the future?
                 let healing_amount =
-                    healing(&game_state.world, action.actor.id(), &action.context).roll();
+                    healing(&game_state.world, action.actor.id(), &action.context).evaluate();
                 self.payload_result = Awaitable::Ready(PayloadResult::Healing(healing_amount));
                 true
             }
@@ -837,13 +836,10 @@ impl StepComponent {
     fn apply_healing(
         game_state: &mut GameState,
         target: Entity,
-        healing_amount: DiceSetRollResult,
+        healing_amount: ModifierResult,
     ) -> ActionResultComponent {
-        let new_life_state = systems::health::heal(
-            &mut game_state.world,
-            target,
-            healing_amount.subtotal as u32,
-        );
+        let new_life_state =
+            systems::health::heal(&mut game_state.world, target, healing_amount.total() as u32);
 
         ActionResultComponent::Healing(HealingResult {
             healing: healing_amount,

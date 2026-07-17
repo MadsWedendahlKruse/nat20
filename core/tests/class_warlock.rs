@@ -1,11 +1,11 @@
-use nat20_core::components::skill::Skill;
 use nat20_core::{
     components::{
         d20::{AdvantageType, D20CheckOutcome},
         damage::{AttackSource, DamageComponent, DamageSource, DamageType},
         dice::{DiceSet, DieSize},
         items::equipment::weapon::WeaponKind,
-        modifier::ModifierSource,
+        modifier::{ModifierMap, ModifierSource},
+        skill::Skill,
     },
     systems::d20::D20CheckKind,
     test_utils::scenario::Scenario,
@@ -34,7 +34,7 @@ fn warlock_eldritch_blast(#[case] warlock_level: u8, #[case] expected_beams: u8)
         // Force Eldritch Blast to hit
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
-            D20CheckOutcome::CriticalSuccess,
+            D20CheckOutcome::Success,
         )
         .act("action.eldritch_blast")
         .target_entities(vec!["fighter"; expected_beams as usize])
@@ -44,7 +44,10 @@ fn warlock_eldritch_blast(#[case] warlock_level: u8, #[case] expected_beams: u8)
         .event_filter()
         .actor("warlock")
         .damage_roll(
-            DamageComponent::new(DiceSet::new(2, DieSize::D10), DamageType::Force), // Rolls twice on crit
+            DamageComponent::new(
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10)),
+                DamageType::Force,
+            ),
             DamageSource::Spell("spell.eldritch_blast".into()),
         )
         .assert_event_count(expected_beams as usize);
@@ -85,7 +88,7 @@ fn warlock_hellish_rebuke() {
             DamageComponent::new(
                 // At level 3 the warlock has level 2 spell slots, so base 2d10
                 // plus 1d10 for the spell slot level, for a total of 3d10
-                DiceSet::new(3, DieSize::D10),
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(3, DieSize::D10)),
                 DamageType::Fire,
             ),
             DamageSource::Spell("spell.hellish_rebuke".into()),
@@ -170,7 +173,7 @@ fn warlock_hex_damage() {
         // Force Eldritch Blast to hit so we can see the damage from Hex
         .d20_force_outcome(
             D20CheckKind::AttackRoll(AttackSource::Spell),
-            D20CheckOutcome::CriticalSuccess,
+            D20CheckOutcome::Success,
         )
         .act("action.eldritch_blast")
         .target_entity("fighter")
@@ -182,7 +185,7 @@ fn warlock_hex_damage() {
         .actor("warlock")
         .damage_roll(
             DamageComponent::new(
-                DiceSet::new(2, DieSize::D10), // Rolls twice on crit
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10)),
                 DamageType::Force,
             ),
             DamageSource::Spell("spell.eldritch_blast".into()),
@@ -197,7 +200,7 @@ fn warlock_hex_damage() {
         .damage_dealt(
             "fighter",
             DamageComponent::new(
-                DiceSet::new(2, DieSize::D6), // Rolls twice on crit
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D6)),
                 DamageType::Necrotic,
             ),
             DamageSource::Spell("spell.eldritch_blast".into()),
