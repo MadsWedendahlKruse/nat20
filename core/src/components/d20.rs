@@ -251,7 +251,7 @@ impl D20Check {
         }
 
         let total_modifier = self.modifiers.range();
-        total_modifier.add(self.proficiency.bonus(proficiency_bonus) as i32);
+        let total_modifier = total_modifier.add(self.proficiency.bonus(proficiency_bonus) as i32);
 
         let roll_mode = self.advantage_tracker.roll_mode();
 
@@ -651,7 +651,7 @@ mod tests {
         );
 
         assert!(success_probability.is_single());
-        assert!(success_probability.min > 0.0 && success_probability.min < 1.0);
+        assert!(success_probability.min == 0.5);
     }
 
     #[test]
