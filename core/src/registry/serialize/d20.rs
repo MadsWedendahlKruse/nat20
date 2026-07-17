@@ -52,13 +52,19 @@ impl AttackRollScope {
             AttackRollScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
             AttackRollScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
             AttackRollScope::Melee => {
-                matches!(kind, ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed)
+                matches!(
+                    kind,
+                    ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
+                )
             }
         }
     }
 }
 
-fn scoped_attack_roll(scope: AttackRollScope, provider_name: &'static str) -> Arc<AttackRollFunction> {
+fn scoped_attack_roll(
+    scope: AttackRollScope,
+    provider_name: &'static str,
+) -> Arc<AttackRollFunction> {
     Arc::new(
         move |world: &World, entity: Entity, target: Entity, action_context: &ActionContext| {
             let attack = action_context
@@ -68,7 +74,12 @@ fn scoped_attack_roll(scope: AttackRollScope, provider_name: &'static str) -> Ar
             if !scope.is_allowed(attack.kind) {
                 panic!("{provider_name} does not support this attack context");
             }
-            systems::loadout::loadout(world, entity).attack_roll(world, entity, target, action_context)
+            systems::loadout::loadout(world, entity).attack_roll(
+                world,
+                entity,
+                target,
+                action_context,
+            )
         },
     ) as Arc<AttackRollFunction>
 }
@@ -165,18 +176,16 @@ impl FromStr for SavingThrowDefinition {
 
         let function =
             match parts[0] {
-                "weapon_save_dc" => {
-                    Arc::new({
-                        move |world: &World, entity: Entity, action_context: &ActionContext| {
-                            systems::loadout::loadout(world, entity).saving_throw(
-                                world,
-                                entity,
-                                action_context,
-                                kind,
-                            )
-                        }
-                    }) as Arc<SavingThrowFunction>
-                }
+                "weapon_save_dc" => Arc::new({
+                    move |world: &World, entity: Entity, action_context: &ActionContext| {
+                        systems::loadout::loadout(world, entity).saving_throw(
+                            world,
+                            entity,
+                            action_context,
+                            kind,
+                        )
+                    }
+                }) as Arc<SavingThrowFunction>,
                 "spell_save_dc" => {
                     Arc::new({
                         move |world: &World, entity: Entity, action_context: &ActionContext| {

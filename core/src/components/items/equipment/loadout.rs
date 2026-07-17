@@ -30,7 +30,7 @@ use crate::{
             inventory::{ItemContainer, ItemInstance},
             item::Item,
         },
-        modifier::{ModifierMap, ModifierSource},
+        modifier::{Modifiable, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         saving_throw::{SavingThrowDC, SavingThrowKind},
     },

@@ -16,7 +16,7 @@ use crate::{
         d20::{AdvantageType, D20CheckOutcome},
         damage::{DamageComponent, DamageSource},
         id::{ActionId, EffectId, ResourceId},
-        modifier::{ModifierKind, ModifierMap, ModifierResult, ModifierSource},
+        modifier::{Modifiable, ModifierKind, ModifierMap, ModifierResult, ModifierSource},
         resource::ResourceAmountMap,
         skill::{Skill, SkillSet},
         time::TimeMode,
@@ -684,12 +684,8 @@ impl EventFilterKind {
                 }
 
                 if let Some((modifier_source, modifier_value)) = modifier {
-                    let Some(event_modifier) = result
-                        .d20_result()
-                        .check
-                        .modifiers()
-                        .modifiers
-                        .get(modifier_source)
+                    let Some(event_modifier) =
+                        result.d20_result().check.modifiers().get(modifier_source)
                     else {
                         return false;
                     };
@@ -725,7 +721,7 @@ impl EventFilterKind {
 
                 for component in &result.components {
                     if component.damage_type == expected_damage.damage_type
-                        && result_contains_expected(&expected_damage.damage, &component.result)
+                        && result_contains_expected(expected_damage.modifiers(), &component.result)
                     {
                         return true;
                     }
@@ -754,7 +750,7 @@ impl EventFilterKind {
                         for component in &damage_result.components {
                             if component.damage_type == expected_damage.damage_type
                                 && result_contains_expected(
-                                    &expected_damage.damage,
+                                    expected_damage.modifiers(),
                                     &component.original,
                                 )
                             {
@@ -773,9 +769,8 @@ impl EventFilterKind {
 }
 
 fn result_contains_expected(expected: &ModifierMap, result: &ModifierResult) -> bool {
-    expected.modifiers.iter().all(|(source, expected_kind)| {
+    expected.iter().all(|(source, expected_kind)| {
         result
-            .results
             .get(source)
             .map(|r| r.matches_kind(expected_kind))
             .unwrap_or(false)

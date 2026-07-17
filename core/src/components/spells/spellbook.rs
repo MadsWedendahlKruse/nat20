@@ -32,7 +32,7 @@ use crate::{
         d20::{D20Check, D20CheckDC},
         damage::{AttackRoll, AttackRollTemplate, AttackSource},
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
-        modifier::{ModifierKind, ModifierMap, ModifierSource},
+        modifier::{Modifiable, ModifierKind, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         saving_throw::{SavingThrowDC, SavingThrowKind},

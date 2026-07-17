@@ -134,7 +134,6 @@ impl InteractionSession {
             pe.blocked_by.remove(&reactor);
         }
     }
-
 }
 
 #[derive(Debug, Default)]

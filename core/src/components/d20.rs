@@ -10,9 +10,11 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         effects::hooks::D20CheckHooks,
         modifier::{
-            FlatModifierMap, ModifierKind, ModifierMap, ModifierResult, ModifierSource, Range,
+            FlatModifierMap, KeyedModifiable, Modifiable, ModifierKind, ModifierMap,
+            ModifierResult, ModifierSource,
         },
         proficiency::{Proficiency, ProficiencyLevel},
+        range::Range,
     },
     systems,
 };
@@ -117,17 +119,6 @@ impl D20Check {
         }
     }
 
-    pub fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
-    where
-        T: Into<ModifierKind>,
-    {
-        self.modifiers.add_modifier(source, value);
-    }
-
-    pub fn remove_modifier(&mut self, source: &ModifierSource) {
-        self.modifiers.remove_modifier(source);
-    }
-
     pub fn crit_threshold(&self) -> u8 {
         let reduction = self.crit_threshold_reduction.total().max(0) as u8;
         D20_CRITICAL_SUCCESS
@@ -158,14 +149,6 @@ impl D20Check {
 
     pub fn advantage_tracker_mut(&mut self) -> &mut AdvantageTracker {
         &mut self.advantage_tracker
-    }
-
-    pub fn modifiers(&self) -> &ModifierMap {
-        &self.modifiers
-    }
-
-    pub fn modifiers_mut(&mut self) -> &mut ModifierMap {
-        &mut self.modifiers
     }
 
     pub fn set_forced_outcome(&mut self, source: ModifierSource, outcome: D20CheckOutcome) {
@@ -291,22 +274,15 @@ impl D20Check {
     }
 }
 
-// impl FlatModifiable for D20Check {
-//     fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
-//     where
-//         T: Into<i32>,
-//     {
-//         self.modifiers.add_modifier(source, value.into());
-//     }
+impl Modifiable for D20Check {
+    fn modifiers(&self) -> &ModifierMap {
+        &self.modifiers
+    }
 
-//     fn remove_modifier(&mut self, source: &ModifierSource) {
-//         self.modifiers.remove_modifier(source);
-//     }
-
-//     fn total(&self) -> i32 {
-//         self.modifiers.total()
-//     }
-// }
+    fn modifiers_mut(&mut self) -> &mut ModifierMap {
+        &mut self.modifiers
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20CheckResult {
@@ -409,17 +385,6 @@ where
         self.get_mut(key).set_proficiency(proficiency);
     }
 
-    pub fn add_modifier<T>(&mut self, key: &K, source: ModifierSource, value: T)
-    where
-        T: Into<ModifierKind>,
-    {
-        self.get_mut(key).add_modifier(source, value);
-    }
-
-    pub fn remove_modifier(&mut self, key: &K, source: &ModifierSource) {
-        self.get_mut(key).remove_modifier(source);
-    }
-
     pub fn add_advantage(&mut self, key: &K, kind: AdvantageType, source: ModifierSource) {
         self.get_mut(key).advantage_tracker_mut().add(kind, source);
     }
@@ -481,25 +446,16 @@ where
     }
 }
 
-// impl<K> KeyedModifiable<K> for D20CheckMap<K>
-// where
-//     K: D20CheckKey,
-// {
-//     type Result = D20CheckResult;
+impl<K> KeyedModifiable<K> for D20CheckMap<K>
+where
+    K: D20CheckKey,
+{
+    type Entry = D20Check;
 
-//     fn add_modifier<T>(&mut self, key: &K, source: ModifierSource, value: T)
-//     where
-//         T: Into<ModifierKind>,
-//     {
-//         self.get_mut(key).add_modifier(source, value.into());
-//     }
-
-//     fn remove_modifier(&mut self, key: &K, source: &ModifierSource) {
-//         self.get_mut(key).remove_modifier(source);
-//     }
-
-//     fn evaluate(&self, key: &K) -> Self::Result {}
-// }
+    fn entry_mut(&mut self, key: &K) -> &mut D20Check {
+        self.get_mut(key)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20CheckDC<T>

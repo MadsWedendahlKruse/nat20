@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::ops::Deref;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,13 +12,19 @@ use crate::components::{
         ActionId, BackgroundId, ClassId, EffectId, FeatId, Id, ItemId, SpeciesId, SubclassId,
         SubspeciesId,
     },
+    range::Range,
 };
 
 use super::{ability::Ability, proficiency::ProficiencyLevel};
 
+/// Modifiers applied to e.g. a skill check, or damage roll.
+/// Each modifier has a [`ModifierSource`] (e.g. effect ID or an ability score),
+/// and a kind [`ModifierKind`] (either a flat integer or a dice set).
+/// The underlying map is exposed through the `Deref` trait, which haters will say
+/// is an anti-pattern, but I think it's very convenient here :^).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModifierMap {
-    pub(crate) modifiers: BTreeMap<ModifierSource, ModifierKind>,
+    modifiers: BTreeMap<ModifierSource, ModifierKind>,
 }
 
 impl ModifierMap {
@@ -46,6 +53,16 @@ impl ModifierMap {
     {
         let value = value.into();
         self.modifiers.insert(source, value);
+    }
+
+    pub fn add_modifier_map(&mut self, other: &ModifierMap) {
+        for (source, kind) in &other.modifiers {
+            self.add_modifier(source.clone(), kind.clone());
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&ModifierSource, &mut ModifierKind)> {
+        self.modifiers.iter_mut()
     }
 
     pub fn evaluate(&self) -> ModifierResult {
@@ -92,18 +109,84 @@ impl ModifierMap {
         }
     }
 
-    pub fn add_modifier_map(&mut self, other: &ModifierMap) {
-        for (source, kind) in &other.modifiers {
-            self.add_modifier(source.clone(), kind.clone());
-        }
-    }
-
     pub fn matches_result(&self, result: &ModifierResult) -> bool {
         compare_map_result(&self.modifiers, &result.results)
     }
+}
 
-    pub fn contains_source(&self, source: &ModifierSource) -> bool {
-        self.modifiers.contains_key(source)
+impl Deref for ModifierMap {
+    type Target = BTreeMap<ModifierSource, ModifierKind>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.modifiers
+    }
+}
+
+/// Like [`ModifierMap`], but restricted to flat integer modifiers.
+/// This is useful for stuff like Armor Class, where dice don't really make sense.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct FlatModifierMap {
+    modifiers: BTreeMap<ModifierSource, i32>,
+}
+
+impl FlatModifierMap {
+    pub fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
+    where
+        T: Into<i32>,
+    {
+        let value = value.into();
+        if value == 0 {
+            return;
+        }
+        *self.modifiers.entry(source).or_insert(0) += value;
+    }
+
+    pub fn remove_modifier(&mut self, source: &ModifierSource) -> Option<i32> {
+        self.modifiers.remove(source)
+    }
+
+    pub fn replace_modifier<T>(&mut self, source: ModifierSource, value: T)
+    where
+        T: Into<i32>,
+    {
+        let value = value.into();
+        self.modifiers.insert(source, value);
+    }
+
+    pub fn add_modifier_map(&mut self, other: &FlatModifierMap) {
+        for (source, value) in &other.modifiers {
+            self.add_modifier(source.clone(), *value);
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&ModifierSource, &mut i32)> {
+        self.modifiers.iter_mut()
+    }
+
+    pub fn total(&self) -> i32 {
+        self.modifiers.values().sum()
+    }
+
+    pub fn from(source: ModifierSource, value: i32) -> Self {
+        let mut modifiers = BTreeMap::new();
+        modifiers.insert(source, value);
+        Self { modifiers }
+    }
+
+    pub fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (ModifierSource, i32)>,
+    {
+        let modifiers = iter.into_iter().collect();
+        Self { modifiers }
+    }
+}
+
+impl Deref for FlatModifierMap {
+    type Target = BTreeMap<ModifierSource, i32>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.modifiers
     }
 }
 
@@ -219,9 +302,12 @@ impl ModifierKindResult {
     }
 }
 
+/// The result of evaluating a [`ModifierMap`], which contains the results of each
+/// individual modifier keyed by its source. For flat modifiers this doesn't do anything,
+/// but for the dice-based modifiers it rolls them and stores the value.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ModifierResult {
-    pub results: BTreeMap<ModifierSource, ModifierKindResult>,
+    results: BTreeMap<ModifierSource, ModifierKindResult>,
 }
 
 impl ModifierResult {
@@ -237,8 +323,28 @@ impl ModifierResult {
         }
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&ModifierSource, &mut ModifierKindResult)> {
+        self.results.iter_mut()
+    }
+
+    pub fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (ModifierSource, ModifierKindResult)>,
+    {
+        let results = iter.into_iter().collect();
+        Self { results }
+    }
+
     pub fn matches_map(&self, map: &ModifierMap) -> bool {
         compare_map_result(&map.modifiers, &self.results)
+    }
+}
+
+impl Deref for ModifierResult {
+    type Target = BTreeMap<ModifierSource, ModifierKindResult>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.results
     }
 }
 
@@ -282,68 +388,6 @@ fn compare_map_result(
         }
     }
     true
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-pub struct FlatModifierMap {
-    pub(crate) modifiers: BTreeMap<ModifierSource, i32>,
-}
-
-impl FlatModifierMap {
-    pub fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
-    where
-        T: Into<i32>,
-    {
-        let value = value.into();
-        if value == 0 {
-            return;
-        }
-        self.modifiers.insert(source, value);
-    }
-
-    pub fn remove_modifier(&mut self, source: &ModifierSource) -> Option<i32> {
-        self.modifiers.remove(source)
-    }
-
-    pub fn replace_modifier<T>(&mut self, source: ModifierSource, value: T)
-    where
-        T: Into<i32>,
-    {
-        let value = value.into();
-        self.modifiers.insert(source, value);
-    }
-
-    pub fn total(&self) -> i32 {
-        self.modifiers.values().sum()
-    }
-
-    pub fn from(source: ModifierSource, value: i32) -> Self {
-        let mut modifiers = BTreeMap::new();
-        modifiers.insert(source, value);
-        Self { modifiers }
-    }
-
-    pub fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = (ModifierSource, i32)>,
-    {
-        let modifiers = iter.into_iter().collect();
-        Self { modifiers }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&ModifierSource, &i32)> {
-        self.modifiers.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&ModifierSource, &mut i32)> {
-        self.modifiers.iter_mut()
-    }
-
-    pub fn add_modifier_map(&mut self, other: &FlatModifierMap) {
-        for (source, value) in &other.modifiers {
-            self.add_modifier(source.clone(), *value);
-        }
-    }
 }
 
 #[derive(
@@ -412,178 +456,92 @@ impl From<Id> for ModifierSource {
     }
 }
 
-// TODO: Add support for dice modifiers?
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub struct ModifierSet {
-//     modifiers: BTreeMap<ModifierSource, i32>,
-// }
+/// Anything that owns a [`ModifierMap`]. This is basically just to reduce boilerplate.
+/// Implementors only provide the two accessors, and then the modifier operations are
+/// forwarded by default methods.
+pub trait Modifiable {
+    fn modifiers(&self) -> &ModifierMap;
+    fn modifiers_mut(&mut self) -> &mut ModifierMap;
 
-// impl ModifierSet {
-//     pub fn new() -> Self {
-//         Self {
-//             modifiers: BTreeMap::new(),
-//         }
-//     }
+    fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
+    where
+        T: Into<ModifierKind>,
+    {
+        self.modifiers_mut().add_modifier(source, value);
+    }
 
-//     pub fn from(source: ModifierSource, value: i32) -> Self {
-//         let mut modifiers = BTreeMap::new();
-//         modifiers.insert(source, value);
-//         Self { modifiers }
-//     }
+    fn remove_modifier(&mut self, source: &ModifierSource) -> Option<ModifierKind> {
+        self.modifiers_mut().remove_modifier(source)
+    }
 
-//     pub fn from_iter<I>(iter: I) -> Self
-//     where
-//         I: IntoIterator<Item = (ModifierSource, i32)>,
-//     {
-//         let modifiers = iter.into_iter().collect();
-//         Self { modifiers }
-//     }
+    fn replace_modifier<T>(&mut self, source: ModifierSource, value: T)
+    where
+        T: Into<ModifierKind>,
+    {
+        self.modifiers_mut().replace_modifier(source, value);
+    }
+}
 
-//     pub fn add_modifier_set(&mut self, other: &ModifierSet) {
-//         for (source, value) in &other.modifiers {
-//             let entry = self.modifiers.entry(source.clone()).or_insert(0);
-//             *entry += value;
-//         }
-//     }
+/// Anything that owns a [`FlatModifierMap`].
+/// Same as [`Modifiable`], but for flat integer modifiers only.
+pub trait FlatModifiable {
+    fn modifiers(&self) -> &FlatModifierMap;
+    fn modifiers_mut(&mut self) -> &mut FlatModifierMap;
 
-//     pub fn get(&self, source: &ModifierSource) -> Option<i32> {
-//         self.modifiers.get(source).cloned()
-//     }
+    fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
+    where
+        T: Into<i32>,
+    {
+        self.modifiers_mut().add_modifier(source, value);
+    }
 
-//     pub fn contains_key(&self, source: &ModifierSource) -> bool {
-//         self.modifiers.contains_key(source)
-//     }
+    fn remove_modifier(&mut self, source: &ModifierSource) -> Option<i32> {
+        self.modifiers_mut().remove_modifier(source)
+    }
 
-//     // Only used for ability modifiers
-//     pub fn scale_modifiers(&mut self, scale: f32) {
-//         for m in self.modifiers.values_mut() {
-//             *m = (m.clone() as f32 * scale).round() as i32;
-//         }
-//     }
+    fn total(&self) -> i32 {
+        self.modifiers().total()
+    }
+}
 
-//     pub fn is_empty(&self) -> bool {
-//         if self.modifiers.is_empty() {
-//             return true;
-//         }
-//         for value in self.modifiers.values() {
-//             if *value != 0 {
-//                 return false;
-//             }
-//         }
-//         true
-//     }
-
-//     pub fn iter(&self) -> impl Iterator<Item = (&ModifierSource, &i32)> {
-//         self.modifiers.iter()
-//     }
-// }
-
+/// A keyed collection of [`Modifiable`] entries (e.g. a `D20CheckMap`).
 pub trait KeyedModifiable<K> {
-    type Result;
+    type Entry: Modifiable;
+
+    fn entry_mut(&mut self, key: &K) -> &mut Self::Entry;
 
     fn add_modifier<T>(&mut self, key: &K, source: ModifierSource, value: T)
     where
-        T: Into<ModifierKind>;
-    fn remove_modifier(&mut self, key: &K, source: &ModifierSource);
-    fn evaluate(&self, key: &K) -> Self::Result;
+        T: Into<ModifierKind>,
+    {
+        self.entry_mut(key).add_modifier(source, value);
+    }
+
+    fn remove_modifier(&mut self, key: &K, source: &ModifierSource) {
+        self.entry_mut(key).remove_modifier(source);
+    }
 }
 
+/// A keyed collection of [`FlatModifiable`] entries (e.g. an `AbilityScoreMap`).
 pub trait KeyedFlatModifiable<K> {
+    type Entry: FlatModifiable;
+
+    fn entry(&self, key: &K) -> &Self::Entry;
+    fn entry_mut(&mut self, key: &K) -> &mut Self::Entry;
+
     fn add_modifier<T>(&mut self, key: &K, source: ModifierSource, value: T)
     where
-        T: Into<i32>;
-    fn remove_modifier(&mut self, key: &K, source: &ModifierSource);
-    fn total(&self, key: &K) -> i32;
-}
-
-// impl fmt::Display for ModifierSet {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let mut s = String::new();
-//         for i in 0..self.modifiers.len() {
-//             let (source, value) = self.modifiers.iter().nth(i).unwrap();
-//             if value == &0 {
-//                 continue;
-//             }
-//             if i != 0 {
-//                 s += " ";
-//             }
-//             let sign = if *value >= 0 { "+" } else { "-" };
-//             s += &format!("{}{} ({})", sign, value.abs(), source);
-//         }
-//         write!(f, "{}", s)
-//     }
-// }
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Range<T> {
-    pub min: T,
-    pub max: T,
-}
-
-impl<T> Range<T>
-where
-    T: PartialOrd + PartialEq + Copy,
-{
-    pub fn new(min: T, max: T) -> Self {
-        assert!(min <= max, "min must be less than or equal to max");
-        Self { min, max }
-    }
-
-    pub fn single(value: T) -> Self {
-        Self {
-            min: value,
-            max: value,
-        }
-    }
-
-    pub fn is_single(&self) -> bool {
-        self.min == self.max
-    }
-
-    pub fn contains<U>(&self, value: U) -> bool
-    where
-        U: Into<T> + Copy,
+        T: Into<i32>,
     {
-        let value = value.into();
-        value >= self.min && value <= self.max
+        self.entry_mut(key).add_modifier(source, value);
     }
 
-    pub fn limit_min<U>(&self, min: U) -> Self
-    where
-        U: Into<T> + Copy,
-    {
-        let min = min.into();
-        let min = if min > self.min { min } else { self.min };
-        Self { min, max: self.max }
+    fn remove_modifier(&mut self, key: &K, source: &ModifierSource) {
+        self.entry_mut(key).remove_modifier(source);
     }
 
-    pub fn limit_max<U>(&self, max: U) -> Self
-    where
-        U: Into<T> + Copy,
-    {
-        let max = max.into();
-        let max = if max < self.max { max } else { self.max };
-        Self { min: self.min, max }
-    }
-
-    pub fn convert<U>(&self) -> Range<U>
-    where
-        U: From<T> + Ord + PartialEq + Copy,
-    {
-        Range {
-            min: U::from(self.min),
-            max: U::from(self.max),
-        }
-    }
-
-    pub fn add(&self, value: T) -> Self
-    where
-        T: std::ops::Add<Output = T>,
-    {
-        Self {
-            min: self.min + value,
-            max: self.max + value,
-        }
+    fn total(&self, key: &K) -> i32 {
+        self.entry(key).total()
     }
 }
 
@@ -595,9 +553,7 @@ mod tests {
 
     #[test]
     fn modifiers_no_dice() {
-        let mut modifier_map = ModifierMap {
-            modifiers: BTreeMap::new(),
-        };
+        let mut modifier_map = ModifierMap::default();
 
         modifier_map.add_modifier(ModifierSource::Base, 2);
         modifier_map.add_modifier(ModifierSource::Ability(Ability::Strength), 3);
@@ -615,9 +571,7 @@ mod tests {
 
     #[test]
     fn modifiers_with_dice() {
-        let mut modifier_map = ModifierMap {
-            modifiers: BTreeMap::new(),
-        };
+        let mut modifier_map = ModifierMap::default();
 
         modifier_map.add_modifier(ModifierSource::Base, 2);
         modifier_map.add_modifier(
@@ -639,9 +593,7 @@ mod tests {
 
     #[test]
     fn flat_modifiers() {
-        let mut flat_modifier_map = FlatModifierMap {
-            modifiers: BTreeMap::new(),
-        };
+        let mut flat_modifier_map = FlatModifierMap::default();
 
         flat_modifier_map.add_modifier(ModifierSource::Base, 2);
         flat_modifier_map.add_modifier(ModifierSource::Ability(Ability::Strength), 3);
@@ -657,10 +609,19 @@ mod tests {
     }
 
     #[test]
+    fn flat_modifiers_merge_same_source() {
+        let mut flat_modifier_map = FlatModifierMap::default();
+
+        flat_modifier_map.add_modifier(ModifierSource::Base, 2);
+        flat_modifier_map.add_modifier(ModifierSource::Base, 3);
+
+        assert_eq!(flat_modifier_map.total(), 5);
+        assert_eq!(flat_modifier_map.get(&ModifierSource::Base), Some(&5));
+    }
+
+    #[test]
     fn remove_modifier_dice() {
-        let mut modifier_map = ModifierMap {
-            modifiers: BTreeMap::new(),
-        };
+        let mut modifier_map = ModifierMap::default();
 
         modifier_map.add_modifier(ModifierSource::Base, 2);
         modifier_map.add_modifier(

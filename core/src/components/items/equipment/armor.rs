@@ -12,7 +12,7 @@ use crate::{
             equipment::slots::{EquipmentSlot, SlotProvider},
             item::Item,
         },
-        modifier::{FlatModifierMap, ModifierSource},
+        modifier::{FlatModifiable, FlatModifierMap, ModifierSource},
     },
     registry::serialize::{item::ArmorDefinition, schema::impl_schema_via},
 };
@@ -50,7 +50,7 @@ impl Default for ArmorDexterityBonus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArmorClass {
-    pub value: FlatModifierMap,
+    value: FlatModifierMap,
     pub dexterity_bonus: ArmorDexterityBonus,
 }
 
@@ -65,8 +65,18 @@ impl ArmorClass {
             dexterity_bonus,
         }
     }
+}
 
-    pub fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
+impl FlatModifiable for ArmorClass {
+    fn modifiers(&self) -> &FlatModifierMap {
+        &self.value
+    }
+
+    fn modifiers_mut(&mut self) -> &mut FlatModifierMap {
+        &mut self.value
+    }
+
+    fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
     where
         T: Into<i32>,
     {
@@ -79,14 +89,6 @@ impl ArmorClass {
             }
         }
         self.value.add_modifier(source, value);
-    }
-
-    pub fn remove_modifier(&mut self, source: &ModifierSource) -> Option<i32> {
-        self.value.remove_modifier(source)
-    }
-
-    pub fn total(&self) -> i32 {
-        self.value.total()
     }
 }
 
@@ -258,7 +260,6 @@ mod tests {
         // Should only allow max dex bonus of 2
         let dex_mod = *armor_class
             .value
-            .modifiers
             .get(&ModifierSource::Ability(Ability::Dexterity))
             .expect("Dexterity modifier should be present");
         assert!(dex_mod <= armor_class.dexterity_bonus.max_bonus() as i32);

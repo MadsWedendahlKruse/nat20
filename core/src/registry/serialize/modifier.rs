@@ -12,10 +12,7 @@ use crate::{
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
-    registry::serialize::{
-        quantity::LengthExpressionDefinition,
-        schema::impl_string_schema,
-    },
+    registry::serialize::{quantity::LengthExpressionDefinition, schema::impl_string_schema},
 };
 
 /// For spec types that:

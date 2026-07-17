@@ -1,7 +1,6 @@
 use hecs::Bundle;
 
 use crate::{
-    entities::character::CreatureTag,
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionCooldownMap, ActionMap, default_actions},
@@ -23,6 +22,7 @@ use crate::{
         spells::spellbook::Spellbook,
         time::EntityClock,
     },
+    entities::character::CreatureTag,
     from_world,
     systems::geometry::Pose,
 };

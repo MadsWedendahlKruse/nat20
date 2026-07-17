@@ -18,7 +18,7 @@ use crate::{
         items::{equipment::loadout::EquipmentInstance, money::MonetaryValue},
         level::CharacterLevels,
         level_up::{ChoiceItem, LevelUpPrompt},
-        modifier::{KeyedFlatModifiable, ModifierSource},
+        modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceBudgetKind, ResourceMap},
         skill::{Skill, SkillSet},

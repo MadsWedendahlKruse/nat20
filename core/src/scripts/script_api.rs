@@ -202,7 +202,7 @@ impl UserData for DamageRollResult {
         methods.add_method_mut("clamp_damage_dice_min", |_, this, min: i64| {
             let minimum_roll = min as u32;
             for component in &mut this.components {
-                for (_, modifier) in &mut component.result.results {
+                for (_, modifier) in component.result.iter_mut() {
                     if let ModifierKindResult::Dice(dice_set) = modifier {
                         for roll in dice_set.rolls_mut() {
                             if *roll < minimum_roll {
@@ -227,10 +227,10 @@ impl UserData for DamageRollResult {
                     LuaError::RuntimeError(format!("Failed to evaluate damage amount: {e}"))
                 })?;
 
-                this.add_component(DamageComponent {
-                    damage: ModifierMap::from(ModifierSource::Base, modifier),
+                this.add_component(DamageComponent::new(
+                    ModifierMap::from(ModifierSource::Base, modifier),
                     damage_type,
-                });
+                ));
 
                 Ok(())
             },

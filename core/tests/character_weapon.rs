@@ -20,7 +20,7 @@ mod tests {
                 item::{Item, ItemRarity},
                 money::MonetaryValue,
             },
-            modifier::{ModifierMap, ModifierSource},
+            modifier::{Modifiable, ModifierMap, ModifierSource},
             proficiency::ProficiencyLevel,
         },
         entities::character::Character,
@@ -77,7 +77,6 @@ mod tests {
         assert!(
             damage_result.components[0]
                 .result
-                .results
                 .get(&ModifierSource::Ability(Ability::Dexterity))
                 .is_some()
         );
@@ -101,8 +100,8 @@ mod tests {
             &EquipmentSlot::MeleeMainHand,
         );
         assert_eq!(
-            roll.components[0].damage,
-            ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10))
+            roll.components[0].modifiers(),
+            &ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10))
         );
 
         systems::loadout::equip_in_slot(
@@ -122,8 +121,8 @@ mod tests {
             &EquipmentSlot::MeleeMainHand,
         );
         assert_eq!(
-            roll.components[0].damage,
-            ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D8))
+            roll.components[0].modifiers(),
+            &ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D8))
         );
 
         // Unequip dagger
@@ -137,8 +136,8 @@ mod tests {
             &EquipmentSlot::MeleeMainHand,
         );
         assert_eq!(
-            roll.components[0].damage,
-            ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10))
+            roll.components[0].modifiers(),
+            &ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D10))
         );
     }
 
@@ -226,19 +225,19 @@ mod tests {
         assert!(
             roll.d20_check
                 .modifiers()
-                .contains_source(&ModifierSource::Ability(Ability::Dexterity))
+                .contains_key(&ModifierSource::Ability(Ability::Dexterity))
         );
         assert!(
             !roll
                 .d20_check
                 .modifiers()
-                .contains_source(&ModifierSource::Proficiency(ProficiencyLevel::Proficient))
+                .contains_key(&ModifierSource::Proficiency(ProficiencyLevel::Proficient))
         );
         assert!(
             !roll
                 .d20_check
                 .modifiers()
-                .contains_source(&ModifierSource::Custom("Enchantment".to_string()))
+                .contains_key(&ModifierSource::Custom("Enchantment".to_string()))
         );
     }
 }

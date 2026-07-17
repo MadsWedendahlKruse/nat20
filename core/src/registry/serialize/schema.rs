@@ -49,9 +49,7 @@ macro_rules! impl_schema_via {
                 <$via as schemars::JsonSchema>::inline_schema()
             }
 
-            fn json_schema(
-                generator: &mut schemars::SchemaGenerator,
-            ) -> schemars::Schema {
+            fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
                 <$via as schemars::JsonSchema>::json_schema(generator)
             }
         }

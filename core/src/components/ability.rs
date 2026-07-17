@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    components::modifier::{FlatModifierMap, KeyedFlatModifiable},
+    components::modifier::{FlatModifiable, FlatModifierMap, KeyedFlatModifiable},
     registry::serialize::schema::impl_string_schema,
 };
 
@@ -97,7 +97,7 @@ impl_string_schema!(
 pub struct AbilityScore {
     pub ability: Ability,
     pub base: i32,
-    pub modifiers: FlatModifierMap,
+    modifiers: FlatModifierMap,
 }
 
 impl AbilityScore {
@@ -133,8 +133,18 @@ impl AbilityScore {
         ability_modifiers.add_modifier(ModifierSource::Ability(self.ability), base_modifier);
         ability_modifiers
     }
+}
 
-    pub fn total(&self) -> i32 {
+impl FlatModifiable for AbilityScore {
+    fn modifiers(&self) -> &FlatModifierMap {
+        &self.modifiers
+    }
+
+    fn modifiers_mut(&mut self) -> &mut FlatModifierMap {
+        &mut self.modifiers
+    }
+
+    fn total(&self) -> i32 {
         self.base + self.modifiers.total()
     }
 }
@@ -191,19 +201,14 @@ impl AbilityScoreMap {
 }
 
 impl KeyedFlatModifiable<Ability> for AbilityScoreMap {
-    fn add_modifier<T>(&mut self, key: &Ability, source: ModifierSource, value: T)
-    where
-        T: Into<i32>,
-    {
-        self.get_mut(key).modifiers.add_modifier(source, value);
+    type Entry = AbilityScore;
+
+    fn entry(&self, key: &Ability) -> &AbilityScore {
+        self.get(key)
     }
 
-    fn remove_modifier(&mut self, key: &Ability, source: &ModifierSource) {
-        self.get_mut(key).modifiers.remove_modifier(source);
-    }
-
-    fn total(&self, key: &Ability) -> i32 {
-        self.get(key).total()
+    fn entry_mut(&mut self, key: &Ability) -> &mut AbilityScore {
+        self.get_mut(key)
     }
 }
 

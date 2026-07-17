@@ -22,7 +22,7 @@ use crate::{
             equipment::slots::{EquipmentSlot, SlotProvider},
             item::Item,
         },
-        modifier::{KeyedFlatModifiable, ModifierKind, ModifierMap, ModifierSource},
+        modifier::{KeyedFlatModifiable, Modifiable, ModifierKind, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
     },
     registry::serialize::{
@@ -307,7 +307,7 @@ impl Weapon {
     ) -> AttackRoll {
         let mut attack_roll = D20Check::new(weapon_proficiency.clone());
 
-        self.add_ability_modifier(ability_scores, &mut attack_roll.modifiers_mut());
+        self.add_ability_modifier(ability_scores, attack_roll.modifiers_mut());
 
         let enchantment = self.enchantment();
         attack_roll.add_modifier(
@@ -336,17 +336,17 @@ impl Weapon {
 
         if versatile_dice.is_some() && wielding_both_hands {
             // Override the base damage dice with the versatile damage dice
-            damage_roll.components[0].damage.replace_modifier(
+            damage_roll.components[0].replace_modifier(
                 ModifierSource::Base,
                 ModifierKind::Dice(versatile_dice.unwrap().clone()),
             );
         }
 
-        self.add_ability_modifier(ability_scores, &mut damage_roll.components[0].damage);
+        self.add_ability_modifier(ability_scores, damage_roll.components[0].modifiers_mut());
 
         let enchantment = self.enchantment();
         if enchantment > 0 {
-            damage_roll.components[0].damage.add_modifier(
+            damage_roll.components[0].add_modifier(
                 ModifierSource::Custom("Enchantment".to_string()),
                 enchantment as i32,
             );
@@ -485,8 +485,7 @@ mod tests {
         assert_eq!(weapon.properties().len(), 2);
         assert_eq!(
             weapon.damage_roll.components[0]
-                .damage
-                .modifiers
+                .modifiers()
                 .get(&ModifierSource::Base),
             Some(&ModifierKind::Dice(DiceSet {
                 die_size: DieSize::D8,

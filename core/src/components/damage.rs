@@ -18,9 +18,11 @@ use crate::{
             weapon::{Weapon, WeaponKind},
         },
         modifier::{
-            ModifierKind, ModifierKindResult, ModifierMap, ModifierResult, ModifierSource, Range,
+            FlatModifiable, Modifiable, ModifierKind, ModifierKindResult, ModifierMap,
+            ModifierResult, ModifierSource,
         },
         proficiency::Proficiency,
+        range::Range,
     },
     registry::serialize::schema::impl_string_schema,
     systems::{self},
@@ -57,7 +59,7 @@ impl fmt::Display for DamageType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DamageComponent {
-    pub damage: ModifierMap,
+    damage: ModifierMap,
     pub damage_type: DamageType,
 }
 
@@ -74,6 +76,16 @@ impl DamageComponent {
             result: self.damage.evaluate(),
             damage_type: self.damage_type.clone(),
         }
+    }
+}
+
+impl Modifiable for DamageComponent {
+    fn modifiers(&self) -> &ModifierMap {
+        &self.damage
+    }
+
+    fn modifiers_mut(&mut self) -> &mut ModifierMap {
+        &mut self.damage
     }
 }
 
@@ -189,9 +201,9 @@ impl DamageRoll {
 
         for component in &self.components {
             let mut result = ModifierResult::default();
-            for (source, modifier) in component.damage.modifiers.iter() {
+            for (source, modifier) in component.damage.iter() {
                 let evaluated = evaluate_modifier_dice_multiplier(modifier, dice_multiplier);
-                result.results.insert(source.clone(), evaluated);
+                result.add_modifier_result(source.clone(), evaluated);
             }
             total += result.total();
             results.push(DamageComponentResult {
@@ -215,15 +227,13 @@ impl DamageRoll {
             .map(|component| {
                 let min = component
                     .damage
-                    .modifiers
-                    .iter()
-                    .map(|(_, modifier)| modifier.min())
+                    .values()
+                    .map(|modifier| modifier.min())
                     .sum();
                 let max = component
                     .damage
-                    .modifiers
-                    .iter()
-                    .map(|(_, modifier)| modifier.max())
+                    .values()
+                    .map(|modifier| modifier.max())
                     .sum();
                 (min, max, component.damage_type.clone())
             })
@@ -269,8 +279,8 @@ impl DamageRollResult {
     }
 
     pub fn add_component(&mut self, mut component: DamageComponent) {
-        for (_, mut modifier) in component.damage.modifiers.iter_mut() {
-            if let ModifierKind::Dice(dice_set) = &mut modifier {
+        for (_, modifier) in component.damage.iter_mut() {
+            if let ModifierKind::Dice(dice_set) = modifier {
                 if self.crit {
                     dice_set.num_dice *= CRIT_DICE_MULTIPLIER;
                 }
@@ -653,7 +663,6 @@ impl AttackRoll {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
 
     use rstest::{fixture, rstest};
 
@@ -958,39 +967,35 @@ mod tests {
             components: vec![
                 DamageComponentResult {
                     damage_type: DamageType::Slashing,
-                    result: ModifierResult {
-                        results: BTreeMap::from_iter(vec![
-                            (
-                                ModifierSource::Base,
-                                ModifierKindResult::Dice(DiceSetResult::new(
-                                    DiceSet {
-                                        num_dice: 2,
-                                        die_size: DieSize::D6,
-                                    },
-                                    vec![3, 4],
-                                )),
-                            ),
-                            (
-                                ModifierSource::Ability(Ability::Strength),
-                                ModifierKindResult::Flat(2),
-                            ),
-                        ]),
-                    },
-                },
-                DamageComponentResult {
-                    damage_type: DamageType::Fire,
-                    result: ModifierResult {
-                        results: BTreeMap::from_iter(vec![(
+                    result: ModifierResult::from_iter(vec![
+                        (
                             ModifierSource::Base,
                             ModifierKindResult::Dice(DiceSetResult::new(
                                 DiceSet {
-                                    num_dice: 1,
-                                    die_size: DieSize::D4,
+                                    num_dice: 2,
+                                    die_size: DieSize::D6,
                                 },
-                                vec![2],
+                                vec![3, 4],
                             )),
-                        )]),
-                    },
+                        ),
+                        (
+                            ModifierSource::Ability(Ability::Strength),
+                            ModifierKindResult::Flat(2),
+                        ),
+                    ]),
+                },
+                DamageComponentResult {
+                    damage_type: DamageType::Fire,
+                    result: ModifierResult::from_iter(vec![(
+                        ModifierSource::Base,
+                        ModifierKindResult::Dice(DiceSetResult::new(
+                            DiceSet {
+                                num_dice: 1,
+                                die_size: DieSize::D4,
+                            },
+                            vec![2],
+                        )),
+                    )]),
                 },
             ],
             total: 11,

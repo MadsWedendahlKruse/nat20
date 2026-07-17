@@ -446,7 +446,7 @@ impl CreatureProbe {
             let kind = kind.clone();
             let source = source.clone();
             move |check| {
-                let reduction = check.crit_threshold_reduction().modifiers.get(&source);
+                let reduction = check.crit_threshold_reduction().get(&source);
                 assert!(
                     reduction
                         .map(|r| operator.evaluate(r))

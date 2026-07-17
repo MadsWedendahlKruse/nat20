@@ -28,7 +28,9 @@ use crate::{
         health::hit_points::{HitPoints, TemporaryHitPoints},
         id::{ActionId, EffectId, ResourceId, ScriptId},
         items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
-        modifier::{KeyedFlatModifiable, ModifierSource},
+        modifier::{
+            FlatModifiable, KeyedFlatModifiable, KeyedModifiable, Modifiable, ModifierSource,
+        },
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         saving_throw::SavingThrowSet,
         skill::SkillSet,
