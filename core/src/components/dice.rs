@@ -152,6 +152,26 @@ impl DiceSetResult {
     }
 }
 
+impl fmt::Display for DiceSetResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.rolls.len() == 1 {
+            write!(f, "{}", self.rolls[0])?;
+        } else {
+            write!(
+                f,
+                "({})",
+                self.rolls
+                    .iter()
+                    .map(|r| r.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )?;
+        }
+
+        write!(f, " ({})", self.dice)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

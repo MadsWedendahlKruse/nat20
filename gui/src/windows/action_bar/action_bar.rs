@@ -19,7 +19,8 @@ use nat20_core::{
         },
         activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
-        modifier::{Modifiable, ModifierSource},
+        modifier::{FlatModifiable, Modifiable, ModifierSource},
+        range::Range,
         resource::ResourceMap,
         saving_throw::SavingThrowSet,
         speed::Speed,
@@ -50,11 +51,11 @@ use crate::{
             utils::{Renderable, RenderableMutWithContext, RenderableWithContext},
         },
         ui::{
-            components::ModifierSetRenderMode,
+            modifier::ModifierRenderMode,
             text::{TextKind, TextSegment, TextSegments},
             utils::{
                 ImguiRenderable, ImguiRenderableWithContext, render_button_disabled_conditionally,
-                render_button_with_padding, render_capacity_meter, roman_numeral, signed_value,
+                render_button_with_padding, render_capacity_meter, roman_numeral,
             },
         },
         world::mesh::MeshRenderMode,
@@ -1029,11 +1030,13 @@ fn render_attack_hit_chance_tooltip(
 
     let target_ac = systems::loadout::armor_class(&game_state, target);
 
-    let hit_chance = attack_roll.hit_chance(
-        &game_state.world,
-        action.actor.id(),
-        target_ac.total() as u32,
-    ) * 100.0;
+    let hit_chance = attack_roll
+        .hit_chance(
+            &game_state.world,
+            action.actor.id(),
+            target_ac.total() as u32,
+        )
+        .scale(100.0);
 
     ui.tooltip(|| {
         ui.separator_with_text("Hit chance");
@@ -1072,17 +1075,9 @@ fn render_attack_hit_chance_tooltip(
                 ])
                 .render(ui);
 
-                ui.indent();
-                TextSegments::new(vec![
-                    (format!("{}", target_ac.base.0), TextKind::Normal),
-                    (format!("({})", target_ac.base.1), TextKind::Details),
-                ])
-                .render(ui);
-                ui.unindent();
-
                 target_ac
-                    .modifiers
-                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+                    .modifiers()
+                    .render_with_context(ui, ModifierRenderMode::List(true));
             });
     });
 }
@@ -1120,7 +1115,11 @@ fn render_save_success_chance_tooltip(
             .proficiency_bonus(),
     );
 
-    let success_chance = (1.0 - save_chance) * 100.0;
+    let success_chance = Range {
+        min: (1.0 - save_chance.min),
+        max: (1.0 - save_chance.max),
+    }
+    .scale(100.0);
 
     ui.tooltip(|| {
         ui.separator_with_text("Hit chance");
@@ -1148,7 +1147,7 @@ fn render_save_success_chance_tooltip(
 
                 saving_throw_dc
                     .dc
-                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+                    .render_with_context(ui, ModifierRenderMode::List(true));
             });
 
         ui.child_window("Saving Throw")
@@ -1169,22 +1168,19 @@ fn render_save_success_chance_tooltip(
 fn render_d20_modifiers(ui: &imgui::Ui, d20_check: D20Check) {
     TextSegments::new([
         ("Total:", TextKind::Details),
-        (
-            &signed_value(&d20_check.modifiers().total()),
-            TextKind::Normal,
-        ),
+        (&d20_check.modifiers().range().to_string(), TextKind::Normal),
     ])
     .render(ui);
 
     d20_check
         .modifiers()
-        .render_with_context(ui, ModifierSetRenderMode::List(1));
+        .render_with_context(ui, ModifierRenderMode::List(true));
 }
 
 fn render_forced_outcome_or_advantage(
     ui: &imgui::Ui,
     d20_check: &D20Check,
-    hit_chance: f64,
+    hit_chance: Range<f32>,
     reverse_text_color: bool,
 ) {
     if let Some((source, outcome)) = d20_check.forced_outcome() {
@@ -1197,11 +1193,11 @@ fn render_forced_outcome_or_advantage(
 fn render_advantage(
     ui: &imgui::Ui,
     d20_check: &D20Check,
-    hit_chance: f64,
+    hit_chance: Range<f32>,
     reverse_text_color: bool,
 ) {
     TextSegment::new(
-        &format!("{:.0}%", hit_chance.floor()),
+        hit_chance_string(hit_chance),
         d20_roll_mode_text_kind(&d20_check, reverse_text_color),
     )
     .render(ui);
@@ -1241,20 +1237,32 @@ fn d20_roll_mode_text_kind(d20_check: &D20Check, reverse_text_color: bool) -> Te
 
 fn render_forced_outcome(
     ui: &imgui::Ui,
-    hit_chance: f64,
+    hit_chance: Range<f32>,
     source: &ModifierSource,
     outcome: &D20CheckOutcome,
     reverse_text_color: bool,
 ) {
     let text_kind = d20_outcome_text_kind(outcome, reverse_text_color);
 
-    TextSegment::new(&format!("{:.0}%", hit_chance.floor()), text_kind.clone()).render(ui);
+    TextSegment::new(hit_chance_string(hit_chance), text_kind.clone()).render(ui);
 
     TextSegments::new(vec![
         (outcome.to_string(), text_kind),
         (source.to_string(), TextKind::Details),
     ])
     .render(ui);
+}
+
+fn hit_chance_string(hit_chance: Range<f32>) -> String {
+    if hit_chance.is_single() {
+        format!("{:.0}%", hit_chance.min.floor())
+    } else {
+        format!(
+            "{:.0}-{:.0}%",
+            hit_chance.min.floor(),
+            hit_chance.max.floor()
+        )
+    }
 }
 
 fn d20_outcome_text_kind(outcome: &D20CheckOutcome, reverse_text_color: bool) -> TextKind {

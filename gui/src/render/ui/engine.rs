@@ -1,5 +1,5 @@
 use hecs::World;
-use imgui::TreeNodeFlags;
+use imgui::{MouseButton, TreeNodeFlags};
 use nat20_core::{
     components::{
         actions::targeting::TargetInstance, spells::spell::ConcentrationInstance,
@@ -395,7 +395,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
 
         group_token.end();
 
-        if ui.is_item_hovered() && ui.is_key_pressed_no_repeat(imgui::Key::ModCtrl) {
+        if ui.is_item_hovered() && ui.is_mouse_clicked(MouseButton::Right) {
             ui.open_popup(self.id.to_string());
         }
 

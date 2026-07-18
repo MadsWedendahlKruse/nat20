@@ -190,6 +190,12 @@ impl Deref for FlatModifierMap {
     }
 }
 
+pub trait ModifierValue {
+    fn is_zero(&self) -> bool;
+    fn min(&self) -> i32;
+    fn max(&self) -> i32;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ModifierKind {
     Flat(i32),
@@ -198,14 +204,6 @@ pub enum ModifierKind {
 }
 
 impl ModifierKind {
-    pub fn is_zero(&self) -> bool {
-        match self {
-            ModifierKind::Flat(value) => *value == 0,
-            ModifierKind::Dice(dice_set) => dice_set.is_zero(),
-            ModifierKind::Composite(kinds) => kinds.iter().all(|kind| kind.is_zero()),
-        }
-    }
-
     pub fn evaluate(&self) -> ModifierKindResult {
         match self {
             ModifierKind::Flat(value) => ModifierKindResult::Flat(*value),
@@ -214,22 +212,6 @@ impl ModifierKind {
                 let results = kinds.iter().map(|kind| kind.evaluate()).collect();
                 ModifierKindResult::Composite(results)
             }
-        }
-    }
-
-    pub fn min(&self) -> i32 {
-        match self {
-            ModifierKind::Flat(value) => *value,
-            ModifierKind::Dice(dice_set) => dice_set.min_roll() as i32,
-            ModifierKind::Composite(kinds) => kinds.iter().map(|kind| kind.min()).sum(),
-        }
-    }
-
-    pub fn max(&self) -> i32 {
-        match self {
-            ModifierKind::Flat(value) => *value,
-            ModifierKind::Dice(dice_set) => dice_set.max_roll() as i32,
-            ModifierKind::Composite(kinds) => kinds.iter().map(|kind| kind.max()).sum(),
         }
     }
 
@@ -251,6 +233,32 @@ impl ModifierKind {
     }
 }
 
+impl ModifierValue for ModifierKind {
+    fn is_zero(&self) -> bool {
+        match self {
+            ModifierKind::Flat(value) => *value == 0,
+            ModifierKind::Dice(dice_set) => dice_set.is_zero(),
+            ModifierKind::Composite(kinds) => kinds.iter().all(|kind| kind.is_zero()),
+        }
+    }
+
+    fn min(&self) -> i32 {
+        match self {
+            ModifierKind::Flat(value) => *value,
+            ModifierKind::Dice(dice_set) => dice_set.min_roll() as i32,
+            ModifierKind::Composite(kinds) => kinds.iter().map(|kind| kind.min()).sum(),
+        }
+    }
+
+    fn max(&self) -> i32 {
+        match self {
+            ModifierKind::Flat(value) => *value,
+            ModifierKind::Dice(dice_set) => dice_set.max_roll() as i32,
+            ModifierKind::Composite(kinds) => kinds.iter().map(|kind| kind.max()).sum(),
+        }
+    }
+}
+
 impl From<i32> for ModifierKind {
     fn from(value: i32) -> Self {
         ModifierKind::Flat(value)
@@ -260,6 +268,32 @@ impl From<i32> for ModifierKind {
 impl From<DiceSet> for ModifierKind {
     fn from(dice_set: DiceSet) -> Self {
         ModifierKind::Dice(dice_set)
+    }
+}
+
+impl fmt::Display for ModifierKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ModifierKind::Flat(value) => write!(f, "{}", value),
+
+            ModifierKind::Dice(dice_set) => write!(f, "{}", dice_set),
+
+            ModifierKind::Composite(kinds) => {
+                for (i, kind) in kinds.iter().enumerate() {
+                    if i > 0 {
+                        if let ModifierKind::Flat(value) = kind {
+                            if *value > 0 {
+                                write!(f, " + ")?;
+                            }
+                        } else {
+                            write!(f, " + ")?;
+                        }
+                    }
+                    write!(f, "{}", kind)?;
+                }
+                Ok(())
+            }
+        }
     }
 }
 
@@ -299,6 +333,76 @@ impl ModifierKindResult {
 
     pub fn matches_kind(&self, kind: &ModifierKind) -> bool {
         compare_kind_result(kind, self)
+    }
+}
+
+impl ModifierValue for ModifierKindResult {
+    fn is_zero(&self) -> bool {
+        match self {
+            ModifierKindResult::Flat(value) => *value == 0,
+            ModifierKindResult::Dice(dice_result) => dice_result.total() == 0,
+            ModifierKindResult::Composite(results) => results.iter().all(|result| result.is_zero()),
+        }
+    }
+
+    fn min(&self) -> i32 {
+        match self {
+            ModifierKindResult::Flat(value) => *value,
+            ModifierKindResult::Dice(dice_result) => dice_result.dice().min_roll() as i32,
+            ModifierKindResult::Composite(results) => {
+                results.iter().map(|result| result.min()).sum()
+            }
+        }
+    }
+
+    fn max(&self) -> i32 {
+        match self {
+            ModifierKindResult::Flat(value) => *value,
+            ModifierKindResult::Dice(dice_result) => dice_result.dice().max_roll() as i32,
+            ModifierKindResult::Composite(results) => {
+                results.iter().map(|result| result.max()).sum()
+            }
+        }
+    }
+}
+
+impl fmt::Display for ModifierKindResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ModifierKindResult::Flat(value) => write!(f, "{}", value),
+
+            ModifierKindResult::Dice(dice_result) => write!(f, "{}", dice_result),
+
+            ModifierKindResult::Composite(results) => {
+                for (i, result) in results.iter().enumerate() {
+                    if i > 0 {
+                        if let ModifierKindResult::Flat(value) = result {
+                            if *value > 0 {
+                                write!(f, " + ")?;
+                            }
+                        } else {
+                            write!(f, " + ")?;
+                        }
+                    }
+                    write!(f, "{}", result)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl ModifierValue for i32 {
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+
+    fn min(&self) -> i32 {
+        *self
+    }
+
+    fn max(&self) -> i32 {
+        *self
     }
 }
 

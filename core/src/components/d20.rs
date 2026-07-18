@@ -216,6 +216,7 @@ impl D20Check {
             outcome,
             crit_threshold,
             modifier_result,
+            proficiency_bonus,
         }
     }
 
@@ -292,6 +293,7 @@ pub struct D20CheckResult {
     pub outcome: Option<D20CheckOutcome>,
     pub crit_threshold: u8,
     pub modifier_result: ModifierResult,
+    pub proficiency_bonus: u8,
 }
 
 impl D20CheckResult {
@@ -325,11 +327,14 @@ impl D20CheckResult {
     where
         T: Into<ModifierKind>,
     {
-        self.check.add_modifier(source, value);
+        let modifier = value.into();
+        let result = modifier.evaluate();
+        self.check.add_modifier(source.clone(), modifier);
+        self.modifier_result.add_modifier_result(source, result);
     }
 
     pub fn reroll(&self) -> D20CheckResult {
-        self.check.roll(0)
+        self.check.roll(self.proficiency_bonus)
     }
 }
 

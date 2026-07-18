@@ -685,12 +685,12 @@ impl EventFilterKind {
 
                 if let Some((modifier_source, modifier_value)) = modifier {
                     let Some(event_modifier) =
-                        result.d20_result().check.modifiers().get(modifier_source)
+                        result.d20_result().modifier_result.get(modifier_source)
                     else {
                         return false;
                     };
 
-                    if event_modifier != modifier_value {
+                    if !event_modifier.matches_kind(modifier_value) {
                         return false;
                     }
                 }

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -71,5 +73,33 @@ where
             min: self.min + value,
             max: self.max + value,
         }
+    }
+
+    pub fn scale(&self, factor: f32) -> Self
+    where
+        T: Into<f32> + From<f32> + Copy,
+    {
+        let min = self.min.into() * factor;
+        let max = self.max.into() * factor;
+        Self {
+            min: T::from(min),
+            max: T::from(max),
+        }
+    }
+}
+
+impl fmt::Display for Range<i32> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_single() {
+            write!(f, "{}", self.min)?;
+        } else if self.min > 0 && self.max > 0 {
+            write!(f, "{}-{}", self.min, self.max)?;
+        } else if self.min < 0 && self.max > 0 {
+            write!(f, "({})-{}", self.min, self.max)?;
+        } else if self.min < 0 && self.max < 0 {
+            write!(f, "({})-({})", self.min, self.max)?;
+        }
+
+        Ok(())
     }
 }

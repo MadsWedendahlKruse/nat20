@@ -6,12 +6,10 @@ use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap}, actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionResultComponent, ActionPayloadComponent, EffectResultKind, ReactionResult
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionPayloadComponent, ActionResultComponent, EffectResultKind, ReactionResult
             }, targeting::{AreaShape, TargetingKind, TargetingRange},
         }, activity::{ActivityState, ActivityStateKind}, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
-            AttackRollResult, DamageComponentMitigation, DamageComponentResult,
-            DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
-            DamageRollResult, MitigationOperation,
+            AttackRollResult, DamageComponent, DamageComponentMitigation, DamageComponentResult, DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll, DamageRollResult, MitigationOperation,
         }, effects::effect::{EffectInstance, EffectLifetime, EffectsMap}, health::{hit_points::HitPoints, life_state::LifeState}, id::{ActionId, EntityIdentifier, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId}, items::{
             equipment::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus, ArmorType},
@@ -20,7 +18,7 @@ use nat20_core::{
             },
             item::{Item, ItemRarity},
             money::MonetaryValue,
-        }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{Modifiable, ModifierSet, ModifierSource}, proficiency::{Proficiency, ProficiencyLevel}, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
+        }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{FlatModifiable, FlatModifierMap, Modifiable, ModifierKind, ModifierMap, ModifierSource}, proficiency::{Proficiency, ProficiencyLevel}, range::Range, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
     }, registry::registry::{FeatsRegistry, SpellsRegistry}, systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind}, geometry::{Displacement, DisplacementTemplate},
@@ -32,9 +30,7 @@ use uom::si::{angle::degree, length::meter, mass::kilogram};
 
 use crate::{
     render::{common::{colors::Color, utils::Renderable}, ui::{
-        engine::render_event_description,
-        text::{TextKind, TextSegment, TextSegments, item_rarity_color},
-        utils::{
+        engine::render_event_description, modifier::{ModifierRenderMode, modifiers_to_string}, text::{TextKind, TextSegment, TextSegments, item_rarity_color}, utils::{
             ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext,
             ProgressBarColor, render_progress_bar,
             roman_numeral, signed_value,
@@ -42,65 +38,6 @@ use crate::{
     }}, state::gui_state::GuiState, table_with_columns
 };
 
-pub enum ModifierSetRenderMode {
-    Line,
-    List(u8),
-    Hoverable,
-}
-
-
-
-impl ImguiRenderableWithContext<ModifierSetRenderMode> for ModifierSet {
-    fn render_with_context(&self, ui: &imgui::Ui, mode: ModifierSetRenderMode) {
-        match mode {
-            ModifierSetRenderMode::Line => {
-                if self.is_empty() {
-                    return;
-                }
-                let mut segments = Vec::new();
-                for (source, value) in self.iter() {
-                    if value == &0 {
-                        continue;
-                    }
-                    segments.push((
-                        signed_value(value),
-                        TextKind::Normal,
-                    ));
-                    segments.push((format!("({})", source), TextKind::Details));
-                }
-                TextSegments::new(segments).render(ui);
-            }
-
-            ModifierSetRenderMode::List(indent_level) => {
-                for (source, value) in self.iter() {
-                    if value == &0 {
-                        continue;
-                    }
-                    ui.indent();
-                    TextSegments::new(vec![
-                        (signed_value(value), TextKind::Normal),
-                        (source.to_string(), TextKind::Details),
-                    ])
-                    .render(ui);
-                    ui.unindent();
-                }
-            }
-
-            ModifierSetRenderMode::Hoverable => {
-                ui.text(signed_value(&self.total()));
-                if self.is_empty() {
-                    return;
-                }
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        ui.text(format!("Total: {}", self.total()));
-                        self.render_with_context(ui, ModifierSetRenderMode::List(1));
-                    });
-                }
-            }
-        }
-    }
-}
 
 impl ImguiRenderable for Name {
     fn render(&self, ui: &imgui::Ui) {
@@ -245,8 +182,8 @@ impl ImguiRenderable for AbilityScore {
         .render(ui);
         ui.unindent();
 
-        self.modifiers
-            .render_with_context(ui, ModifierSetRenderMode::List(1));
+        self.modifiers()
+            .render_with_context(ui, ModifierRenderMode::List(true));
     }
 }
 
@@ -290,9 +227,9 @@ impl ImguiRenderableWithContext<(&World, Entity)> for AbilityScoreMap {
                     }
                     let result = saving_throws.check(&saving_throw_kind, world, entity);
                     let modifiers = &result.check.modifiers();
-                    let total = modifiers.total();
-                    ui.text(format!("Bonus: {}", signed_value(&total)));
-                    modifiers.render_with_context(ui, ModifierSetRenderMode::List(1));
+                    let range = modifiers.range();
+                    ui.text(format!("Bonus: {}", range));
+                    modifiers.render_with_context(ui, ModifierRenderMode::List(true));
                 });
             }
         }
@@ -338,7 +275,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for SkillSet {
                 let result = self.check(&skill, world, entity);
                 result
                     .modifiers()
-                    .render_with_context(ui, ModifierSetRenderMode::Hoverable);
+                    .render_with_context(ui, ModifierRenderMode::Hoverable);
             }
 
             table.end();
@@ -814,16 +751,21 @@ impl ImguiRenderable for ArmorClass {
         if ui.is_item_hovered() {
             ui.tooltip(|| {
                 ui.text(format!("Total AC: {}", self.total()));
-                TextSegments::new(vec![
-                    (format!("{}", self.base.0), TextKind::Normal),
-                    (format!("({})", self.base.1), TextKind::Details),
-                ])
-                .render(ui);
                 self.dexterity_bonus.render(ui);
-                self.modifiers
-                    .render_with_context(ui, ModifierSetRenderMode::List(1));
+                self.modifiers()
+                    .render_with_context(ui, ModifierRenderMode::List(true));
             });
         }
+    }
+}
+
+impl ImguiRenderable for DamageComponent {
+    fn render(&self, ui: &imgui::Ui) {
+        TextSegment::new(
+            &format!("{} {}", modifiers_to_string(self.modifiers()), self.damage_type),
+            TextKind::Damage(self.damage_type),
+        )
+        .render(ui);
     }
 }
 
@@ -840,16 +782,9 @@ impl ImguiRenderable for DamageRoll {
             .sum::<i32>();
         ui.text(format!("{}-{} Damage", min_damage, max_damage));
 
-        let mut damage_components = vec![self.primary.clone()];
-        damage_components.extend(self.bonus.clone());
-
-        for component in damage_components {
+        for component in &self.components {
             ui.indent();
-            TextSegment::new(
-                &component.to_string(),
-                TextKind::Damage(component.damage_type),
-            )
-            .render(ui);
+            component.render(ui);
             ui.unindent();
         }
     }
@@ -859,28 +794,11 @@ impl ImguiRenderable for DamageComponentResult {
     fn render(&self, ui: &imgui::Ui) {
         TextSegments::new(vec![
             (
-                &format!("{} {}", self.result.subtotal, self.damage_type),
+                format!("{} {}", self.result.total(), self.damage_type),
                 TextKind::Damage(self.damage_type),
             ),
-            (
-                &format!(
-                    "({} ({}d{})",
-                    self.result.rolls.iter().sum::<u32>(),
-                    self.result.rolls.len(),
-                    self.result.die_size as u32,
-                ),
-                TextKind::Details,
-            ),
-        ])
-        .render(ui);
-        if !self.result.modifiers.is_empty() {
-            ui.same_line();
-            self.result
-                .modifiers
-                .render_with_context(ui, ModifierSetRenderMode::Line);
-        }
-        ui.same_line();
-        TextSegment::new(")", TextKind::Details).render(ui);
+            (format!("({})", modifiers_to_string(&self.result)), TextKind::Details),
+        ]).render(ui);
     }
 }
 
@@ -908,7 +826,7 @@ impl ImguiRenderable for D20CheckResult {
         if self.advantage_tracker().roll_mode() != RollMode::Normal {
             segments.push((
                 format!(
-                    " ({}, {}, {:?})",
+                    "({}, {}, {:?})",
                     self.rolls[0],
                     self.rolls[1],
                     self.advantage_tracker().roll_mode()
@@ -929,7 +847,7 @@ impl ImguiRenderable for D20CheckResult {
         if !self.modifiers().is_empty() {
             ui.same_line();
             self.modifiers()
-                .render_with_context(ui, ModifierSetRenderMode::Line);
+                .render_with_context(ui, ModifierRenderMode::Line);
         }
         ui.same_line();
         ui.text(format!("= {}", self.total()));
@@ -946,17 +864,17 @@ impl ImguiRenderable for DamageComponentMitigation {
     fn render(&self, ui: &imgui::Ui) {
         let text_kind = TextKind::Damage(self.damage_type);
 
-        if self.original.subtotal == self.after_mods {
+        if self.original.total() == self.after_mods {
             // No mitigation applied
             TextSegment::new(
-                &format!("{} {}", self.original.subtotal, self.damage_type),
+                &format!("{} {}", self.original.total(), self.damage_type),
                 text_kind,
             )
             .render(ui);
             return;
         }
 
-        let mut amount = self.original.subtotal.to_string();
+        let mut amount = self.original.total().to_string();
         for modifier in &self.modifiers {
             let explanation = match modifier.operation {
                 MitigationOperation::FlatReduction(_) => format!("{}", modifier.source),
@@ -1105,7 +1023,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                     TextSegments::new(vec![
                         (target_name, TextKind::Target),
                         ("was healed for", TextKind::Normal),
-                        (&format!("{} HP", healing.healing.subtotal), TextKind::Healing),
+                        (&format!("{} HP", healing.healing.total()), TextKind::Healing),
                     ])
                     .render(ui);
                     healing.new_life_state.render_with_context(
@@ -1122,7 +1040,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                         ui.text("Healing:");
                         ui.same_line();
                         TextSegment::new(
-                            &format!("{} HP", healing.healing),
+                            &format!("{} HP", modifiers_to_string(&healing.healing)),
                             TextKind::Healing,
                         ).render(ui);
                     });
@@ -1364,7 +1282,7 @@ impl ImguiRenderable for (&Option<DamageRollResult>, &Option<DamageMitigationRes
 
 impl ImguiRenderable for D20CheckDC<SavingThrowKind> {
     fn render(&self, ui: &imgui::Ui) {
-        self.dc.render_with_context(ui, ModifierSetRenderMode::Line);
+        self.dc.render_with_context(ui, ModifierRenderMode::Line);
         ui.same_line();
         TextSegments::new(vec![
             (format!("({})", self.key), TextKind::Ability),
@@ -1376,7 +1294,7 @@ impl ImguiRenderable for D20CheckDC<SavingThrowKind> {
 
 impl ImguiRenderable for D20CheckDC<Skill> {
     fn render(&self, ui: &imgui::Ui) {
-        self.dc.render_with_context(ui, ModifierSetRenderMode::Line);
+        self.dc.render_with_context(ui, ModifierRenderMode::Line);
         ui.same_line();
         TextSegments::new(vec![
             (format!("({})", self.key), TextKind::Skill),
@@ -1602,7 +1520,7 @@ impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind
                         // TODO: More info? Modifiers?
                         let healing = healing(world, entity, action_context);
                         TextSegment::new(
-                            format!("{}-{} Healing", healing.min_roll(), healing.max_roll()),
+                            format!("{}-{} Healing", healing.min(), healing.max()),
                             TextKind::Healing,
                         )
                         .render(ui);

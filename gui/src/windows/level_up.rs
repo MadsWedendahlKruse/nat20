@@ -10,6 +10,7 @@ use nat20_core::{
         id::{Name, SpellId},
         level::CharacterLevels,
         level_up::{ChoiceItem, ChoiceSpec, LevelUpPrompt},
+        modifier::FlatModifiable,
         proficiency::{Proficiency, ProficiencyLevel},
         skill::{Skill, SkillSet},
     },

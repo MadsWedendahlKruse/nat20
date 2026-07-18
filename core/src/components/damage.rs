@@ -19,7 +19,7 @@ use crate::{
         },
         modifier::{
             FlatModifiable, Modifiable, ModifierKind, ModifierKindResult, ModifierMap,
-            ModifierResult, ModifierSource,
+            ModifierResult, ModifierSource, ModifierValue,
         },
         proficiency::Proficiency,
         range::Range,

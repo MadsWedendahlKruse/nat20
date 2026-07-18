@@ -6,7 +6,7 @@ use nat20_core::{
         ai::PlayerControlledTag,
         d20::D20CheckDC,
         damage::DamageRollResult,
-        modifier::{Modifiable, ModifierSet, ModifierSource},
+        modifier::{ModifierKindResult, ModifierResult, ModifierSource},
         resource::RechargeRule,
         saving_throw::SavingThrowKind,
         skill::Skill,
@@ -152,13 +152,10 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                 ui.same_line();
                 if ui.button("Damage") {
                     let mut damage_roll_result = DamageRollResult::default();
-                    damage_roll_result.components[0]
-                        .result
-                        .modifiers
-                        .add_modifier(
-                            ModifierSource::Custom("Debug Damage".to_string()),
-                            *damage_amount,
-                        );
+                    damage_roll_result.components[0].result.add_modifier_result(
+                        ModifierSource::Custom("Debug Damage".to_string()),
+                        ModifierKindResult::Flat(*damage_amount),
+                    );
                     damage_roll_result.recalculate_total();
                     systems::health::damage(game_state, self.creature, &mut damage_roll_result);
                 }
@@ -188,9 +185,9 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                             .nth(index)
                             .expect("Invalid ability index");
                         let dc = D20CheckDCKind::SavingThrow(D20CheckDC {
-                            dc: ModifierSet::from_iter([(
+                            dc: ModifierResult::from_iter([(
                                 ModifierSource::Custom("Saving Throw DC".to_string()),
-                                *dc_value,
+                                ModifierKindResult::Flat(*dc_value),
                             )]),
                             key: kind,
                         });
@@ -219,9 +216,9 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     if let Some(index) = choice {
                         let skill = Skill::iter().nth(index).expect("Invalid skill index");
                         let dc = D20CheckDCKind::Skill(D20CheckDC {
-                            dc: ModifierSet::from_iter([(
+                            dc: ModifierResult::from_iter([(
                                 ModifierSource::Custom("Skill Check DC".to_string()),
-                                *dc_value,
+                                ModifierKindResult::Flat(*dc_value),
                             )]),
                             key: skill,
                         });
