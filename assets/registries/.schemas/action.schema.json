@@ -660,12 +660,12 @@
         "EffectEndVerb": {
             "oneOf": [
                 {
-                    "description": "Remove the effect instance when the event fires.",
+                    "description": "Remove the effect instance when the event fires",
                     "type": "string",
                     "const": "remove"
                 },
                 {
-                    "description": "Re-roll the applying action's condition; remove the effect on a\nsuccess (e.g. Hold Person's repeat save).",
+                    "description": "Re-roll the applying action's condition and remove the effect on a\nsuccess (e.g. Hold Person's repeat save)",
                     "type": "string",
                     "const": "repeat_apply_condition"
                 }
@@ -711,7 +711,7 @@
                             "type": "object",
                             "properties": {
                                 "events": {
-                                    "description": "Event kinds this filter can match — used for dispatch indexing and\nto short-circuit before entering Lua.",
+                                    "description": "Event kinds this filter can match",
                                     "type": "array",
                                     "items": {
                                         "$ref": "#/definitions/EventKindTag"
@@ -1109,7 +1109,7 @@
             "type": "object",
             "properties": {
                 "events": {
-                    "description": "Event kinds that can trigger this reaction — checked before the\ntrigger script runs.",
+                    "description": "Event kinds that can trigger this reaction, checked before the\ntrigger script runs.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/EventKindTag"
