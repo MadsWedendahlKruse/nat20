@@ -9,7 +9,7 @@ use crate::{
     components::{
         ability::Ability,
         actions::action::{
-            Action, ActionKind, ActionTimeline, ActionUsabilityFunction, ReactionTriggerFunction,
+            Action, ActionKind, ActionTimeline, ActionUsabilityFunction, ReactionTrigger,
             TargetingFunction,
         },
         effects::effect::EffectInstanceId,
@@ -63,7 +63,7 @@ impl Spell {
         kind: ActionKind,
         resource_cost: ResourceAmountMap,
         targeting: Arc<TargetingFunction>,
-        reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
+        reaction_trigger: Option<ReactionTrigger>,
         timeline: ActionTimeline,
         usability: Option<Arc<ActionUsabilityFunction>>,
     ) -> Self {

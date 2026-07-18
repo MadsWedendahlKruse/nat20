@@ -58,6 +58,7 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::RestFinished { .. } => LogLevel::Info,
         EventKind::LostConcentration { .. } => LogLevel::Info,
         EventKind::ActionResult { .. } => LogLevel::Info,
+        EventKind::EquipmentChanged { .. } => LogLevel::Debug,
     }
 }
 
@@ -228,6 +229,25 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
                     (mover.name().as_str(), TextKind::Actor),
                     ("is moving out of reach of", TextKind::Normal),
                     (entity.name().as_str(), TextKind::Target),
+                ])
+                .render(ui);
+            }
+            EventKind::EquipmentChanged {
+                entity,
+                item,
+                equipped,
+            } => {
+                TextSegments::new(vec![
+                    (entity.name().to_string(), TextKind::Actor),
+                    (
+                        if *equipped {
+                            "equipped".to_string()
+                        } else {
+                            "unequipped".to_string()
+                        },
+                        TextKind::Normal,
+                    ),
+                    (item.to_string(), TextKind::Details),
                 ])
                 .render(ui);
             }

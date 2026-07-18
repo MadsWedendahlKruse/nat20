@@ -4,18 +4,21 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::{
     components::{
-        actions::action::{ReactionBodyFunction, ReactionResult, ReactionTriggerFunction},
+        actions::action::{
+            ReactionBodyFunction, ReactionResult, ReactionTrigger, ReactionTriggerFunction,
+        },
         id::ScriptId,
         resource::{RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION, ResourceAmountMap},
     },
     engine::{
         action_prompt::ActionData,
-        event::{Event, EventKind},
+        event::{Event, EventKind, EventKindTag},
         game_state::GameState,
     },
     registry::serialize::schema::impl_string_schema,
@@ -23,8 +26,8 @@ use crate::{
 };
 
 impl_string_schema!(
-    ReactionTrigger,
-    "ReactionTrigger",
+    ReactionTriggerScript,
+    "ReactionTriggerScript",
     "description": "Script id of a Lua reaction trigger, e.g. `nat20_core::script.shield`.",
     "examples": ["nat20_core::script.shield"]
 );
@@ -86,18 +89,18 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct ReactionTrigger {
+pub struct ReactionTriggerScript {
     pub raw: String,
     pub function: Arc<ReactionTriggerFunction>,
     pub script: Option<ScriptId>,
 }
 
-impl FromStr for ReactionTrigger {
+impl FromStr for ReactionTriggerScript {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(function) = REACTION_TRIGGER_DEFAULTS.get(s) {
-            return Ok(ReactionTrigger {
+            return Ok(ReactionTriggerScript {
                 raw: s.to_string(),
                 function: function.clone(),
                 script: None,
@@ -112,7 +115,7 @@ impl FromStr for ReactionTrigger {
         })?;
         let script = Some(script_id.clone());
 
-        Ok(ReactionTrigger {
+        Ok(ReactionTriggerScript {
             raw: s.to_string(),
             function: Arc::new(move |game_state, reactor, event| {
                 systems::scripts::evaluate_reaction_trigger(&script_id, game_state, *reactor, event)
@@ -122,7 +125,7 @@ impl FromStr for ReactionTrigger {
     }
 }
 
-impl TryFrom<String> for ReactionTrigger {
+impl TryFrom<String> for ReactionTriggerScript {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -130,9 +133,26 @@ impl TryFrom<String> for ReactionTrigger {
     }
 }
 
-impl From<ReactionTrigger> for String {
-    fn from(trigger: ReactionTrigger) -> Self {
+impl From<ReactionTriggerScript> for String {
+    fn from(trigger: ReactionTriggerScript) -> Self {
         trigger.raw
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReactionTriggerDefinition {
+    pub script: ReactionTriggerScript,
+    /// Event kinds that can trigger this reaction, checked before the
+    /// trigger script runs.
+    pub events: Vec<EventKindTag>,
+}
+
+impl From<ReactionTriggerDefinition> for ReactionTrigger {
+    fn from(def: ReactionTriggerDefinition) -> Self {
+        ReactionTrigger {
+            events: def.events,
+            function: def.script.function,
+        }
     }
 }
 

@@ -25,7 +25,9 @@ use crate::{
         },
     },
     engine::{
-        action_prompt::ActionData, event::Event, game_state::GameState, geometry::WorldGeometry,
+        action_prompt::ActionData,
+        event::{Event, EventKindTag},
+        game_state::GameState,
         interaction::InteractionScopeId,
     },
     entities::projectile::Projectile,
@@ -557,7 +559,12 @@ pub fn available_reactions_to_event(
         let reaction = reaction.unwrap();
 
         if let Some(trigger) = &reaction.reaction_trigger {
-            if trigger(game_state, &reactor, event) {
+            // Only run the (Lua) trigger function for event kinds it has declared
+            if !trigger.events.contains(&EventKindTag::from(&event.kind)) {
+                continue;
+            }
+
+            if (trigger.function)(game_state, &reactor, event) {
                 for (context, resource_cost) in &contexts_and_costs {
                     let self_target = matches!(
                         targeting_context(world, reactor, &reaction_id, context).kind,

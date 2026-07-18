@@ -26,6 +26,7 @@ use crate::{
         },
         health::hit_points::HitPoints,
         id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId},
+        items::inventory::ItemInstance,
         level::CharacterLevels,
         modifier::{FlatModifierMap, Modifiable, ModifierKindResult, ModifierMap, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
@@ -36,11 +37,14 @@ use crate::{
         event::{Event, EventKind},
         game_state::GameState,
     },
-    registry::serialize::{
-        parser::{
-            Evaluable, EvaluableWithoutVariables, EvaluationError, ModifierExpression, Parser,
+    registry::{
+        registry::ItemsRegistry,
+        serialize::{
+            parser::{
+                Evaluable, EvaluableWithoutVariables, EvaluationError, ModifierExpression, Parser,
+            },
+            variables::{PARSER_VARIABLES, VariableMap},
         },
-        variables::{PARSER_VARIABLES, VariableMap},
     },
     systems::{
         self,
@@ -606,6 +610,17 @@ impl UserData for ActionResult {
                 .collect::<Vec<_>>())
         });
         methods.add_method("resolution", |_, this, ()| Ok(this.resolution().clone()));
+        methods.add_method("has_applied_effect", |_, this, effect_id: String| {
+            let id = parse_id::<EffectId>(&effect_id)?;
+            Ok(this.components().iter().any(|component| {
+                matches!(component,
+                    ActionResultComponent::Effect(EffectResult {
+                        result: EffectResultKind::Applied,
+                        effects,
+                        ..
+                    }) if effects.contains(&id))
+            }))
+        });
     }
 }
 
@@ -622,9 +637,6 @@ impl UserData for TargetInstance {
 
 impl UserData for Event {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_d20_check_performed", |_, this, ()| {
-            Ok(matches!(this.kind, EventKind::D20CheckPerformed { .. }))
-        });
         methods.add_method("as_d20_check_performed", |_, this, ()| {
             let EventKind::D20CheckPerformed { actor, result, dc } = &this.kind else {
                 return Ok((None, None, None));
@@ -647,17 +659,11 @@ impl UserData for Event {
             })?;
             Ok(())
         });
-        methods.add_method("is_action_requested", |_, this, ()| {
-            Ok(matches!(this.kind, EventKind::ActionRequested { .. }))
-        });
         methods.add_method("as_action_requested", |_, this, ()| {
             let EventKind::ActionRequested { action } = &this.kind else {
                 return Ok(None);
             };
             Ok(Some(action.clone()))
-        });
-        methods.add_method("is_action_result", |_, this, ()| {
-            Ok(matches!(this.kind, EventKind::ActionResult { .. }))
         });
         methods.add_method("as_action_result", |_, this, ()| {
             let EventKind::ActionResult { result, actor } = &this.kind else {
@@ -668,9 +674,6 @@ impl UserData for Event {
                 actor.as_ref().map(|p| ScriptEntity::from(p.id())),
             ))
         });
-        methods.add_method("is_moving_out_of_reach", |_, this, ()| {
-            Ok(matches!(this.kind, EventKind::MovingOutOfReach { .. }))
-        });
         methods.add_method("as_moving_out_of_reach", |_, this, ()| {
             let EventKind::MovingOutOfReach { mover, entity } = &this.kind else {
                 return Ok((None, None));
@@ -678,6 +681,28 @@ impl UserData for Event {
             Ok((
                 Some(ScriptEntity::from(mover.id())),
                 Some(ScriptEntity::from(entity.id())),
+            ))
+        });
+        methods.add_method("as_equipment_changed", |_, this, ()| {
+            let EventKind::EquipmentChanged {
+                entity,
+                item,
+                equipped,
+            } = &this.kind
+            else {
+                return Ok((None, None, None, None));
+            };
+
+            // TODO: Lowercase when we stringify enums?
+            let armor_type = match ItemsRegistry::get(item) {
+                Some(ItemInstance::Armor(armor)) => Some(armor.armor_type.to_string()),
+                _ => None,
+            };
+            Ok((
+                Some(ScriptEntity::from(entity.id())),
+                Some(item.to_string()),
+                armor_type,
+                Some(*equipped),
             ))
         });
     }
@@ -926,7 +951,7 @@ fn apply_effect_impl(
         EntityIdentifier::from_world(&game_state.world, target_entity),
         ActionResultComponent::Effect(EffectResult {
             resolution: resolution.clone(),
-            effect: effect_id.clone(),
+            effects: systems::effects::effect_id_and_children(&effect_id),
             result: EffectResultKind::Applied,
         }),
     ));

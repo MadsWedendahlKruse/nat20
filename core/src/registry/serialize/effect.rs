@@ -40,7 +40,7 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{CallbackResult, EventCallback, EventKind, ListenerSource},
+        event::{CallbackResult, EventCallback, EventKind, EventKindTag, ListenerSource},
         game_state::GameState,
     },
     registry::{
@@ -95,6 +95,12 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub actions: Vec<EffectGrantedAction>,
 
+    /// End conditions intrinsic to the effect, instantiated for every
+    /// application (per-cast conditions live on the applying action's
+    /// effect instance instead).
+    #[serde(default)]
+    pub end_conditions: Vec<EffectEndConditionDefinition>,
+
     /// Simple effect modifiers like:
     /// - Ability score changes
     /// - Skill modifiers
@@ -139,6 +145,11 @@ impl From<EffectDefinition> for Effect {
         effect.children = definition.children;
 
         effect.actions = definition.actions;
+        effect.end_conditions = definition
+            .end_conditions
+            .into_iter()
+            .map(Into::into)
+            .collect();
 
         // 1. Simple persistent modifiers
         // Build on_apply from all modifiers
@@ -294,6 +305,14 @@ impl RegistryReferenceCollector for EffectDefinition {
                     collector.add(RegistryReference::Resource(resource.clone()));
                 }
                 _ => { /* No references to collect */ }
+            }
+        }
+        for end_condition in &self.end_conditions {
+            if let EffectEventFilterDefinition::Script { script, .. } = &end_condition.event {
+                collector.add(RegistryReference::Script(
+                    script.clone(),
+                    ScriptFunction::EventFilter,
+                ));
             }
         }
         for hook in &self.post_damage_roll {
@@ -1299,7 +1318,7 @@ pub struct EffectInstanceDefinition {
     pub one_shot: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectEventFilterDefinition {
     TurnBoundary {
@@ -1307,6 +1326,8 @@ pub enum EffectEventFilterDefinition {
         boundary: TurnBoundary,
     },
     Script {
+        /// Event kinds this filter can match
+        events: Vec<EventKindTag>,
         script: ScriptId,
     },
 }
@@ -1317,30 +1338,106 @@ impl From<EffectEventFilterDefinition> for EffectEventFilter {
             EffectEventFilterDefinition::TurnBoundary { entity, boundary } => {
                 EffectEventFilter::TurnBoundary { entity, boundary }
             }
-
-            EffectEventFilterDefinition::Script { script } => {
-                todo!("Implement script-based EffectEventFilter")
+            EffectEventFilterDefinition::Script { events, script } => {
+                EffectEventFilter::Script { events, script }
             }
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum EffectEndConditionDefinition {
-    Script {
-        script: ScriptId,
-    },
-    Event {
-        event: EffectEventFilterDefinition,
-        callback: EventCallbackDefinition,
-    },
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EffectEndConditionDefinition {
+    pub event: EffectEventFilterDefinition,
+    pub on_trigger: EffectEndVerb,
 }
 
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EventCallbackDefinition {
+pub enum EffectEndVerb {
+    /// Remove the effect instance when the event fires
+    Remove,
+    /// Re-roll the applying action's condition and remove the effect on a
+    /// success (e.g. Hold Person's repeat save)
     RepeatApplyCondition,
+}
+
+impl EffectEndVerb {
+    fn callback(&self) -> EventCallback {
+        match self {
+            EffectEndVerb::Remove => remove_effect_callback(),
+            EffectEndVerb::RepeatApplyCondition => repeat_apply_condition_callback(),
+        }
+    }
+}
+
+impl From<EffectEndConditionDefinition> for EffectEndConditionTemplate {
+    fn from(def: EffectEndConditionDefinition) -> Self {
+        EffectEndConditionTemplate {
+            event_filter: def.event.into(),
+            callback: def.on_trigger.callback(),
+        }
+    }
+}
+
+fn remove_effect_callback() -> EventCallback {
+    EventCallback::new(|game_state, _event, source| {
+        let ListenerSource::EffectInstance { id, entity } = source else {
+            return CallbackResult::None;
+        };
+        systems::effects::remove_effect(game_state, *entity, id);
+        CallbackResult::None
+    })
+}
+
+fn repeat_apply_condition_callback() -> EventCallback {
+    EventCallback::new(move |game_state, event, source| {
+        let ListenerSource::EffectInstance { id, entity } = source.clone() else {
+            return CallbackResult::None;
+        };
+
+        debug!(
+            "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
+            id, entity, event
+        );
+
+        let instance = systems::effects::effects(&game_state.world, entity)
+            .get(&id)
+            .unwrap()
+            .clone();
+        let instance_id = id.clone();
+
+        match &instance.action_resolution {
+            ActionConditionResolution::Unconditional => { /* No check to repeat */ }
+
+            ActionConditionResolution::AttackRoll {
+                attack_roll,
+                armor_class,
+            } => todo!(),
+
+            ActionConditionResolution::SavingThrow {
+                saving_throw_dc, ..
+            } => {
+                let event = systems::d20::check(
+                    game_state,
+                    entity,
+                    &D20CheckDCKind::SavingThrow(saving_throw_dc.clone()),
+                );
+                game_state.process_event_with_response_callback(
+                    event,
+                    EventCallback::new(move |game_state, event, _| {
+                        if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind {
+                            if result.is_success(dc) {
+                                systems::effects::remove_effect(game_state, entity, &instance_id);
+                            }
+                        }
+                        CallbackResult::None
+                    }),
+                );
+            }
+        }
+
+        CallbackResult::None
+    })
 }
 
 impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
@@ -1352,93 +1449,10 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
             one_shot,
         } = def;
 
-        let end_condition = match end_condition {
-            Some(EffectEndConditionDefinition::Script { script }) => {
-                todo!("Implement script-based EffectEndCondition")
-            }
-
-            // TODO: Indentation is going out of control here
-            Some(EffectEndConditionDefinition::Event { event, callback }) => {
-                Some(EffectEndConditionTemplate {
-                    event_filter: event.into(),
-                    callback: match callback {
-                        EventCallbackDefinition::RepeatApplyCondition => {
-                            EventCallback::new(move |game_state, event, source| {
-                                if let ListenerSource::EffectInstance { id, entity } =
-                                    source.clone()
-                                {
-                                    debug!(
-                                        "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
-                                        id, entity, event
-                                    );
-
-                                    let instance =
-                                        systems::effects::effects(&game_state.world, entity)
-                                            .get(&id)
-                                            .unwrap()
-                                            .clone();
-                                    let instance_id = id.clone();
-
-                                    match &instance.action_resolution {
-                                        ActionConditionResolution::Unconditional => { /* No check to repeat */
-                                        }
-
-                                        ActionConditionResolution::AttackRoll {
-                                            attack_roll,
-                                            armor_class,
-                                        } => todo!(),
-
-                                        ActionConditionResolution::SavingThrow {
-                                            saving_throw_dc,
-                                            saving_throw_result,
-                                        } => {
-                                            let event = systems::d20::check(
-                                                game_state,
-                                                entity,
-                                                &D20CheckDCKind::SavingThrow(
-                                                    saving_throw_dc.clone(),
-                                                ),
-                                            );
-                                            game_state.process_event_with_response_callback(
-                                                event,
-                                                EventCallback::new({
-                                                    move |game_state, event, _| {
-                                                        if let EventKind::D20CheckResolved {
-                                                            result,
-                                                            dc,
-                                                            ..
-                                                        } = &event.kind
-                                                        {
-                                                            if result.is_success(dc) {
-                                                                systems::effects::remove_effect(
-                                                                    game_state,
-                                                                    entity,
-                                                                    &instance_id,
-                                                                );
-                                                            }
-                                                        }
-
-                                                        CallbackResult::None
-                                                    }
-                                                }),
-                                            );
-                                        }
-                                    }
-                                }
-
-                                CallbackResult::None
-                            })
-                        }
-                    },
-                })
-            }
-            None => None,
-        };
-
         EffectInstanceTemplate {
             effect_id,
             lifetime,
-            end_condition,
+            end_condition: end_condition.map(Into::into),
             one_shot,
         }
     }

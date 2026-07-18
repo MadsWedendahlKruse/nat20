@@ -12,7 +12,7 @@ use crate::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             action::{ActionKindDefinition, ActionUsabilityDefinition},
-            reaction::ReactionTrigger,
+            reaction::ReactionTriggerDefinition,
             targeting::TargetingDefinition,
         },
     },
@@ -31,7 +31,7 @@ pub struct SpellDefinition {
     pub resource_cost: ResourceAmountMap,
     pub targeting: TargetingDefinition,
     #[serde(default)]
-    pub reaction_trigger: Option<ReactionTrigger>,
+    pub reaction_trigger: Option<ReactionTriggerDefinition>,
     pub timeline: ActionTimeline,
     pub usability: Option<ActionUsabilityDefinition>,
 }
@@ -47,7 +47,7 @@ impl From<SpellDefinition> for Spell {
             value.kind.into(),
             value.resource_cost,
             value.targeting.function(),
-            value.reaction_trigger.map(|trigger| trigger.function),
+            value.reaction_trigger.map(Into::into),
             value.timeline,
             value.usability.map(|usability| usability.function()),
         )
@@ -61,7 +61,7 @@ impl RegistryReferenceCollector for SpellDefinition {
             collector.add(RegistryReference::Resource(resource.clone()));
         }
         if let Some(reaction_trigger) = &self.reaction_trigger
-            && let Some(script_id) = &reaction_trigger.script
+            && let Some(script_id) = &reaction_trigger.script.script
         {
             collector.add(RegistryReference::Script(
                 script_id.clone(),

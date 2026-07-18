@@ -42,6 +42,26 @@ pub fn evaluate_reaction_trigger(
     }
 }
 
+pub fn evaluate_event_filter(
+    event_filter: &ScriptId,
+    event: &Event,
+    applier: Entity,
+    target: Entity,
+) -> bool {
+    let script = ScriptsRegistry::get(event_filter)
+        .expect(format!("Event filter script not found in registry: {:?}", event_filter).as_str());
+    match SCRIPT_ENGINE.evaluate_event_filter(script, event, applier, target) {
+        Ok(result) => result,
+        Err(err) => {
+            error!(
+                "Error evaluating event filter script {:?} for target {:?}: {:?}",
+                event_filter, target, err
+            );
+            false
+        }
+    }
+}
+
 pub fn evaluate_reaction_body(
     reaction_body: &ScriptId,
     game_state: &mut GameState,

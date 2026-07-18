@@ -28,7 +28,11 @@ use crate::{
         saving_throw::{SavingThrowDC, SavingThrowKind},
         spells::spellbook::SpellSource,
     },
-    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
+    engine::{
+        action_prompt::ActionData,
+        event::{Event, EventKindTag},
+        game_state::GameState,
+    },
     entities::projectile::ProjectileTemplate,
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{
@@ -67,7 +71,7 @@ pub struct Action {
     /// Optional cooldown for the action
     pub cooldown: Option<RechargeRule>,
     /// If the action is a reaction, this will describe what triggers the reaction.
-    pub reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
+    pub reaction_trigger: Option<ReactionTrigger>,
     /// Timeline describing the sequence of events that occur when performing the
     /// action, which can be used to synchronize animations and other visual effects.
     pub timeline: ActionTimeline,
@@ -207,6 +211,14 @@ impl Debug for ActionKind {
             ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
         }
     }
+}
+
+#[derive(Clone)]
+pub struct ReactionTrigger {
+    /// Event kinds that can trigger this reaction. Should be checked before the
+    /// trigger function (typically Lua) runs.
+    pub events: Vec<EventKindTag>,
+    pub function: Arc<ReactionTriggerFunction>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -617,8 +629,17 @@ pub enum EffectResultKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectResult {
     pub resolution: ActionConditionResolution,
-    pub effect: EffectId,
+    /// Root effect first, then any children if relevant
+    pub effects: Vec<EffectId>,
     pub result: EffectResultKind,
+}
+
+impl EffectResult {
+    pub fn root(&self) -> &EffectId {
+        self.effects
+            .first()
+            .expect("EffectResult must reference at least one effect")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

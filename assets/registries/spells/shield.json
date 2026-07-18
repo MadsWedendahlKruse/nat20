@@ -38,7 +38,13 @@
         "nat20_core::resource.reaction": 1
     },
     "targeting": "self",
-    "reaction_trigger": "nat20_core::script.spell.shield",
+    "reaction_trigger": {
+        "script": "nat20_core::script.spell.shield",
+        "events": [
+            "action_requested",
+            "d20_check_performed"
+        ]
+    },
     "timeline": {
         "total_duration": 0.5,
         "perform_time": 0.0

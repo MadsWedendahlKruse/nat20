@@ -4,6 +4,9 @@ use std::{
 };
 
 use hecs::Entity;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 use uuid::Uuid;
 
 use crate::{
@@ -12,7 +15,7 @@ use crate::{
         damage::DamageRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
-        id::EntityIdentifier,
+        id::{EntityIdentifier, ItemId},
         spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
@@ -91,6 +94,7 @@ impl Event {
             EventKind::RestFinished { participants, .. } => Some(participants.first()?.id()),
             EventKind::LostConcentration { entity, .. } => Some(entity.id()),
             EventKind::MovingOutOfReach { mover, .. } => Some(mover.id()),
+            EventKind::EquipmentChanged { entity, .. } => Some(entity.id()),
         }
     }
 
@@ -105,7 +109,12 @@ impl Event {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants)]
+#[strum_discriminants(
+    name(EventKindTag),
+    derive(Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema),
+    serde(rename_all = "snake_case")
+)]
 pub enum EventKind {
     /// An entity has declared they want to take an action. The engine can then
     /// validate that the entity can perform the action and either approve or
@@ -173,6 +182,12 @@ pub enum EventKind {
     MovingOutOfReach {
         mover: EntityIdentifier,
         entity: EntityIdentifier,
+    },
+
+    EquipmentChanged {
+        entity: EntityIdentifier,
+        item: ItemId,
+        equipped: bool,
     },
 }
 
@@ -353,6 +368,9 @@ pub enum ListenerSource {
 pub struct EventListener {
     pub id: EventListenerId,
     pub source: ListenerSource,
+    /// Event kinds the filter can match.
+    /// None means the filter can match any event kind
+    pub kinds: Option<Vec<EventKindTag>>,
     pub filter: EventFilter,
     pub callback: EventCallback,
     pub one_shot: bool,
@@ -368,16 +386,28 @@ impl EventListener {
         Self {
             id: Uuid::new_v4(),
             source,
+            kinds: None,
             filter,
             callback,
             one_shot,
         }
+    }
+
+    pub fn with_kinds(mut self, kinds: Vec<EventKindTag>) -> Self {
+        self.kinds = Some(kinds);
+        self
     }
 }
 
 pub struct EventDispatcher {
     listeners: HashMap<EventListenerId, EventListener>,
     by_source: HashMap<ListenerSource, HashSet<EventListenerId>>,
+    /// Listeners with declared kinds, keyed by event kind
+    by_kind: HashMap<EventKindTag, HashSet<EventListenerId>>,
+    /// One-shot response callbacks, keyed by the event they respond to
+    by_response_to: HashMap<EventId, HashSet<EventListenerId>>,
+    /// Checked for every event
+    wildcard: HashSet<EventListenerId>,
 }
 
 impl EventDispatcher {
@@ -385,14 +415,39 @@ impl EventDispatcher {
         Self {
             listeners: HashMap::new(),
             by_source: HashMap::new(),
+            by_kind: HashMap::new(),
+            by_response_to: HashMap::new(),
+            wildcard: HashSet::new(),
         }
     }
 
     pub fn register_listener(&mut self, listener: EventListener) {
         let id = listener.id;
-        let source = listener.source.clone();
+        self.by_source
+            .entry(listener.source.clone())
+            .or_default()
+            .insert(id);
+
+        match (&listener.source, &listener.kinds) {
+            (ListenerSource::EventResponse { trigger_id }, _) => {
+                self.by_response_to
+                    .entry(*trigger_id)
+                    .or_default()
+                    .insert(id);
+            }
+
+            (_, Some(kinds)) => {
+                for kind in kinds {
+                    self.by_kind.entry(*kind).or_default().insert(id);
+                }
+            }
+
+            (_, None) => {
+                self.wildcard.insert(id);
+            }
+        }
+
         self.listeners.insert(id, listener);
-        self.by_source.entry(source).or_default().insert(id);
     }
 
     pub fn get_listener(&self, listener_id: &EventListenerId) -> Option<&EventListener> {
@@ -400,27 +455,65 @@ impl EventDispatcher {
     }
 
     pub fn dispatch(&self, event: &Event) -> Vec<EventListenerId> {
-        let mut listeners = Vec::new();
-        for listener in self.listeners.values() {
-            if listener.filter.matches(event) {
-                listeners.push(listener.id);
-            }
+        let mut listeners: Vec<EventListenerId> = Vec::new();
+
+        listeners.extend(&self.wildcard);
+
+        if let Some(kind_listeners) = self.by_kind.get(&EventKindTag::from(&event.kind)) {
+            listeners.extend(kind_listeners);
         }
-        return listeners;
+
+        if let Some(response_to) = event.response_to
+            && let Some(response_listeners) = self.by_response_to.get(&response_to)
+        {
+            listeners.extend(response_listeners);
+        }
+
+        // The indexes only narrow down the candidates, the filters still
+        // decide whether a listener actually matches
+        listeners.retain(|id| {
+            self.listeners
+                .get(id)
+                .map_or(false, |listener| listener.filter.matches(event))
+        });
+
+        listeners
     }
 
     pub fn remove_listener_by_id(&mut self, listener_id: &EventListenerId) {
-        if let Some(listener) = self.listeners.remove(listener_id) {
-            if let Some(listeners) = self.by_source.get_mut(&listener.source) {
-                listeners.remove(listener_id);
+        let Some(listener) = self.listeners.remove(listener_id) else {
+            return;
+        };
+
+        if let Some(listeners) = self.by_source.get_mut(&listener.source) {
+            listeners.remove(listener_id);
+        }
+
+        match (&listener.source, &listener.kinds) {
+            (ListenerSource::EventResponse { trigger_id }, _) => {
+                if let Some(listeners) = self.by_response_to.get_mut(trigger_id) {
+                    listeners.remove(listener_id);
+                }
+            }
+
+            (_, Some(kinds)) => {
+                for kind in kinds {
+                    if let Some(listeners) = self.by_kind.get_mut(kind) {
+                        listeners.remove(listener_id);
+                    }
+                }
+            }
+
+            (_, None) => {
+                self.wildcard.remove(listener_id);
             }
         }
     }
 
     pub fn remove_listeners_by_source(&mut self, source: &ListenerSource) {
-        if let Some(listeners) = self.by_source.remove(source) {
-            for listener_id in listeners {
-                self.listeners.remove(&listener_id);
+        if let Some(listener_ids) = self.by_source.remove(source) {
+            for listener_id in listener_ids {
+                self.remove_listener_by_id(&listener_id);
             }
         }
     }

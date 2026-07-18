@@ -26,15 +26,15 @@
             "$ref": "#/definitions/ActionKindDefinition"
         },
         "reaction_trigger": {
-            "description": "Script id of a Lua reaction trigger, e.g. `nat20_core::script.shield`.",
-            "type": [
-                "string",
-                "null"
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/ReactionTriggerDefinition"
+                },
+                {
+                    "type": "null"
+                }
             ],
-            "default": null,
-            "examples": [
-                "nat20_core::script.shield"
-            ]
+            "default": null
         },
         "resource_cost": {
             "type": "object",
@@ -643,32 +643,31 @@
             ]
         },
         "EffectEndConditionDefinition": {
-            "anyOf": [
+            "type": "object",
+            "properties": {
+                "event": {
+                    "$ref": "#/definitions/EffectEventFilterDefinition"
+                },
+                "on_trigger": {
+                    "$ref": "#/definitions/EffectEndVerb"
+                }
+            },
+            "required": [
+                "event",
+                "on_trigger"
+            ]
+        },
+        "EffectEndVerb": {
+            "oneOf": [
                 {
-                    "type": "object",
-                    "properties": {
-                        "script": {
-                            "$ref": "#/definitions/ScriptId"
-                        }
-                    },
-                    "required": [
-                        "script"
-                    ]
+                    "description": "Remove the effect instance when the event fires.",
+                    "type": "string",
+                    "const": "remove"
                 },
                 {
-                    "type": "object",
-                    "properties": {
-                        "callback": {
-                            "$ref": "#/definitions/EventCallbackDefinition"
-                        },
-                        "event": {
-                            "$ref": "#/definitions/EffectEventFilterDefinition"
-                        }
-                    },
-                    "required": [
-                        "event",
-                        "callback"
-                    ]
+                    "description": "Re-roll the applying action's condition; remove the effect on a\nsuccess (e.g. Hold Person's repeat save).",
+                    "type": "string",
+                    "const": "repeat_apply_condition"
                 }
             ]
         },
@@ -711,11 +710,19 @@
                         "script": {
                             "type": "object",
                             "properties": {
+                                "events": {
+                                    "description": "Event kinds this filter can match — used for dispatch indexing and\nto short-circuit before entering Lua.",
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/EventKindTag"
+                                    }
+                                },
                                 "script": {
                                     "$ref": "#/definitions/ScriptId"
                                 }
                             },
                             "required": [
+                                "events",
                                 "script"
                             ]
                         }
@@ -882,10 +889,44 @@
                 "not_self"
             ]
         },
-        "EventCallbackDefinition": {
-            "type": "string",
-            "enum": [
-                "repeat_apply_condition"
+        "EventKindTag": {
+            "description": "Auto-generated discriminant enum variants",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "encounter",
+                        "life_state_changed",
+                        "damage_roll_performed",
+                        "damage_roll_resolved",
+                        "turn_boundary",
+                        "rest_started",
+                        "rest_finished",
+                        "lost_concentration",
+                        "moving_out_of_reach",
+                        "equipment_changed"
+                    ]
+                },
+                {
+                    "description": "An entity has declared they want to take an action. The engine can then\nvalidate that the entity can perform the action and either approve or\ndeny it. Other entities might also react to the request, e.g. if someone\nis casting a spell, another entity might use their reaction to Counterspell\nthe action.",
+                    "type": "string",
+                    "const": "action_requested"
+                },
+                {
+                    "description": "The result of performing an action.\nDespite the name it can also be used outside of actions.\nTODO: Maybe a better name then?",
+                    "type": "string",
+                    "const": "action_result"
+                },
+                {
+                    "description": "The initial D20 roll which can be reacted to, e.g. with the Lucky feat.",
+                    "type": "string",
+                    "const": "d20_check_performed"
+                },
+                {
+                    "description": "The final result of a D20 check after reactions have been applied.",
+                    "type": "string",
+                    "const": "d20_check_resolved"
+                }
             ]
         },
         "LifeState": {
@@ -1075,6 +1116,29 @@
                         "shape"
                     ]
                 }
+            ]
+        },
+        "ReactionTriggerDefinition": {
+            "type": "object",
+            "properties": {
+                "events": {
+                    "description": "Event kinds that can trigger this reaction — checked before the\ntrigger script runs.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/EventKindTag"
+                    }
+                },
+                "script": {
+                    "description": "Script id of a Lua reaction trigger, e.g. `nat20_core::script.shield`.",
+                    "type": "string",
+                    "examples": [
+                        "nat20_core::script.shield"
+                    ]
+                }
+            },
+            "required": [
+                "script",
+                "events"
             ]
         },
         "ScriptId": {

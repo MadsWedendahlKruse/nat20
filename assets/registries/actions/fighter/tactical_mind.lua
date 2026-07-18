@@ -1,9 +1,5 @@
 ---@type ReactionTriggerFn
 local function reaction_trigger(game_state, reactor, event)
-    if not event:is_d20_check_performed() then
-        return false
-    end
-
     local actor, d20_result, d20_dc = event:as_d20_check_performed()
     if actor and d20_result and d20_dc then
         if actor ~= reactor then
@@ -22,10 +18,6 @@ end
 
 ---@type ReactionBodyFn
 local function reaction_body(game_state, reaction, event)
-    if not event:is_d20_check_performed() then
-        return
-    end
-
     event:with_d20_check(function(result, dc)
         result:modify_result("1d10", "nat20_core::action.fighter.tactical_mind")
     end)

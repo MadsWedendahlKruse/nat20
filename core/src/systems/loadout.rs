@@ -1,6 +1,7 @@
 use hecs::{Entity, Ref, World};
 
 use crate::{
+    components::id::{EntityIdentifier, ItemId},
     components::{
         actions::action::{ActionAttackKind, ActionContext},
         actions::targeting::TargetingRange,
@@ -16,7 +17,10 @@ use crate::{
         },
         modifier::ModifierSource,
     },
-    engine::game_state::GameState,
+    engine::{
+        event::{Event, EventKind},
+        game_state::GameState,
+    },
     systems,
 };
 
@@ -48,6 +52,7 @@ where
             entity,
             &ModifierSource::Item(unequipped_item.item().id.clone()),
         );
+        equipment_changed_event(game_state, entity, unequipped_item.item().id.clone(), false);
     }
 
     let effects = loadout(&game_state.world, entity)
@@ -59,9 +64,10 @@ where
         game_state,
         entity,
         effects,
-        &ModifierSource::Item(item_id),
+        &ModifierSource::Item(item_id.clone()),
         None,
     );
+    equipment_changed_event(game_state, entity, item_id, true);
 
     Ok(unequipped_items)
 }
@@ -86,15 +92,17 @@ where
             entity,
             &ModifierSource::Item(unequipped_item.item().id.clone()),
         );
+        equipment_changed_event(game_state, entity, unequipped_item.item().id.clone(), false);
     }
 
     systems::effects::add_permanent_effects(
         game_state,
         entity,
         effects,
-        &ModifierSource::Item(item_id),
+        &ModifierSource::Item(item_id.clone()),
         None,
     );
+    equipment_changed_event(game_state, entity, item_id, true);
 
     Ok(unequipped_items)
 }
@@ -111,8 +119,22 @@ pub fn unequip(
             entity,
             &ModifierSource::Item(item.item().id.clone()),
         );
+        equipment_changed_event(game_state, entity, item.item().id.clone(), false);
     }
     unequipped_item
+}
+
+fn equipment_changed_event(
+    game_state: &mut GameState,
+    entity: Entity,
+    item: ItemId,
+    equipped: bool,
+) {
+    game_state.process_event(Event::new(EventKind::EquipmentChanged {
+        entity: EntityIdentifier::from_world(&game_state.world, entity),
+        item,
+        equipped,
+    }));
 }
 
 pub fn armor_class(game_state: &GameState, entity: Entity) -> ArmorClass {

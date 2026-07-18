@@ -19,19 +19,20 @@ use crate::{
             PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, TurnStartHook,
             UnapplyEffectHook,
         },
-        id::{ActionId, EffectId, IdProvider, SpellId},
+        id::{ActionId, EffectId, IdProvider, ScriptId, SpellId},
         modifier::ModifierSource,
         saving_throw::SavingThrowKind,
         skill::Skill,
         time::{TimeDuration, TimeStep, TurnBoundary},
     },
-    engine::event::{EventCallback, EventFilter, EventKind},
+    engine::event::{EventCallback, EventFilter, EventKind, EventKindTag},
     registry::{
         registry::EffectsRegistry,
         serialize::effect::{
             EffectDefinition, EffectEventFilterDefinition, EffectInstanceDefinition,
         },
     },
+    systems,
 };
 
 pub type EffectsMap = HashMap<EffectInstanceId, EffectInstance>;
@@ -46,6 +47,12 @@ pub struct Effect {
     pub children: Vec<EffectId>,
 
     pub actions: Vec<EffectGrantedAction>,
+
+    /// End conditions intrinsic to the effect (e.g. Rage ends when donning
+    /// Heavy armor), instantiated for every application. Per-cast conditions
+    /// (e.g. Hold Person's repeat save against the caster's DC) live on the
+    /// `EffectInstanceTemplate` instead.
+    pub end_conditions: Vec<EffectEndConditionTemplate>,
 
     // TODO: Do we need to differentiate between when an effect explicitly expires and when
     // the effect is removed from the character?
@@ -78,6 +85,7 @@ impl Effect {
             children: Vec::new(),
 
             actions: Vec::new(),
+            end_conditions: Vec::new(),
 
             on_apply: None,
             on_unapply: None,
@@ -348,6 +356,8 @@ impl EffectLifetimeTemplate {
 
 #[derive(Clone)]
 pub struct EffectEndCondition {
+    /// Event kinds the filter can match
+    pub kinds: Vec<EventKindTag>,
     pub event_filter: EventFilter,
     pub callback: EventCallback,
 }
@@ -368,10 +378,21 @@ pub enum EffectEventFilter {
         entity: EffectEntiyReference,
         boundary: TurnBoundary,
     },
-    Custom(EventFilter),
+    Script {
+        /// Event kinds this filter can match
+        events: Vec<EventKindTag>,
+        script: ScriptId,
+    },
 }
 
 impl EffectEventFilter {
+    pub fn kinds(&self) -> Vec<EventKindTag> {
+        match self {
+            EffectEventFilter::TurnBoundary { .. } => vec![EventKindTag::TurnBoundary],
+            EffectEventFilter::Script { events, .. } => events.clone(),
+        }
+    }
+
     pub fn instantiate(&self, applier: Entity, target: Entity) -> EventFilter {
         match self {
             EffectEventFilter::TurnBoundary { entity, boundary } => {
@@ -395,7 +416,14 @@ impl EffectEventFilter {
                     }
                 })
             }
-            EffectEventFilter::Custom(filter) => filter.clone(),
+            EffectEventFilter::Script { events, script } => {
+                let events = events.clone();
+                let script = script.clone();
+                EventFilter::new(move |event| {
+                    events.contains(&EventKindTag::from(&event.kind))
+                        && systems::scripts::evaluate_event_filter(&script, event, applier, target)
+                })
+            }
         }
     }
 }
@@ -409,6 +437,7 @@ pub struct EffectEndConditionTemplate {
 impl EffectEndConditionTemplate {
     pub fn instantiate(&self, applier: Entity, target: Entity) -> EffectEndCondition {
         EffectEndCondition {
+            kinds: self.event_filter.kinds(),
             event_filter: self.event_filter.instantiate(applier, target),
             callback: self.callback.clone(),
         }

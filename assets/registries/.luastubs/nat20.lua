@@ -148,6 +148,10 @@ function ActionResult:damage() end
 ---@return ActionConditionResolution
 function ActionResult:resolution() end
 
+---@param effect_id string
+---@return boolean
+function ActionResult:has_applied_effect(effect_id) end
+
 ---@class TargetInstance
 local TargetInstance = {}
 ---@return ScriptEntity?
@@ -192,32 +196,27 @@ local D20CheckDCKind = {}
 
 ---@class Event
 local Event = {}
----@return boolean
-function Event:is_d20_check_performed() end
-
 ---@return ScriptEntity?, D20ResultKind?, D20CheckDCKind?
 function Event:as_d20_check_performed() end
 
 ---@param callback fun(result: D20ResultKind, dc: D20CheckDCKind)
 function Event:with_d20_check(callback) end
 
----@return boolean
-function Event:is_action_requested() end
-
----@return ActionData
+---@return ActionData?
 function Event:as_action_requested() end
-
----@return boolean
-function Event:is_action_result() end
 
 ---@return ActionResult?, ScriptEntity?
 function Event:as_action_result() end
 
----@return boolean
-function Event:is_moving_out_of_reach() end
-
+---Returns the entity that is moving out of reach, and the entity whose reach this
+---relates to
 ---@return ScriptEntity?, ScriptEntity?
 function Event:as_moving_out_of_reach() end
+
+---Returns entity, item id, armor type (e.g. "Heavy", nil for non-armor) and
+---whether the item was equipped or unequipped
+---@return ScriptEntity?, string?, string?, boolean?
+function Event:as_equipment_changed() end
 
 ------------------------------------------------------------
 -- GameState — the main script-facing world handle
@@ -325,6 +324,7 @@ local FlatModifierMap = {}
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult)
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
+---@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
 ---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)

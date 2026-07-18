@@ -2,6 +2,20 @@
     "id": "nat20_core::effect.barbarian.rage",
     "kind": "buff",
     "description": "(TODO) You're really stinkin' mad!",
+    "end_conditions": [
+        {
+            "event": {
+                "script": {
+                    "events": [
+                        "equipment_changed",
+                        "action_result"
+                    ],
+                    "script": "nat20_core::script.action.barbarian.rage"
+                }
+            },
+            "on_trigger": "remove"
+        }
+    ],
     "modifiers": [
         {
             "resistance": "bludgeoning resistance"

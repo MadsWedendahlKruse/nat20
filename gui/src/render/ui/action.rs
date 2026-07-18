@@ -357,7 +357,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                     TextSegments::new(vec![
                         (target_name, TextKind::Target),
                         ("gained effect", TextKind::Normal),
-                        (&effect.effect.to_string(), TextKind::Effect),
+                        (&effect.root().to_string(), TextKind::Effect),
                     ])
                     .render(ui);
                 }
@@ -365,7 +365,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                     TextSegments::new(vec![
                         (target_name, TextKind::Target),
                         ("lost effect", TextKind::Normal),
-                        (&effect.effect.to_string(), TextKind::Effect),
+                        (&effect.root().to_string(), TextKind::Effect),
                     ])
                     .render(ui);
                 }
@@ -373,7 +373,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                     TextSegments::new(vec![
                         (target_name, TextKind::Target),
                         ("was unaffected by", TextKind::Normal),
-                        (&effect.effect.to_string(), TextKind::Effect),
+                        (&effect.root().to_string(), TextKind::Effect),
                     ])
                     .render(ui);
                 }

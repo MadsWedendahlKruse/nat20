@@ -22,6 +22,7 @@ use crate::{
         event::{Event, EventListener, ListenerSource},
         game_state::GameState,
     },
+    registry::registry::EffectsRegistry,
     systems,
 };
 
@@ -51,21 +52,36 @@ pub fn add_effect_template(
         template, effect_instances
     );
 
-    if let Some(parent_instance) = effect_instances.get(&parent_id)
-        && let Some(end_condition) = &parent_instance.end_condition
-    {
-        game_state
-            .event_dispatcher
-            // TODO: A bit verbose EventListener construction
-            .register_listener(EventListener::new(
-                end_condition.event_filter.clone(),
-                end_condition.callback.clone(),
-                ListenerSource::EffectInstance {
-                    id: parent_id.clone(),
-                    entity: target,
-                },
-                false,
-            ));
+    if let Some(parent_instance) = effect_instances.get(&parent_id) {
+        // End conditions can come from the applying action (e.g. Hold Person's
+        // save DC) or from the effect definition itself (e.g. Rage)
+        let end_conditions = parent_instance
+            .end_condition
+            .iter()
+            .cloned()
+            .chain(
+                parent_instance
+                    .effect()
+                    .end_conditions
+                    .iter()
+                    .map(|template| template.instantiate(applier, target)),
+            )
+            .collect::<Vec<_>>();
+
+        for end_condition in end_conditions {
+            game_state.event_dispatcher.register_listener(
+                EventListener::new(
+                    end_condition.event_filter,
+                    end_condition.callback,
+                    ListenerSource::EffectInstance {
+                        id: parent_id.clone(),
+                        entity: target,
+                    },
+                    false,
+                )
+                .with_kinds(end_condition.kinds),
+            );
+        }
     }
 
     add_effect_instance(
@@ -234,24 +250,24 @@ pub fn remove_effect(
                 }
             }
 
-            if !effect_instance.is_permanent() {
-                game_state.event_dispatcher.remove_listeners_by_source(
-                    &ListenerSource::EffectInstance {
-                        id: *instance_id,
-                        entity,
-                    },
-                );
+            game_state.event_dispatcher.remove_listeners_by_source(
+                &ListenerSource::EffectInstance {
+                    id: *instance_id,
+                    entity,
+                },
+            );
 
-                if effect_instance.is_parent() {
-                    game_state.process_event(Event::action_result_event(
-                        EntityIdentifier::from_world(&game_state.world, entity),
-                        ActionResultComponent::Effect(EffectResult {
-                            resolution: ActionConditionResolution::Unconditional,
-                            effect: effect_instance.effect_id.clone(),
-                            result: EffectResultKind::Removed,
-                        }),
-                    ));
-                }
+            if !effect_instance.is_permanent() && effect_instance.is_parent() {
+                game_state.process_event(Event::action_result_event(
+                    EntityIdentifier::from_world(&game_state.world, entity),
+                    ActionResultComponent::Effect(EffectResult {
+                        resolution: ActionConditionResolution::Unconditional,
+                        effects: systems::effects::effect_id_and_children(
+                            &effect_instance.effect_id,
+                        ),
+                        result: EffectResultKind::Removed,
+                    }),
+                ));
             }
 
             for child_id in effect_instance.children.iter() {
@@ -332,4 +348,18 @@ pub fn has_effect(game_state: &GameState, entity: Entity, effect_id: &EffectId) 
     effects(&game_state.world, entity)
         .iter()
         .any(|(_, effect_instance)| effect_instance.effect_id == *effect_id)
+}
+
+pub fn effect_id_and_children(effect_id: &EffectId) -> Vec<EffectId> {
+    // Root first, then children recursively
+    let mut ids = vec![effect_id.clone()];
+
+    let effect = EffectsRegistry::get(effect_id)
+        .expect(format!("Effect definition not found for {}", effect_id).as_str());
+
+    for child in &effect.children {
+        ids.extend(effect_id_and_children(child));
+    }
+
+    ids
 }

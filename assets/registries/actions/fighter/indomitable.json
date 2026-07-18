@@ -22,7 +22,12 @@
         "nat20_core::resource.reaction": 1
     },
     "targeting": "self",
-    "reaction_trigger": "nat20_core::script.action.fighter.indomitable",
+    "reaction_trigger": {
+        "script": "nat20_core::script.action.fighter.indomitable",
+        "events": [
+            "d20_check_performed"
+        ]
+    },
     "timeline": {
         "total_duration": 1.0,
         "perform_time": 0.2

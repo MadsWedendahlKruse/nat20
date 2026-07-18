@@ -222,7 +222,7 @@ impl ActionBarWindow {
                     let ActionResultComponent::Effect(effect_result) = component else {
                         continue;
                     };
-                    if let Some(effect) = EffectsRegistry::get(&effect_result.effect)
+                    if let Some(effect) = EffectsRegistry::get(effect_result.root())
                         && !effect.actions.is_empty()
                         && effect_result.result != EffectResultKind::None
                     {

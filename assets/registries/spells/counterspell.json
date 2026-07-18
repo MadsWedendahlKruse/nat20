@@ -49,7 +49,12 @@
             }
         ]
     },
-    "reaction_trigger": "nat20_core::script.spell.counterspell",
+    "reaction_trigger": {
+        "script": "nat20_core::script.spell.counterspell",
+        "events": [
+            "action_requested"
+        ]
+    },
     "timeline": {
         "total_duration": 1.0,
         "perform_time": 0.2

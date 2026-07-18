@@ -56,7 +56,25 @@ local function damage_roll_hook(game_state, entity, damage_roll, action, resolut
     end
 end
 
+---@type EventFilterFn
+local function event_filter(event, applier, target)
+    -- Rage ends early if you equip Heavy armor
+    local entity, item, armor_type, equipped = event:as_equipment_changed()
+    if entity and armor_type and equipped then
+        return entity == target and equipped and armor_type == "Heavy"
+    end
+
+    -- or have the Incapacitated condition
+    local result = event:as_action_result()
+    if result and result.target == target then
+        return result:has_applied_effect("nat20_core::effect.condition.incapacitated")
+    end
+
+    return false
+end
+
 return {
     action_usability = action_usability,
     damage_roll_hook = damage_roll_hook,
+    event_filter = event_filter,
 }

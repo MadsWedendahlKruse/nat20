@@ -857,7 +857,7 @@ impl StepComponent {
         let Some(effect) = effect else {
             return ActionResultComponent::Effect(EffectResult {
                 resolution: resolution.clone(),
-                effect: effect_id,
+                effects: vec![effect_id],
                 result: EffectResultKind::None,
             });
         };
@@ -891,7 +891,7 @@ impl StepComponent {
 
         ActionResultComponent::Effect(EffectResult {
             resolution: resolution.clone(),
-            effect: effect.effect_id.clone(),
+            effects: systems::effects::effect_id_and_children(&effect.effect_id),
             result: EffectResultKind::Applied,
         })
     }

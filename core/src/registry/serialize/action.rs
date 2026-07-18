@@ -23,7 +23,7 @@ use crate::{
             effect::EffectInstanceDefinition,
             parser::{Evaluable, EvaluationError},
             quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
-            reaction::{ReactionBody, ReactionTrigger},
+            reaction::{ReactionBody, ReactionTriggerDefinition},
             targeting::{AreaShapeDefinition, TargetingDefinition, TargetingKindDefinition},
             variables::{PARSER_VARIABLES, VariableMap},
         },
@@ -44,7 +44,7 @@ pub struct ActionDefinition {
     #[serde(default)]
     pub cooldown: Option<RechargeRule>,
     #[serde(default)]
-    pub reaction_trigger: Option<ReactionTrigger>,
+    pub reaction_trigger: Option<ReactionTriggerDefinition>,
     pub timeline: ActionTimeline,
     #[serde(default)]
     pub usability: Option<ActionUsabilityDefinition>,
@@ -57,7 +57,7 @@ impl RegistryReferenceCollector for ActionDefinition {
             collector.add(RegistryReference::Resource(resource.clone()));
         }
         if let Some(reaction_trigger) = &self.reaction_trigger
-            && let Some(script_id) = &reaction_trigger.script
+            && let Some(script_id) = &reaction_trigger.script.script
         {
             collector.add(RegistryReference::Script(
                 script_id.clone(),
@@ -124,7 +124,7 @@ impl From<ActionDefinition> for Action {
             resource_cost: value.resource_cost,
             targeting: value.targeting.function(),
             cooldown: value.cooldown,
-            reaction_trigger: value.reaction_trigger.map(|trigger| trigger.function),
+            reaction_trigger: value.reaction_trigger.map(Into::into),
             timeline: value.timeline,
             usability: value.usability.map(|usability| usability.function()),
         }

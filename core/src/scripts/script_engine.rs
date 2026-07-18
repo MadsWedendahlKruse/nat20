@@ -433,6 +433,29 @@ impl ScriptEngine {
             .map_err(Self::runtime_error)
     }
 
+    pub fn evaluate_event_filter(
+        &self,
+        script: &Script,
+        event: &Event,
+        applier: Entity,
+        target: Entity,
+    ) -> Result<bool, ScriptError> {
+        let func = self.get_function(script, ScriptFunction::EventFilter)?;
+        let applier = self
+            .lua
+            .create_userdata(ScriptEntity::from(applier))
+            .map_err(Self::runtime_error)?;
+        let target = self
+            .lua
+            .create_userdata(ScriptEntity::from(target))
+            .map_err(Self::runtime_error)?;
+        let result: bool = self
+            .lua
+            .scope(|scope| func.call::<bool>((scope.create_userdata_ref(event)?, applier, target)))
+            .map_err(Self::runtime_error)?;
+        Ok(result)
+    }
+
     pub fn evaluate_action_usability(
         &self,
         script: &Script,

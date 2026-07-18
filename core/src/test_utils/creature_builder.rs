@@ -23,6 +23,10 @@ pub type CreatureTemplateFunction = fn(&mut GameState, u8, Option<Entity>) -> En
 pub static CREATURE_TEMPLATES: LazyLock<BTreeMap<&'static str, CreatureTemplateFunction>> =
     LazyLock::new(|| {
         BTreeMap::from([
+            (
+                "hero.barbarian",
+                heroes::barbarian as CreatureTemplateFunction,
+            ),
             ("hero.fighter", heroes::fighter as CreatureTemplateFunction),
             ("hero.wizard", heroes::wizard as CreatureTemplateFunction),
             ("hero.warlock", heroes::warlock as CreatureTemplateFunction),
