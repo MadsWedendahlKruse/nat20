@@ -142,7 +142,10 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                             if ui.is_item_hovered() {
                                 ui.tooltip(|| {
                                     (&option.action_id, &option.context, &option.resource_cost)
-                                        .render_with_context(ui, (&game_state.world, *reactor));
+                                        .render_with_context(
+                                            ui,
+                                            (&game_state.world, *reactor, None),
+                                        );
                                 });
                             }
                         }

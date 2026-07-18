@@ -1,0 +1,125 @@
+{
+    "id": "nat20_core::class.barbarian",
+    "hit_die": "d12",
+    "hp_per_level": 7,
+    "default_abilities": {
+        "scores": {
+            "wisdom": 12,
+            "charisma": 10,
+            "dexterity": 14,
+            "constitution": 13,
+            "intelligence": 8,
+            "strength": 15
+        },
+        "plus_2_bonus": "strength",
+        "plus_1_bonus": "constitution"
+    },
+    "saving_throw_proficiencies": [
+        "strength",
+        "constitution"
+    ],
+    "subclass_level": 3,
+    "subclasses": [
+        "nat20_core::subclass.barbarian.path_of_the_berserker"
+    ],
+    "feat_levels": [
+        4,
+        8,
+        12,
+        16
+    ],
+    "skill_proficiencies": [
+        "animal_handling",
+        "athletics",
+        "intimidation",
+        "nature",
+        "perception",
+        "survival"
+    ],
+    "skill_prompts": 2,
+    "weapon_proficiencies": [
+        "simple",
+        "martial"
+    ],
+    "armor_proficiencies": [
+        "light",
+        "medium"
+    ],
+    "effects_by_level": {
+        "5": [
+            "nat20_core::effect.extra_attack"
+        ]
+    },
+    "resources_by_level": {
+        "1": [
+            {
+                "id": "nat20_core::resource.barbarian.rage",
+                "budget": "2"
+            }
+        ],
+        "3": [
+            {
+                "id": "nat20_core::resource.barbarian.rage",
+                "budget": "3"
+            }
+        ],
+        "6": [
+            {
+                "id": "nat20_core::resource.barbarian.rage",
+                "budget": "4"
+            }
+        ],
+        "12": [
+            {
+                "id": "nat20_core::resource.barbarian.rage",
+                "budget": "5"
+            }
+        ],
+        "17": [
+            {
+                "id": "nat20_core::resource.barbarian.rage",
+                "budget": "6"
+            }
+        ]
+    },
+    "prompts_by_level": {
+        "1": [
+            {
+                "choice": {
+                    "id": "choice.starting_equipment.barbarian",
+                    "label": "Barbarian Starting Equipment",
+                    "options": [
+                        {
+                            "equipment": {
+                                "items": [
+                                    [
+                                        1,
+                                        "nat20_core::item.greataxe"
+                                    ],
+                                    [
+                                        4,
+                                        "nat20_core::item.handaxe"
+                                    ]
+                                ],
+                                "money": "15 GP"
+                            }
+                        },
+                        {
+                            "equipment": {
+                                "items": [],
+                                "money": "15 GP"
+                            }
+                        }
+                    ],
+                    "picks": 1,
+                    "allow_duplicates": false
+                }
+            }
+        ]
+    },
+    "actions_by_level": {
+        "1": [
+            "nat20_core::action.barbarian.rage"
+        ]
+    }
+}

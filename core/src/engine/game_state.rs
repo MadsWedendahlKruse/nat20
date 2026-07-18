@@ -173,6 +173,10 @@ impl GameState {
         goal: Point3<f32>,
         action: Option<ActionDecision>,
     ) -> Result<(), MovementError> {
+        if !systems::health::is_alive(&self.world, entity) {
+            return Err(MovementError::NotAlive);
+        }
+
         if let Some(encounter_id) = self.in_combat.get(&entity) {
             if let Some(encounter) = self.encounters.get_mut(encounter_id) {
                 if encounter.current_entity() != entity {
@@ -612,8 +616,7 @@ impl GameState {
         } = action;
 
         systems::actions::action_usable_on_targets(
-            &self.world,
-            &self.geometry,
+            self,
             actor.id(),
             action_id,
             action_context,

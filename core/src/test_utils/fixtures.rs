@@ -49,6 +49,69 @@ pub mod creatures {
             );
         }
 
+        pub fn barbarian(
+            game_state: &mut GameState,
+            levels: u8,
+            id: Option<Entity>,
+        ) -> EntityIdentifier {
+            let name = Name::new("Conan the Barbarian");
+            let character = Character::new(name.clone());
+            let entity = spawn_entity(game_state, character, id);
+            systems::level_up::apply_level_up_decision(
+                game_state,
+                entity,
+                levels,
+                vec![
+                    // Level 1
+                    LevelUpDecision::single_choice(ChoiceItem::Species(SpeciesId::new(
+                        "nat20_core",
+                        "species.dragonborn",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Subspecies(SubspeciesId::new(
+                        "nat20_core",
+                        "subspecies.dragonborn.white",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Background(BackgroundId::new(
+                        "nat20_core",
+                        "background.soldier",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    LevelUpDecision::AbilityScores(
+                        ClassesRegistry::get(&ClassId::new("nat20_core", "class.barbarian"))
+                            .unwrap()
+                            .default_abilities
+                            .clone(),
+                    ),
+                    LevelUpDecision::SkillProficiency(HashSet::from([
+                        Skill::Athletics,
+                        Skill::Intimidation,
+                    ])),
+                    LevelUpDecision::single_choice_with_id(
+                        "choice.starting_equipment.barbarian",
+                        ChoiceItem::Equipment {
+                            items: vec![
+                                (1, ItemId::new("nat20_core", "item.greataxe")),
+                                (4, ItemId::new("nat20_core", "item.handaxe")),
+                            ],
+                            money: "15 GP".to_string(),
+                        },
+                    ),
+                    LevelUpDecision::single_choice_with_id(
+                        "choice.starting_equipment.soldier",
+                        ChoiceItem::Equipment {
+                            items: Vec::new(),
+                            money: "50 GP".to_string(),
+                        },
+                    ),
+                ],
+            );
+
+            EntityIdentifier::from_world(&game_state.world, entity)
+        }
+
         pub fn fighter(
             game_state: &mut GameState,
             levels: u8,

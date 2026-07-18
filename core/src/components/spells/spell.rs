@@ -9,10 +9,12 @@ use crate::{
     components::{
         ability::Ability,
         actions::action::{
-            Action, ActionKind, ActionTimeline, ReactionTriggerFunction, TargetingFunction,
+            Action, ActionKind, ActionTimeline, ActionUsabilityFunction, ReactionTriggerFunction,
+            TargetingFunction,
         },
         effects::effect::EffectInstanceId,
         id::{EffectId, IdProvider, SpellId},
+        modifier::ModifierSource,
         resource::ResourceAmountMap,
     },
     engine::{action_prompt::ActionExecutionInstanceId, game_state::GameState},
@@ -63,6 +65,7 @@ impl Spell {
         targeting: Arc<TargetingFunction>,
         reaction_trigger: Option<Arc<ReactionTriggerFunction>>,
         timeline: ActionTimeline,
+        usability: Option<Arc<ActionUsabilityFunction>>,
     ) -> Self {
         let action_id = id.clone().into();
 
@@ -80,6 +83,7 @@ impl Spell {
                 cooldown: None,
                 reaction_trigger,
                 timeline,
+                usability,
             },
         }
     }
@@ -153,6 +157,7 @@ impl ConcentrationInstance {
 pub struct ConcentrationTracker {
     instances: Vec<ConcentrationInstance>,
     action_instance: Option<ActionExecutionInstanceId>,
+    concentration_blockers: Vec<ModifierSource>,
 }
 
 impl ConcentrationTracker {
@@ -164,9 +169,11 @@ impl ConcentrationTracker {
         &mut self,
         instance: ConcentrationInstance,
         action_instance: &ActionExecutionInstanceId,
-    ) {
+    ) -> Result<(), ConcentrationError> {
+        self.can_concentrate()?;
         self.instances.push(instance);
         self.action_instance = Some(action_instance.clone());
+        Ok(())
     }
 
     /// In most cases we would want to remove all instances at once, but if e.g.
@@ -193,6 +200,28 @@ impl ConcentrationTracker {
     pub fn action_instance(&self) -> Option<&ActionExecutionInstanceId> {
         self.action_instance.as_ref()
     }
+
+    pub fn can_concentrate(&self) -> Result<(), ConcentrationError> {
+        if self.concentration_blockers.is_empty() {
+            Ok(())
+        } else {
+            Err(ConcentrationError::ConcentrationBlocked(
+                self.concentration_blockers.clone(),
+            ))
+        }
+    }
+
+    pub fn concentration_blockers(&self) -> &Vec<ModifierSource> {
+        &self.concentration_blockers
+    }
+
+    pub fn block_concentration(&mut self, source: ModifierSource) {
+        self.concentration_blockers.push(source);
+    }
+
+    pub fn unblock_concentration(&mut self, source: &ModifierSource) {
+        self.concentration_blockers.retain(|s| s != source);
+    }
 }
 
 impl Default for ConcentrationTracker {
@@ -200,6 +229,12 @@ impl Default for ConcentrationTracker {
         Self {
             instances: Vec::new(),
             action_instance: None,
+            concentration_blockers: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConcentrationError {
+    ConcentrationBlocked(Vec<ModifierSource>),
 }

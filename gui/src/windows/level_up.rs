@@ -549,7 +549,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
 
 fn spec_style(spec: &ChoiceSpec) -> ([f32; 2], usize) {
     match spec.id.as_str() {
-        "choice.class" => ([100.0, 30.0], 4),
+        "choice.class" => ([200.0, 30.0], 4),
         _ => ([0.0, 0.0], 0), // Default style
     }
 }

@@ -6,10 +6,10 @@ mod tests {
     use nat20_core::{
         components::{
             ability::{Ability, AbilityScore, AbilityScoreMap},
-            actions::action::{ActionContext, AttackRollProvider},
+            actions::action::{ActionConditionResolution, ActionContext, AttackRollProvider},
             damage::DamageType,
             dice::{DiceSet, DieSize},
-            id::ItemId,
+            id::{ActionId, EntityIdentifier, ItemId},
             items::{
                 equipment::{
                     loadout::Loadout,
@@ -22,7 +22,9 @@ mod tests {
             },
             modifier::{Modifiable, ModifierMap, ModifierSource},
             proficiency::ProficiencyLevel,
+            resource::ResourceAmountMap,
         },
+        engine::action_prompt::ActionData,
         entities::character::Character,
         registry::registry::ItemsRegistry,
         systems::{self, helpers},
@@ -66,7 +68,19 @@ mod tests {
                 false, // not wielding with both hands
             )
         };
-        let damage_result = systems::damage::damage_roll(damage_roll, &game_state, entity, false);
+        let action = ActionData::new(
+            EntityIdentifier::from_world(&game_state.world, entity),
+            ActionId::new("nat20_core", "action.placeholder"),
+            ActionContext::default(),
+            ResourceAmountMap::new(),
+            Vec::new(),
+        );
+        let damage_result = systems::damage::damage_roll(
+            damage_roll,
+            &game_state,
+            &action,
+            &ActionConditionResolution::Unconditional,
+        );
 
         println!("{:?}", damage_result);
         assert!(

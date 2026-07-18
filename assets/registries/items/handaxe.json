@@ -1,0 +1,22 @@
+{
+    "item": {
+        "id": "nat20_core::item.handaxe",
+        "name": "Handaxe",
+        "description": "A simple handaxe.",
+        "weight": "2 lb",
+        "value": "5 GP",
+        "rarity": "common"
+    },
+    "category": "simple",
+    "kind": "melee",
+    "properties": [
+        "Light",
+        "Thrown (6.096 / 18.288 m)"
+    ],
+    "damage": [
+        [
+            "1d6",
+            "slashing"
+        ]
+    ]
+}

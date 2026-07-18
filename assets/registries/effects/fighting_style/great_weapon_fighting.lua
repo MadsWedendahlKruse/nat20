@@ -1,5 +1,5 @@
 ---@type DamageRollResultHookFn
-local function damage_roll_result_hook(game_state, entity, damage_roll_result)
+local function damage_roll_result_hook(game_state, entity, damage_roll_result, action, resolution)
     -- Only apply for melee weapon attacks wielded with both hands
     if damage_roll_result.source ~= "Melee" then
         return

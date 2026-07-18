@@ -4,7 +4,6 @@ mod tests {
 
     use std::collections::HashSet;
 
-    use hecs::World;
     use nat20_core::{
         components::{
             ability::Ability,

@@ -4,7 +4,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::action::{ActionContext, ActionResult},
+        actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
@@ -27,9 +27,16 @@ pub type AttackedHook =
 pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&World, Entity, &mut D20Check) + Send + Sync>;
 pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + Send + Sync>;
-pub type DamageRollHook = Arc<dyn Fn(&World, Entity, &mut DamageRoll) + Send + Sync>;
-pub type DamageRollResultHook =
-    Arc<dyn Fn(&GameState, Entity, &mut DamageRollResult) + Send + Sync>;
+pub type DamageRollHook = Arc<
+    dyn Fn(&GameState, Entity, &mut DamageRoll, &ActionData, &ActionConditionResolution)
+        + Send
+        + Sync,
+>;
+pub type DamageRollResultHook = Arc<
+    dyn Fn(&GameState, Entity, &mut DamageRollResult, &ActionData, &ActionConditionResolution)
+        + Send
+        + Sync,
+>;
 pub type ActionHook = Arc<dyn Fn(&mut GameState, &ActionData) + Send + Sync>;
 pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &ActionResult) + Send + Sync>;
 pub type ResourceCostHook = Arc<

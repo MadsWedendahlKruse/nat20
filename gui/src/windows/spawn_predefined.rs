@@ -73,6 +73,7 @@ impl SpawnPredefinedWindow {
         ));
 
         let mut spawners = vec![
+            Spawner::new(fixtures::creatures::heroes::barbarian, 1),
             Spawner::new(fixtures::creatures::heroes::fighter, 18),
             Spawner::new(fixtures::creatures::heroes::wizard, 7),
             Spawner::new(fixtures::creatures::heroes::warlock, 5),

@@ -8,10 +8,10 @@ use crate::{
     components::{
         actions::action::{
             Action, ActionCondition, ActionContext, ActionKind, ActionPayload,
-            ActionPayloadComponent, ActionPhaseSpec, ActionTimeline, DamageOnFailure,
-            PayloadDelivery, PhaseRequirement, PhaseTargets,
+            ActionPayloadComponent, ActionPhaseSpec, ActionTimeline, ActionUsabilityFunction,
+            DamageOnFailure, PayloadDelivery, PhaseRequirement, PhaseTargets,
         },
-        id::ActionId,
+        id::{ActionId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
     },
     entities::projectile::ProjectileTemplate,
@@ -29,7 +29,7 @@ use crate::{
         },
     },
     scripts::script::ScriptFunction,
-    systems::geometry::DisplacementTemplate,
+    systems::{self, geometry::DisplacementTemplate},
 };
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
@@ -46,6 +46,8 @@ pub struct ActionDefinition {
     #[serde(default)]
     pub reaction_trigger: Option<ReactionTrigger>,
     pub timeline: ActionTimeline,
+    #[serde(default)]
+    pub usability: Option<ActionUsabilityDefinition>,
 }
 
 impl RegistryReferenceCollector for ActionDefinition {
@@ -60,6 +62,14 @@ impl RegistryReferenceCollector for ActionDefinition {
             collector.add(RegistryReference::Script(
                 script_id.clone(),
                 ScriptFunction::ReactionTrigger,
+            ));
+        }
+        if let Some(usability) = &self.usability
+            && let ActionUsabilityDefinition::Script(script_id) = usability
+        {
+            collector.add(RegistryReference::Script(
+                script_id.clone(),
+                ScriptFunction::ActionUsability,
             ));
         }
     }
@@ -116,6 +126,7 @@ impl From<ActionDefinition> for Action {
             cooldown: value.cooldown,
             reaction_trigger: value.reaction_trigger.map(|trigger| trigger.function),
             timeline: value.timeline,
+            usability: value.usability.map(|usability| usability.function()),
         }
     }
 }
@@ -404,6 +415,30 @@ impl RegistryReferenceCollector for ActionKindDefinition {
                 // would not be present in the action registry directly. So how do
                 // we validate that?
             }
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionUsabilityDefinition {
+    Script(ScriptId),
+}
+
+impl ActionUsabilityDefinition {
+    pub fn function(&self) -> Arc<ActionUsabilityFunction> {
+        match self {
+            ActionUsabilityDefinition::Script(script_id) => Arc::new({
+                let script_id = script_id.clone();
+                move |game_state, entity, action_context| {
+                    systems::scripts::evaluate_action_usability(
+                        &script_id,
+                        game_state,
+                        entity,
+                        action_context,
+                    )
+                }
+            }),
         }
     }
 }

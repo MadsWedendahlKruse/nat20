@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
 use hecs::World;
 use imgui::{MouseButton, TreeNodeFlags};
 use nat20_core::{
     components::{
-        actions::targeting::TargetInstance, spells::spell::ConcentrationInstance,
-        time::TurnBoundary,
+        actions::targeting::TargetInstance, id::EntityIdentifier,
+        spells::spell::ConcentrationInstance, time::TurnBoundary,
     },
     engine::{
         action_prompt::ActionData,
@@ -478,6 +480,38 @@ impl ImguiRenderableWithContext<&World> for ActionData {
             ui.same_line();
             TextSegment::new("on", TextKind::Normal).render(ui);
             targets.render_with_context(ui, &world);
+        }
+    }
+}
+
+impl ImguiRenderableWithContext<&World> for Vec<EntityIdentifier> {
+    fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
+        // Hashset has random order, so we can't just convert the vec to a set
+        // since this will cause the order to change on each render
+        let mut unique_targets = Vec::new();
+        let mut rendered_targets = HashSet::new();
+        for action_target in self.iter() {
+            if rendered_targets.contains(action_target) {
+                continue;
+            }
+            unique_targets.push(action_target);
+            rendered_targets.insert(action_target);
+        }
+
+        if unique_targets.len() == 1 {
+            ui.same_line();
+            TextSegment::new(unique_targets[0].name().as_str(), TextKind::Target).render(ui);
+        } else if unique_targets.len() > 1 {
+            ui.same_line();
+            TextSegment::new("multiple targets", TextKind::Target).render(ui);
+
+            if ui.is_item_hovered() {
+                ui.tooltip(|| {
+                    for target in unique_targets.iter() {
+                        TextSegment::new(target.name().as_str(), TextKind::Target).render(ui);
+                    }
+                });
+            }
         }
     }
 }

@@ -104,6 +104,13 @@
                 "$ref": "#/definitions/PreDamageMitigationHookDefinition"
             }
         },
+        "pre_damage_roll": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/DamageRollHookDefinition"
+            }
+        },
         "replaces": {
             "description": "If present, this effect replaces another effect with the given id",
             "anyOf": [
@@ -224,6 +231,21 @@
                     },
                     "required": [
                         "modifier"
+                    ]
+                }
+            ]
+        },
+        "DamageRollHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
                     ]
                 }
             ]
@@ -495,13 +517,15 @@
                 {
                     "type": "object",
                     "properties": {
+                        "block_concentration": {
+                            "type": "boolean",
+                            "default": false
+                        },
                         "break_concentration": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "default": false
                         }
-                    },
-                    "required": [
-                        "break_concentration"
-                    ]
+                    }
                 }
             ]
         },

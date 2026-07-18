@@ -2,32 +2,40 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        actions::action::{ActionContext, AttackRollFunction, DamageFunction},
+        actions::action::{
+            ActionConditionResolution, ActionContext, AttackRollFunction, DamageFunction,
+        },
         damage::{AttackRoll, AttackRollResult, DamageRoll, DamageRollResult},
         effects::{effect::EffectInstance, hooks::AttackedHook},
     },
-    engine::game_state::GameState,
+    engine::{action_prompt::ActionData, game_state::GameState},
     systems,
 };
 
 pub fn damage_roll(
     mut damage_roll: DamageRoll,
     game_state: &GameState,
-    entity: Entity,
-    crit: bool,
+    action: &ActionData,
+    resolution: &ActionConditionResolution,
 ) -> DamageRollResult {
+    let entity = action.actor.id();
+
     systems::effects::effects(&game_state.world, entity).pre_damage_roll(
-        &game_state.world,
+        &game_state,
         entity,
         &mut damage_roll,
+        action,
+        resolution,
     );
 
-    let mut result = damage_roll.roll(crit);
+    let mut result = damage_roll.roll(resolution.is_crit());
 
     systems::effects::effects(&game_state.world, entity).post_damage_roll(
         game_state,
         entity,
         &mut result,
+        action,
+        resolution,
     );
 
     result
@@ -36,12 +44,11 @@ pub fn damage_roll(
 pub fn damage_roll_fn(
     damage_roll_fn: &DamageFunction,
     game_state: &GameState,
-    entity: Entity,
-    context: &ActionContext,
-    crit: bool,
+    action: &ActionData,
+    resolution: &ActionConditionResolution,
 ) -> DamageRollResult {
-    let roll = damage_roll_fn(&game_state.world, entity, context);
-    damage_roll(roll, game_state, entity, crit)
+    let roll = damage_roll_fn(&game_state.world, action.actor.id(), &action.context);
+    damage_roll(roll, game_state, action, resolution)
 }
 
 pub fn attack_roll(

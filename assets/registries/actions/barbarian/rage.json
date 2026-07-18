@@ -1,0 +1,43 @@
+{
+    "id": "nat20_core::action.barbarian.rage",
+    "description": "You can imbue yourself with a primal power called Rage, a force that grants you extraordinary might and resilience. You can enter it as a Bonus Action if you aren't wearing Heavy armor \nYou can enter your Rage the number of times shown for your Barbarian level in the Rages column of the Barbarian Features table.  \n \n - You have Resistance to Bludgeoning, Piercing, and Slashing damage. \n - When you make an attack using Strength-with either a weapon or an Unarmed Strike-and deal damage to the target, you gain a bonus to the damage that increases as you gain levels as a Barbarian, as shown in the Rage Damage column of the Barbarian Features table. \n - You have Advantage on Strength checks and Strength saving throws. \n - You can't maintain Concentration, and you can't cast spells. \n - The Rage lasts until the end of your next turn, and it ends early if you don Heavy armor or have the Incapacitated condition. If your Rage is still active on your next turn, you can extend the Rage for another round by doing one of the following: \n - Make an attack roll against an enemy. \n - Force an enemy to make a saving throw. \n - Take a Bonus Action to extend your Rage. \nEach time the Rage is extended, it lasts until the end of your next turn. You can maintain a Rage for up to 10 minutes.",
+    "kind": {
+        "standard": {
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.barbarian.rage",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "boundary": "end",
+                                            "duration": {
+                                                "turns": 10
+                                            },
+                                            "entity": "applier"
+                                        }
+                                    }
+                                }
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                }
+            ]
+        }
+    },
+    "resource_cost": {
+        "nat20_core::resource.bonus_action": 1,
+        "nat20_core::resource.barbarian.rage": 1
+    },
+    "targeting": "self",
+    "timeline": {
+        "perform_time": 0.5,
+        "total_duration": 1.0
+    },
+    "usability": {
+        "script": "nat20_core::script.action.barbarian.rage"
+    }
+}

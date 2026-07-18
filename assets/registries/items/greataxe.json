@@ -1,0 +1,22 @@
+{
+    "item": {
+        "id": "nat20_core::item.greataxe",
+        "name": "Greataxe",
+        "description": "A large two-handed axe, capable of dealing heavy damage.",
+        "weight": "7 lb",
+        "value": "30 GP",
+        "rarity": "common"
+    },
+    "category": "martial",
+    "kind": "melee",
+    "properties": [
+        "Heavy",
+        "Two-Handed"
+    ],
+    "damage": [
+        [
+            "1d12",
+            "slashing"
+        ]
+    ]
+}

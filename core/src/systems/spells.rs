@@ -13,7 +13,7 @@ use crate::{
         level_up::LevelUpPrompt,
         resource::{ResourceAmount, ResourceBudgetKind, ResourceMap},
         spells::{
-            spell::{ConcentrationInstance, SpellFlag},
+            spell::{ConcentrationError, ConcentrationInstance, SpellFlag},
             spellbook::{ClassSpellcastingState, SpellSource, Spellbook, SpellbookError},
         },
     },
@@ -248,6 +248,11 @@ pub fn update_spellbook(
         }
         prompts
     }
+}
+
+pub fn can_concentrate(world: &World, entity: Entity) -> Result<(), ConcentrationError> {
+    let spellbook = systems::helpers::get_component::<Spellbook>(world, entity);
+    spellbook.concentration_tracker().can_concentrate()
 }
 
 pub fn add_concentration_instance(

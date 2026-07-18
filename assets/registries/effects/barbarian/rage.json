@@ -1,0 +1,31 @@
+{
+    "id": "nat20_core::effect.barbarian.rage",
+    "kind": "buff",
+    "description": "(TODO) You're really stinkin' mad!",
+    "modifiers": [
+        {
+            "resistance": "bludgeoning resistance"
+        },
+        {
+            "resistance": "piercing resistance"
+        },
+        {
+            "resistance": "slashing resistance"
+        },
+        {
+            "saving_throw": "strength advantage"
+        },
+        {
+            "skill": "athletics advantage"
+        },
+        {
+            "break_concentration": true,
+            "block_concentration": true
+        }
+    ],
+    "pre_damage_roll": [
+        {
+            "script": "nat20_core::script.action.barbarian.rage"
+        }
+    ]
+}

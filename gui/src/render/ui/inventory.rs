@@ -6,15 +6,16 @@ use nat20_core::{
         item::Item,
     },
     engine::game_state::GameState,
+    registry::registry::ItemsRegistry,
     systems,
 };
 use strum::IntoEnumIterator;
-use tracing::info;
+use tracing::{debug, error, info};
 
 use crate::{
     render::ui::{
         text::item_rarity_color,
-        utils::{ImguiRenderable, ImguiRenderableWithContext},
+        utils::{ImguiRenderable, ImguiRenderableWithContext, render_uniform_buttons},
     },
     table_with_columns,
 };
@@ -108,13 +109,13 @@ pub fn render_inventory(
     let rows = (items.len() + INVENTORY_ITEMS_PER_ROW) / INVENTORY_ITEMS_PER_ROW;
     let total_items = rows * INVENTORY_ITEMS_PER_ROW;
     for i in 0..total_items {
-        if i < items.len() {
-            let slot = ContainerSlot::Inventory(i);
+        let slot = ContainerSlot::Inventory(i);
 
+        if i < items.len() {
             let item_name = items[i].item().name.clone();
             if render_item_button(ui, items[i].item(), i) {
                 // Handle item click (don't think we need to do anything here)
-                info!("Clicked on item: {}", item_name);
+                debug!("Clicked on item: {}", item_name);
             }
 
             if ui.is_item_hovered() {
@@ -122,13 +123,13 @@ pub fn render_inventory(
                     items[i].render_with_context(ui, (world, entity));
                 });
             }
-
-            if event.is_none() {
-                event = InteractEvent::from_ui(ui, entity, slot);
-            }
         } else {
             // Render empty button for unused slots
             ui.button_with_size(format!("##{}", i), [30.0, 30.0]);
+        }
+
+        if event.is_none() {
+            event = InteractEvent::from_ui(ui, entity, slot);
         }
 
         if (i + 1) % INVENTORY_ITEMS_PER_ROW != 0 && i + 1 < total_items {
@@ -154,7 +155,7 @@ pub fn render_loadout(ui: &imgui::Ui, world: &World, entity: Entity) -> Option<I
             if let Some(item) = item {
                 if render_item_button(ui, item.item(), i) {
                     // Handle item click (don't think we need to do anything here)
-                    info!("Clicked on loadout item: {}", item.item().name);
+                    debug!("Clicked on loadout item: {}", item.item().name);
                 }
 
                 if ui.is_item_hovered() {
@@ -185,7 +186,7 @@ pub fn render_loadout(ui: &imgui::Ui, world: &World, entity: Entity) -> Option<I
 pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) {
     if let Some(event) = render_loadout(ui, &game_state.world, entity) {
         // Handle loadout interaction event
-        info!("Loadout interaction: {:?}", event);
+        debug!("Loadout interaction: {:?}", event);
 
         let ContainerSlot::Loadout(slot) = event.slot else {
             return;
@@ -194,72 +195,106 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, enti
         match event.mode {
             InteractMode::RightClick => {
                 // Handle right-click on loadout item
-                info!("Right-clicked on loadout item: {:?}", event.slot);
+                debug!("Right-clicked on loadout item: {:?}", event.slot);
             }
 
             InteractMode::DoubleClick => {
                 let result = systems::inventory::unequip(game_state, entity, &slot);
                 if let Some(item) = result {
-                    info!("Unequipped item: {:?}", item);
+                    debug!("Unequipped item: {:?}", item);
                     systems::inventory::add_item(&mut game_state.world, entity, item);
                 }
             }
 
             InteractMode::Drag => {
                 // Handle drag on loadout item
-                info!("Dragging loadout item: {:?}", event.slot);
+                debug!("Dragging loadout item: {:?}", event.slot);
             }
         }
     }
 
     if let Some(event) = render_inventory(ui, &mut game_state.world, entity) {
         // Handle inventory interaction event
-        info!("Inventory interaction: {:?}", event);
+        debug!("Inventory interaction: {:?}", event);
 
         let ContainerSlot::Inventory(index) = event.slot else {
             return;
         };
+
         let item = systems::helpers::get_component::<Inventory>(&game_state.world, entity)
             .items()
             .get(index)
-            .cloned()
-            .unwrap();
+            .cloned();
 
-        match event.mode {
-            InteractMode::RightClick => {
-                // Handle right-click on inventory item
-                info!("Right-clicked on inventory item: {:?}", item.item().name);
-            }
+        if let Some(item) = item {
+            match event.mode {
+                InteractMode::RightClick => {
+                    // Handle right-click on inventory item
+                    debug!("Right-clicked on inventory item: {:?}", item.item().name);
+                }
 
-            InteractMode::DoubleClick => {
-                // Try to equip the item
-                let result = systems::inventory::equip(game_state, entity, item);
-                match result {
-                    Ok(unequipped_items) => {
-                        // Remove the item that was equipped from the inventory
-                        systems::inventory::remove_item(&mut game_state.world, entity, index);
-                        for unequipped_item in unequipped_items {
-                            info!("Unequipped item: {:?}", unequipped_item);
-                            // Add unequipped items back to inventory
-                            systems::inventory::add_item(
-                                &mut game_state.world,
-                                entity,
-                                unequipped_item,
-                            );
+                InteractMode::DoubleClick => {
+                    // Try to equip the item
+                    let item_name = item.item().name.clone();
+                    debug!("Double-clicked on inventory item: {:?}", item_name);
+                    let result = systems::inventory::equip(game_state, entity, item);
+                    match result {
+                        Ok(unequipped_items) => {
+                            info!("Equipped item: {:?}", item_name);
+                            // Remove the item that was equipped from the inventory
+                            systems::inventory::remove_item(&mut game_state.world, entity, index);
+                            for unequipped_item in unequipped_items {
+                                info!("Unequipped item: {:?}", unequipped_item);
+                                // Add unequipped items back to inventory
+                                systems::inventory::add_item(
+                                    &mut game_state.world,
+                                    entity,
+                                    unequipped_item,
+                                );
+                            }
+                        }
+                        Err(err) => {
+                            error!("Failed to equip item: {:?}", err);
                         }
                     }
-                    Err(err) => {
-                        info!("Failed to equip item: {:?}", err);
-                    }
+                }
+
+                InteractMode::Drag => {
+                    // Handle drag on inventory item
+                    debug!("Dragging inventory item: {:?}", item.item().name);
                 }
             }
-
-            InteractMode::Drag => {
-                // Handle drag on inventory item
-                info!("Dragging inventory item: {:?}", item.item().name);
+        } else {
+            match InteractMode::RightClick {
+                InteractMode::RightClick => {
+                    debug!("Right-clicked on empty inventory slot: {:?}", index);
+                    ui.open_popup("spawn_item_popup");
+                }
+                InteractMode::DoubleClick => {
+                    debug!("Double-clicked on empty inventory slot: {:?}", index);
+                }
+                InteractMode::Drag => {
+                    debug!("Dragging empty inventory slot: {:?}", index);
+                }
             }
         }
     }
+
+    ui.popup("spawn_item_popup", || {
+        let items = ItemsRegistry::keys().collect::<Vec<_>>();
+
+        let strings = items
+            .iter()
+            .map(|item| item.to_string())
+            .collect::<Vec<_>>();
+
+        if let Some(selected_item) = render_uniform_buttons(ui, strings) {
+            let item =
+                ItemsRegistry::get(items[selected_item]).expect("Item should exist in registry");
+            systems::inventory::add_item(&mut game_state.world, entity, item.clone());
+            ui.close_current_popup();
+        }
+    });
 }
 
 impl ImguiRenderableWithContext<(&World, Entity)> for ItemInstance {

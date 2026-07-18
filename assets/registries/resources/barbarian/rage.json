@@ -1,0 +1,5 @@
+{
+    "id": "nat20_core::resource.barbarian.rage",
+    "kind": "flat",
+    "recharge": "long_rest"
+}

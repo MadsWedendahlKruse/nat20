@@ -45,8 +45,8 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 
 use crate::{
     components::{
-        actions::action::{ActionContext, ActionResult},
-        damage::{DamageMitigationResult, DamageRollResult},
+        actions::action::{ActionConditionResolution, ActionContext, ActionResult},
+        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, EntityIdentifier, ScriptId},
         resource::ResourceAmountMap,
@@ -288,12 +288,41 @@ impl ScriptEngine {
         Ok(modifier as i32)
     }
 
+    pub fn evaluate_damage_roll_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        damage_roll: &mut DamageRoll,
+        action: &ActionData,
+        resolution: &ActionConditionResolution,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::DamageRollHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref_mut(damage_roll)?,
+                    scope.create_userdata_ref(action)?,
+                    scope.create_userdata_ref(resolution)?,
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
     pub fn evaluate_damage_roll_result_hook(
         &self,
         script: &Script,
         game_state: &GameState,
         entity: Entity,
         damage_roll_result: &mut DamageRollResult,
+        action: &ActionData,
+        resolution: &ActionConditionResolution,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::DamageRollResultHook)?;
         let ent = self
@@ -302,9 +331,13 @@ impl ScriptEngine {
             .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref(game_state)?;
-                let d = scope.create_userdata_ref_mut(damage_roll_result)?;
-                func.call::<()>((gs, ent, d))
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref_mut(damage_roll_result)?,
+                    scope.create_userdata_ref(action)?,
+                    scope.create_userdata_ref(resolution)?,
+                ))
             })
             .map_err(Self::runtime_error)
     }
@@ -398,5 +431,42 @@ impl ScriptEngine {
                 func.call::<()>((gs, ent))
             })
             .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_action_usability(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        context: &ActionContext,
+    ) -> Result<Option<String>, ScriptError> {
+        let func = self.get_function(script, ScriptFunction::ActionUsability)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        let result = self
+            .lua
+            .scope(|scope| {
+                let gs = scope.create_userdata_ref(game_state)?;
+                let ctx = scope.create_userdata_ref(context)?;
+                func.call::<Value>((gs, ent, ctx))
+            })
+            .map_err(Self::runtime_error)?;
+
+        match result {
+            Value::Nil => Ok(None),
+            Value::String(s) => Ok(Some(
+                s.to_str()
+                    .map_err(|e| {
+                        ScriptError::RuntimeError(format!("Lua string conversion error: {e}"))
+                    })?
+                    .to_string(),
+            )),
+            other => Err(ScriptError::RuntimeError(format!(
+                "Action usability script returned unexpected value: {}",
+                other.type_name()
+            ))),
+        }
     }
 }

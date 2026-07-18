@@ -51,6 +51,9 @@ pub type ReactionBodyFunction =
 pub type DisplacementFunction =
     dyn Fn(&World, Entity, &ActionContext) -> DisplacementTemplate + Send + Sync;
 pub type AreaShapeFunction = dyn Fn(&World, Entity, &ActionContext) -> AreaShape + Send + Sync;
+/// Return an optional string describing why the action is not usable, or None if the action is usable.
+pub type ActionUsabilityFunction =
+    dyn Fn(&GameState, Entity, &ActionContext) -> Option<String> + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -68,6 +71,11 @@ pub struct Action {
     /// Timeline describing the sequence of events that occur when performing the
     /// action, which can be used to synchronize animations and other visual effects.
     pub timeline: ActionTimeline,
+    /// In case the action requires some custom logic to determine whether it can be
+    /// performed, besides the regular resource cost and cooldown checks, this function
+    /// can be used to provide that logic, e.g. Rage can only be used if the character
+    /// is not wearing heavy armor
+    pub usability: Option<Arc<ActionUsabilityFunction>>,
 }
 
 impl Action {

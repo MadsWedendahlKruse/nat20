@@ -3,8 +3,8 @@ use tracing::error;
 
 use crate::{
     components::{
-        actions::action::{ActionContext, ActionResult},
-        damage::{DamageMitigationResult, DamageRollResult},
+        actions::action::{ActionConditionResolution, ActionContext, ActionResult},
+        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, ScriptId},
         resource::ResourceAmountMap,
@@ -156,11 +156,43 @@ pub fn evaluate_armor_class_hook(
     }
 }
 
+pub fn evaluate_damage_roll_hook(
+    damage_roll_hook: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    damage_roll: &mut DamageRoll,
+    action: &ActionData,
+    resolution: &ActionConditionResolution,
+) {
+    let script = ScriptsRegistry::get(damage_roll_hook).expect(
+        format!(
+            "Damage roll hook script not found in registry: {:?}",
+            damage_roll_hook
+        )
+        .as_str(),
+    );
+    if let Err(err) = SCRIPT_ENGINE.evaluate_damage_roll_hook(
+        script,
+        game_state,
+        entity,
+        damage_roll,
+        action,
+        resolution,
+    ) {
+        error!(
+            "Error evaluating damage roll hook script {:?} for entity {:?}: {:?}",
+            damage_roll_hook, entity, err
+        );
+    }
+}
+
 pub fn evaluate_damage_roll_result_hook(
     damage_roll_result_hook: &ScriptId,
     game_state: &GameState,
     entity: Entity,
     damage_roll_result: &mut DamageRollResult,
+    action: &ActionData,
+    resolution: &ActionConditionResolution,
 ) {
     let script = ScriptsRegistry::get(damage_roll_result_hook).expect(
         format!(
@@ -174,6 +206,8 @@ pub fn evaluate_damage_roll_result_hook(
         game_state,
         entity,
         damage_roll_result,
+        action,
+        resolution,
     ) {
         error!(
             "Error evaluating damage roll result hook script {:?} for entity {:?}: {:?}",
@@ -262,5 +296,30 @@ pub fn evaluate_turn_start_hook(script_id: &ScriptId, game_state: &mut GameState
             "Error evaluating turn start hook script {:?} for entity {:?}: {:?}",
             script_id, entity, err
         );
+    }
+}
+
+pub fn evaluate_action_usability(
+    action_usability: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    action_context: &ActionContext,
+) -> Option<String> {
+    let script = ScriptsRegistry::get(action_usability).expect(
+        format!(
+            "Action usability script not found in registry: {:?}",
+            action_usability
+        )
+        .as_str(),
+    );
+    match SCRIPT_ENGINE.evaluate_action_usability(script, game_state, entity, action_context) {
+        Ok(result) => result,
+        Err(err) => {
+            error!(
+                "Error evaluating action usability script {:?} for entity {:?}: {:?}",
+                action_usability, entity, err
+            );
+            None
+        }
     }
 }

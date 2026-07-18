@@ -11,7 +11,7 @@ use crate::{
         d20::{D20CheckKey, D20CheckMap},
         damage::{
             AttackRoll, AttackRollTemplate, AttackSource, DamageMitigationEffect,
-            DamageMitigationResult, DamageResistances, DamageRollResult,
+            DamageMitigationResult, DamageResistances, DamageRoll, DamageRollResult,
         },
         effects::{
             effect::{
@@ -20,9 +20,9 @@ use crate::{
                 EffectLifetimeTemplate,
             },
             hooks::{
-                ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, DamageRollResultHook,
-                DeathHook, PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook,
-                TurnStartHook,
+                ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, DamageRollHook,
+                DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
+                ResourceCostHook, TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -110,8 +110,8 @@ pub struct EffectDefinition {
     pub on_attacked: Vec<AttackedHookDefinition>,
     #[serde(default)]
     pub on_armor_class: Vec<ArmorClassHookDefinition>,
-    // #[serde(default)]
-    // pub pre_damage_roll: Vec<DamageRollHookDef>,
+    #[serde(default)]
+    pub pre_damage_roll: Vec<DamageRollHookDefinition>,
     #[serde(default)]
     pub post_damage_roll: Vec<DamageRollResultHookDefinition>,
     #[serde(default)]
@@ -191,6 +191,14 @@ impl From<EffectDefinition> for Effect {
             if !definition.on_attacked.is_empty() {
                 let hooks = collect_effect_hooks(&definition.on_attacked, &effect_id);
                 effect.on_attacked = Some(AttackedHookDefinition::combine_hooks(hooks));
+            }
+        }
+
+        // Build pre_damage_roll hooks
+        {
+            if !definition.pre_damage_roll.is_empty() {
+                let hooks = collect_effect_hooks(&definition.pre_damage_roll, &effect_id);
+                effect.pre_damage_roll = Some(DamageRollHookDefinition::combine_hooks(hooks));
             }
         }
 
@@ -399,7 +407,10 @@ pub enum EffectModifier {
         temporary_hit_points: HealEquation,
     },
     Concentration {
+        #[serde(default)]
         break_concentration: bool,
+        #[serde(default)]
+        block_concentration: bool,
     },
 }
 
@@ -635,9 +646,28 @@ impl EffectModifier {
 
             EffectModifier::Concentration {
                 break_concentration,
+                block_concentration,
             } => {
                 if *break_concentration && phase == EffectPhase::Apply {
                     systems::spells::break_concentration(game_state, entity);
+                }
+                if *block_concentration {
+                    let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
+                        &mut game_state.world,
+                        entity,
+                    );
+                    match phase {
+                        EffectPhase::Apply => {
+                            spellbook
+                                .concentration_tracker_mut()
+                                .block_concentration(source);
+                        }
+                        EffectPhase::Unapply => {
+                            spellbook
+                                .concentration_tracker_mut()
+                                .unblock_concentration(&source);
+                        }
+                    }
                 }
             }
         }
@@ -845,8 +875,50 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
 pub enum DamageRollHookDefinition {
-    // …
+    Script { script: ScriptId },
+}
+
+impl HookEffect<DamageRollHook> for DamageRollHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> DamageRollHook {
+        match self {
+            DamageRollHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &GameState,
+                          entity: Entity,
+                          damage_roll: &mut DamageRoll,
+                          action: &ActionData,
+                          resolution: &ActionConditionResolution| {
+                        systems::scripts::evaluate_damage_roll_hook(
+                            &script_id,
+                            game_state,
+                            entity,
+                            damage_roll,
+                            action,
+                            resolution,
+                        );
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<DamageRollHook>) -> DamageRollHook {
+        Arc::new(
+            move |game_state: &GameState,
+                  entity: Entity,
+                  damage_roll: &mut DamageRoll,
+                  action,
+                  resolution| {
+                for hook in &hooks {
+                    hook(game_state, entity, damage_roll, action, resolution);
+                }
+            },
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -863,12 +935,16 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
                 Arc::new(
                     move |game_state: &GameState,
                           entity: Entity,
-                          damage_roll_result: &mut DamageRollResult| {
+                          damage_roll_result: &mut DamageRollResult,
+                          action: &ActionData,
+                          resolution: &ActionConditionResolution| {
                         systems::scripts::evaluate_damage_roll_result_hook(
                             &script_id,
                             game_state,
                             entity,
                             damage_roll_result,
+                            action,
+                            resolution,
                         );
                     },
                 )
@@ -880,9 +956,11 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
         Arc::new(
             move |game_state: &GameState,
                   entity: Entity,
-                  damage_roll_result: &mut DamageRollResult| {
+                  damage_roll_result: &mut DamageRollResult,
+                  action: &ActionData,
+                  resolution: &ActionConditionResolution| {
                 for hook in &hooks {
-                    hook(game_state, entity, damage_roll_result);
+                    hook(game_state, entity, damage_roll_result, action, resolution);
                 }
             },
         )

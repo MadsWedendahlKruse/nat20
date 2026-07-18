@@ -1,43 +1,65 @@
 use std::{ops::Deref, vec};
 
 use hecs::{Entity, World};
-use imgui::{TreeNodeFlags};
+use imgui::TreeNodeFlags;
 use nat20_core::{
     components::{
-        ability::{Ability, AbilityScore, AbilityScoreMap}, actions::{
-            action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind, ActionPayloadComponent, ActionResultComponent, EffectResultKind, ReactionResult
-            }, targeting::{AreaShape, TargetingKind, TargetingRange},
-        }, activity::{ActivityState, ActivityStateKind}, d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode}, damage::{
-            AttackRollResult, DamageComponent, DamageComponentMitigation, DamageComponentResult, DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll, DamageRollResult, MitigationOperation,
-        }, effects::effect::{EffectInstance, EffectLifetime, EffectsMap}, health::{hit_points::HitPoints, life_state::LifeState}, id::{ActionId, EntityIdentifier, FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId}, items::{
+        ability::{Ability, AbilityScore, AbilityScoreMap},
+        activity::{ActivityState, ActivityStateKind},
+        d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode},
+        damage::{
+            AttackRollResult, DamageComponent, DamageComponentMitigation, DamageComponentResult,
+            DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
+            DamageRollResult, MitigationOperation,
+        },
+        effects::effect::{EffectInstance, EffectLifetime, EffectsMap},
+        health::{hit_points::HitPoints, life_state::LifeState},
+        id::{FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId},
+        items::{
             equipment::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus, ArmorType},
                 loadout::Loadout,
-                weapon::{MELEE_RANGE_DEFAULT, Weapon},
+                weapon::Weapon,
             },
             item::{Item, ItemRarity},
             money::MonetaryValue,
-        }, level::{ChallengeRating, CharacterLevels, Level}, modifier::{FlatModifiable, FlatModifierMap, Modifiable, ModifierKind, ModifierMap, ModifierSource}, proficiency::{Proficiency, ProficiencyLevel}, range::Range, resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap}, saving_throw::{SavingThrowKind, SavingThrowSet}, skill::{Skill, SkillSet, skill_ability}, species::{CreatureSize, CreatureType}, speed::Speed, spells::spellbook::Spellbook, time::{TimeDuration, TimeMode}
-    }, registry::registry::{FeatsRegistry, SpellsRegistry}, systems::{
+        },
+        level::{ChallengeRating, CharacterLevels, Level},
+        modifier::{FlatModifiable, Modifiable, ModifierSource},
+        proficiency::{Proficiency, ProficiencyLevel},
+        resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
+        saving_throw::{SavingThrowKind, SavingThrowSet},
+        skill::{Skill, SkillSet, skill_ability},
+        species::{CreatureSize, CreatureType},
+        speed::Speed,
+        spells::spellbook::Spellbook,
+        time::{TimeDuration, TimeMode},
+    },
+    registry::registry::{EffectsRegistry, FeatsRegistry},
+    systems::{
         self,
-        d20::{D20CheckDCKind, D20ResultKind}, geometry::{Displacement, DisplacementTemplate},
+        d20::{D20CheckDCKind, D20ResultKind},
+        geometry::DisplacementTemplate,
     },
 };
-use std::collections::HashSet;
 use strum::IntoEnumIterator;
-use uom::si::{angle::degree, length::meter, mass::kilogram};
+use uom::si::{length::meter, mass::kilogram};
 
 use crate::{
-    render::{common::{colors::Color, utils::Renderable}, ui::{
-        engine::render_event_description, modifier::{ModifierRenderMode, modifiers_to_string}, text::{TextKind, TextSegment, TextSegments, item_rarity_color}, utils::{
-            ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext,
-            ProgressBarColor, render_progress_bar,
-            roman_numeral, signed_value,
+    render::{
+        common::{colors::Color, utils::Renderable},
+        ui::{
+            modifier::{ModifierRenderMode, modifiers_to_string},
+            text::{TextKind, TextSegment, TextSegments, item_rarity_color},
+            utils::{
+                ImguiRenderable, ImguiRenderableMutWithContext, ImguiRenderableWithContext,
+                ProgressBarColor, render_progress_bar, roman_numeral, signed_value,
+            },
         },
-    }}, state::gui_state::GuiState, table_with_columns
+    },
+    state::gui_state::GuiState,
+    table_with_columns,
 };
-
 
 impl ImguiRenderable for Name {
     fn render(&self, ui: &imgui::Ui) {
@@ -303,21 +325,17 @@ impl ImguiRenderable for ResourceMap {
                 // Resource ID column
                 ui.table_next_column();
                 if let Some(source) = self.is_resource_disabled(*resource_id) {
-                    TextSegment::new(
-                        resource_id.to_string(),
-                        TextKind::Red,
-                    )
-                    .render(ui);
+                    TextSegment::new(resource_id.to_string(), TextKind::Red).render(ui);
 
                     if ui.is_item_hovered() {
                         ui.tooltip(|| {
                             TextSegments::new(vec![
                                 ("Disabled by:".to_string(), TextKind::Normal),
-                                (source.to_string(), TextKind::Details)
-                            ]).render(ui);
+                                (source.to_string(), TextKind::Details),
+                            ])
+                            .render(ui);
                         });
                     }
-
                 } else {
                     ui.text(resource_id.to_string());
                 }
@@ -533,9 +551,8 @@ impl ImguiRenderableMutWithContext<&ResourceMap> for Spellbook {
 }
 
 pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &EffectsMap) {
-    
     let _root_id = ui.push_id(effect.effect_id.to_string());
-    
+
     if effect.children.is_empty() {
         ui.text(effect.effect_id.to_string());
         if ui.is_item_hovered() {
@@ -546,13 +563,15 @@ pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &Effe
         return;
     }
 
-    ui.tree_node_config(effect.effect_id.to_string()).flags(TreeNodeFlags::empty()).build(|| {
-        for effect_id in &effect.children {
-            if let Some(child_effect) = all_effects.get(effect_id) {
-                render_effect(ui, child_effect, all_effects);
+    ui.tree_node_config(effect.effect_id.to_string())
+        .flags(TreeNodeFlags::empty())
+        .build(|| {
+            for effect_id in &effect.children {
+                if let Some(child_effect) = all_effects.get(effect_id) {
+                    render_effect(ui, child_effect, all_effects);
+                }
             }
-        }
-    });
+        });
 
     if ui.is_item_hovered() {
         ui.tooltip(|| {
@@ -563,7 +582,7 @@ pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &Effe
 
 fn render_effect_tooltip(ui: &imgui::Ui, effect: &EffectInstance) {
     ui.separator_with_text(effect.effect_id.to_string());
-    TextSegment::new(effect.effect().description.as_str(),TextKind::Details)
+    TextSegment::new(effect.effect().description.as_str(), TextKind::Details)
         .wrap_text(true)
         .render(ui);
 }
@@ -571,8 +590,7 @@ fn render_effect_tooltip(ui: &imgui::Ui, effect: &EffectInstance) {
 impl ImguiRenderableWithContext<&TimeMode> for EffectsMap {
     fn render_with_context(&self, ui: &imgui::Ui, time_mode: &TimeMode) {
         let (permanent_effects, temporary_effects): (Vec<&EffectInstance>, Vec<&EffectInstance>) =
-            self.values()
-                .partition(|e| e.is_permanent());
+            self.values().partition(|e| e.is_permanent());
 
         ui.separator_with_text("Conditions");
         if let Some(table) = table_with_columns!(ui, "Conditions", "Effect", "Source", "Duration") {
@@ -762,7 +780,11 @@ impl ImguiRenderable for ArmorClass {
 impl ImguiRenderable for DamageComponent {
     fn render(&self, ui: &imgui::Ui) {
         TextSegment::new(
-            &format!("{} {}", modifiers_to_string(self.modifiers()), self.damage_type),
+            &format!(
+                "{} {}",
+                modifiers_to_string(self.modifiers()),
+                self.damage_type
+            ),
             TextKind::Damage(self.damage_type),
         )
         .render(ui);
@@ -797,8 +819,12 @@ impl ImguiRenderable for DamageComponentResult {
                 format!("{} {}", self.result.total(), self.damage_type),
                 TextKind::Damage(self.damage_type),
             ),
-            (format!("({})", modifiers_to_string(&self.result)), TextKind::Details),
-        ]).render(ui);
+            (
+                format!("({})", modifiers_to_string(&self.result)),
+                TextKind::Details,
+            ),
+        ])
+        .render(ui);
     }
 }
 
@@ -837,7 +863,7 @@ impl ImguiRenderable for D20CheckResult {
         match self.outcome {
             Some(D20CheckOutcome::CriticalSuccess) => {
                 segments.push(("(Critical Success!)".to_string(), TextKind::Green));
-            },
+            }
             Some(D20CheckOutcome::CriticalFailure) => {
                 segments.push(("(Critical Failure!)".to_string(), TextKind::Red));
             }
@@ -893,225 +919,12 @@ impl ImguiRenderable for DamageComponentMitigation {
     }
 }
 
-impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionResultComponent {
-    fn render_with_context(&self, ui: &imgui::Ui, (actor, target_name): (&Option<&EntityIdentifier>, &str)) {
-        match self {
-            ActionResultComponent::Damage(damage) => {
-                let no_damage_text = match damage.resolution {
-                    ActionConditionResolution::Unconditional => "took no damage",
-                    ActionConditionResolution::AttackRoll { .. } => "was not hit",
-                    ActionConditionResolution::SavingThrow { .. } => "took no damage",
-                };
-
-                ui.group(|| {
-                    damage.damage_taken.render_with_context(
-                        ui,
-                        (&target_name, no_damage_text, None),
-                    );
-                    damage.new_life_state.render_with_context(
-                        ui,
-                        (
-                            &target_name,
-                            actor.as_ref().map(|p| p.name().as_str()),
-                        ),
-                    );
-                });
-
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        match damage.resolution {
-                            ActionConditionResolution::Unconditional => {
-                                (&damage.damage_roll, &damage.damage_taken)
-                                    .render(ui);
-                            }
-
-                            ActionConditionResolution::AttackRoll {
-                                ref attack_roll,
-                                ref armor_class,
-                            } => {
-                                TextSegment::new(
-                                    format!("{}'s", target_name),
-                                    TextKind::Target,
-                                )
-                                .render(ui);
-                                ui.same_line();
-                                ui.text("Armor Class:");
-                                ui.same_line();
-                                armor_class.render(ui);
-
-                                ui.text("");
-                                ui.text("Attack Roll:");
-                                ui.same_line();
-                                attack_roll.render(ui);
-
-                                if let Some(damage_taken) = &damage.damage_taken {
-                                    ui.text("");
-                                    ui.text("Damage Roll:");
-                                    ui.same_line();
-                                    damage.damage_roll.as_ref().unwrap().render(ui);
-
-                                    ui.text("");
-                                    ui.text("Damage Taken:");
-                                    ui.same_line();
-                                    damage_taken.render(ui);
-                                } else {
-                                    ui.text(format!("Attack did not hit. Attack roll ({}) was less than Armor Class ({})", 
-                                        attack_roll.roll_result.total(), armor_class.total()));
-                                }
-                            }
-
-                            ActionConditionResolution::SavingThrow {
-                                ref saving_throw_dc,
-                                ref saving_throw_result,
-                            } => {
-                                ui.text("Saving Throw DC:");
-                                ui.same_line();
-                                saving_throw_dc.render(ui);
-
-                                ui.text("");
-                                ui.text("Saving Throw:");
-                                ui.same_line();
-                                saving_throw_result.render(ui);
-
-                                ui.same_line();
-                                let (label, kind) = if saving_throw_result.is_success(saving_throw_dc) {
-                                    ("Success", TextKind::Green)
-                                } else {
-                                    ("Failure", TextKind::Red)
-                                };
-                                TextSegment::new(label, kind)
-                                    .render(ui);
-                                
-                                ui.text("");
-                                (&damage.damage_roll, &damage.damage_taken)
-                                    .render(ui);
-                            }
-                        }
-                    });
-                }
-            },
-            ActionResultComponent::Effect(effect) => {
-                match effect.result {
-                    EffectResultKind::Applied => {
-                        TextSegments::new(vec![
-                            (target_name, TextKind::Target),
-                            ("gained effect", TextKind::Normal),
-                            (&effect.effect.to_string(), TextKind::Effect),
-                        ])
-                        .render(ui);
-                    },
-                    EffectResultKind::Removed => {
-                        TextSegments::new(vec![
-                            (target_name, TextKind::Target),
-                            ("lost effect", TextKind::Normal),
-                            (&effect.effect.to_string(), TextKind::Effect),
-                        ])
-                        .render(ui);
-                    },
-                    EffectResultKind::None => {
-                        TextSegments::new(vec![
-                            (target_name, TextKind::Target),
-                            ("was unaffected by", TextKind::Normal),
-                            (&effect.effect.to_string(), TextKind::Effect),
-                        ])
-                        .render(ui);
-                    }
-                }
-            },
-            ActionResultComponent::Healing(healing) => {
-                ui.group(|| {
-                    TextSegments::new(vec![
-                        (target_name, TextKind::Target),
-                        ("was healed for", TextKind::Normal),
-                        (&format!("{} HP", healing.healing.total()), TextKind::Healing),
-                    ])
-                    .render(ui);
-                    healing.new_life_state.render_with_context(
-                        ui,
-                        (
-                            &target_name,
-                            actor.as_ref().map(|p| p.name().as_str()),
-                        ),
-                    );
-                });
-
-                if ui.is_item_hovered() {
-                    ui.tooltip(|| {
-                        ui.text("Healing:");
-                        ui.same_line();
-                        TextSegment::new(
-                            &format!("{} HP", modifiers_to_string(&healing.healing)),
-                            TextKind::Healing,
-                        ).render(ui);
-                    });
-                }
-            },
-            ActionResultComponent::Reaction(reaction) => {
-                let Some(actor) = actor else {
-                    TextSegment::new("Reaction result without actor", TextKind::Red).render(ui);
-                    return;
-                };
-
-                match reaction {
-                    ReactionResult::ModifyEvent { before, after } => {
-                        TextSegments::new(
-                            vec![(format!("{}'s", actor.name().as_str()).as_str(), TextKind::Actor),
-                            ("reaction modified", TextKind::Normal)],
-                        ).render(ui);
-                        ui.same_line();
-                        render_event_description(ui, before);
-
-                        if ui.is_item_hovered() {
-                            ui.tooltip(|| {
-                                ui.separator_with_text("Before");
-                                ui.text("TODO");
-                                ui.separator_with_text("After");
-                                ui.text("TODO");
-                            });
-                        }
-                    }
-
-                    ReactionResult::CancelEvent {
-                        event,
-                        resources_refunded,
-                    } => {
-                        TextSegments::new(
-                            vec![(format!("{}'s", actor.name().as_str()).as_str(), TextKind::Actor),
-                            ("reaction canceled", TextKind::Normal)],
-                        ).render(ui);
-                        ui.same_line();
-                        render_event_description(ui, event);
-                    }
-
-                    ReactionResult::NoEffect => {
-                        TextSegments::new(
-                            vec![(format!("{}'s", actor.name().as_str()).as_str(), TextKind::Actor),
-                            ("reaction had no effect on", TextKind::Normal),
-                            (target_name, TextKind::Target)],
-                        ).render(ui);
-                    }
-                }
-            },
-            // TODO: Consider changing the "*verb*-ing *target*" wording here
-            ActionResultComponent::Displacement(displacement) => {
-                let verb = match displacement {
-                    Some(Displacement::Teleport) => "teleporting",
-                    Some(Displacement::Push { .. }) => "pushing",
-                    Some(Displacement::Pull { .. }) => "pulling",
-                    None => "failing to displace",
-                };
-                TextSegment::new(verb, TextKind::Normal).render(ui);
-                ui.same_line();
-                TextSegment::new(target_name, TextKind::Target).render(ui);
-            }
-        }
-    }
-}
-
-impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)>
-    for DamageComponentMitigation
-{
-    fn render_with_context(&self, ui: &imgui::Ui, (target_name, attack_roll): (&str, &Option<AttackRollResult>)) {
+impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)> for DamageComponentMitigation {
+    fn render_with_context(
+        &self,
+        ui: &imgui::Ui,
+        (target_name, attack_roll): (&str, &Option<AttackRollResult>),
+    ) {
         let mut segments = vec![
             (target_name.to_string(), TextKind::Target),
             ("was hit for".to_string(), TextKind::Normal),
@@ -1121,12 +934,14 @@ impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)>
             ),
         ];
         if let Some(attack_roll) = attack_roll {
-            if matches!(attack_roll.roll_result.outcome, Some(D20CheckOutcome::CriticalSuccess)) {
+            if matches!(
+                attack_roll.roll_result.outcome,
+                Some(D20CheckOutcome::CriticalSuccess)
+            ) {
                 segments.push(("(Critical Hit!)".to_string(), TextKind::Details));
             }
         }
-        TextSegments::new(segments)
-            .render(ui);
+        TextSegments::new(segments).render(ui);
     }
 }
 
@@ -1152,12 +967,14 @@ impl ImguiRenderableWithContext<(&str, &str, Option<AttackRollResult>)>
                     (no_damage_text.to_string(), TextKind::Normal),
                 ];
                 if let Some(attack_roll) = attack_roll {
-                    if matches!(attack_roll.roll_result.outcome, Some(D20CheckOutcome::CriticalFailure)) {
+                    if matches!(
+                        attack_roll.roll_result.outcome,
+                        Some(D20CheckOutcome::CriticalFailure)
+                    ) {
                         segments.push(("(Critical Miss!)".to_string(), TextKind::Details));
                     }
                 }
-                TextSegments::new(segments)
-                    .render(ui);
+                TextSegments::new(segments).render(ui);
             }
         });
     }
@@ -1250,8 +1067,7 @@ impl ImguiRenderableWithContext<(&str, Option<&str>)> for Option<LifeState> {
     // This is used to render a LifeState which is being transitioned to
     fn render_with_context(&self, ui: &imgui::Ui, (entity, actor): (&str, Option<&str>)) {
         if let Some(life_state) = self {
-            TextSegments::new(new_life_state_text(entity, life_state, actor))
-                .render(ui);
+            TextSegments::new(new_life_state_text(entity, life_state, actor)).render(ui);
         }
     }
 }
@@ -1389,7 +1205,11 @@ impl ImguiRenderable for DamageMitigationEffect {
 impl ImguiRenderableWithContext<&TimeMode> for EffectLifetime {
     fn render_with_context(&self, ui: &imgui::Ui, time_mode: &TimeMode) {
         match self {
-            EffectLifetime::TurnBoundary { remaining, duration, .. } => {
+            EffectLifetime::TurnBoundary {
+                remaining,
+                duration,
+                ..
+            } => {
                 remaining.render_with_context(ui, time_mode);
                 ui.same_line();
                 TextSegment::new("/", TextKind::Details).render(ui);
@@ -1414,7 +1234,7 @@ impl ImguiRenderableWithContext<&TimeMode> for TimeDuration {
                 let turns = self.as_turns();
                 render_turns(ui, &turns);
             }
-            
+
             TimeMode::Paused => {
                 let turns = self.as_turns();
                 render_turns(ui, &turns);
@@ -1429,28 +1249,17 @@ fn render_seconds(ui: &imgui::Ui, seconds: &f32) {
     let remaining_seconds = seconds % 60;
     let mut segments = Vec::new();
     if minutes > 0 {
-        segments.push((
-            format!("{} minutes", minutes),
-            TextKind::Details,
-        ))
-    } 
+        segments.push((format!("{} minutes", minutes), TextKind::Details))
+    }
     if seconds > 0 || minutes == 0 {
-        segments.push((
-            format!("{} seconds", remaining_seconds),
-            TextKind::Details,
-        ))
+        segments.push((format!("{} seconds", remaining_seconds), TextKind::Details))
     }
     TextSegments::new(segments).render(ui);
 }
 
 fn render_turns(ui: &imgui::Ui, turns: &u32) {
-    TextSegment::new(
-        format!("{} turns", turns),
-        TextKind::Details,
-    )
-    .render(ui);
+    TextSegment::new(format!("{} turns", turns), TextKind::Details).render(ui);
 }
-
 
 impl ImguiRenderable for CreatureSize {
     fn render(&self, ui: &imgui::Ui) {
@@ -1461,77 +1270,6 @@ impl ImguiRenderable for CreatureSize {
 impl ImguiRenderable for CreatureType {
     fn render(&self, ui: &imgui::Ui) {
         TextSegment::new(self.to_string(), TextKind::Details).render(ui);
-    }
-}
-
-impl ImguiRenderableWithContext<&World> for Vec<EntityIdentifier> {
-    fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
-        // Hashset has random order, so we can't just convert the vec to a set
-        // since this will cause the order to change on each render
-        let mut unique_targets = Vec::new();
-        let mut rendered_targets = HashSet::new();
-        for action_target in self.iter() {
-            if rendered_targets.contains(action_target) {
-                continue;
-            }
-            unique_targets.push(action_target);
-            rendered_targets.insert(action_target);
-        }
-
-        if unique_targets.len() == 1 {
-            ui.same_line();
-            TextSegment::new(
-                unique_targets[0].name().as_str(),
-                TextKind::Target,
-            )
-            .render(ui);
-        } else if unique_targets.len() > 1 {
-            ui.same_line();
-            TextSegment::new("multiple targets", TextKind::Target).render(ui);
-
-            if ui.is_item_hovered() {
-                ui.tooltip(|| {
-                    for target in unique_targets.iter() {
-                        TextSegment::new(
-                            target.name().as_str(),
-                            TextKind::Target,
-                        )
-                        .render(ui);
-                    }
-                });
-            }
-        }
-    }
-}
-
-impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind {
-    fn render_with_context(&self, ui: &imgui::Ui, context: (&World, Entity, &ActionContext)) {
-        let (world, entity, action_context) = context;
-        for phase in self.phases() {
-            for component in phase.payload.components() {
-                match component {
-                    ActionPayloadComponent::Damage { damage, .. } => {
-                        damage(world, entity, action_context).render(ui);
-                    },
-                    ActionPayloadComponent::Effect(effect) => {
-                        TextSegment::new(format!("{}", effect.effect_id), TextKind::Effect).render(ui)
-                    },
-                    ActionPayloadComponent::Healing(healing) => {
-                        // TODO: More info? Modifiers?
-                        let healing = healing(world, entity, action_context);
-                        TextSegment::new(
-                            format!("{}-{} Healing", healing.min(), healing.max()),
-                            TextKind::Healing,
-                        )
-                        .render(ui);
-                    },
-                    ActionPayloadComponent::Reaction(_) => { /* Not sure what (if anything) to render here */ },
-                    ActionPayloadComponent::Displacement(displacement) => {
-                        displacement(world, entity, action_context).render(ui);
-                    },
-                }
-            }
-        }
     }
 }
 
@@ -1549,81 +1287,6 @@ impl ImguiRenderable for ResourceAmountMap {
             };
             ui.text(format!("{} {}", amount_text, resource));
         }
-    }
-}
-
-// TODO: Pretty janky 'type' here
-impl ImguiRenderableWithContext<(&World, Entity)>
-    for (&ActionId, &ActionContext, &ResourceAmountMap)
-{
-    fn render_with_context(&self, ui: &imgui::Ui, (world, entity): (&World, Entity)) {
-        let (action_id, context, cost) = self;
-        let action = systems::actions::get_action(action_id).unwrap();
-
-        ui.child_window("Action Tooltip")
-            .size([400.0, 0.0])
-            .child_flags(imgui::ChildFlags::ALWAYS_AUTO_RESIZE | imgui::ChildFlags::AUTO_RESIZE_Y)
-            .build(|| {
-                ui.separator_with_text(&action_id.to_string());
-
-                let spell_id: SpellId = action.id.clone().into();
-                let spell = SpellsRegistry::get(&spell_id);
-                if let Some(spell) = spell {
-                    if spell.base_level() > 0 {
-                        TextSegment::new(format!("Level {} {} Spell", spell.base_level(), spell.school()), TextKind::Details).render(ui);
-                    } else {
-                        TextSegment::new(format!("{} Cantrip", spell.school()), TextKind::Details).render(ui);
-                    }
-                }
-
-                action
-                    .kind
-                    .render_with_context(ui, (world, entity, context));
-                
-                ui.separator();
-
-                let targeting = (action.targeting)(world, entity, context);
-                targeting.range.render(ui);
-                targeting.kind.render(ui);
-
-                for phase in action.kind().phases() {
-                    match &phase.condition {
-                        ActionCondition::AttackRoll(_) => {
-                            TextSegment::new("Attack Roll", TextKind::Details).render(ui);
-                        }
-                        ActionCondition::SavingThrow(saving_throw) => {
-                            let saving_throw = saving_throw(world, entity, &context);
-                            let saving_throw_ability = match saving_throw.key {
-                                SavingThrowKind::Ability(ability) => ability,
-                                _ => todo!()
-                            };
-                            TextSegments::new(vec![
-                                (saving_throw_ability.to_string(), TextKind::Ability),
-                                ("Saving Throw".to_string(), TextKind::Details),
-                            ])
-                            .render(ui);
-                        }
-                        _ => {}
-                    }
-                }
-
-                if let Some(spell) = spell {
-                    ui.separator();
-                    for flag in spell.flags() {
-                        TextSegment::new(format!("{:?}", flag), TextKind::Details).render(ui);
-                    }
-                }
-
-                ui.separator();
-
-                cost.render(ui);
-
-                ui.separator();
-
-                TextSegment::new(action.description.as_str(), TextKind::Details)
-                    .wrap_text(true)
-                    .render(ui);
-            });
     }
 }
 
@@ -1707,10 +1370,7 @@ impl ImguiRenderable for Speed {
                     TextSegments::new(vec![
                         ("Remaining:".to_string(), TextKind::Details),
                         (
-                            format!(
-                                "{:.1} m",
-                                self.free_movement_remaining().get::<meter>()
-                            ),
+                            format!("{:.1} m", self.free_movement_remaining().get::<meter>()),
                             TextKind::Normal,
                         ),
                     ])
@@ -1730,91 +1390,20 @@ impl ImguiRenderable for Speed {
     }
 }
 
-impl ImguiRenderable for TargetingRange {
-    fn render(&self, ui: &imgui::Ui) {
-        let range_text = if self.max().get::<meter>() == 0.0 {
-            return;
-        } else if *self == *MELEE_RANGE_DEFAULT {
-            "Melee".to_string()
-        } else if self.max() == self.normal() {
-            format!("{:.1} meters", self.max().get::<meter>())
-        } else {
-            format!(
-                "{:.1} ({:.1}) meters",
-                self.normal().get::<meter>(),
-                self.max().get::<meter>()
-            )
-        };
-        TextSegments::new(vec![
-            ("Range:".to_string(), TextKind::Details),
-            (range_text, TextKind::Details),
-        ])
-        .render(ui);
-    }
-}
-
-impl ImguiRenderable for TargetingKind {
-    fn render(&self, ui: &imgui::Ui) {
-        let text = match self {
-            TargetingKind::SelfTarget => "Self Target".to_string(),
-            TargetingKind::Single => "Single Target".to_string(),
-            TargetingKind::Multiple { max_targets, allow_duplicates } => if *allow_duplicates {
-                format!("{} Targets", max_targets)
-            } else {
-                format!("{} Targets (Unique)", max_targets)
-            },
-            TargetingKind::Area { shape, .. } => match shape {
-                AreaShape::Cone { angle, length } => {
-                    format!(
-                        "AoE: Arc\n\tAngle: {:.0}°, Length: {:.1} meters",
-                        angle.get::<degree>(),
-                        length.get::<meter>()
-                    )
-                }
-                AreaShape::Sphere { radius } => {
-                    format!("AoE: Sphere\n\tRadius: {:.1} meters", radius.get::<meter>())
-                }
-                AreaShape::Cube { side_length } => {
-                    format!(
-                        "AoE: Cube\n\tSide Length: {:.1} meters",
-                        side_length.get::<meter>()
-                    )
-                }
-                AreaShape::Cylinder { radius, height } => {
-                    format!(
-                        "AoE: Cylinder\n\tRadius: {:.1} meters, Height: {:.1} meters",
-                        radius.get::<meter>(),
-                        height.get::<meter>()
-                    )
-                }
-                AreaShape::Line { length, width } => {
-                    format!(
-                        "AoE: Line\n\tLength: {:.1} meters, Width: {:.1} meters",
-                        length.get::<meter>(),
-                        width.get::<meter>()
-                    )
-                }
-                AreaShape::Capsule { half_height, radius } => {
-                    format!(
-                        "AoE: Capsule\n\tRadius: {:.1} meters, Half Height: {:.1} meters",
-                        radius.get::<meter>(),
-                        half_height.get::<meter>()
-                    )
-                }
-            },
-        };
-        TextSegment::new(text, TextKind::Details).render(ui);
-    }
-}
-
 impl Renderable for ActivityState {
     fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
         match &self.state {
             ActivityStateKind::Moving { path, .. } => {
-                let points = path.points.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<[f32; 3]>>();
+                let points = path
+                    .points
+                    .iter()
+                    .map(|p| [p.x, p.y, p.z])
+                    .collect::<Vec<[f32; 3]>>();
                 gui_state.line_renderer.add_path(path, Color::White);
-                gui_state.line_renderer.add_circle(*points.last().unwrap(), 0.5, Color::White);
-            },
+                gui_state
+                    .line_renderer
+                    .add_circle(*points.last().unwrap(), 0.5, Color::White);
+            }
             _ => {}
         }
     }
@@ -1832,7 +1421,7 @@ impl ImguiRenderable for ModifierSource {
             ModifierSource::Action(action_id) => todo!(),
             ModifierSource::Effect(effect_id) => {
                 TextSegment::new(format!("{}", effect_id), TextKind::Effect).render(ui);
-            },
+            }
             ModifierSource::Ability(ability) => todo!(),
             ModifierSource::Proficiency(proficiency_level) => todo!(),
             ModifierSource::Feat(feat_id) => todo!(),
@@ -1850,15 +1439,15 @@ impl ImguiRenderable for DisplacementTemplate {
         match self {
             DisplacementTemplate::Teleport => {
                 TextSegment::new("Teleport", TextKind::Details).render(ui);
-            },
+            }
             DisplacementTemplate::Push { distance } => {
                 let distance = distance.get::<meter>();
                 TextSegment::new(format!("Push ({:.1} m)", distance), TextKind::Details).render(ui);
-            },
+            }
             DisplacementTemplate::Pull { distance } => {
                 let distance = distance.get::<meter>();
                 TextSegment::new(format!("Pull ({:.1} m)", distance), TextKind::Details).render(ui);
-            },
+            }
         }
     }
 }

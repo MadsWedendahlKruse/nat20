@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use hecs::Entity;
-use imgui::{ChildFlags, MouseButton};
+use imgui::{ChildFlags, HoveredFlags, MouseButton};
 use nat20_core::{
     components::{
         ability::AbilityScoreMap,
@@ -315,29 +315,27 @@ impl ActionBarWindow {
                 continue;
             }
 
-            let mut action_usable = false;
-            for (context, cost) in contexts_and_costs.iter_mut() {
+            let mut contexts_usability = Vec::new();
+            let mut first_usable_context = None;
+            for (i, (context, cost)) in contexts_and_costs.iter_mut().enumerate() {
                 systems::effects::effects(&game_state.world, actor)
                     .resource_cost(game_state, actor, action_id, context, cost);
-                if systems::actions::action_usable(
-                    &game_state.world,
+
+                let usability = systems::actions::action_usable(
+                    game_state,
                     actor,
                     action_id,
                     context,
                     cost,
                     &[],
-                )
-                .is_ok()
-                {
-                    // Note to self: *don't* break here! We need to update
-                    // the costs for all contexts even if one is usable
-                    action_usable = true;
-                } else {
-                    continue;
+                );
+                if usability.is_ok() && first_usable_context.is_none() {
+                    first_usable_context = Some(i);
                 }
+                contexts_usability.push(usability);
             }
 
-            let disabled_token = ui.begin_disabled(!action_usable);
+            let disabled_token = ui.begin_disabled(first_usable_context.is_none());
 
             if ui.button(&action_id.to_string()) {
                 selected_action = Some(action_id.clone());
@@ -345,10 +343,15 @@ impl ActionBarWindow {
 
             disabled_token.end();
 
-            if ui.is_item_hovered() {
+            if ui.is_item_hovered_with_flags(HoveredFlags::ALLOW_WHEN_DISABLED) {
                 ui.tooltip(|| {
-                    let (context, cost) = &contexts_and_costs[0];
-                    (action_id, context, cost).render_with_context(ui, (&game_state.world, actor));
+                    let context_index = first_usable_context.unwrap_or(0);
+                    let (context, cost) = &contexts_and_costs[context_index];
+                    let usability = &contexts_usability[context_index];
+                    (action_id, context, cost).render_with_context(
+                        ui,
+                        (&game_state.world, actor, usability.as_ref().err()),
+                    );
                 });
             }
         }
@@ -446,7 +449,8 @@ impl ActionBarWindow {
 
             if ui.is_item_hovered() {
                 ui.tooltip(|| {
-                    (action, context, cost).render_with_context(ui, (&game_state.world, actor));
+                    (action, context, cost)
+                        .render_with_context(ui, (&game_state.world, actor, None));
                 });
             }
         }
@@ -603,13 +607,8 @@ impl ActionBarWindow {
 
                 let mut targets = action.targets.clone();
                 targets.push(target.clone());
-                let targeting_result = targeting_context.validate_targets(
-                    &game_state.world,
-                    &game_state.geometry,
-                    self.actor(),
-                    &targets,
-                    &[],
-                );
+                let targeting_result =
+                    targeting_context.validate_targets(game_state, self.actor(), &targets, &[]);
 
                 match targeting_result {
                     Ok(()) => {}
@@ -749,13 +748,8 @@ impl ActionBarWindow {
         };
 
         let target = closest.target_instance(&game_state.world);
-        let targeting_result = targeting_context.validate_targets(
-            &game_state.world,
-            &game_state.geometry,
-            self.actor(),
-            &[target.clone()],
-            &[],
-        );
+        let targeting_result =
+            targeting_context.validate_targets(game_state, self.actor(), &[target.clone()], &[]);
 
         match targeting_result {
             Ok(()) => {}

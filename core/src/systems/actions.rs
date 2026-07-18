@@ -9,8 +9,7 @@ use crate::{
                 Action, ActionContext, ActionCooldownMap, ActionMap, ActionProvider,
                 AreaShapeFunction,
             },
-            execution::PhaseState,
-            execution::{ActionExecution, ExecutionStatus, WaitReason},
+            execution::{ActionExecution, ExecutionStatus, PhaseState, WaitReason},
             targeting::{
                 AreaFilter, AreaShape, LineOfSightTrajectory, TargetInstance, TargetingCheck,
                 TargetingContext, TargetingError, TargetingKind,
@@ -20,7 +19,10 @@ use crate::{
         id::{ActionId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap},
-        spells::spellbook::Spellbook,
+        spells::{
+            spell::{ConcentrationError, SpellFlag},
+            spellbook::Spellbook,
+        },
     },
     engine::{
         action_prompt::ActionData, event::Event, game_state::GameState, geometry::WorldGeometry,
@@ -119,6 +121,8 @@ pub enum ActionUsabilityError {
     NotEnoughResources(Vec<ResourceId>),
     ResourceNotFound(ResourceId),
     TargetingError(TargetingError),
+    ConcentrationError(ConcentrationError),
+    UsabilityFunctionError(String),
 }
 
 // TODO: Not sure if this is the best way to handle skipping checks. All the call
@@ -132,7 +136,7 @@ pub enum ActionUsabilityCheck {
 }
 
 pub fn action_usable(
-    world: &World,
+    game_state: &GameState,
     entity: Entity,
     action_id: &ActionId,
     // TODO: Is context really not needed here?
@@ -141,29 +145,49 @@ pub fn action_usable(
     skip_checks: &[ActionUsabilityCheck],
 ) -> Result<(), ActionUsabilityError> {
     if !skip_checks.contains(&ActionUsabilityCheck::Alive)
-        && !systems::health::is_alive(world, entity)
+        && !systems::health::is_alive(&game_state.world, entity)
     {
         return Err(ActionUsabilityError::EntityNotAlive(entity));
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::Cooldown)
-        && let Some(cooldown) = on_cooldown(world, entity, action_id)
+        && let Some(cooldown) = on_cooldown(&game_state.world, entity, action_id)
     {
         return Err(ActionUsabilityError::OnCooldown(cooldown));
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::Resources)
-        && let Err(missing_resources) = systems::resources::can_afford(world, entity, resource_cost)
+        && let Err(missing_resources) =
+            systems::resources::can_afford(&game_state.world, entity, resource_cost)
     {
         return Err(ActionUsabilityError::NotEnoughResources(missing_resources));
+    }
+
+    if let Some(spell) = SpellsRegistry::get(&action_id.into())
+        && spell.has_flag(SpellFlag::Concentration)
+    {
+        if let Err(concentration_error) =
+            systems::spells::can_concentrate(&game_state.world, entity)
+        {
+            return Err(ActionUsabilityError::ConcentrationError(
+                concentration_error,
+            ));
+        }
+    }
+
+    if let Some(action) = get_action(action_id)
+        && let Some(usability_fn) = &action.usability
+    {
+        if let Some(reason) = usability_fn(game_state, entity, action_context) {
+            return Err(ActionUsabilityError::UsabilityFunctionError(reason));
+        }
     }
 
     Ok(())
 }
 
 pub fn action_usable_on_targets(
-    world: &World,
-    world_geometry: &WorldGeometry,
+    game_state: &GameState,
     actor: Entity,
     action_id: &ActionId,
     context: &ActionContext,
@@ -171,9 +195,16 @@ pub fn action_usable_on_targets(
     targets: &[TargetInstance],
     skip_checks: &[ActionUsabilityCheck],
 ) -> Result<(), ActionUsabilityError> {
-    action_usable(world, actor, action_id, context, resource_cost, skip_checks)?;
+    action_usable(
+        game_state,
+        actor,
+        action_id,
+        context,
+        resource_cost,
+        skip_checks,
+    )?;
 
-    let targeting_context = targeting_context(world, actor, action_id, context);
+    let targeting_context = targeting_context(&game_state.world, actor, action_id, context);
 
     let targeting_check = skip_checks
         .iter()
@@ -187,7 +218,7 @@ pub fn action_usable_on_targets(
         .unwrap_or(Vec::new()); // If no targeting checks are being skipped, use an empty vector
 
     if let Err(targeting_error) =
-        targeting_context.validate_targets(world, world_geometry, actor, targets, &targeting_check)
+        targeting_context.validate_targets(game_state, actor, targets, &targeting_check)
     {
         return Err(ActionUsabilityError::TargetingError(targeting_error));
     }
@@ -208,7 +239,7 @@ pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
                 resource_cost,
             );
             action_usable(
-                &game_state.world,
+                game_state,
                 entity,
                 action_id,
                 &action_context,
@@ -518,7 +549,6 @@ pub fn available_reactions_to_event(
 
     let available = systems::actions::available_actions(game_state, reactor);
     let world = &game_state.world;
-    let world_geometry = &game_state.geometry;
     for (reaction_id, contexts_and_costs) in available {
         let reaction = systems::actions::get_action(&reaction_id);
         if reaction.is_none() {
@@ -543,8 +573,7 @@ pub fn available_reactions_to_event(
                     };
 
                     let usability_result = action_usable_on_targets(
-                        world,
-                        world_geometry,
+                        game_state,
                         reactor,
                         &reaction_id,
                         context,

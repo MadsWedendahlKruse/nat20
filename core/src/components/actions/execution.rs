@@ -655,9 +655,8 @@ impl StepComponent {
                 let mut damage_roll = systems::damage::damage_roll_fn(
                     damage_fn.as_ref(),
                     game_state,
-                    action.actor.id(),
-                    &action.context,
-                    resolution.is_crit(),
+                    action,
+                    resolution,
                 );
                 // TODO: A bit clunky having to set this here
                 damage_roll.action = Some((action.actor.id(), action.action_id.clone()));

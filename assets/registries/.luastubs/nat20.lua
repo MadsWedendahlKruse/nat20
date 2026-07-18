@@ -16,6 +16,20 @@
 -- Damage
 ------------------------------------------------------------
 
+---@class DamageComponent
+---@field damage_type string
+---@field damage ModifierMap
+local DamageComponent = {}
+
+---@class DamageRoll
+---@field components DamageComponent[]
+local DamageRoll = {}
+
+---@param dice string         -- e.g. "1d6"
+---@param damage_type string  -- e.g. "necrotic", "fire"
+---@param source string       -- e.g. "nat20_core::action.spell.hex"
+function DamageRoll:add_damage(dice, damage_type, source) end
+
 ---@class DamageRollResult
 ---@field source string
 ---@field actor ScriptEntity?
@@ -285,11 +299,13 @@ function GameState:heal(target, amount) end
 
 ---@class ModifierMap
 local ModifierMap = {}
----@param source ModifierSource
+---@param source string
 ---@param value string
 function ModifierMap:add_modifier(source, value) end
 
----@class ModifierSource
+---@param source string
+---@return string?
+function ModifierMap:get_modifier(source) end
 
 ---@class FlatModifierMap
 ---@field total integer
@@ -304,10 +320,12 @@ local FlatModifierMap = {}
 ---@alias ActionHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData)
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
----@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult)
+---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
+---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult)
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
 ---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)
+---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, context: ActionContext): string?

@@ -51,6 +51,7 @@ pub enum MovementError {
     // Strictly speaking this isn't a movement error, but it makes it easier to
     // handle in the game state if we put it here ;)
     NotYourTurn,
+    NotAlive,
 }
 
 #[derive(Debug, Clone, PartialEq)]

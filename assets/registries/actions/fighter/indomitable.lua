@@ -25,7 +25,7 @@ local function reaction_body(game_state, reaction, event)
 
     event:with_d20_check(function(result, dc)
         result:reroll_bonus(
-            game_state:class_level(reaction.actor, "nat20_core::class.fighter"),
+            tostring(game_state:class_level(reaction.actor, "nat20_core::class.fighter")),
             "nat20_core::action.fighter.indomitable",
             true
         )

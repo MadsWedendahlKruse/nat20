@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 
 use hecs::{Entity, World};
+use tracing::debug;
 
 use crate::{
     components::{
-        actions::action::ActionContext,
+        actions::action::{ActionConditionResolution, ActionContext},
         damage::{
             AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
         },
@@ -14,7 +15,7 @@ use crate::{
         resource::ResourceAmountMap,
         time::TimeStep,
     },
-    engine::game_state::GameState,
+    engine::{action_prompt::ActionData, game_state::GameState},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -184,10 +185,17 @@ impl EffectManager {
         );
     }
 
-    pub fn pre_damage_roll(&self, world: &World, entity: Entity, roll: &mut DamageRoll) {
+    pub fn pre_damage_roll(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        roll: &mut DamageRoll,
+        action: &ActionData,
+        resolution: &ActionConditionResolution,
+    ) {
         self.for_each(
             |effect| effect.pre_damage_roll.as_ref(),
-            |hook| hook(world, entity, roll),
+            |hook| hook(game_state, entity, roll, action, resolution),
         );
     }
 
@@ -196,10 +204,12 @@ impl EffectManager {
         game_state: &GameState,
         entity: Entity,
         result: &mut DamageRollResult,
+        action: &ActionData,
+        resolution: &ActionConditionResolution,
     ) {
         self.for_each(
             |effect| effect.post_damage_roll.as_ref(),
-            |hook| hook(game_state, entity, result),
+            |hook| hook(game_state, entity, result, action, resolution),
         );
     }
 

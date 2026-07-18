@@ -63,6 +63,16 @@
         },
         "timeline": {
             "$ref": "#/definitions/ActionTimeline"
+        },
+        "usability": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/ActionUsabilityDefinition"
+                },
+                {
+                    "type": "null"
+                }
+            ]
         }
     },
     "required": [
@@ -349,6 +359,22 @@
             "required": [
                 "total_duration",
                 "perform_time"
+            ]
+        },
+        "ActionUsabilityDefinition": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "script"
+                    ]
+                }
             ]
         },
         "AreaFilterDefinition": {

@@ -123,7 +123,9 @@ impl IdProvider for Script {
 pub enum ScriptFunction {
     ActionHook,
     ActionResultHook,
+    ActionUsability,
     ArmorClassHook,
+    DamageRollHook,
     DamageRollResultHook,
     DeathHook,
     PostDamageMitigationHook,
@@ -139,7 +141,9 @@ impl ScriptFunction {
         match self {
             ScriptFunction::ActionHook => "action_hook",
             ScriptFunction::ActionResultHook => "action_result_hook",
+            ScriptFunction::ActionUsability => "action_usability",
             ScriptFunction::ArmorClassHook => "armor_class_hook",
+            ScriptFunction::DamageRollHook => "damage_roll_hook",
             ScriptFunction::DamageRollResultHook => "damage_roll_result_hook",
             ScriptFunction::DeathHook => "death_hook",
             ScriptFunction::PostDamageMitigationHook => "post_damage_mitigation_hook",
