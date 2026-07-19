@@ -5,8 +5,9 @@ use nat20_core::{
         ability::Ability,
         d20::{AdvantageType, D20CheckOutcome},
         damage::{AttackSource, DamageComponent, DamageType},
+        id::ItemId,
         items::equipment::{slots::EquipmentSlot, weapon::WeaponKind},
-        modifier::{ModifierMap, ModifierSource},
+        modifier::{FlatModifierMap, ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
         skill::Skill,
         time::TimeMode,
@@ -315,4 +316,23 @@ fn rage_ends_when_incapacitated() {
         .assert_effect("effect.condition.paralyzed")
         .assert_effect("effect.condition.incapacitated")
         .assert_no_effect("effect.barbarian.rage");
+}
+
+#[test]
+fn unarmored_defense() {
+    let mut scenario = barbarian_scenario();
+
+    scenario
+        .probe("barbarian")
+        .assert_armor_class(&FlatModifierMap::from_iter(vec![
+            (ModifierSource::Base, 10),
+            (ModifierSource::Ability(Ability::Dexterity), 2),
+            (ModifierSource::Ability(Ability::Constitution), 3),
+        ]))
+        // Equipping armor removes the unarmored defense bonus
+        .equip("item.chainmail")
+        .assert_armor_class(&FlatModifierMap::from_iter(vec![(
+            ModifierSource::Item(ItemId::new("nat20_core", "item.chainmail")),
+            16,
+        )]));
 }

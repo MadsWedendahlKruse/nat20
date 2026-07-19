@@ -1,7 +1,7 @@
 {
     "id": "nat20_core::effect.fighting_style.defense",
     "kind": "buff",
-    "description": "While you’re wearing Light, Medium, or Heavy armor, you gain a +1 bonus to Armor Class.",
+    "description": "While you're wearing Light, Medium, or Heavy armor, you gain a +1 bonus to Armor Class.",
     "on_armor_class": [
         {
             "script": "nat20_core::script.effect.fighting_style.defense"

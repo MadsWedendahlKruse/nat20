@@ -1014,15 +1014,15 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
             }),
 
             ArmorClassHookDefinition::Script { script } => {
-                let effect_id = effect.clone();
                 let script_id = script.clone();
                 Arc::new(
                     move |game_state: &GameState, entity: Entity, armor_class: &mut ArmorClass| {
-                        let modifier = systems::scripts::evaluate_armor_class_hook(
-                            &script_id, game_state, entity,
+                        systems::scripts::evaluate_armor_class_hook(
+                            &script_id,
+                            game_state,
+                            entity,
+                            armor_class,
                         );
-                        armor_class
-                            .add_modifier(ModifierSource::Effect(effect_id.clone()), modifier);
                     },
                 )
             }

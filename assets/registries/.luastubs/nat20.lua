@@ -329,6 +329,9 @@ function ModifierMap:get_modifier(source) end
 ---@class FlatModifierMap
 ---@field total integer
 local FlatModifierMap = {}
+---@param source string
+---@param value integer
+function FlatModifierMap:add_modifier(source, value) end
 
 ---@class ModifierResult
 ---@field total integer
@@ -345,7 +348,7 @@ local TimeDuration = {}
 -- to get parameter type inference and nil checks.
 ------------------------------------------------------------
 
----@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity): integer
+---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
 ---@alias ActionHookFn fun(game_state: GameState, action: ActionData)
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)

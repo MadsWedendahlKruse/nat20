@@ -4,10 +4,10 @@
     "hp_per_level": 7,
     "default_abilities": {
         "scores": {
-            "wisdom": 12,
-            "charisma": 10,
+            "wisdom": 10,
+            "charisma": 8,
             "dexterity": 14,
-            "constitution": 13,
+            "constitution": 15,
             "intelligence": 8,
             "strength": 15
         },
@@ -46,6 +46,9 @@
         "medium"
     ],
     "effects_by_level": {
+        "1": [
+            "nat20_core::effect.barbarian.unarmored_defense"
+        ],
         "5": [
             "nat20_core::effect.extra_attack"
         ]

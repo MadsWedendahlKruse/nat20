@@ -7,6 +7,7 @@ use crate::{
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, ScriptId},
+        items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
     },
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
@@ -161,7 +162,8 @@ pub fn evaluate_armor_class_hook(
     armor_class_hook: &ScriptId,
     game_state: &GameState,
     entity: Entity,
-) -> i32 {
+    armor_class: &mut ArmorClass,
+) {
     let script = ScriptsRegistry::get(armor_class_hook).expect(
         format!(
             "Armor class hook script not found in registry: {:?}",
@@ -169,15 +171,13 @@ pub fn evaluate_armor_class_hook(
         )
         .as_str(),
     );
-    match SCRIPT_ENGINE.evaluate_armor_class_hook(script, game_state, entity) {
-        Ok(modifier) => modifier,
-        Err(err) => {
-            error!(
-                "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
-                armor_class_hook, entity, err
-            );
-            0
-        }
+    if let Err(err) =
+        SCRIPT_ENGINE.evaluate_armor_class_hook(script, game_state, entity, armor_class)
+    {
+        error!(
+            "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
+            armor_class_hook, entity, err
+        );
     }
 }
 

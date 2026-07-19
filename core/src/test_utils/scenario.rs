@@ -17,7 +17,9 @@ use crate::{
         damage::{DamageComponent, DamageType},
         id::{ActionId, EffectId, ItemId, ResourceId},
         items::equipment::slots::EquipmentSlot,
-        modifier::{Modifiable, ModifierKind, ModifierMap, ModifierResult, ModifierSource},
+        modifier::{
+            FlatModifierMap, Modifiable, ModifierKind, ModifierMap, ModifierResult, ModifierSource,
+        },
         resource::ResourceAmountMap,
         skill::{Skill, SkillSet},
         time::TimeMode,
@@ -466,6 +468,7 @@ delegate_probe_methods! {
     fn assert_d20_crit_threshold_reduction(kind: &D20CheckKind, source: &ModifierSource, operator: Operator<i32>);
     fn assert_concentration(effect: impl Into<EffectId> + Clone);
     fn assert_no_concentration();
+    fn assert_armor_class(modifiers: &FlatModifierMap);
 }
 
 impl ScenarioProbe<'_> {

@@ -9,7 +9,7 @@ use crate::{
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ItemId, ResourceId},
         items::equipment::{loadout::Loadout, slots::EquipmentSlot},
-        modifier::ModifierSource,
+        modifier::{FlatModifiable, FlatModifierMap, ModifierSource},
         resource::{ResourceBudgetKind, ResourceMap},
         saving_throw::SavingThrowSet,
         skill::SkillSet,
@@ -545,6 +545,7 @@ impl CreatureProbe {
         });
     }
 
+    #[track_caller]
     fn assert_d20(
         &self,
         game_state: &GameState,
@@ -598,7 +599,8 @@ impl CreatureProbe {
         }
     }
 
-    // TODO: Update this is we add support for concentration on things other than effects
+    // TODO: Update this if we add support for concentration on things other than effects
+    #[track_caller]
     pub fn assert_concentration(&self, game_state: &GameState, effect_id: impl Into<EffectId>) {
         let effect_id = effect_id.into();
         let spellbook =
@@ -619,6 +621,7 @@ impl CreatureProbe {
         );
     }
 
+    #[track_caller]
     pub fn assert_no_concentration(&self, game_state: &GameState) {
         let spellbook =
             systems::helpers::get_component::<Spellbook>(&game_state.world, self.creature.id());
@@ -627,6 +630,21 @@ impl CreatureProbe {
             "Expected creature {:?} to not be concentrating, but it has concentration instances: {:#?}",
             self.creature,
             spellbook.concentration_tracker().instances()
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_armor_class(&self, game_state: &GameState, modifiers: &FlatModifierMap) {
+        let armor_class =
+            systems::helpers::get_component::<Loadout>(&game_state.world, self.creature.id())
+                .armor_class(game_state, self.creature.id());
+        assert_eq!(
+            armor_class.modifiers(),
+            modifiers,
+            "Expected creature {:?} to have armor class modifiers {:#?}, but it was {:#?}",
+            self.creature,
+            modifiers,
+            armor_class.modifiers()
         );
     }
 }

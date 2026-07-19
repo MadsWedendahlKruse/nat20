@@ -490,6 +490,13 @@ impl UserData for FlatModifierMap {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("total", |_, this| Ok(this.total()));
     }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method_mut("add_modifier", |_, this, (source, value): (String, i64)| {
+            this.add_modifier(parse_source(&source)?, value as i32);
+            Ok(())
+        });
+    }
 }
 
 impl UserData for ModifierResult {

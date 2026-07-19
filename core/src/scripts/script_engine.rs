@@ -49,6 +49,8 @@ use crate::{
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, EntityIdentifier, ScriptId},
+        items::equipment::armor::ArmorClass,
+        modifier::FlatModifiable,
         resource::ResourceAmountMap,
     },
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
@@ -267,20 +269,22 @@ impl ScriptEngine {
         script: &Script,
         game_state: &GameState,
         entity: Entity,
-    ) -> Result<i32, ScriptError> {
+        armor_class: &mut ArmorClass,
+    ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ArmorClassHook)?;
         let ent = self
             .lua
             .create_userdata(ScriptEntity::from(entity))
             .map_err(Self::runtime_error)?;
-        let modifier: i64 = self
-            .lua
+        self.lua
             .scope(|scope| {
-                let gs_const = scope.create_userdata_ref(game_state)?;
-                func.call::<i64>((gs_const, ent))
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref_mut(armor_class.modifiers_mut())?,
+                ))
             })
-            .map_err(Self::runtime_error)?;
-        Ok(modifier as i32)
+            .map_err(Self::runtime_error)
     }
 
     pub fn evaluate_damage_roll_hook(
