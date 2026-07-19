@@ -14,8 +14,9 @@ use crate::{
             targeting::TargetInstance,
         },
         d20::{AdvantageType, D20CheckOutcome},
-        damage::DamageComponent,
-        id::{ActionId, EffectId, ResourceId},
+        damage::{DamageComponent, DamageType},
+        id::{ActionId, EffectId, ItemId, ResourceId},
+        items::equipment::slots::EquipmentSlot,
         modifier::{Modifiable, ModifierKind, ModifierMap, ModifierResult, ModifierSource},
         resource::ResourceAmountMap,
         skill::{Skill, SkillSet},
@@ -433,6 +434,10 @@ pub struct ScenarioProbes<'s> {
 
 delegate_probe_methods! {
     fn start_turn();
+    fn end_turn();
+
+    fn equip(item: impl Into<ItemId> + Clone);
+    fn unequip(slot: &EquipmentSlot);
 
     fn damage_raw(amount: u32);
     fn d20_force_outcome(kind: D20CheckKind, outcome: D20CheckOutcome);
@@ -450,6 +455,9 @@ delegate_probe_methods! {
     fn assert_no_resource(resource: impl Into<ResourceId> + Clone);
     fn assert_effect(effect: impl Into<EffectId> + Clone);
     fn assert_no_effect(effect: impl Into<EffectId> + Clone);
+    fn assert_effect_instances(effect: impl Into<EffectId> + Clone, expected: usize);
+    fn assert_damage_resistance(damage_type: DamageType);
+    fn assert_no_damage_resistance(damage_type: DamageType);
     fn assert_on_cooldown(action: impl Into<ActionId> + Clone);
     fn assert_hp(amount: Operator<u32>);
     fn assert_movement_speed(operator: Operator<Length>);
@@ -482,6 +490,11 @@ impl ScenarioProbe<'_> {
     pub fn movement_speed(&mut self) -> Length {
         let (probe, game_state) = self.scenario.probe_parts(&self.handle);
         probe.movement_speed(game_state)
+    }
+
+    pub fn effect_remaining_turns(&mut self, effect: impl Into<EffectId>) -> Option<u32> {
+        let (probe, game_state) = self.scenario.probe_parts(&self.handle);
+        probe.effect_remaining_turns(game_state, effect)
     }
 
     pub fn position(&mut self) -> Point3<f32> {

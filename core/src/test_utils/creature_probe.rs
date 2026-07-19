@@ -5,10 +5,10 @@ use crate::{
     components::{
         actions::action_builder::{ActionBuilder, ReactionBuilder},
         d20::{AdvantageType, D20Check, D20CheckOutcome},
-        damage::AttackSource,
+        damage::{AttackSource, DamageResistances, DamageType},
         health::hit_points::HitPoints,
-        id::{ActionId, EffectId, EntityIdentifier, ResourceId},
-        items::equipment::loadout::Loadout,
+        id::{ActionId, EffectId, EntityIdentifier, ItemId, ResourceId},
+        items::equipment::{loadout::Loadout, slots::EquipmentSlot},
         modifier::ModifierSource,
         resource::{ResourceBudgetKind, ResourceMap},
         saving_throw::SavingThrowSet,
@@ -18,6 +18,7 @@ use crate::{
         time::{TimeStep, TurnBoundary},
     },
     engine::{event::EventCallback, game_state::GameState},
+    registry::registry::ItemsRegistry,
     systems::{
         self,
         d20::{D20CheckDCKind, D20CheckKind},
@@ -45,15 +46,47 @@ impl CreatureProbe {
     }
 
     pub fn start_turn(&self, game_state: &mut GameState) {
+        self.turn_boundary(game_state, TurnBoundary::Start);
+    }
+
+    pub fn end_turn(&self, game_state: &mut GameState) {
+        self.turn_boundary(game_state, TurnBoundary::End);
+    }
+
+    fn turn_boundary(&self, game_state: &mut GameState, boundary: TurnBoundary) {
         systems::time::advance_time(
             game_state,
             self.creature.id(),
             TimeStep::TurnBoundary {
                 entity: self.creature.id(),
-                boundary: TurnBoundary::Start,
+                boundary,
             },
         );
+        // The update sweeps any effects that expired at the boundary
         game_state.update(0.0);
+    }
+
+    pub fn equip(&self, game_state: &mut GameState, item: impl Into<ItemId>) {
+        let item_id = item.into();
+        let item = ItemsRegistry::get(&item_id)
+            .unwrap_or_else(|| panic!("No item with id {item_id} in registry"))
+            .clone();
+        if systems::loadout::equip(game_state, self.creature.id(), item).is_err() {
+            panic!("Failed to equip {item_id} on {:?}", self.creature);
+        }
+    }
+
+    pub fn unequip(&self, game_state: &mut GameState, slot: &EquipmentSlot) {
+        systems::loadout::unequip(game_state, self.creature.id(), slot);
+    }
+
+    pub fn effect_remaining_turns(
+        &self,
+        game_state: &GameState,
+        effect: impl Into<EffectId>,
+    ) -> Option<u32> {
+        systems::effects::effect_remaining_duration(game_state, self.creature.id(), &effect.into())
+            .map(|duration| duration.as_turns())
     }
 
     pub fn hp(&self, game_state: &GameState) -> u32 {
@@ -331,6 +364,55 @@ impl CreatureProbe {
             self.creature,
             effect_id,
             effects
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_effect_instances(
+        &self,
+        game_state: &GameState,
+        effect_id: impl Into<EffectId>,
+        expected: usize,
+    ) {
+        let effect_id = effect_id.into();
+        let count = systems::effects::effects(&game_state.world, self.creature.id())
+            .values()
+            .filter(|instance| instance.effect_id == effect_id)
+            .count();
+        assert_eq!(
+            count, expected,
+            "Expected creature {:?} to have {} instances of effect {:?}, but found {}",
+            self.creature, expected, effect_id, count
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_damage_resistance(&self, game_state: &GameState, damage_type: DamageType) {
+        let resistances = systems::helpers::get_component::<DamageResistances>(
+            &game_state.world,
+            self.creature.id(),
+        );
+        assert!(
+            resistances.effective_resistance(damage_type).is_some(),
+            "Expected creature {:?} to have {:?} resistance, but it was not found. Current resistances: {:#?}",
+            self.creature,
+            damage_type,
+            resistances
+        );
+    }
+
+    #[track_caller]
+    pub fn assert_no_damage_resistance(&self, game_state: &GameState, damage_type: DamageType) {
+        let resistances = systems::helpers::get_component::<DamageResistances>(
+            &game_state.world,
+            self.creature.id(),
+        );
+        assert!(
+            resistances.effective_resistance(damage_type).is_none(),
+            "Expected creature {:?} to not have {:?} resistance, but it was found. Current resistances: {:#?}",
+            self.creature,
+            damage_type,
+            resistances
         );
     }
 
