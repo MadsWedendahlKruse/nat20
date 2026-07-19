@@ -14,7 +14,7 @@ use crate::{
             targeting::TargetInstance,
         },
         d20::{AdvantageType, D20CheckOutcome},
-        damage::{DamageComponent, DamageSource},
+        damage::DamageComponent,
         id::{ActionId, EffectId, ResourceId},
         modifier::{Modifiable, ModifierKind, ModifierMap, ModifierResult, ModifierSource},
         resource::ResourceAmountMap,
@@ -547,17 +547,12 @@ impl ScenarioEventFilterBuilder<'_> {
         self
     }
 
-    pub fn damage_roll(mut self, damage: DamageComponent, source: DamageSource) -> Self {
-        self.kind = Some(EventFilterKind::DamageRoll { damage, source });
+    pub fn damage_roll(mut self, damage: DamageComponent) -> Self {
+        self.kind = Some(EventFilterKind::DamageRoll { damage });
         self
     }
 
-    pub fn damage_dealt(
-        mut self,
-        target: impl Into<String>,
-        damage: DamageComponent,
-        source: DamageSource,
-    ) -> Self {
+    pub fn damage_dealt(mut self, target: impl Into<String>, damage: DamageComponent) -> Self {
         let target = target.into();
         let target = self
             .scenario
@@ -566,11 +561,7 @@ impl ScenarioEventFilterBuilder<'_> {
             .unwrap_or_else(|| panic!("No creature with handle {target} in scenario"))
             .creature
             .id();
-        self.kind = Some(EventFilterKind::DamageDealt {
-            target,
-            damage,
-            source,
-        });
+        self.kind = Some(EventFilterKind::DamageDealt { target, damage });
         self
     }
 
@@ -659,12 +650,10 @@ pub enum EventFilterKind {
     },
     DamageRoll {
         damage: DamageComponent,
-        source: DamageSource,
     },
     DamageDealt {
         target: Entity,
         damage: DamageComponent,
-        source: DamageSource,
     },
 }
 
@@ -711,14 +700,9 @@ impl EventFilterKind {
             (
                 EventFilterKind::DamageRoll {
                     damage: expected_damage,
-                    source: expected_source,
                 },
                 EventKind::DamageRollResolved { result, .. },
             ) => {
-                if &result.source != expected_source {
-                    return false;
-                }
-
                 for component in &result.components {
                     if component.damage_type == expected_damage.damage_type
                         && result_contains_expected(expected_damage.modifiers(), &component.result)
@@ -734,7 +718,6 @@ impl EventFilterKind {
                 EventFilterKind::DamageDealt {
                     target: expected_target,
                     damage: expected_damage,
-                    source: expected_source,
                 },
                 EventKind::ActionResult { result, .. },
             ) => {
@@ -745,7 +728,6 @@ impl EventFilterKind {
                 for component in result.components() {
                     if let ActionResultComponent::Damage(damage_result) = component
                         && let Some(damage_result) = &damage_result.damage_taken
-                        && damage_result.source == *expected_source
                     {
                         for component in &damage_result.components {
                             if component.damage_type == expected_damage.damage_type

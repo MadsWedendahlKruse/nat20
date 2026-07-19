@@ -227,27 +227,31 @@ impl EffectManager {
         );
     }
 
-    pub fn post_damage_mitigation(
-        &self,
-        game_state: &GameState,
-        entity: Entity,
-        result: &mut DamageMitigationResult,
-    ) {
-        self.for_each(
-            |effect| effect.post_damage_mitigation.as_ref(),
-            |hook| hook(game_state, entity, result),
-        );
-    }
-
     pub fn pre_damage_mitigation(
         &self,
         game_state: &GameState,
         entity: Entity,
         result: &mut DamageRollResult,
+        action: Option<&ActionData>,
+        resolution: Option<&ActionConditionResolution>,
     ) {
         self.for_each_with_instance(
             |effect| effect.pre_damage_mitigation.as_ref(),
-            |hook, inst| hook(game_state, inst, entity, result),
+            |hook, inst| hook(game_state, inst, entity, result, action, resolution),
+        );
+    }
+
+    pub fn post_damage_mitigation(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        result: &mut DamageMitigationResult,
+        action: Option<&ActionData>,
+        resolution: Option<&ActionConditionResolution>,
+    ) {
+        self.for_each(
+            |effect| effect.post_damage_mitigation.as_ref(),
+            |hook| hook(game_state, entity, result, action, resolution),
         );
     }
 

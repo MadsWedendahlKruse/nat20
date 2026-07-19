@@ -48,8 +48,13 @@ pub fn evaluate_event_filter(
     applier: Entity,
     target: Entity,
 ) -> bool {
-    let script = ScriptsRegistry::get(event_filter)
-        .expect(format!("Event filter script not found in registry: {:?}", event_filter).as_str());
+    let script = ScriptsRegistry::get(event_filter).expect(
+        format!(
+            "Event filter script not found in registry: {:?}",
+            event_filter
+        )
+        .as_str(),
+    );
     match SCRIPT_ENGINE.evaluate_event_filter(script, event, applier, target) {
         Ok(result) => result,
         Err(err) => {
@@ -242,6 +247,8 @@ pub fn evaluate_pre_damage_mitigation_hook(
     entity: Entity,
     effect: &EffectInstance,
     damage_roll_result: &mut DamageRollResult,
+    action: Option<&ActionData>,
+    resolution: Option<&ActionConditionResolution>,
 ) {
     let script = ScriptsRegistry::get(pre_damage_mitigation_hook).expect(
         format!(
@@ -256,6 +263,8 @@ pub fn evaluate_pre_damage_mitigation_hook(
         entity,
         effect,
         damage_roll_result,
+        action,
+        resolution,
     ) {
         error!(
             "Error evaluating pre-damage mitigation hook script {:?} for entity {:?}: {:?}",
@@ -269,6 +278,8 @@ pub fn evaluate_post_damage_mitigation_hook(
     game_state: &GameState,
     entity: Entity,
     damage_mitigation_result: &mut DamageMitigationResult,
+    action: Option<&ActionData>,
+    resolution: Option<&ActionConditionResolution>,
 ) {
     let script = ScriptsRegistry::get(damage_mitigation_hook).expect(
         format!(
@@ -282,6 +293,8 @@ pub fn evaluate_post_damage_mitigation_hook(
         game_state,
         entity,
         damage_mitigation_result,
+        action,
+        resolution,
     ) {
         error!(
             "Error evaluating post-damage mitigation hook script {:?} for entity {:?}: {:?}",

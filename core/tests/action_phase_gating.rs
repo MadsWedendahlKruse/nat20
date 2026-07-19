@@ -7,7 +7,7 @@ use nat20_core::{
             targeting::TargetInstance,
         },
         d20::D20CheckOutcome,
-        damage::{AttackSource, DamageComponent, DamageSource, DamageType},
+        damage::{AttackSource, DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
         modifier::{ModifierMap, ModifierSource},
     },
@@ -96,13 +96,10 @@ fn phase_gating(
         scenario
             .event_filter()
             .actor("wizard")
-            .damage_roll(
-                DamageComponent::new(
-                    ModifierMap::from(ModifierSource::Base, DiceSet::new(dice_num, DieSize::D8)),
-                    DamageType::Cold,
-                ),
-                DamageSource::Spell("spell.ray_of_frost".into()),
-            )
+            .damage_roll(DamageComponent::new(
+                ModifierMap::from(ModifierSource::Base, DiceSet::new(dice_num, DieSize::D8)),
+                DamageType::Cold,
+            ))
             .assert_event_count(expected);
     }
 }

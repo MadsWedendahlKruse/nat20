@@ -12,14 +12,15 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionResult,
-                ActionResultComponent, DamageResult, EffectResult, EffectResultKind, HealingResult,
+                ActionConditionResolution, ActionContext, ActionResult, ActionResultComponent,
+                DamageResult, EffectResult, EffectResultKind, HealingResult,
             },
             targeting::TargetInstance,
         },
         damage::{
-            AttackSource, DamageComponent, DamageMitigationEffect, DamageMitigationResult,
-            DamageRoll, DamageRollResult, MitigationOperation,
+            AttackSource, DamageComponent, DamageComponentResult, DamageMitigationEffect,
+            DamageMitigationResult, DamageModifiable, DamageRoll, DamageRollResult,
+            MitigationOperation,
         },
         effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
@@ -28,7 +29,10 @@ use crate::{
         id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId},
         items::inventory::ItemInstance,
         level::CharacterLevels,
-        modifier::{FlatModifierMap, Modifiable, ModifierKindResult, ModifierMap, ModifierSource},
+        modifier::{
+            FlatModifierMap, Modifiable, ModifierKindResult, ModifierMap, ModifierResult,
+            ModifierSource,
+        },
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         time::{TimeDuration, TurnBoundary},
     },
@@ -198,48 +202,27 @@ impl UserData for DamageRoll {
         methods.add_method_mut(
             "add_damage",
             |_, this, (dice, damage_type, source): (String, String, String)| {
-                let modifier: ModifierExpression = dice.parse()?;
-                let damage_type = serde_plain::from_str(&damage_type)
-                    .map_err(|e| LuaError::RuntimeError(format!("Invalid damage type: {e}")))?;
-                let source = parse_source(&source)?;
-
-                let modifier = modifier.evaluate_without_variables().map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to evaluate damage amount: {e}"))
-                })?;
-
-                this.add_component(ModifierMap::from(source, modifier), damage_type);
-
-                Ok(())
+                add_damage_component(this, dice, damage_type, source)
             },
         );
     }
 }
 
+impl UserData for DamageComponentResult {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("damage_type", |_, this| {
+            Ok(this.damage_type.to_string().to_lowercase())
+        });
+        fields.add_field_method_get("result", |_, this| Ok(this.result.clone()));
+    }
+}
+
 impl UserData for DamageRollResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("source", |_, this| Ok(this.source.to_string()));
-        fields.add_field_method_get("actor", |_, this| {
-            Ok(this.action.as_ref().map(|(e, _)| ScriptEntity::from(*e)))
-        });
+        fields.add_field_method_get("components", |_, this| Ok(this.components.clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_action_attack_roll", |_, this, ()| {
-            Ok(is_action_condition_type(this, |c| {
-                matches!(c, ActionCondition::AttackRoll { .. })
-            }))
-        });
-        methods.add_method("is_action_saving_throw", |_, this, ()| {
-            Ok(is_action_condition_type(this, |c| {
-                matches!(c, ActionCondition::SavingThrow { .. })
-            }))
-        });
-        methods.add_method("is_action_unconditional", |_, this, ()| {
-            Ok(is_action_condition_type(this, |c| {
-                matches!(c, ActionCondition::None)
-            }))
-        });
-
         methods.add_method_mut("clamp_damage_dice_min", |_, this, min: i64| {
             let minimum_roll = min as u32;
             for component in &mut this.components {
@@ -259,55 +242,47 @@ impl UserData for DamageRollResult {
 
         methods.add_method_mut(
             "add_damage",
-            |_, this, (amount, damage_type): (String, String)| {
-                let modifier: ModifierExpression = amount.parse()?;
-                let damage_type = serde_plain::from_str(&damage_type)
-                    .map_err(|e| LuaError::RuntimeError(format!("Invalid damage type: {e}")))?;
-
-                let modifier = modifier.evaluate_without_variables().map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to evaluate damage amount: {e}"))
-                })?;
-
-                this.add_component(DamageComponent::new(
-                    ModifierMap::from(ModifierSource::Base, modifier),
-                    damage_type,
-                ));
-
-                Ok(())
+            |_, this, (amount, damage_type, source): (String, String, String)| {
+                add_damage_component(this, amount, damage_type, source)
             },
         );
     }
 }
 
-fn is_action_condition_type(
-    damage_roll_result: &DamageRollResult,
-    predicate: fn(&ActionCondition) -> bool,
-) -> bool {
-    let Some((_, action_id)) = &damage_roll_result.action else {
-        return false;
-    };
-    let Some(action) = systems::actions::get_action(action_id) else {
-        return false;
-    };
-    action
-        .kind
-        .phases()
-        .iter()
-        .any(|phase| predicate(&phase.condition))
+fn add_damage_component(
+    damage_modifiable: &mut dyn DamageModifiable,
+    amount: String,
+    damage_type: String,
+    source: String,
+) -> LuaResult<()> {
+    let modifier: ModifierExpression = amount.parse()?;
+    let damage_type = serde_plain::from_str(&damage_type)
+        .map_err(|e| LuaError::RuntimeError(format!("Invalid damage type: {e}")))?;
+    let source = parse_source(&source)?;
+
+    let modifier = modifier
+        .evaluate_without_variables()
+        .map_err(|e| LuaError::RuntimeError(format!("Failed to evaluate damage amount: {e}")))?;
+
+    damage_modifiable.add_damage_component(DamageComponent::new(
+        ModifierMap::from(source, modifier),
+        damage_type,
+    ));
+
+    Ok(())
 }
 
 impl UserData for DamageMitigationResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("source", |_, this| Ok(this.source.to_string()));
+        fields.add_field_method_get("total", |_, this| Ok(this.total));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut("add_immunity", |_, this, ()| {
+        methods.add_method_mut("add_immunity", |_, this, source: String| {
+            let source = parse_source(&source)?;
             for component in &mut this.components {
                 component.modifiers.push(DamageMitigationEffect {
-                    source: ModifierSource::Custom(
-                        "TODO: Figure out how to propagate the source".to_string(),
-                    ),
+                    source: source.clone(),
                     operation: MitigationOperation::Immunity,
                 });
             }
@@ -508,6 +483,12 @@ impl UserData for ModifierMap {
 }
 
 impl UserData for FlatModifierMap {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("total", |_, this| Ok(this.total()));
+    }
+}
+
+impl UserData for ModifierResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("total", |_, this| Ok(this.total()));
     }

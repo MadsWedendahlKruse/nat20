@@ -2,17 +2,15 @@ use nat20_core::{
     components::{
         ability::Ability,
         d20::D20CheckOutcome,
-        damage::{AttackSource, DamageComponent, DamageSource, DamageType},
+        damage::{AttackSource, DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
         modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
     },
-    engine::event::EventKind,
     systems::d20::D20CheckKind,
     test_utils::{creature_probe::Operator, scenario::Scenario},
 };
 use rstest::rstest;
-use tracing::debug;
 
 /// TODO: One test per spell is perhaps a bit overkill? Need to figure out how
 /// to best organize these...
@@ -63,7 +61,7 @@ fn assert_damage_rolls(scenario: &Scenario, damage: DamageComponent, count: usiz
     scenario
         .event_filter()
         .actor("wizard")
-        .damage_roll(damage, DamageSource::Spell("spell.ice_knife".into()))
+        .damage_roll(damage)
         .assert_event_count(count);
 }
 

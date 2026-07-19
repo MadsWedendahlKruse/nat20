@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{self, Display},
+    fmt::{self},
     str::FromStr,
 };
 
@@ -10,13 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::{ActionAttackKind, ActionContext},
         d20::{D20Check, D20CheckOutcome, D20CheckResult},
-        id::{ActionId, SpellId},
-        items::equipment::{
-            armor::ArmorClass,
-            weapon::{Weapon, WeaponKind},
-        },
+        items::equipment::{armor::ArmorClass, weapon::WeaponKind},
         modifier::{
             FlatModifiable, Modifiable, ModifierKind, ModifierKindResult, ModifierMap,
             ModifierResult, ModifierSource, ModifierValue,
@@ -24,7 +19,6 @@ use crate::{
         proficiency::Proficiency,
         range::Range,
     },
-    registry::serialize::schema::impl_string_schema,
     systems::{self},
 };
 
@@ -95,102 +89,20 @@ pub struct DamageComponentResult {
     pub damage_type: DamageType,
 }
 
-/// This is used in the attack roll hook so we e.g. only apply Fighting Style
-/// Archery when making a ranged attack
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub enum DamageSource {
-    Weapon(WeaponKind),
-    Spell(SpellId),
-    Environmental,
-}
-
-impl From<&Weapon> for DamageSource {
-    fn from(weapon: &Weapon) -> Self {
-        DamageSource::Weapon(weapon.kind().clone())
-    }
-}
-
-impl From<&ActionContext> for DamageSource {
-    fn from(action_context: &ActionContext) -> Self {
-        if let Some(spell) = &action_context.spell {
-            return DamageSource::Spell(spell.id.clone());
-        }
-
-        if let Some(attack) = &action_context.attack {
-            return match attack.kind {
-                ActionAttackKind::MeleeWeapon => DamageSource::Weapon(WeaponKind::Melee),
-                ActionAttackKind::Unarmed => DamageSource::Weapon(WeaponKind::Unarmed),
-                ActionAttackKind::RangedWeapon => DamageSource::Weapon(WeaponKind::Ranged),
-            };
-        }
-
-        panic!("Unsupported ActionContext for DamageSource");
-    }
-}
-
-impl TryFrom<String> for DamageSource {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if let Ok(spell_id) = SpellId::try_from(value.clone()) {
-            return Ok(DamageSource::Spell(spell_id));
-        }
-        match value.to_ascii_lowercase().as_str() {
-            "melee" => Ok(DamageSource::Weapon(WeaponKind::Melee)),
-            "ranged" => Ok(DamageSource::Weapon(WeaponKind::Ranged)),
-            "unarmed" => Ok(DamageSource::Weapon(WeaponKind::Unarmed)),
-            _ => Err(format!("Unknown DamageSource: {}", value)),
-        }
-    }
-}
-
-impl Into<String> for DamageSource {
-    fn into(self) -> String {
-        self.to_string()
-    }
-}
-
-impl_string_schema!(
-    DamageSource,
-    "DamageSource",
-    "description": "The source of damage: `melee`, `ranged`, `unarmed` or a spell id.",
-    "examples": ["melee", "nat20_core::spell.fireball"]
-);
-
-impl Default for DamageSource {
-    fn default() -> Self {
-        DamageSource::Weapon(WeaponKind::Melee)
-    }
-}
-
-impl Display for DamageSource {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            DamageSource::Weapon(kind) => write!(f, "{:?}", kind),
-            DamageSource::Spell(spell_id) => write!(f, "{}", spell_id),
-            DamageSource::Environmental => write!(f, "Environmental"),
-        }
-    }
+pub trait DamageModifiable {
+    fn add_damage_component(&mut self, component: DamageComponent);
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DamageRoll {
     pub components: Vec<DamageComponent>,
-    pub source: DamageSource,
 }
 
 impl DamageRoll {
-    pub fn new(damage: ModifierMap, damage_type: DamageType, source: DamageSource) -> Self {
+    pub fn new(damage: ModifierMap, damage_type: DamageType) -> Self {
         Self {
             components: vec![DamageComponent::new(damage, damage_type)],
-            source,
         }
-    }
-
-    pub fn add_component(&mut self, damage: ModifierMap, damage_type: DamageType) {
-        self.components
-            .push(DamageComponent::new(damage, damage_type));
     }
 
     pub fn roll(&self, crit: bool) -> DamageRollResult {
@@ -215,8 +127,6 @@ impl DamageRoll {
         DamageRollResult {
             components: results,
             total,
-            source: self.source.clone(),
-            action: None,
             crit,
         }
     }
@@ -238,6 +148,12 @@ impl DamageRoll {
                 (min, max, component.damage_type.clone())
             })
             .collect()
+    }
+}
+
+impl DamageModifiable for DamageRoll {
+    fn add_damage_component(&mut self, component: DamageComponent) {
+        self.components.push(component);
     }
 }
 
@@ -265,11 +181,7 @@ fn evaluate_modifier_dice_multiplier(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DamageRollResult {
     pub components: Vec<DamageComponentResult>,
-    pub source: DamageSource,
     pub total: i32,
-    // TODO: I don't think a full `ActionData` is necessary here, so let's just
-    // store the actor and action id for now
-    pub action: Option<(Entity, ActionId)>,
     pub crit: bool,
 }
 
@@ -277,8 +189,11 @@ impl DamageRollResult {
     pub fn recalculate_total(&mut self) {
         self.total = self.components.iter_mut().map(|c| c.result.total()).sum();
     }
+}
 
-    pub fn add_component(&mut self, mut component: DamageComponent) {
+impl DamageModifiable for DamageRollResult {
+    fn add_damage_component(&mut self, component: DamageComponent) {
+        let mut component = component;
         for (_, modifier) in component.damage.iter_mut() {
             if let ModifierKind::Dice(dice_set) = modifier {
                 if self.crit {
@@ -286,8 +201,7 @@ impl DamageRollResult {
                 }
             }
         }
-        let component = component.evaluate();
-        self.components.push(component);
+        self.components.push(component.evaluate());
     }
 }
 
@@ -296,8 +210,6 @@ impl Default for DamageRollResult {
         Self {
             components: vec![DamageComponentResult::default()],
             total: 0,
-            source: DamageSource::Weapon(WeaponKind::Melee),
-            action: None,
             crit: false,
         }
     }
@@ -467,12 +379,7 @@ impl DamageResistances {
             });
         }
 
-        DamageMitigationResult {
-            components,
-            total,
-            source: roll.source.clone(),
-            action: roll.action.clone(),
-        }
+        DamageMitigationResult { components, total }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -523,9 +430,7 @@ impl DamageComponentMitigation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DamageMitigationResult {
     pub components: Vec<DamageComponentMitigation>,
-    pub source: DamageSource,
     pub total: i32,
-    pub action: Option<(Entity, ActionId)>,
 }
 
 impl DamageMitigationResult {
@@ -548,8 +453,6 @@ impl Default for DamageMitigationResult {
         Self {
             components: Vec::new(),
             total: 0,
-            source: DamageSource::default(),
-            action: None,
         }
     }
 }
@@ -957,7 +860,6 @@ mod tests {
                     damage_type: DamageType::Fire,
                 },
             ],
-            source: DamageSource::Weapon(WeaponKind::Melee),
         }
     }
 
@@ -999,8 +901,6 @@ mod tests {
                 },
             ],
             total: 11,
-            source: DamageSource::Weapon(WeaponKind::Melee),
-            action: None,
             crit: false,
         }
     }

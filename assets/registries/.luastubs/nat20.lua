@@ -30,30 +30,27 @@ local DamageRoll = {}
 ---@param source string       -- e.g. "nat20_core::action.spell.hex"
 function DamageRoll:add_damage(dice, damage_type, source) end
 
+---@class DamageComponentResult
+---@field damage_type string
+---@field result ModifierResult
+local DamageComponentResult = {}
+
 ---@class DamageRollResult
----@field source string
----@field actor ScriptEntity?
+---@field components DamageComponentResult[]
 local DamageRollResult = {}
 ---@param min integer
 function DamageRollResult:clamp_damage_dice_min(min) end
 
----@return boolean
-function DamageRollResult:is_action_attack_roll() end
-
----@return boolean
-function DamageRollResult:is_action_saving_throw() end
-
----@return boolean
-function DamageRollResult:is_action_unconditional() end
-
 ---@param dice string         -- e.g. "1d6"
 ---@param damage_type string  -- e.g. "necrotic", "fire"
-function DamageRollResult:add_damage(dice, damage_type) end
+---@param source string       -- e.g. "nat20_core::action.spell.hex"
+function DamageRollResult:add_damage(dice, damage_type, source) end
 
 ---@class DamageMitigationResult
----@field source string
+---@field total integer
 local DamageMitigationResult = {}
-function DamageMitigationResult:add_immunity() end
+---@param source string
+function DamageMitigationResult:add_immunity(source) end
 
 ---@class DamageResult
 local DamageResult = {}
@@ -309,6 +306,10 @@ function ModifierMap:get_modifier(source) end
 ---@class FlatModifierMap
 ---@field total integer
 local FlatModifierMap = {}
+
+---@class ModifierResult
+---@field total integer
+local ModifierResult = {}
 ------------------------------------------------------------
 -- Hook function signatures. Annotate your script-side functions with
 --   ---@type <HookName>Fn
@@ -321,8 +322,8 @@ local FlatModifierMap = {}
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
----@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult)
----@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult)
+---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)
+---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
 ---@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
 ---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)

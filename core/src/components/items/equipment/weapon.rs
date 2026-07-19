@@ -15,7 +15,7 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::targeting::TargetingRange,
         d20::D20Check,
-        damage::{AttackRoll, AttackSource, DamageComponent, DamageRoll, DamageSource, DamageType},
+        damage::{AttackRoll, AttackSource, DamageComponent, DamageRoll, DamageType},
         dice::DiceSet,
         id::{ActionId, EffectId},
         items::{
@@ -253,7 +253,6 @@ impl Weapon {
         if damage.is_empty() {
             panic!("Weapon must have at least one damage type");
         }
-        let source = DamageSource::Weapon(kind.clone());
 
         let damage_roll = DamageRoll {
             components: damage
@@ -265,7 +264,6 @@ impl Weapon {
                     )
                 })
                 .collect(),
-            source: source.clone(),
         };
 
         Self {

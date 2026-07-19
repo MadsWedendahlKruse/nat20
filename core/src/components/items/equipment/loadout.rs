@@ -14,9 +14,7 @@ use crate::{
             targeting::TargetingRange,
         },
         d20::{AdvantageType, D20Check},
-        damage::{
-            AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageSource, DamageType,
-        },
+        damage::{AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageType},
         id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
@@ -368,7 +366,6 @@ impl Loadout {
                 ),
             ]),
             DamageType::Bludgeoning,
-            DamageSource::Weapon(WeaponKind::Unarmed),
         )
     }
 

@@ -349,6 +349,8 @@ impl ScriptEngine {
         entity: Entity,
         effect: &EffectInstance,
         damage_roll_result: &mut DamageRollResult,
+        action: Option<&ActionData>,
+        resolution: Option<&ActionConditionResolution>,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::PreDamageMitigationHook)?;
         let ent = self
@@ -361,9 +363,16 @@ impl ScriptEngine {
             .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref(game_state)?;
-                let d = scope.create_userdata_ref_mut(damage_roll_result)?;
-                func.call::<()>((gs, ent, ef, d))
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    ef,
+                    scope.create_userdata_ref_mut(damage_roll_result)?,
+                    action.map(|a| scope.create_userdata_ref(a)).transpose()?,
+                    resolution
+                        .map(|r| scope.create_userdata_ref(r))
+                        .transpose()?,
+                ))
             })
             .map_err(Self::runtime_error)
     }
@@ -374,6 +383,8 @@ impl ScriptEngine {
         game_state: &GameState,
         entity: Entity,
         damage_mitigation_result: &mut DamageMitigationResult,
+        action: Option<&ActionData>,
+        resolution: Option<&ActionConditionResolution>,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::PostDamageMitigationHook)?;
         let ent = self
@@ -382,9 +393,15 @@ impl ScriptEngine {
             .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref(game_state)?;
-                let d = scope.create_userdata_ref_mut(damage_mitigation_result)?;
-                func.call::<()>((gs, ent, d))
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref_mut(damage_mitigation_result)?,
+                    action.map(|a| scope.create_userdata_ref(a)).transpose()?,
+                    resolution
+                        .map(|r| scope.create_userdata_ref(r))
+                        .transpose()?,
+                ))
             })
             .map_err(Self::runtime_error)
     }

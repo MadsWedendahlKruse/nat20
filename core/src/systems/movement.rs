@@ -21,7 +21,7 @@ use crate::{
             },
         },
         activity::ActivityState,
-        damage::{DamageRoll, DamageSource, DamageType},
+        damage::{DamageRoll, DamageType},
         dice::{DiceSet, DieSize},
         id::EntityIdentifier,
         modifier::{ModifierKind, ModifierMap, ModifierSource},
@@ -585,12 +585,11 @@ pub fn apply_fall_damage(game_state: &mut GameState, entity: Entity, fall_distan
             ModifierKind::Dice(DiceSet::new(damage_dice, FALL_DAMAGE_DIE)),
         ),
         DamageType::Bludgeoning,
-        DamageSource::Environmental,
     )
     .roll(false);
 
     let (damage_taken, new_life_state) =
-        systems::health::damage(game_state, entity, &mut damage_roll);
+        systems::health::damage(game_state, entity, &mut damage_roll, None, None);
 
     // TODO: Some kind of damage source so we can see it was from fall damage in the logs?
 

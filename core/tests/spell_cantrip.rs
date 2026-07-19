@@ -2,7 +2,7 @@ use nat20_core::{
     components::{
         ability::Ability,
         d20::D20CheckOutcome,
-        damage::{AttackSource, DamageComponent, DamageSource, DamageType},
+        damage::{AttackSource, DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
         modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
@@ -55,7 +55,6 @@ fn acid_splash() {
                     ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D6)),
                     DamageType::Acid,
                 ),
-                DamageSource::Spell("spell.acid_splash".into()),
             )
             .assert_event();
 
@@ -100,7 +99,6 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
                 ),
                 DamageType::Fire,
             ),
-            DamageSource::Spell("spell.fire_bolt".into()),
         )
         .assert_event();
 }
@@ -136,7 +134,6 @@ fn ray_of_frost() {
                 ModifierMap::from(ModifierSource::Base, DiceSet::new(1, DieSize::D8)),
                 DamageType::Cold,
             ),
-            DamageSource::Spell("spell.ray_of_frost".into()),
         )
         .assert_event();
 

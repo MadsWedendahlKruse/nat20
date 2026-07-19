@@ -42,10 +42,27 @@ pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &ActionResul
 pub type ResourceCostHook = Arc<
     dyn Fn(&GameState, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync,
 >;
-pub type PreDamageMitigationHook =
-    Arc<dyn Fn(&GameState, &EffectInstance, Entity, &mut DamageRollResult) + Send + Sync>;
-pub type PostDamageMitigationHook =
-    Arc<dyn Fn(&GameState, Entity, &mut DamageMitigationResult) + Send + Sync>;
+pub type PreDamageMitigationHook = Arc<
+    dyn Fn(
+            &GameState,
+            &EffectInstance,
+            Entity,
+            &mut DamageRollResult,
+            Option<&ActionData>,
+            Option<&ActionConditionResolution>,
+        ) + Send
+        + Sync,
+>;
+pub type PostDamageMitigationHook = Arc<
+    dyn Fn(
+            &GameState,
+            Entity,
+            &mut DamageMitigationResult,
+            Option<&ActionData>,
+            Option<&ActionConditionResolution>,
+        ) + Send
+        + Sync,
+>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)
 pub type DeathHook =
     Arc<dyn Fn(&mut GameState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;

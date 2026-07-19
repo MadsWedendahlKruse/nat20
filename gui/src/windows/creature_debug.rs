@@ -157,7 +157,13 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                         ModifierKindResult::Flat(*damage_amount),
                     );
                     damage_roll_result.recalculate_total();
-                    systems::health::damage(game_state, self.creature, &mut damage_roll_result);
+                    systems::health::damage(
+                        game_state,
+                        self.creature,
+                        &mut damage_roll_result,
+                        None,
+                        None,
+                    );
                 }
 
                 width_token.end();

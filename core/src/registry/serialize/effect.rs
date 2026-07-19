@@ -1174,13 +1174,17 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
                     move |game_state: &GameState,
                           effect: &EffectInstance,
                           entity: Entity,
-                          damage_roll_result: &mut DamageRollResult| {
+                          damage_roll_result: &mut DamageRollResult,
+                          action: Option<&ActionData>,
+                          resolution: Option<&ActionConditionResolution>| {
                         systems::scripts::evaluate_pre_damage_mitigation_hook(
                             &script_id,
                             game_state,
                             entity,
                             effect,
                             damage_roll_result,
+                            action,
+                            resolution,
                         );
                     },
                 )
@@ -1193,9 +1197,18 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
             move |game_state: &GameState,
                   effect: &EffectInstance,
                   entity: Entity,
-                  damage_roll_result: &mut DamageRollResult| {
+                  damage_roll_result: &mut DamageRollResult,
+                  action: Option<&ActionData>,
+                  resolution: Option<&ActionConditionResolution>| {
                 for hook in &hooks {
-                    hook(game_state, effect, entity, damage_roll_result);
+                    hook(
+                        game_state,
+                        effect,
+                        entity,
+                        damage_roll_result,
+                        action,
+                        resolution,
+                    );
                 }
             },
         )
@@ -1216,12 +1229,16 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
                 Arc::new(
                     move |game_state: &GameState,
                           entity: Entity,
-                          damage_mitigation_result: &mut DamageMitigationResult| {
+                          damage_mitigation_result: &mut DamageMitigationResult,
+                          action: Option<&ActionData>,
+                          resolution: Option<&ActionConditionResolution>| {
                         systems::scripts::evaluate_post_damage_mitigation_hook(
                             &script_id,
                             game_state,
                             entity,
                             damage_mitigation_result,
+                            action,
+                            resolution,
                         );
                     },
                 )
@@ -1233,9 +1250,17 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
         Arc::new(
             move |game_state: &GameState,
                   entity: Entity,
-                  damage_mitigation_result: &mut DamageMitigationResult| {
+                  damage_mitigation_result: &mut DamageMitigationResult,
+                  action: Option<&ActionData>,
+                  resolution: Option<&ActionConditionResolution>| {
                 for hook in &hooks {
-                    hook(game_state, entity, damage_mitigation_result);
+                    hook(
+                        game_state,
+                        entity,
+                        damage_mitigation_result,
+                        action,
+                        resolution,
+                    );
                 }
             },
         )

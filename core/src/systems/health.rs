@@ -6,6 +6,7 @@ use tracing::debug;
 use crate::{
     components::{
         ability::{Ability, AbilityScoreMap},
+        actions::action::ActionConditionResolution,
         d20::D20CheckDC,
         damage::{DamageMitigationResult, DamageResistances, DamageRollResult},
         health::{hit_points::HitPoints, life_state::LifeState},
@@ -15,6 +16,7 @@ use crate::{
         spells::{spell::CONCENTRATION_SAVING_THROW_DC_DEFAULT, spellbook::Spellbook},
     },
     engine::{
+        action_prompt::ActionData,
         event::{CallbackResult, EventCallback, EventKind},
         game_state::GameState,
     },
@@ -54,6 +56,8 @@ pub fn damage(
     game_state: &mut GameState,
     target: Entity,
     damage_roll_result: &mut DamageRollResult,
+    action: Option<&ActionData>,
+    resolution: Option<&ActionConditionResolution>,
 ) -> (Option<DamageMitigationResult>, Option<LifeState>) {
     let resistances =
         if let Ok(resistances) = game_state.world.get::<&mut DamageResistances>(target) {
@@ -66,6 +70,8 @@ pub fn damage(
         game_state,
         target,
         damage_roll_result,
+        action,
+        resolution,
     );
 
     let mut mitigation_result = resistances.apply(&damage_roll_result);
@@ -74,6 +80,8 @@ pub fn damage(
         game_state,
         target,
         &mut mitigation_result,
+        action,
+        resolution,
     );
 
     let (damage_taken, killed_by_damage, mut new_life_state, removed_temp_hp_source) =
@@ -145,10 +153,7 @@ pub fn damage(
         }
 
         // Trigger death hooks and remove effects that are not permanent
-        let killer = damage_roll_result
-            .action
-            .as_ref()
-            .and_then(|(actor, _)| Some(*actor));
+        let killer = action.map(|action| action.actor.id());
 
         let death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
             .values()

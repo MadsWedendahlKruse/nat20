@@ -1,10 +1,10 @@
 ---@type PreDamageMitigationHookFn
-local function pre_damage_mitigation_hook(game_state, victim, effect, damage_roll_result)
-    local actor = damage_roll_result.actor
+local function pre_damage_mitigation_hook(game_state, victim, effect, damage_roll_result, action, resolution)
     local applier = effect.applier
-    if damage_roll_result:is_action_attack_roll() and actor and applier then
+    if resolution and resolution:is_attack_roll() and action and applier then
+        local actor = action.actor
         if actor == applier then
-            damage_roll_result:add_damage("1d6", "necrotic")
+            damage_roll_result:add_damage("1d6", "necrotic", "nat20_core::effect.spell.hex")
         end
     end
 end
