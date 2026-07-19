@@ -1,9 +1,11 @@
 ---@type DamageRollResultHookFn
 local function damage_roll_result_hook(game_state, entity, damage_roll_result, action, resolution)
     -- Only apply for melee weapon attacks wielded with both hands
-    if damage_roll_result.source ~= "Melee" then
+    local context = action.action_context
+    if not (context:is_weapon_attack() and context:is_melee_attack()) then
         return
     end
+
     if not game_state:wielding_with_both_hands(entity, "Melee") then
         return
     end

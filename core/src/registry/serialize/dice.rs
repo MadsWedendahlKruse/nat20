@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{ActionAttackKind, ActionContext, DamageFunction, HealingFunction},
-        damage::{DamageRoll, DamageSource, DamageType},
+        damage::{DamageRoll, DamageType},
         modifier::{ModifierMap, ModifierSource},
     },
     registry::serialize::{
@@ -144,10 +144,6 @@ impl FromStr for DamageEquation {
                     DamageRoll::new(
                         ModifierMap::from(ModifierSource::Base, modifier),
                         damage_type,
-                        // TODO: Determine source properly
-                        // Source is also included in AttackRoll, so maybe we only
-                        // need one of them?
-                        DamageSource::from(action_context),
                     )
                 },
             );

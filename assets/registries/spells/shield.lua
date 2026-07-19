@@ -24,9 +24,9 @@ local function reaction_trigger(game_state, reactor, event)
 end
 
 ---@type PostDamageMitigationHookFn
-local function post_damage_mitigation_hook(game_state, entity, damage_mitigation_result)
-    if damage_mitigation_result.source == "nat20_core::spell.magic_missile" then
-        damage_mitigation_result:add_immunity()
+local function post_damage_mitigation_hook(game_state, entity, damage_mitigation_result, action, resolution)
+    if action and action.action_id == "nat20_core::action.magic_missile" then
+        damage_mitigation_result:add_immunity("nat20_core::effect.spell.shield")
     end
 end
 

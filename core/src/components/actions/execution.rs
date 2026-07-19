@@ -658,8 +658,6 @@ impl StepComponent {
                     action,
                     resolution,
                 );
-                // TODO: A bit clunky having to set this here
-                damage_roll.action = Some((action.actor.id(), action.action_id.clone()));
 
                 if let Some(DamageOnFailure::Half) = damage_on_failure
                     && !resolution.is_success()
@@ -765,7 +763,7 @@ impl StepComponent {
 
         self.action_result = Some(match result.clone() {
             PayloadResult::Damage(damage_result) => {
-                Self::apply_damage(game_state, target, resolution, damage_result)
+                Self::apply_damage(game_state, target, action, resolution, damage_result)
             }
             PayloadResult::Healing(healing_amount) => {
                 Self::apply_healing(game_state, target, healing_amount)
@@ -794,11 +792,18 @@ impl StepComponent {
     fn apply_damage(
         game_state: &mut GameState,
         target: Entity,
+        action: &ActionData,
         resolution: &ActionConditionResolution,
         mut damage_result: Option<DamageRollResult>,
     ) -> ActionResultComponent {
         let (damage_taken, new_life_state) = if let Some(damage_result) = &mut damage_result {
-            systems::health::damage(game_state, target, damage_result)
+            systems::health::damage(
+                game_state,
+                target,
+                damage_result,
+                Some(action),
+                Some(resolution),
+            )
         } else {
             (None, None)
         };
