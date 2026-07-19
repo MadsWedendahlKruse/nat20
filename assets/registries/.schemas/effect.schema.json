@@ -130,6 +130,14 @@
                 }
             ],
             "default": null
+        },
+        "stacking_policy": {
+            "allOf": [
+                {
+                    "$ref": "#/definitions/EffectStackingPolicy"
+                }
+            ],
+            "default": "stack"
         }
     },
     "required": [
@@ -620,6 +628,15 @@
                         }
                     }
                 }
+            ]
+        },
+        "EffectStackingPolicy": {
+            "description": "How to handle multiple instances of an effect with the same ID applied to\nthe same entity",
+            "type": "string",
+            "enum": [
+                "stack",
+                "replace",
+                "refresh_duration"
             ]
         },
         "EventKindTag": {

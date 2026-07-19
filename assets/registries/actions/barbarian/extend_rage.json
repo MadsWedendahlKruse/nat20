@@ -1,0 +1,42 @@
+{
+    "id": "nat20_core::action.barbarian.extend_rage",
+    "description": "Extend your Rage until the end of your next turn.",
+    "kind": {
+        "standard": {
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.barbarian.rage",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "boundary": "end",
+                                            "duration": {
+                                                "turns": 2
+                                            },
+                                            "entity": "applier"
+                                        }
+                                    }
+                                }
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                }
+            ]
+        }
+    },
+    "resource_cost": {
+        "nat20_core::resource.bonus_action": 1
+    },
+    "targeting": "self",
+    "timeline": {
+        "perform_time": 0.5,
+        "total_duration": 1.0
+    },
+    "usability": {
+        "script": "nat20_core::script.action.barbarian.extend_rage"
+    }
+}

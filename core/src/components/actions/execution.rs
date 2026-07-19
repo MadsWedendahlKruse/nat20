@@ -33,6 +33,7 @@ use crate::{
     systems::{
         self,
         d20::{D20CheckDCKind, D20ResultKind},
+        effects::EffectApplicationResult,
         geometry::{Displacement, DisplacementTemplate},
     },
 };
@@ -867,7 +868,7 @@ impl StepComponent {
             });
         };
 
-        let effect_instance_id = systems::effects::add_effect_template(
+        let effect_application = systems::effects::add_effect_template(
             game_state,
             action.actor.id(),
             target,
@@ -877,27 +878,35 @@ impl StepComponent {
             resolution.clone(),
         );
 
-        // Add concentration tracking if needed
-        let spell_id = action.action_id.clone().into();
-        if let Some(spell) = SpellsRegistry::get(&spell_id) {
-            if spell.has_flag(SpellFlag::Concentration) {
-                systems::spells::add_concentration_instance(
-                    game_state,
-                    action.actor.id(),
-                    ConcentrationInstance::Effect {
-                        entity: target,
-                        effect: effect.effect_id.clone(),
-                        instance: effect_instance_id,
-                    },
-                    &action.instance_id,
-                );
+        match effect_application {
+            EffectApplicationResult::Added(instance) => {
+                // Add concentration tracking if needed
+                let spell_id = action.action_id.clone().into();
+                if let Some(spell) = SpellsRegistry::get(&spell_id)
+                    && spell.has_flag(SpellFlag::Concentration)
+                {
+                    systems::spells::add_concentration_instance(
+                        game_state,
+                        action.actor.id(),
+                        ConcentrationInstance::Effect {
+                            entity: target,
+                            effect: effect.effect_id.clone(),
+                            instance,
+                        },
+                        &action.instance_id,
+                    );
+                }
+            }
+
+            EffectApplicationResult::RefreshedDuration(uuid) => {
+                // TODO
             }
         }
 
         ActionResultComponent::Effect(EffectResult {
             resolution: resolution.clone(),
             effects: systems::effects::effect_id_and_children(&effect.effect_id),
-            result: EffectResultKind::Applied,
+            result: effect_application.into(),
         })
     }
 

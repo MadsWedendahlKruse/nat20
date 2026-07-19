@@ -233,15 +233,10 @@ impl ScriptEngine {
         action: &ActionData,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionHook)?;
-        let entity = self
-            .lua
-            .create_userdata(ScriptEntity::from(action.actor.id()))
-            .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
                 func.call::<()>((
                     scope.create_userdata_ref_mut(game_state)?,
-                    entity,
                     scope.create_userdata_ref(action)?,
                 ))
             })
@@ -488,9 +483,11 @@ impl ScriptEngine {
         let result = self
             .lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref(game_state)?;
-                let ctx = scope.create_userdata_ref(context)?;
-                func.call::<Value>((gs, ent, ctx))
+                func.call::<Value>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref(context)?,
+                ))
             })
             .map_err(Self::runtime_error)?;
 

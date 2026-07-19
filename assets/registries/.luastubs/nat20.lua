@@ -103,6 +103,8 @@ function ActionContext:is_ranged_attack() end
 ---@field action_id string
 ---@field actor ScriptEntity
 ---@field action_context ActionContext
+---@field conditions ActionCondition[]
+---@field trigger_event Event?
 local ActionData = {}
 ---@param resource_id string
 ---@return boolean
@@ -118,6 +120,17 @@ function ResourceAmountMap:costs_resource(resource_id) end
 ---@param to string
 ---@param new_amount string|integer
 function ResourceAmountMap:replace_resource(from, to, new_amount) end
+
+---@class ActionCondition
+local ActionCondition = {}
+---@return boolean
+function ActionCondition:is_unconditional() end
+
+---@return boolean
+function ActionCondition:is_attack_roll() end
+
+---@return boolean
+function ActionCondition:is_saving_throw() end
 
 ---@class ActionConditionResolution
 local ActionConditionResolution = {}
@@ -289,6 +302,16 @@ function GameState:has_effect(target, effect_id) end
 ---@param effect_id string
 function GameState:remove_effect(target, effect_id) end
 
+---@param entity ScriptEntity
+---@param effect_id string
+---@return TimeDuration?
+function GameState:effect_remaining_duration(entity, effect_id) end
+
+---@param entity ScriptEntity
+---@param effect_id string
+---@param turns integer
+function GameState:extend_effect_duration(entity, effect_id, turns) end
+
 ---@param target ScriptEntity
 ---@param amount table
 function GameState:heal(target, amount) end
@@ -310,6 +333,12 @@ local FlatModifierMap = {}
 ---@class ModifierResult
 ---@field total integer
 local ModifierResult = {}
+
+---@class TimeDuration
+---@field seconds number
+---@field turns integer
+local TimeDuration = {}
+
 ------------------------------------------------------------
 -- Hook function signatures. Annotate your script-side functions with
 --   ---@type <HookName>Fn
@@ -317,7 +346,7 @@ local ModifierResult = {}
 ------------------------------------------------------------
 
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity): integer
----@alias ActionHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData)
+---@alias ActionHookFn fun(game_state: GameState, action: ActionData)
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
@@ -329,4 +358,4 @@ local ModifierResult = {}
 ---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)
----@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, context: ActionContext): string?
+---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?

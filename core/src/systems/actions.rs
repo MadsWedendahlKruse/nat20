@@ -76,6 +76,11 @@ fn add_action_to_map(
         .or_insert(vec![(context, resource_cost.clone())]);
 }
 
+pub fn remove_action(world: &mut World, entity: Entity, action_id: &ActionId) {
+    let mut action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
+    action_map.remove(action_id);
+}
+
 pub fn on_cooldown(world: &World, entity: Entity, action_id: &ActionId) -> Option<RechargeRule> {
     if let Some(cooldowns) = world.get::<&ActionCooldownMap>(entity).ok() {
         cooldowns.get(action_id).cloned()

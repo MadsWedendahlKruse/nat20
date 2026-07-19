@@ -76,6 +76,10 @@ impl TimeDuration {
             self.seconds = 0.0;
         }
     }
+
+    pub fn permanent() -> Self {
+        Self { seconds: f32::MAX }
+    }
 }
 
 #[derive(Debug, Clone)]

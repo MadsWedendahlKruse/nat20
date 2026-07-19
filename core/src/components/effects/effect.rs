@@ -45,6 +45,7 @@ pub struct Effect {
     pub description: String,
     pub replaces: Option<EffectId>,
     pub children: Vec<EffectId>,
+    pub stacking_policy: EffectStackingPolicy,
 
     pub actions: Vec<EffectGrantedAction>,
 
@@ -83,6 +84,7 @@ impl Effect {
             description,
             replaces: None,
             children: Vec::new(),
+            stacking_policy: EffectStackingPolicy::default(),
 
             actions: Vec::new(),
             end_conditions: Vec::new(),
@@ -117,6 +119,17 @@ impl IdProvider for Effect {
     fn id(&self) -> &Self::Id {
         &self.id
     }
+}
+
+/// How to handle multiple instances of an effect with the same ID applied to
+/// the same entity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectStackingPolicy {
+    #[default]
+    Stack,
+    Replace,
+    RefreshDuration,
 }
 
 pub type EffectInstanceId = Uuid;
@@ -208,6 +221,38 @@ impl EffectInstance {
 
     pub fn is_parent(&self) -> bool {
         self.parent.is_none()
+    }
+
+    pub fn extend_remaing_duration(&mut self, additional_duration: &TimeDuration) {
+        match self.lifetime {
+            EffectLifetime::Permanent => { /* Do nothing */ }
+
+            EffectLifetime::TurnBoundary {
+                duration,
+                ref mut remaining,
+                ..
+            } => {
+                let new_remaining = TimeDuration::from_turns(
+                    (remaining.as_turns() + additional_duration.as_turns())
+                        .min(duration.as_turns()),
+                );
+                *remaining = new_remaining;
+            }
+        }
+    }
+
+    pub fn refresh_remaining_duration(&mut self) {
+        match self.lifetime {
+            EffectLifetime::Permanent => { /* Do nothing */ }
+
+            EffectLifetime::TurnBoundary {
+                ref mut remaining,
+                duration,
+                ..
+            } => {
+                *remaining = duration;
+            }
+        }
     }
 }
 
@@ -306,6 +351,15 @@ pub enum EffectLifetime {
         duration: TimeDuration,
         remaining: TimeDuration,
     },
+}
+
+impl EffectLifetime {
+    pub fn duration(&self) -> TimeDuration {
+        match self {
+            EffectLifetime::Permanent => TimeDuration::permanent(),
+            EffectLifetime::TurnBoundary { duration, .. } => *duration,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

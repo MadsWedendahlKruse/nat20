@@ -14,7 +14,7 @@
                                         "turn_boundary": {
                                             "boundary": "end",
                                             "duration": {
-                                                "turns": 10
+                                                "turns": 2
                                             },
                                             "entity": "applier"
                                         }

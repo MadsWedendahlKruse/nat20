@@ -10,13 +10,14 @@ use crate::{
         effects::{
             effect::{
                 EffectGrantedAction, EffectInstance, EffectInstanceId, EffectInstanceTemplate,
-                EffectLifetimeTemplate, EffectsMap,
+                EffectLifetime, EffectLifetimeTemplate, EffectStackingPolicy, EffectsMap,
             },
             effect_manager::EffectManager,
         },
         id::{EffectId, EntityIdentifier},
         modifier::ModifierSource,
         spells::spellbook::{GrantedSpellSource, SpellSource},
+        time::TimeDuration,
     },
     engine::{
         event::{Event, EventListener, ListenerSource},
@@ -35,6 +36,23 @@ pub fn effects_mut(world: &mut World, entity: Entity) -> RefMut<'_, EffectManage
     systems::helpers::get_component_mut::<EffectManager>(world, entity)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum EffectApplicationResult {
+    Added(EffectInstanceId),
+    RefreshedDuration(EffectInstanceId),
+    // TODO: Does anyone care about the replaced effects?
+    // Replaced(Vec<EffectInstance>),
+}
+
+impl Into<EffectResultKind> for EffectApplicationResult {
+    fn into(self) -> EffectResultKind {
+        match self {
+            EffectApplicationResult::Added(_) => EffectResultKind::Applied,
+            EffectApplicationResult::RefreshedDuration(_) => EffectResultKind::RefreshedDuration,
+        }
+    }
+}
+
 pub fn add_effect_template(
     game_state: &mut GameState,
     applier: Entity,
@@ -43,7 +61,7 @@ pub fn add_effect_template(
     template: &EffectInstanceTemplate,
     context: Option<&ActionContext>,
     action_resolution: ActionConditionResolution,
-) -> EffectInstanceId {
+) -> EffectApplicationResult {
     let (parent_id, mut effect_instances) =
         template.instantiate(applier, target, source, action_resolution);
 
@@ -52,7 +70,41 @@ pub fn add_effect_template(
         template, effect_instances
     );
 
-    if let Some(parent_instance) = effect_instances.get(&parent_id) {
+    let result = add_effect_instance(
+        game_state,
+        target,
+        parent_id,
+        &mut effect_instances,
+        context,
+    );
+
+    debug!(
+        "Result of adding effect instance {:?} to entity {:?}: {:?}",
+        parent_id, target, result
+    );
+
+    match result {
+        EffectApplicationResult::Added(parent_id) => {
+            register_end_conditions(game_state, applier, target, &parent_id);
+        }
+        _ => {}
+    }
+
+    result
+}
+
+fn register_end_conditions(
+    game_state: &mut GameState,
+    applier: Entity,
+    target: Entity,
+    parent_instance: &EffectInstanceId,
+) {
+    debug!(
+        "Registering end conditions for effect instance {:?} on entity {:?}",
+        parent_instance, target
+    );
+
+    if let Some(parent_instance) = effects(&game_state.world, target).get(parent_instance) {
         // End conditions can come from the applying action (e.g. Hold Person's
         // save DC) or from the effect definition itself (e.g. Rage)
         let end_conditions = parent_instance
@@ -74,7 +126,7 @@ pub fn add_effect_template(
                     end_condition.event_filter,
                     end_condition.callback,
                     ListenerSource::EffectInstance {
-                        id: parent_id.clone(),
+                        id: parent_instance.instance_id.clone(),
                         entity: target,
                     },
                     false,
@@ -83,16 +135,6 @@ pub fn add_effect_template(
             );
         }
     }
-
-    add_effect_instance(
-        game_state,
-        target,
-        parent_id,
-        &mut effect_instances,
-        context,
-    );
-
-    parent_id
 }
 
 pub fn add_permanent_effect(
@@ -136,28 +178,54 @@ fn add_effect_instance(
     instance_id: EffectInstanceId,
     effect_instances: &mut EffectsMap,
     context: Option<&ActionContext>,
-) -> Vec<EffectInstance> {
-    let mut replaced_effects = Vec::new();
-
+) -> EffectApplicationResult {
     if let Some(instance) = effect_instances.remove(&instance_id) {
+        let effect = instance.effect();
+
+        match instance.effect().stacking_policy {
+            EffectStackingPolicy::Stack => { /* Don't need to do anything here? */ }
+
+            EffectStackingPolicy::Replace => {
+                if has_effect(game_state, entity, effect.id()) {
+                    debug!("Replacing effect {:?} on entity {:?}", effect.id(), entity);
+                    remove_effects_by_id(game_state, entity, effect.id());
+                }
+            }
+
+            EffectStackingPolicy::RefreshDuration => {
+                if has_effect(game_state, entity, effect.id()) {
+                    debug!(
+                        "Refreshing duration of effect {:?} on entity {:?}",
+                        effect.id(),
+                        entity
+                    );
+                    refresh_effect_duration(game_state, entity, effect.id());
+                    return EffectApplicationResult::RefreshedDuration(instance_id);
+                }
+            }
+        }
+
         debug!(
             "Adding effect instance to entity {:?}: {:?} ",
             entity, instance,
         );
-        replaced_effects.extend(apply_and_replace(game_state, entity, &instance, context));
+
+        apply_and_replace(game_state, entity, &instance, context);
+
         for child_instance in &instance.children {
-            replaced_effects.extend(add_effect_instance(
+            add_effect_instance(
                 game_state,
                 entity,
                 child_instance.clone(),
                 effect_instances,
                 context,
-            ));
+            );
         }
+
         effects_mut(&mut game_state.world, entity).insert(instance);
     }
 
-    replaced_effects
+    EffectApplicationResult::Added(instance_id)
 }
 
 fn apply_and_replace(
@@ -167,6 +235,15 @@ fn apply_and_replace(
     context: Option<&ActionContext>,
 ) -> Vec<EffectInstance> {
     let effect = effect_instance.effect();
+
+    let replaced = if let Some(replaces) = &effect.replaces {
+        // TODO: Not sure how best to find the instance that should be replaced.
+        // It's probably always just one?
+        remove_effects_by_id(game_state, entity, replaces)
+    } else {
+        Vec::new()
+    };
+
     if let Some(on_apply) = &effect.on_apply {
         on_apply(game_state, entity, context);
     }
@@ -196,13 +273,7 @@ fn apply_and_replace(
         }
     }
 
-    if let Some(replaces) = &effect.replaces {
-        // TODO: Not sure how best to find the instance that should be replaced.
-        // It's probably always just one?
-        remove_effects_by_id(game_state, entity, replaces)
-    } else {
-        Vec::new()
-    }
+    replaced
 }
 
 pub fn remove_effect(
@@ -229,12 +300,7 @@ pub fn remove_effect(
 
                 match action {
                     EffectGrantedAction::Action { id } => {
-                        todo!(
-                            "Remove action granted by effect {:?} from entity {:?}: {:?}",
-                            effect.id,
-                            entity,
-                            id
-                        );
+                        systems::actions::remove_action(&mut game_state.world, entity, id);
                     }
                     EffectGrantedAction::Spell { id, level } => {
                         let _ = systems::spells::remove_spell(
@@ -348,6 +414,102 @@ pub fn has_effect(game_state: &GameState, entity: Entity, effect_id: &EffectId) 
     effects(&game_state.world, entity)
         .iter()
         .any(|(_, effect_instance)| effect_instance.effect_id == *effect_id)
+}
+
+pub fn effect_remaining_duration(
+    game_state: &GameState,
+    entity: Entity,
+    effect_id: &EffectId,
+) -> Option<TimeDuration> {
+    effects(&game_state.world, entity)
+        .iter()
+        .find_map(|(_, effect_instance)| {
+            if effect_instance.effect_id == *effect_id {
+                match effect_instance.lifetime {
+                    EffectLifetime::Permanent => Some(TimeDuration::permanent()),
+                    EffectLifetime::TurnBoundary { remaining, .. } => Some(remaining),
+                }
+            } else {
+                None
+            }
+        })
+}
+
+fn instances_by_id(
+    game_state: &GameState,
+    entity: Entity,
+    effect_id: &EffectId,
+) -> Vec<EffectInstanceId> {
+    effects(&game_state.world, entity)
+        .iter()
+        .filter_map(|(id, effect_instance)| {
+            if effect_instance.effect_id == *effect_id {
+                Some(id.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn children_by_parent_id(
+    game_state: &GameState,
+    entity: Entity,
+    parent_id: &EffectInstanceId,
+) -> Vec<EffectInstanceId> {
+    effects(&game_state.world, entity)
+        .iter()
+        .filter_map(|(id, effect_instance)| {
+            if effect_instance.parent == Some(parent_id.clone()) {
+                Some(id.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn instances_and_children_by_id(
+    game_state: &GameState,
+    entity: Entity,
+    effect_id: &EffectId,
+) -> Vec<EffectInstanceId> {
+    let mut instances = instances_by_id(game_state, entity, effect_id);
+    let mut children = Vec::new();
+
+    for instance_id in &instances {
+        children.extend(children_by_parent_id(game_state, entity, instance_id));
+    }
+
+    instances.extend(children);
+    instances
+}
+
+pub fn extend_effect_duration(
+    game_state: &mut GameState,
+    entity: Entity,
+    effect_id: &EffectId,
+    duration: &TimeDuration,
+) {
+    let instance_ids = instances_and_children_by_id(game_state, entity, effect_id);
+
+    let mut effects = effects_mut(&mut game_state.world, entity);
+    for instance_id in instance_ids {
+        if let Some(effect_instance) = effects.effects.get_mut(&instance_id) {
+            effect_instance.extend_remaing_duration(duration);
+        }
+    }
+}
+
+pub fn refresh_effect_duration(game_state: &mut GameState, entity: Entity, effect_id: &EffectId) {
+    let instance_ids = instances_and_children_by_id(game_state, entity, effect_id);
+
+    let mut effects = effects_mut(&mut game_state.world, entity);
+    for instance_id in instance_ids {
+        if let Some(effect_instance) = effects.effects.get_mut(&instance_id) {
+            effect_instance.refresh_remaining_duration();
+        }
+    }
 }
 
 pub fn effect_id_and_children(effect_id: &EffectId) -> Vec<EffectId> {

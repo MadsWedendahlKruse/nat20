@@ -17,7 +17,7 @@ use crate::{
             effect::{
                 Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
                 EffectGrantedAction, EffectInstance, EffectInstanceTemplate, EffectKind,
-                EffectLifetimeTemplate,
+                EffectLifetimeTemplate, EffectStackingPolicy,
             },
             hooks::{
                 ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, DamageRollHook,
@@ -93,6 +93,9 @@ pub struct EffectDefinition {
     pub children: Vec<EffectId>,
 
     #[serde(default)]
+    pub stacking_policy: EffectStackingPolicy,
+
+    #[serde(default)]
     pub actions: Vec<EffectGrantedAction>,
 
     /// End conditions intrinsic to the effect, instantiated for every
@@ -143,6 +146,7 @@ impl From<EffectDefinition> for Effect {
         let mut effect = Effect::new(effect_id.clone(), definition.kind, definition.description);
         effect.replaces = definition.replaces;
         effect.children = definition.children;
+        effect.stacking_policy = definition.stacking_policy;
 
         effect.actions = definition.actions;
         effect.end_conditions = definition

@@ -352,32 +352,21 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                     });
                 }
             }
-            ActionResultComponent::Effect(effect) => match effect.result {
-                EffectResultKind::Applied => {
-                    TextSegments::new(vec![
-                        (target_name, TextKind::Target),
-                        ("gained effect", TextKind::Normal),
-                        (&effect.root().to_string(), TextKind::Effect),
-                    ])
-                    .render(ui);
-                }
-                EffectResultKind::Removed => {
-                    TextSegments::new(vec![
-                        (target_name, TextKind::Target),
-                        ("lost effect", TextKind::Normal),
-                        (&effect.root().to_string(), TextKind::Effect),
-                    ])
-                    .render(ui);
-                }
-                EffectResultKind::None => {
-                    TextSegments::new(vec![
-                        (target_name, TextKind::Target),
-                        ("was unaffected by", TextKind::Normal),
-                        (&effect.root().to_string(), TextKind::Effect),
-                    ])
-                    .render(ui);
-                }
-            },
+            ActionResultComponent::Effect(effect) => {
+                let verb = match effect.result {
+                    EffectResultKind::Applied => "gained effect",
+                    EffectResultKind::Removed => "lost effect",
+                    EffectResultKind::None => "was unaffected by",
+                    EffectResultKind::RefreshedDuration => "refreshed duration of",
+                };
+
+                TextSegments::new(vec![
+                    (target_name, TextKind::Target),
+                    (verb, TextKind::Normal),
+                    (&effect.root().to_string(), TextKind::Effect),
+                ])
+                .render(ui);
+            }
             ActionResultComponent::Healing(healing) => {
                 ui.group(|| {
                     TextSegments::new(vec![

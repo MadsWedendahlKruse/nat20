@@ -2,20 +2,7 @@
     "id": "nat20_core::effect.barbarian.rage",
     "kind": "buff",
     "description": "(TODO) You're really stinkin' mad!",
-    "end_conditions": [
-        {
-            "event": {
-                "script": {
-                    "events": [
-                        "equipment_changed",
-                        "action_result"
-                    ],
-                    "script": "nat20_core::script.action.barbarian.rage"
-                }
-            },
-            "on_trigger": "remove"
-        }
-    ],
+    "stacking_policy": "refresh_duration",
     "modifiers": [
         {
             "resistance": "bludgeoning resistance"
@@ -40,6 +27,30 @@
     "pre_damage_roll": [
         {
             "script": "nat20_core::script.action.barbarian.rage"
+        }
+    ],
+    "end_conditions": [
+        {
+            "event": {
+                "script": {
+                    "events": [
+                        "equipment_changed",
+                        "action_result"
+                    ],
+                    "script": "nat20_core::script.action.barbarian.rage"
+                }
+            },
+            "on_trigger": "remove"
+        }
+    ],
+    "on_action": [
+        {
+            "script": "nat20_core::script.action.barbarian.rage"
+        }
+    ],
+    "actions": [
+        {
+            "id": "nat20_core::action.barbarian.extend_rage"
         }
     ]
 }

@@ -623,6 +623,7 @@ impl DamageResult {
 pub enum EffectResultKind {
     Applied,
     Removed,
+    RefreshedDuration,
     None,
 }
 

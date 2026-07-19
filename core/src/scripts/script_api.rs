@@ -12,8 +12,9 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::{
             action::{
-                ActionConditionResolution, ActionContext, ActionResult, ActionResultComponent,
-                DamageResult, EffectResult, EffectResultKind, HealingResult,
+                ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
+                ActionResult, ActionResultComponent, DamageResult, EffectResult, EffectResultKind,
+                HealingResult,
             },
             targeting::TargetInstance,
         },
@@ -42,7 +43,7 @@ use crate::{
         game_state::GameState,
     },
     registry::{
-        registry::ItemsRegistry,
+        registry::{ActionsRegistry, ItemsRegistry},
         serialize::{
             parser::{
                 Evaluable, EvaluableWithoutVariables, EvaluationError, ModifierExpression, Parser,
@@ -53,6 +54,7 @@ use crate::{
     systems::{
         self,
         d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
+        effects::EffectApplicationResult,
     },
 };
 
@@ -154,6 +156,7 @@ macro_rules! impl_from_lua_userdata {
 }
 
 impl_from_lua_userdata!(
+    ActionCondition,
     ActionConditionResolution,
     ActionContext,
     ActionData,
@@ -172,6 +175,7 @@ impl_from_lua_userdata!(
     ModifierSource,
     ResourceAmountMap,
     ScriptEntity,
+    TimeDuration,
 );
 
 impl UserData for ScriptEntity {
@@ -521,6 +525,22 @@ impl UserData for ActionData {
         fields.add_field_method_get("action_id", |_, this| Ok(this.action_id.to_string()));
         fields.add_field_method_get("actor", |_, this| Ok(ScriptEntity::from(this.actor.id())));
         fields.add_field_method_get("action_context", |_, this| Ok(this.context.clone()));
+        fields.add_field_method_get("conditions", |_, this| {
+            let action = ActionsRegistry::get(&this.action_id).ok_or_else(|| {
+                LuaError::RuntimeError(format!(
+                    "Failed to get action '{}' from registry",
+                    this.action_id
+                ))
+            })?;
+
+            match action.kind() {
+                ActionKind::Standard { phases } => {
+                    Ok(phases.iter().map(|phase| phase.condition.clone()).collect())
+                }
+                // TODO: Could also check the variants recursively?
+                ActionKind::Variant { variants } => Ok(Vec::new()),
+            }
+        });
         fields.add_field_method_get("trigger_event", |_, this| {
             Ok(this.trigger_event.as_ref().map(|e| e.as_ref().clone()))
         });
@@ -530,6 +550,20 @@ impl UserData for ActionData {
         methods.add_method("costs_resource", |_, this, resource_id: String| {
             let id = parse_id::<ResourceId>(&resource_id)?;
             Ok(this.resource_cost.map.contains_key(&id))
+        });
+    }
+}
+
+impl UserData for ActionCondition {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("is_unconditional", |_, this, ()| {
+            Ok(matches!(this, ActionCondition::None))
+        });
+        methods.add_method("is_attack_roll", |_, this, ()| {
+            Ok(matches!(this, ActionCondition::AttackRoll { .. }))
+        });
+        methods.add_method("is_saving_throw", |_, this, ()| {
+            Ok(matches!(this, ActionCondition::SavingThrow { .. }))
         });
     }
 }
@@ -851,6 +885,31 @@ impl UserData for GameState {
             },
         );
 
+        methods.add_method(
+            "effect_remaining_duration",
+            |_, this, (target, effect_id): (ScriptEntity, String)| {
+                let id = parse_id::<EffectId>(&effect_id)?;
+                Ok(systems::effects::effect_remaining_duration(
+                    this,
+                    target.into(),
+                    &id,
+                ))
+            },
+        );
+
+        methods.add_method_mut(
+            "extend_effect_duration",
+            |_, this, (target, effect_id, turns): (ScriptEntity, String, i64)| {
+                let id = parse_id::<EffectId>(&effect_id)?;
+                Ok(systems::effects::extend_effect_duration(
+                    this,
+                    target.into(),
+                    &id,
+                    &TimeDuration::from_turns(turns as u32),
+                ))
+            },
+        );
+
         methods.add_method_mut(
             "heal",
             |_, this, (target, amount): (ScriptEntity, Table)| {
@@ -928,29 +987,35 @@ fn apply_effect_impl(
 
     let target_entity: Entity = target.into();
 
-    game_state.process_event(Event::action_result_event(
-        EntityIdentifier::from_world(&game_state.world, target_entity),
-        ActionResultComponent::Effect(EffectResult {
-            resolution: resolution.clone(),
-            effects: systems::effects::effect_id_and_children(&effect_id),
-            result: EffectResultKind::Applied,
-        }),
-    ));
-
-    systems::effects::add_effect_template(
+    let result = systems::effects::add_effect_template(
         game_state,
         applier.into(),
         target_entity,
         ModifierSource::Effect(source),
         &EffectInstanceTemplate {
-            effect_id,
+            effect_id: effect_id.clone(),
             lifetime,
             end_condition: None,
             one_shot,
         },
         context.as_ref(),
-        resolution,
+        resolution.clone(),
     );
+
+    match result {
+        EffectApplicationResult::Added(uuid) => {
+            game_state.process_event(Event::action_result_event(
+                EntityIdentifier::from_world(&game_state.world, target_entity),
+                ActionResultComponent::Effect(EffectResult {
+                    resolution,
+                    effects: systems::effects::effect_id_and_children(&effect_id),
+                    result: EffectResultKind::Applied,
+                }),
+            ))
+        }
+
+        EffectApplicationResult::RefreshedDuration(uuid) => {}
+    }
 }
 
 impl UserData for ResourceAmountMap {
@@ -975,5 +1040,12 @@ impl UserData for ResourceAmountMap {
                 Ok(())
             },
         );
+    }
+}
+
+impl UserData for TimeDuration {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("seconds", |_, this| Ok(this.as_seconds()));
+        fields.add_field_method_get("turns", |_, this| Ok(this.as_turns()));
     }
 }
