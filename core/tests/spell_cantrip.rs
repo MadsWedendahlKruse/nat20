@@ -8,7 +8,7 @@ use nat20_core::{
         saving_throw::SavingThrowKind,
     },
     systems::d20::D20CheckKind,
-    test_utils::{creature_probe::Operator, scenario::Scenario},
+    test_utils::scenario::{Operator, Scenario},
 };
 use rstest::rstest;
 use uom::si::{f32::Length, length::foot};

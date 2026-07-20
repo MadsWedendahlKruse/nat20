@@ -11,10 +11,7 @@ use crate::{
     },
     engine::game_state::GameState,
     systems,
-    test_utils::{
-        creature_probe::CreatureProbe,
-        fixtures::creatures::{heroes, monsters},
-    },
+    test_utils::fixtures::creatures::{heroes, monsters},
 };
 
 /// `(game_state, level/challenge_rating, optional_entity_to_spawn_at) -> spawned`
@@ -104,10 +101,5 @@ impl CreatureBuilder {
         systems::resources::recharge(&mut game_state.world, entity, &RechargeRule::Daily);
 
         entity_id
-    }
-
-    pub fn probe(&mut self, game_state: &mut GameState) -> CreatureProbe {
-        let entity_id = self.spawn(game_state);
-        CreatureProbe::new(entity_id)
     }
 }

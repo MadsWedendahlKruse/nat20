@@ -4,7 +4,7 @@ use nat20_core::{
         dice::{DiceSet, DieSize},
         modifier::{ModifierKind, ModifierMap, ModifierSource},
     },
-    test_utils::{creature_probe::Operator, scenario::Scenario},
+    test_utils::scenario::{Operator, Scenario},
 };
 use rstest::rstest;
 

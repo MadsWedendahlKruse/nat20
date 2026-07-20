@@ -10,23 +10,24 @@ use nat20_core::{
         skill::Skill,
     },
     systems::d20::D20CheckKind,
-    test_utils::{
-        creature_builder::CreatureBuilder, creature_probe::Operator, fixtures, scenario::Scenario,
-    },
+    test_utils::scenario::{Operator, Scenario},
 };
+
+fn fighter_scenario(level: u8) -> Scenario {
+    let mut scenario = Scenario::new();
+    scenario.spawn("fighter", "hero.fighter").level(level).spawn();
+    scenario
+}
 
 #[test]
 fn champion_improved_critical() {
-    let mut game_state = fixtures::engine::game_state();
-    let fighter = CreatureBuilder::new("hero.fighter")
-        .level(3)
-        .probe(&mut game_state);
-    fighter.assert_effect(&game_state, "effect.fighter.champion.improved_critical");
+    let mut scenario = fighter_scenario(3);
 
     let source = ModifierSource::Effect("effect.fighter.champion.improved_critical".into());
+    let mut probe = scenario.probe("fighter");
+    probe.assert_effect("effect.fighter.champion.improved_critical");
     for weapon_kind in [WeaponKind::Melee, WeaponKind::Ranged, WeaponKind::Unarmed] {
-        fighter.assert_d20_crit_threshold_reduction(
-            &game_state,
+        probe.assert_d20_crit_threshold_reduction(
             &D20CheckKind::AttackRoll(AttackSource::Weapon(weapon_kind)),
             &source,
             Operator::Equal(1),
@@ -99,18 +100,16 @@ fn champion_additional_fighting_style() {
 
 #[test]
 fn champion_superior_critical() {
-    let mut game_state = fixtures::engine::game_state();
-    let fighter = CreatureBuilder::new("hero.fighter")
-        .level(15)
-        .probe(&mut game_state);
-    fighter.assert_no_effect(&game_state, "effect.fighter.champion.improved_critical");
-    fighter.assert_effect(&game_state, "effect.fighter.champion.superior_critical");
+    let mut scenario = fighter_scenario(15);
 
+    let source = ModifierSource::Effect("effect.fighter.champion.superior_critical".into());
+    let mut probe = scenario.probe("fighter");
+    probe.assert_no_effect("effect.fighter.champion.improved_critical");
+    probe.assert_effect("effect.fighter.champion.superior_critical");
     for weapon_kind in [WeaponKind::Melee, WeaponKind::Ranged, WeaponKind::Unarmed] {
-        fighter.assert_d20_crit_threshold_reduction(
-            &game_state,
+        probe.assert_d20_crit_threshold_reduction(
             &D20CheckKind::AttackRoll(AttackSource::Weapon(weapon_kind)),
-            &ModifierSource::Effect("effect.fighter.champion.superior_critical".into()),
+            &source,
             Operator::Equal(2),
         );
     }

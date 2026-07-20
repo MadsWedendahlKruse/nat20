@@ -13,7 +13,7 @@ use nat20_core::{
         time::TimeMode,
     },
     systems::d20::D20CheckKind,
-    test_utils::{creature_probe::Operator, scenario::Scenario},
+    test_utils::scenario::{Operator, Scenario},
 };
 
 fn barbarian_scenario() -> Scenario {

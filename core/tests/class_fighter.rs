@@ -13,83 +13,72 @@ use nat20_core::{
         time::TimeMode,
     },
     systems::d20::{D20CheckDCKind, D20CheckKind},
-    test_utils::{
-        creature_builder::CreatureBuilder, creature_probe::Operator, fixtures, scenario::Scenario,
-    },
+    test_utils::scenario::{Operator, Scenario},
 };
+
+fn fighter_scenario(level: u8) -> Scenario {
+    let mut scenario = Scenario::new();
+    scenario
+        .spawn("fighter", "hero.fighter")
+        .level(level)
+        .time_mode(TimeMode::TurnBased { encounter_id: None })
+        .spawn();
+    scenario
+}
 
 #[test]
 fn fighter_action_surge() {
-    let mut game_state = fixtures::engine::game_state();
-    let fighter = CreatureBuilder::new("hero.fighter")
-        .level(5)
-        .time_mode(TimeMode::TurnBased { encounter_id: None })
-        .probe(&mut game_state);
+    let mut scenario = fighter_scenario(5);
 
-    fighter.assert_action_available(&game_state, "action.fighter.action_surge");
-    fighter.assert_resource(
-        &game_state,
-        "resource.fighter.action_surge",
-        Operator::Equal(1),
-    );
-    fighter.assert_resource(&game_state, "resource.action", Operator::Equal(1));
-
-    fighter
-        .act(&mut game_state, "action.fighter.action_surge")
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
+    scenario
+        .probe("fighter")
+        .assert_action_available("action.fighter.action_surge")
+        .assert_resource("resource.fighter.action_surge", Operator::Equal(1))
+        .assert_resource("resource.action", Operator::Equal(1))
+        .act("action.fighter.action_surge")
+        .perform();
 
     // Check that the Action Surge effect is applied and the resources are updated
-    fighter.assert_effect(&game_state, "effect.fighter.action_surge");
-    fighter.assert_resource(&game_state, "resource.action", Operator::Equal(2));
-    fighter.assert_on_cooldown(&game_state, "action.fighter.action_surge");
-
-    // Simulate the start of the turn to remove the Action Surge effect
-    fighter.start_turn(&mut game_state);
-
-    // Check that the Action Surge effect is removed after the turn starts
-    fighter.assert_no_effect(&game_state, "effect.fighter.action_surge");
-    fighter.assert_resource(&game_state, "resource.action", Operator::Equal(1));
-    fighter.assert_resource(
-        &game_state,
-        "resource.fighter.action_surge",
-        Operator::Equal(0),
-    );
+    scenario
+        .probe("fighter")
+        .assert_effect("effect.fighter.action_surge")
+        .assert_resource("resource.action", Operator::Equal(2))
+        .assert_on_cooldown("action.fighter.action_surge")
+        // Simulate the start of the turn to remove the Action Surge effect
+        .start_turn()
+        // Check that the Action Surge effect is removed after the turn starts
+        .assert_no_effect("effect.fighter.action_surge")
+        .assert_resource("resource.action", Operator::Equal(1))
+        .assert_resource("resource.fighter.action_surge", Operator::Equal(0));
 }
 
 #[test]
 fn fighter_second_wind() {
-    let mut game_state = fixtures::engine::game_state();
-    let mut fighter = CreatureBuilder::new("hero.fighter")
-        .level(5)
-        .time_mode(TimeMode::TurnBased { encounter_id: None })
-        .probe(&mut game_state);
+    let mut scenario = fighter_scenario(5);
 
-    fighter.assert_action_available(&game_state, "action.fighter.second_wind");
-    fighter.assert_resource(
-        &game_state,
-        "resource.fighter.second_wind",
-        Operator::Equal(3),
-    );
+    scenario
+        .probe("fighter")
+        .assert_action_available("action.fighter.second_wind")
+        .assert_resource("resource.fighter.second_wind", Operator::Equal(3));
 
     // Let the fighter take some damage
-    let max_hp = fighter.max_hp(&game_state);
-    fighter.damage_raw(&mut game_state, max_hp / 2);
-    fighter.assert_hp(&game_state, Operator::Less(max_hp));
+    let max_hp = scenario.probe("fighter").max_hp();
+    scenario
+        .probe("fighter")
+        .damage_raw(max_hp / 2)
+        .assert_hp(Operator::Less(max_hp));
 
-    let prev_hp = fighter.hp(&game_state);
+    let prev_hp = scenario.probe("fighter").hp();
 
-    fighter
-        .act(&mut game_state, "action.fighter.second_wind")
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
+    scenario
+        .probe("fighter")
+        .act("action.fighter.second_wind")
+        .perform();
 
-    fighter.assert_hp(&game_state, Operator::Greater(prev_hp));
-    fighter.assert_resource(
-        &game_state,
-        "resource.fighter.second_wind",
-        Operator::Equal(2),
-    );
+    scenario
+        .probe("fighter")
+        .assert_hp(Operator::Greater(prev_hp))
+        .assert_resource("resource.fighter.second_wind", Operator::Equal(2));
 }
 
 #[test]
@@ -151,70 +140,61 @@ fn fighter_tactical_shift() {
 
 #[test]
 fn fighter_extra_attack() {
-    let mut game_state = fixtures::engine::game_state();
-    let fighter = CreatureBuilder::new("hero.fighter")
-        .level(5)
-        .time_mode(TimeMode::TurnBased { encounter_id: None })
-        .probe(&mut game_state);
+    let mut scenario = fighter_scenario(5);
 
-    fighter.assert_effect(&game_state, "effect.extra_attack");
-    fighter.assert_no_resource(&game_state, "resource.extra_attack");
+    scenario
+        .probe("fighter")
+        .assert_effect("effect.extra_attack")
+        .assert_no_resource("resource.extra_attack")
+        // Fighter makes a weapon attack, which costs one Action and grants one stack of Extra Attack
+        .act("action.melee_attack")
+        .target_point([1.0, 0.0, 0.0])
+        .perform();
 
-    // Fighter makes a weapon attack, which costs one Action and grants one stack of Extra Attack
-    fighter
-        .act(&mut game_state, "action.melee_attack")
-        .target_point(&mut game_state, [1.0, 0.0, 0.0])
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
+    scenario
+        .probe("fighter")
+        .assert_resource("resource.action", Operator::Equal(0))
+        .assert_resource("resource.extra_attack", Operator::Equal(1))
+        // Fighter makes another attack, which should consume the Extra Attack stack
+        .act("action.melee_attack")
+        .target_point([1.0, 0.0, 0.0])
+        .perform();
 
-    fighter.assert_resource(&game_state, "resource.action", Operator::Equal(0));
-    fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(1));
-
-    // Fighter makes another attack, which should consume the Extra Attack stack
-    fighter
-        .act(&mut game_state, "action.melee_attack")
-        .target_point(&mut game_state, [1.0, 0.0, 0.0])
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
-
-    fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(0));
+    scenario
+        .probe("fighter")
+        .assert_resource("resource.extra_attack", Operator::Equal(0));
 }
 
 #[test]
 fn fighter_two_extra_attacks() {
-    let mut game_state = fixtures::engine::game_state();
-    let fighter = CreatureBuilder::new("hero.fighter")
-        .level(11)
-        .time_mode(TimeMode::TurnBased { encounter_id: None })
-        .probe(&mut game_state);
+    let mut scenario = fighter_scenario(11);
 
-    fighter.assert_effect(&game_state, "effect.fighter.two_extra_attacks");
-    fighter.assert_no_resource(&game_state, "resource.extra_attack");
+    scenario
+        .probe("fighter")
+        .assert_effect("effect.fighter.two_extra_attacks")
+        .assert_no_resource("resource.extra_attack")
+        .act("action.melee_attack")
+        .target_point([1.0, 0.0, 0.0])
+        .perform();
 
-    fighter
-        .act(&mut game_state, "action.melee_attack")
-        .target_point(&mut game_state, [1.0, 0.0, 0.0])
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
+    scenario
+        .probe("fighter")
+        .assert_resource("resource.action", Operator::Equal(0))
+        .assert_resource("resource.extra_attack", Operator::Equal(2))
+        .act("action.melee_attack")
+        .target_point([1.0, 0.0, 0.0])
+        .perform();
 
-    fighter.assert_resource(&game_state, "resource.action", Operator::Equal(0));
-    fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(2));
+    scenario
+        .probe("fighter")
+        .assert_resource("resource.extra_attack", Operator::Equal(1))
+        .act("action.melee_attack")
+        .target_point([1.0, 0.0, 0.0])
+        .perform();
 
-    fighter
-        .act(&mut game_state, "action.melee_attack")
-        .target_point(&mut game_state, [1.0, 0.0, 0.0])
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
-
-    fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(1));
-
-    fighter
-        .act(&mut game_state, "action.melee_attack")
-        .target_point(&mut game_state, [1.0, 0.0, 0.0])
-        .perform_ok(&mut game_state);
-    game_state.update(3.0);
-
-    fighter.assert_resource(&game_state, "resource.extra_attack", Operator::Equal(0));
+    scenario
+        .probe("fighter")
+        .assert_resource("resource.extra_attack", Operator::Equal(0));
 }
 
 #[test]

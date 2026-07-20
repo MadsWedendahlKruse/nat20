@@ -17,6 +17,8 @@ use crate::{
     registry::serialize::{item::ArmorDefinition, schema::impl_schema_via},
 };
 
+pub const DEFAULT_ARMOR_CLASS: i32 = 10;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArmorType {
@@ -64,6 +66,14 @@ impl ArmorClass {
             value: FlatModifierMap::from(base_source, base_value),
             dexterity_bonus,
         }
+    }
+
+    pub fn unarmored() -> Self {
+        Self::new(
+            DEFAULT_ARMOR_CLASS,
+            ModifierSource::Base,
+            ArmorDexterityBonus::Unlimited,
+        )
     }
 }
 
@@ -133,7 +143,7 @@ impl Armor {
         Armor::new(
             item,
             ArmorType::Clothing,
-            10,
+            DEFAULT_ARMOR_CLASS,
             ArmorDexterityBonus::Unlimited,
             false,
             effects,

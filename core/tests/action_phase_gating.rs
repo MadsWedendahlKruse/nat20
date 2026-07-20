@@ -33,8 +33,8 @@ fn cast_gated_ray_of_frost(
         attack_outcome,
     );
 
-    let wizard = scenario.creatures.get("wizard").unwrap().creature.clone();
-    let goblin = scenario.creatures.get("goblin").unwrap().creature.clone();
+    let wizard = scenario.creatures.get("wizard").unwrap().clone();
+    let goblin = scenario.creatures.get("goblin").unwrap().clone();
 
     let action_id = "action.ray_of_frost".into();
     let action = systems::actions::get_action(&action_id).unwrap();

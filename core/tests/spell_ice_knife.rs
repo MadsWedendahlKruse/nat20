@@ -8,7 +8,7 @@ use nat20_core::{
         saving_throw::SavingThrowKind,
     },
     systems::d20::D20CheckKind,
-    test_utils::{creature_probe::Operator, scenario::Scenario},
+    test_utils::scenario::{Operator, Scenario},
 };
 use rstest::rstest;
 
@@ -37,10 +37,12 @@ fn ice_knife_scenario(wizard_level: u8) -> Scenario {
 }
 
 fn force_saving_throws(scenario: &mut Scenario, outcome: D20CheckOutcome) {
-    scenario.probes(["goblin_1", "goblin_2"]).d20_force_outcome(
-        D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
-        outcome,
-    );
+    for handle in ["goblin_1", "goblin_2"] {
+        scenario.probe(handle).d20_force_outcome(
+            D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
+            outcome,
+        );
+    }
 }
 
 fn cast_ice_knife(scenario: &mut Scenario, attack_outcome: D20CheckOutcome, slot_level: u8) {
