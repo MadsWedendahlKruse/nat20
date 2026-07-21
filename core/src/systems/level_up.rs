@@ -287,11 +287,7 @@ fn resolve_level_up_prompt(
                         }
                     }
                     ChoiceItem::Action(action_id) => {
-                        systems::actions::add_actions(
-                            &mut game_state.world,
-                            entity,
-                            &[action_id.clone()],
-                        );
+                        systems::actions::add_action(&mut game_state.world, entity, action_id);
                     }
                     ChoiceItem::Background(background_id) => {
                         prompts.extend(systems::backgrounds::set_background(

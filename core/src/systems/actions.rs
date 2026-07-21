@@ -49,31 +49,30 @@ pub fn get_action(action_id: &ActionId) -> Option<&Action> {
     None
 }
 
-pub fn add_actions(world: &mut World, entity: Entity, actions: &[ActionId]) {
-    let mut action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
-    for action_id in actions {
-        if let Some(action) = systems::actions::get_action(action_id) {
-            // TODO: Figure out the actual context to add here
-            add_action_to_map(&mut action_map, action_id, action, ActionContext::default());
-        } else {
-            panic!("Action {} not found in registry", action_id);
+pub fn add_action(world: &mut World, entity: Entity, action_id: &ActionId) {
+    if let Some(action) = systems::actions::get_action(action_id) {
+        let mut action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
+        for context in &action.contexts {
+            add_action_to_map(&mut action_map, action_id, context, &action.resource_cost);
         }
+    } else {
+        panic!("Action {} not found in registry", action_id);
     }
 }
 
-fn add_action_to_map(
+// TODO: New type for ActionMap and add this as a method?
+pub fn add_action_to_map(
     action_map: &mut ActionMap,
     action_id: &ActionId,
-    action: &Action,
-    context: ActionContext,
+    context: &ActionContext,
+    resource_cost: &ResourceAmountMap,
 ) {
-    let resource_cost = &action.resource_cost().clone();
     action_map
         .entry(action_id.clone())
         .and_modify(|action_data| {
             action_data.push((context.clone(), resource_cost.clone()));
         })
-        .or_insert(vec![(context, resource_cost.clone())]);
+        .or_insert(vec![(context.clone(), resource_cost.clone())]);
 }
 
 pub fn remove_action(world: &mut World, entity: Entity, action_id: &ActionId) {
@@ -123,10 +122,12 @@ fn merge_action_maps(destination: &mut ActionMap, source: ActionMap) {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionUsabilityError {
+    ActionDoesNotExist(ActionId),
     EntityNotAlive(Entity),
     OnCooldown(RechargeRule),
     NotEnoughResources(Vec<ResourceId>),
     ResourceNotFound(ResourceId),
+    InvalidContext(ActionContext),
     TargetingError(TargetingError),
     ConcentrationError(ConcentrationError),
     UsabilityFunctionError(String),
@@ -146,11 +147,14 @@ pub fn action_usable(
     game_state: &GameState,
     entity: Entity,
     action_id: &ActionId,
-    // TODO: Is context really not needed here?
     action_context: &ActionContext,
     resource_cost: &ResourceAmountMap,
     skip_checks: &[ActionUsabilityCheck],
 ) -> Result<(), ActionUsabilityError> {
+    let Some(action) = get_action(action_id) else {
+        return Err(ActionUsabilityError::ActionDoesNotExist(action_id.clone()));
+    };
+
     if !skip_checks.contains(&ActionUsabilityCheck::Alive)
         && !systems::health::is_alive(&game_state.world, entity)
     {
@@ -170,24 +174,35 @@ pub fn action_usable(
         return Err(ActionUsabilityError::NotEnoughResources(missing_resources));
     }
 
-    if let Some(spell) = SpellsRegistry::get(&action_id.into())
-        && spell.has_flag(SpellFlag::Concentration)
-    {
-        if let Err(concentration_error) =
-            systems::spells::can_concentrate(&game_state.world, entity)
+    if !action.contexts.is_empty() && !action.contexts.contains(action_context) {
+        return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
+    }
+
+    let loadout = systems::helpers::get_component::<Loadout>(&game_state.world, entity);
+    if !loadout.is_valid_context(&game_state.world, entity, action_context) {
+        return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
+    }
+
+    if let Some(spell) = SpellsRegistry::get(&action_id.into()) {
+        if spell.has_flag(SpellFlag::Concentration)
+            && let Err(concentration_error) =
+                systems::spells::can_concentrate(&game_state.world, entity)
         {
             return Err(ActionUsabilityError::ConcentrationError(
                 concentration_error,
             ));
         }
+
+        let spellbook = systems::helpers::get_component::<Spellbook>(&game_state.world, entity);
+        if !spellbook.is_valid_context(&game_state.world, entity, action_context) {
+            return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
+        }
     }
 
-    if let Some(action) = get_action(action_id)
-        && let Some(usability_fn) = &action.usability
+    if let Some(usability_fn) = &action.usability
+        && let Some(reason) = usability_fn(game_state, entity, action_context)
     {
-        if let Some(reason) = usability_fn(game_state, entity, action_context) {
-            return Err(ActionUsabilityError::UsabilityFunctionError(reason));
-        }
+        return Err(ActionUsabilityError::UsabilityFunctionError(reason));
     }
 
     Ok(())

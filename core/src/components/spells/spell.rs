@@ -10,7 +10,8 @@ use crate::{
         ability::Ability,
         actions::{
             action::{
-                Action, ActionKind, ActionTimeline, ActionUsabilityFunction, TargetingFunction,
+                Action, ActionContext, ActionKind, ActionTimeline, ActionUsabilityFunction,
+                TargetingFunction,
             },
             reaction::ReactionTrigger,
         },
@@ -21,7 +22,7 @@ use crate::{
     },
     engine::{action_prompt::ActionExecutionInstanceId, game_state::GameState},
     registry::serialize::spell::SpellDefinition,
-    systems,
+    systems::{self},
 };
 
 #[derive(Debug, Clone, Copy, Display, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -63,6 +64,7 @@ impl Spell {
         school: MagicSchool,
         flags: Vec<SpellFlag>,
         kind: ActionKind,
+        contexts: Vec<ActionContext>,
         resource_cost: ResourceAmountMap,
         targeting: Arc<TargetingFunction>,
         reaction_trigger: Option<ReactionTrigger>,
@@ -83,6 +85,7 @@ impl Spell {
                 resource_cost,
                 targeting,
                 cooldown: None,
+                contexts,
                 reaction_trigger,
                 timeline,
                 usability,

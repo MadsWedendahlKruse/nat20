@@ -1,6 +1,11 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum EquipmentSlot {
     Headwear,
     Cloak,

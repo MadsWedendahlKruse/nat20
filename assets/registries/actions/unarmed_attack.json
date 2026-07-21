@@ -6,12 +6,12 @@
             "phases": [
                 {
                     "condition": {
-                        "attack_roll": "unarmed_attack_roll"
+                        "attack_roll": "attack_context"
                     },
                     "payload": {
                         "components": [
                             {
-                                "damage": "unarmed_damage_roll"
+                                "damage": "attack_context"
                             }
                         ],
                         "delivery": "immediate"
@@ -20,7 +20,14 @@
             ]
         }
     },
-    "targeting": "unarmed_targeting",
+    "targeting": "attack_context",
+    "contexts": [
+        {
+            "attack": {
+                "kind": "unarmed"
+            }
+        }
+    ],
     "resource_cost": {
         "nat20_core::resource.action": 1
     },

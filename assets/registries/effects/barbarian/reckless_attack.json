@@ -4,7 +4,7 @@
     "kind": "buff",
     "pre_attack_roll": [
         {
-            "script": "nat20_core::script.action.barbarian.reckless_attack"
+            "script": "nat20_core::script.effect.barbarian.reckless_attack"
         }
     ],
     "on_attacked": [

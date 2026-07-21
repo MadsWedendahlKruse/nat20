@@ -242,6 +242,14 @@ impl ImguiRenderable for TargetingKind {
 impl ImguiRenderable for ActionUsabilityError {
     fn render(&self, ui: &imgui::Ui) {
         match self {
+            ActionUsabilityError::ActionDoesNotExist(action_id) => {
+                TextSegment::new(
+                    format!("Action {} does not exist", action_id),
+                    TextKind::Red,
+                )
+                .render(ui);
+            }
+
             ActionUsabilityError::EntityNotAlive(_) => {
                 TextSegment::new("Must be alive to use", TextKind::Red).render(ui);
             }
@@ -280,6 +288,15 @@ impl ImguiRenderable for ActionUsabilityError {
                     format!("Resource not found: {}", resource_id),
                     TextKind::Red,
                 )
+                .render(ui);
+            }
+
+            ActionUsabilityError::InvalidContext(action_context) => {
+                TextSegment::new(
+                    format!("Invalid context: {:?}", action_context),
+                    TextKind::Red,
+                )
+                .wrap_text(true)
                 .render(ui);
             }
 

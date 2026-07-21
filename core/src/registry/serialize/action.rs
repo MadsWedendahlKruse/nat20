@@ -37,6 +37,12 @@ pub struct ActionDefinition {
     pub id: ActionId,
     pub description: String,
     pub kind: ActionKindDefinition,
+    /// The contexts in which this action can be performed. For example, a weapon
+    /// attack can be performed in the context of a melee or ranged attack. If left
+    /// empty, the default context is used, which is appropriate for actions like
+    /// `Dash` or `Action Surge`, which don't require a specific context
+    #[serde(default)]
+    pub contexts: Vec<ActionContext>,
     pub targeting: TargetingDefinition,
     /// e.g. Action, Bonus Action, Reaction
     pub resource_cost: ResourceAmountMap,
@@ -90,7 +96,7 @@ impl ActionDefinition {
             }
             assert!(
                 index > 0,
-                "{}: the first phase cannot have `requires` — there is no previous phase",
+                "{}: the first phase cannot have `requires` if there is no previous phase",
                 self.id
             );
             let previous_is_area = match &phases[index - 1].targets {
@@ -100,6 +106,7 @@ impl ActionDefinition {
                     TargetingDefinition::Custom(custom)
                         if matches!(custom.kind, TargetingKindDefinition::Area { .. })
                 ),
+                PhaseTargetsDefinition::Actor => false,
             };
             assert!(
                 !previous_is_area,
@@ -117,6 +124,13 @@ impl ActionDefinition {
 impl From<ActionDefinition> for Action {
     fn from(value: ActionDefinition) -> Self {
         value.validate_phase_requirements();
+
+        let contexts = if value.contexts.is_empty() {
+            vec![ActionContext::default()]
+        } else {
+            value.contexts
+        };
+
         Action {
             id: value.id,
             description: value.description,
@@ -124,6 +138,7 @@ impl From<ActionDefinition> for Action {
             resource_cost: value.resource_cost,
             targeting: value.targeting.function(),
             cooldown: value.cooldown,
+            contexts,
             reaction_trigger: value.reaction_trigger.map(Into::into),
             timeline: value.timeline,
             usability: value.usability.map(|usability| usability.function()),
@@ -320,6 +335,7 @@ pub enum PhaseTargetsDefinition {
     #[default]
     Inherited,
     Shape(AreaShapeDefinition),
+    Actor,
 }
 
 impl From<PhaseTargetsDefinition> for PhaseTargets {
@@ -333,6 +349,7 @@ impl From<PhaseTargetsDefinition> for PhaseTargets {
                         .unwrap()
                 }))
             }
+            PhaseTargetsDefinition::Actor => PhaseTargets::Actor,
         }
     }
 }

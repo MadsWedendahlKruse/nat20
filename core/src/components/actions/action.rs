@@ -68,6 +68,11 @@ pub struct Action {
     pub resource_cost: ResourceAmountMap,
     /// Optional cooldown for the action
     pub cooldown: Option<RechargeRule>,
+    /// The contexts in which this action can be performed. For example, a weapon
+    /// attack can be performed with both the main-hand or the offhand. If left
+    /// empty, the default context is used, which is appropriate for actions like
+    /// `Dash` or `Action Surge`, which don't require a specific context
+    pub contexts: Vec<ActionContext>,
     /// If the action is a reaction, this will describe what triggers the reaction.
     pub reaction_trigger: Option<ReactionTrigger>,
     /// Timeline describing the sequence of events that occur when performing the
@@ -252,14 +257,15 @@ impl Debug for ActionKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ActionAttackKind {
     MeleeWeapon,
     RangedWeapon,
     Unarmed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct ActionAttackContext {
     pub kind: ActionAttackKind,
     pub slot: Option<EquipmentSlot>,
@@ -288,7 +294,7 @@ impl ActionAttackContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct ActionSpellContext {
     pub id: SpellId,
     pub source: SpellSource,
@@ -296,9 +302,11 @@ pub struct ActionSpellContext {
 }
 
 /// Represents the context in which an action is performed.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct ActionContext {
+    #[serde(default)]
     pub attack: Option<ActionAttackContext>,
+    #[serde(default)]
     pub spell: Option<ActionSpellContext>,
 }
 
@@ -509,6 +517,9 @@ pub enum PhaseTargets {
     Inherited,
     /// The entities inside a shape centered on each chosen target
     Shape(Arc<AreaShapeFunction>),
+    /// The actor of the action, e.g. to also apply an effect to the actor when
+    /// performing an action on a target (see Reckless Attack)
+    Actor,
 }
 
 #[derive(Clone)]
@@ -735,6 +746,11 @@ pub trait ActionProvider {
     /// about how the action can be performed (e.g. weapon type, spell level, etc.)
     /// as well as the resource cost of the action.
     fn actions(&self, world: &World, entity: Entity) -> ActionMap;
+
+    /// Checks if the given action context is valid for the character, e.g. if the
+    /// character has a weapon equipped in the specified slot for a weapon attack
+    /// or if the character knows the specified spell for a spell action.
+    fn is_valid_context(&self, world: &World, entity: Entity, context: &ActionContext) -> bool;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -761,14 +777,6 @@ pub fn default_actions() -> ActionMap {
         (
             ActionId::new("nat20_core", "action.disengage"),
             ActionContext::default(),
-        ),
-        (
-            ActionId::new("nat20_core", "action.unarmed_attack"),
-            ActionContext::unarmed_attack(),
-        ),
-        (
-            ActionId::new("nat20_core", "action.opportunity_attack"),
-            ActionContext::unarmed_attack(),
         ),
     ] {
         let resource_cost = ActionsRegistry::get(&action).unwrap().resource_cost.clone();

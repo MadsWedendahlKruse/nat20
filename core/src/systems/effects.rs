@@ -257,7 +257,7 @@ fn apply_and_replace(
         match action {
             EffectGrantedAction::Action { id } => {
                 // TODO: Might need some work under the hood
-                systems::actions::add_actions(&mut game_state.world, entity, &[id.clone()]);
+                systems::actions::add_action(&mut game_state.world, entity, id);
             }
             EffectGrantedAction::Spell { id, level } => {
                 let _ = systems::spells::add_spell(

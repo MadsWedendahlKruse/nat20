@@ -843,13 +843,28 @@ impl ActionProvider for Spellbook {
             let spell = SpellsRegistry::get(spell_id)
                 .unwrap_or_else(|| panic!("Missing spell in registry: {}", spell_id));
 
+            // If the spell has a fixed context use that
+            if !spell.action().contexts.is_empty() {
+                for context in spell.action().contexts.iter() {
+                    systems::actions::add_action_to_map(
+                        &mut actions,
+                        spell.action().id(),
+                        context,
+                        spell.action().resource_cost(),
+                    );
+                }
+                continue;
+            }
+
             // Cantrips: single context, level 0.
             if spell.is_cantrip() {
                 let context = ActionContext::spell(spell_id.clone(), source.clone(), 0);
 
-                actions.insert(
-                    spell.action().id().clone(),
-                    vec![(context, spell.action().resource_cost().clone())],
+                systems::actions::add_action_to_map(
+                    &mut actions,
+                    spell.action().id(),
+                    &context,
+                    spell.action().resource_cost(),
                 );
                 continue;
             }
@@ -905,15 +920,80 @@ impl ActionProvider for Spellbook {
                             },
                         );
 
-                        actions
-                            .entry(spell.action().id().clone())
-                            .or_insert_with(Vec::new)
-                            .push((context, resource_cost));
+                        systems::actions::add_action_to_map(
+                            &mut actions,
+                            spell.action().id(),
+                            &context,
+                            &resource_cost,
+                        );
                     }
                 }
             }
         }
 
         actions
+    }
+
+    fn is_valid_context(&self, world: &World, entity: Entity, context: &ActionContext) -> bool {
+        if let Some(spell_context) = context.spell.as_ref() {
+            let spell = SpellsRegistry::get(&spell_context.id)
+                .unwrap_or_else(|| panic!("Missing spell in registry: {}", spell_context.id));
+
+            match &spell_context.source {
+                SpellSource::Class(class_and_subclass) => {
+                    if let Some(class_state) = self.class_states.get(class_and_subclass) {
+                        if let Some(class) = ClassesRegistry::get(&class_and_subclass.class)
+                            && let Some(spellcasting_rules) =
+                                class.spellcasting_rules(&class_and_subclass.subclass)
+                        {
+                            // Check if the spell is known for the class
+                            let known_spells = self
+                                .known_spells_for_class(
+                                    class_and_subclass,
+                                    &systems::helpers::get_component::<ResourceMap>(world, entity),
+                                )
+                                .unwrap_or_default();
+                            if !known_spells.contains(&spell_context.id) {
+                                return false;
+                            }
+
+                            // Cantrips don't need to be prepared
+                            if spell.is_cantrip() {
+                                return known_spells.contains(&spell_context.id);
+                            }
+
+                            // Check if the spell is prepared for the class (if applicable)
+                            if spellcasting_rules.readiness_model == CastingReadinessModel::Prepared
+                                && !class_state
+                                    .selections
+                                    .prepared_spells
+                                    .contains(&spell_context.id)
+                                && !class_state
+                                    .selections
+                                    .always_prepared
+                                    .contains(&spell_context.id)
+                            {
+                                return false;
+                            }
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                SpellSource::Granted { source, .. } => {
+                    if let Some(granted_set) = self.granted.get(source) {
+                        if !granted_set.spells.contains_key(&spell_context.id) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        } else {
+            false
+        }
     }
 }

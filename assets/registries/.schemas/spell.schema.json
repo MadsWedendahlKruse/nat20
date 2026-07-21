@@ -9,6 +9,14 @@
             "maximum": 255,
             "minimum": 0
         },
+        "contexts": {
+            "description": "For spells the context is usually determined by the spell levels available\nto the caster, in which case this should be left empty. For some spells the\ncontext might be fixed, e.g the spell can only be cast a specific level,\nwhich can then be specified here",
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/ActionContext"
+            }
+        },
         "description": {
             "type": "string"
         },
@@ -86,6 +94,35 @@
         "timeline"
     ],
     "definitions": {
+        "ActionAttackContext": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "$ref": "#/definitions/ActionAttackKind"
+                },
+                "slot": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/EquipmentSlot"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "kind"
+            ]
+        },
+        "ActionAttackKind": {
+            "type": "string",
+            "enum": [
+                "melee_weapon",
+                "ranged_weapon",
+                "unarmed"
+            ]
+        },
         "ActionConditionDefinition": {
             "anyOf": [
                 {
@@ -95,10 +132,7 @@
                             "description": "How the attack roll is made.",
                             "type": "string",
                             "enum": [
-                                "melee_weapon_attack_roll",
-                                "melee_attack_roll",
-                                "ranged_attack_roll",
-                                "unarmed_attack_roll",
+                                "attack_context",
                                 "spell_attack_roll"
                             ]
                         }
@@ -124,6 +158,34 @@
                     ]
                 }
             ]
+        },
+        "ActionContext": {
+            "description": "Represents the context in which an action is performed.",
+            "type": "object",
+            "properties": {
+                "attack": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/ActionAttackContext"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "spell": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/ActionSpellContext"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            }
         },
         "ActionId": {
             "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
@@ -211,7 +273,7 @@
                     "type": "object",
                     "properties": {
                         "damage": {
-                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, `ranged_damage_roll`, `unarmed_damage_roll`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or `attack_context` to derive the damage roll from the used attack context. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
                             "type": "string",
                             "examples": [
                                 "8d6;fire",
@@ -238,7 +300,7 @@
                     "type": "object",
                     "properties": {
                         "damage": {
-                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, `ranged_damage_roll`, `unarmed_damage_roll`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or `attack_context` to derive the damage roll from the used attack context. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
                             "type": "string",
                             "examples": [
                                 "8d6;fire",
@@ -362,6 +424,28 @@
             },
             "required": [
                 "payload"
+            ]
+        },
+        "ActionSpellContext": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "$ref": "#/definitions/SpellId"
+                },
+                "level": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "source": {
+                    "$ref": "#/definitions/SpellSource"
+                }
+            },
+            "required": [
+                "id",
+                "source",
+                "level"
             ]
         },
         "ActionTimeline": {
@@ -547,6 +631,32 @@
                 "hostile"
             ]
         },
+        "ClassAndSubclass": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "$ref": "#/definitions/ClassId"
+                },
+                "subclass": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/SubclassId"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "class"
+            ]
+        },
+        "ClassId": {
+            "description": "Registry id `[namespace::]class.<name>`, e.g. `nat20_core::class.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?class[A-Za-z0-9_.]*$"
+        },
         "CreatureType": {
             "type": "string",
             "enum": [
@@ -578,7 +688,7 @@
                     "type": "object",
                     "properties": {
                         "custom": {
-                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, `ranged_damage_roll`, `unarmed_damage_roll`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+                            "description": "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) or `attack_context` to derive the damage roll from the used attack context. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
                             "type": "string",
                             "examples": [
                                 "8d6;fire",
@@ -914,6 +1024,23 @@
                 "not_self"
             ]
         },
+        "EquipmentSlot": {
+            "type": "string",
+            "enum": [
+                "headwear",
+                "cloak",
+                "gloves",
+                "boots",
+                "amulet",
+                "ring1",
+                "ring2",
+                "armor",
+                "melee_main_hand",
+                "melee_off_hand",
+                "ranged_main_hand",
+                "ranged_off_hand"
+            ]
+        },
         "EventKindTag": {
             "description": "Auto-generated discriminant enum variants",
             "oneOf": [
@@ -953,6 +1080,68 @@
                     "const": "d20_check_resolved"
                 }
             ]
+        },
+        "FeatId": {
+            "description": "Registry id `[namespace::]feat.<name>`, e.g. `nat20_core::feat.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?feat[A-Za-z0-9_.]*$"
+        },
+        "GrantedSpellSource": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "Item": {
+                            "$ref": "#/definitions/ItemId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Item"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Feat": {
+                            "$ref": "#/definitions/FeatId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Feat"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Species": {
+                            "$ref": "#/definitions/SpeciesId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Species"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Effect": {
+                            "$ref": "#/definitions/EffectId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Effect"
+                    ]
+                }
+            ]
+        },
+        "ItemId": {
+            "description": "Registry id `[namespace::]item.<name>`, e.g. `nat20_core::item.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?item[A-Za-z0-9_.]*$"
         },
         "LifeState": {
             "oneOf": [
@@ -1126,7 +1315,8 @@
                 {
                     "type": "string",
                     "enum": [
-                        "inherited"
+                        "inherited",
+                        "actor"
                     ]
                 },
                 {
@@ -1171,6 +1361,11 @@
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?script[A-Za-z0-9_.]*$"
         },
+        "SpeciesId": {
+            "description": "Registry id `[namespace::]species.<name>`, e.g. `nat20_core::species.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?species[A-Za-z0-9_.]*$"
+        },
         "SpellFlag": {
             "type": "string",
             "enum": [
@@ -1183,6 +1378,54 @@
             "description": "Registry id `[namespace::]spell.<name>`, e.g. `nat20_core::spell.example`. The namespace defaults to `nat20_core`.",
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?spell[A-Za-z0-9_.]*$"
+        },
+        "SpellSource": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "Class": {
+                            "$ref": "#/definitions/ClassAndSubclass"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Class"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "Granted": {
+                            "type": "object",
+                            "properties": {
+                                "level": {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                },
+                                "source": {
+                                    "$ref": "#/definitions/GrantedSpellSource"
+                                }
+                            },
+                            "required": [
+                                "source",
+                                "level"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "Granted"
+                    ]
+                }
+            ]
+        },
+        "SubclassId": {
+            "description": "Registry id `[namespace::]subclass.<name>`, e.g. `nat20_core::subclass.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?subclass[A-Za-z0-9_.]*$"
         },
         "TargetingContextDefinition": {
             "type": "object",

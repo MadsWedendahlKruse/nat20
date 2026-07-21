@@ -163,6 +163,7 @@ impl PhaseState {
                 &target,
                 shape.as_ref(),
             ),
+            PhaseTargets::Actor => vec![action.actor.id()],
         };
 
         let steps = targets

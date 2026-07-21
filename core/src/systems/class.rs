@@ -190,7 +190,9 @@ fn apply_class_base(
     // Actions
     {
         if let Some(actions_for_level) = class_base.actions_by_level.get(&level) {
-            systems::actions::add_actions(&mut game_state.world, entity, actions_for_level);
+            for action in actions_for_level {
+                systems::actions::add_action(&mut game_state.world, entity, action);
+            }
         }
     }
 

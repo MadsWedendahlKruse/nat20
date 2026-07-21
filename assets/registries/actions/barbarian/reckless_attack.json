@@ -1,19 +1,70 @@
 {
     "id": "nat20_core::action.barbarian.reckless_attack",
-    "description": "When you're about to miss an attack, you can throw aside all concern for defense to attack with increased ferocity. Doing so gives you Advantage on attack rolls using Strength until the start of your next turn, but attack rolls against you have Advantage during that time.",
+    "description": "You can throw aside all concern for defense to attack with increased ferocity. Doing so gives you Advantage on attack rolls using Strength until the start of your next turn, but attack rolls against you have Advantage during that time.",
     "kind": {
-        "reaction": {
-            "body": "nat20_core::script.action.barbarian.reckless_attack"
+        "standard": {
+            "phases": [
+                {
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.barbarian.reckless_attack",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "boundary": "start",
+                                            "entity": "applier",
+                                            "duration": {
+                                                "turns": 1
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        ],
+                        "delivery": "immediate"
+                    },
+                    "targets": "actor"
+                },
+                {
+                    "condition": {
+                        "attack_roll": "attack_context"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "attack_context"
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                }
+            ]
         }
     },
+    "targeting": "attack_context",
+    "contexts": [
+        {
+            "attack": {
+                "kind": "melee_weapon",
+                "slot": "melee_main_hand"
+            }
+        },
+        {
+            "attack": {
+                "kind": "melee_weapon",
+                "slot": "melee_off_hand"
+            }
+        },
+        {
+            "attack": {
+                "kind": "unarmed"
+            }
+        }
+    ],
     "cooldown": "turn",
-    "resource_cost": {},
-    "targeting": "self",
-    "reaction_trigger": {
-        "script": "nat20_core::script.action.barbarian.reckless_attack",
-        "events": [
-            "d20_check_performed"
-        ]
+    "resource_cost": {
+        "nat20_core::resource.action": 1
     },
     "timeline": {
         "perform_time": 0.5,

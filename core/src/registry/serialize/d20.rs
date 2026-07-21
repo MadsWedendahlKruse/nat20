@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         actions::action::{
-            ActionAttackKind, ActionContext, AttackRollFunction, AttackRollProvider,
-            SavingThrowFunction, SavingThrowProvider,
+            ActionContext, AttackRollFunction, AttackRollProvider, SavingThrowFunction,
+            SavingThrowProvider,
         },
         saving_throw::SavingThrowKind,
         spells::spellbook::Spellbook,
@@ -21,10 +21,7 @@ impl_string_schema!(
     "AttackRollDefinition",
     "description": "How the attack roll is made.",
     "enum": [
-        "melee_weapon_attack_roll",
-        "melee_attack_roll",
-        "ranged_attack_roll",
-        "unarmed_attack_roll",
+        "attack_context",
         "spell_attack_roll"
     ]
 );
@@ -36,53 +33,6 @@ impl_string_schema!(
          `weapon_save_dc`, e.g. `spell_save_dc;dexterity`.",
     "examples": ["spell_save_dc;dexterity", "weapon_save_dc;constitution"]
 );
-
-#[derive(Clone, Copy)]
-enum AttackRollScope {
-    MeleeWeapon,
-    RangedWeapon,
-    Unarmed,
-    Melee,
-}
-
-impl AttackRollScope {
-    fn is_allowed(&self, kind: ActionAttackKind) -> bool {
-        match self {
-            AttackRollScope::MeleeWeapon => matches!(kind, ActionAttackKind::MeleeWeapon),
-            AttackRollScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
-            AttackRollScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
-            AttackRollScope::Melee => {
-                matches!(
-                    kind,
-                    ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
-                )
-            }
-        }
-    }
-}
-
-fn scoped_attack_roll(
-    scope: AttackRollScope,
-    provider_name: &'static str,
-) -> Arc<AttackRollFunction> {
-    Arc::new(
-        move |world: &World, entity: Entity, target: Entity, action_context: &ActionContext| {
-            let attack = action_context
-                .attack
-                .as_ref()
-                .unwrap_or_else(|| panic!("{provider_name} requires an attack context"));
-            if !scope.is_allowed(attack.kind) {
-                panic!("{provider_name} does not support this attack context");
-            }
-            systems::loadout::loadout(world, entity).attack_roll(
-                world,
-                entity,
-                target,
-                action_context,
-            )
-        },
-    ) as Arc<AttackRollFunction>
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -102,16 +52,16 @@ impl FromStr for AttackRollDefinition {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let function = match s {
-            "melee_weapon_attack_roll" => {
-                scoped_attack_roll(AttackRollScope::MeleeWeapon, "melee_weapon_attack_roll")
-            }
-            "melee_attack_roll" => scoped_attack_roll(AttackRollScope::Melee, "melee_attack_roll"),
-            "ranged_attack_roll" => {
-                scoped_attack_roll(AttackRollScope::RangedWeapon, "ranged_attack_roll")
-            }
-            "unarmed_attack_roll" => {
-                scoped_attack_roll(AttackRollScope::Unarmed, "unarmed_attack_roll")
-            }
+            "attack_context" => Arc::new({
+                |world: &World, entity: Entity, target: Entity, action_context: &ActionContext| {
+                    systems::loadout::loadout(world, entity).attack_roll(
+                        world,
+                        entity,
+                        target,
+                        action_context,
+                    )
+                }
+            }) as Arc<AttackRollFunction>,
             "spell_attack_roll" => Arc::new({
                 |world: &World, entity: Entity, target: Entity, action_context: &ActionContext| {
                     systems::helpers::get_component::<Spellbook>(world, entity).attack_roll(

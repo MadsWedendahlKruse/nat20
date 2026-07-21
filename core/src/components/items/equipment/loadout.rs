@@ -37,6 +37,16 @@ use crate::{
     systems::{self},
 };
 
+// TODO: Probably shouldn't hardcode these :)
+const ATTACK_ACTIONS: LazyLock<Vec<ActionId>> = LazyLock::new(|| {
+    vec![
+        ActionId::new("nat20_core", "action.melee_attack"),
+        ActionId::new("nat20_core", "action.ranged_attack"),
+        ActionId::new("nat20_core", "action.opportunity_attack"),
+        ActionId::new("nat20_core", "action.unarmed_attack"),
+    ]
+});
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TryEquipError {
     InvalidSlot {
@@ -544,41 +554,46 @@ impl SavingThrowProvider for Loadout {
 }
 
 impl ActionProvider for Loadout {
-    fn actions(&self, _world: &World, _entity: Entity) -> ActionMap {
-        let mut actions = ActionMap::new();
+    fn actions(&self, world: &World, entity: Entity) -> ActionMap {
+        let mut action_map = ActionMap::new();
 
-        for slot in EquipmentSlot::weapon_slots() {
-            if let Some(weapon) = self.weapon_in_hand(slot) {
-                let context = match weapon.kind() {
-                    WeaponKind::Melee => ActionContext::melee_weapon(*slot),
-                    WeaponKind::Ranged => ActionContext::ranged_weapon(*slot),
-                    WeaponKind::Unarmed => continue,
-                };
+        for action_id in ATTACK_ACTIONS.iter() {
+            let Some(action) = systems::actions::get_action(action_id) else {
+                continue;
+            };
 
-                let core_actions = match weapon.kind() {
-                    WeaponKind::Melee => vec![
-                        ActionId::new("nat20_core", "action.melee_attack"),
-                        ActionId::new("nat20_core", "action.opportunity_attack"),
-                    ],
-                    WeaponKind::Ranged => vec![ActionId::new("nat20_core", "action.ranged_attack")],
-                    WeaponKind::Unarmed => continue,
-                };
-
-                for action_id in core_actions.iter().chain(weapon.extra_actions().iter()) {
-                    if let Some(action) = systems::actions::get_action(action_id) {
-                        let resource_cost = action.resource_cost().clone();
-                        actions
-                            .entry(action_id.clone())
-                            .and_modify(|entry| {
-                                entry.push((context.clone(), resource_cost.clone()));
-                            })
-                            .or_insert(vec![(context.clone(), resource_cost)]);
-                    }
+            for context in &action.contexts {
+                if self.is_valid_context(world, entity, context) {
+                    systems::actions::add_action_to_map(
+                        &mut action_map,
+                        action_id,
+                        context,
+                        &action.resource_cost,
+                    );
                 }
             }
         }
 
-        actions
+        action_map
+    }
+
+    fn is_valid_context(&self, _world: &World, _entity: Entity, context: &ActionContext) -> bool {
+        let Some(context) = context.attack.as_ref() else {
+            // If it's not an attack context, the loadout can't determine if it's
+            // valid or not. This should be handled by another ActionProvider
+            return true;
+        };
+
+        match context.kind {
+            ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => {
+                if let Some(slot) = context.slot {
+                    self.has_weapon_in_hand(&slot)
+                } else {
+                    false
+                }
+            }
+            ActionAttackKind::Unarmed => true,
+        }
     }
 }
 
@@ -811,7 +826,16 @@ mod tests {
 
         let loadout = Loadout::new();
         let actions = loadout.actions(&world, entity);
-        assert_eq!(actions.len(), 0);
+        println!("{:?}", actions);
+        assert_eq!(actions.len(), 2);
+        for action_id in [
+            ActionId::new("nat20_core", "action.unarmed_attack"),
+            ActionId::new("nat20_core", "action.opportunity_attack"),
+        ] {
+            assert!(actions.contains_key(&action_id));
+            assert_eq!(actions[&action_id].len(), 1);
+            assert!(actions[&action_id][0].0.is_attack_action());
+        }
     }
 
     #[test]
@@ -836,21 +860,11 @@ mod tests {
             println!("{:?}", action);
         }
 
-        assert_eq!(actions.len(), 3);
-        assert_eq!(
-            actions[&ActionId::new("nat20_core", "action.melee_attack")].len(),
-            1
-        );
-        assert_eq!(
-            actions[&ActionId::new("nat20_core", "action.ranged_attack")].len(),
-            1
-        );
-        assert_eq!(
-            actions[&ActionId::new("nat20_core", "action.opportunity_attack")].len(),
-            1
-        );
-        for (_, data) in actions {
-            for (context, ..) in data {
+        assert_eq!(actions.len(), ATTACK_ACTIONS.len());
+        for action_id in ATTACK_ACTIONS.iter() {
+            assert!(actions.contains_key(action_id));
+            assert!(!actions[action_id].is_empty());
+            for (context, _) in &actions[action_id] {
                 assert!(context.is_attack_action());
             }
         }

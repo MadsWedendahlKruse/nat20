@@ -360,6 +360,48 @@ fn reckless_attack_reaction() {
     scenario.react("barbarian").option_index(0).perform();
 
     scenario
+        .probe("barbarian")
+        .assert_effect("effect.barbarian.reckless_attack");
+
+    scenario
+        .event_filter()
+        .actor("barbarian")
+        .d20_advantage(
+            D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+            ModifierSource::Effect("effect.barbarian.reckless_attack".into()),
+            AdvantageType::Advantage,
+        )
+        .assert_event();
+
+    // The effect is removed at the start of the next turn
+    scenario.probe("barbarian").start_turn();
+    scenario
+        .probe("barbarian")
+        .assert_no_effect("effect.barbarian.reckless_attack");
+}
+
+#[test]
+fn reckless_attack_action() {
+    let mut scenario = barbarian_scenario();
+    scenario
+        .spawn("goblin", "monster.goblin_warrior")
+        .level(1)
+        .position([1.0, 0.0, 0.0], false)
+        .spawn();
+
+    scenario
+        .probe("barbarian")
+        .assert_action_available("action.barbarian.reckless_attack")
+        .act("action.barbarian.reckless_attack")
+        .context_filter(|context, _cost| context.is_weapon_attack() && context.is_melee_attack())
+        .target_entity("goblin")
+        .perform();
+
+    scenario
+        .probe("barbarian")
+        .assert_effect("effect.barbarian.reckless_attack");
+
+    scenario
         .event_filter()
         .actor("barbarian")
         .d20_advantage(

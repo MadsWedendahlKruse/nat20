@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::{ActionAttackKind, ActionContext, DamageFunction, HealingFunction},
+        actions::action::{ActionContext, DamageFunction, HealingFunction},
         damage::{DamageRoll, DamageType},
         modifier::{ModifierMap, ModifierSource},
     },
@@ -27,8 +27,7 @@ impl_string_schema!(
     "DamageEquation",
     "description": format!(
         "Damage roll: `<dice expression>;<damage type>` (e.g. `8d6;fire`, `(1 + spell_level)d6;cold`) \
-         or one of the built-in weapon rolls `melee_weapon_damage_roll`, `melee_damage_roll`, \
-         `ranged_damage_roll`, `unarmed_damage_roll`. {}", EXPRESSION_VARIABLES_DOC),
+         or `attack_context` to derive the damage roll from the used attack context. {}", EXPRESSION_VARIABLES_DOC),
     "examples": ["8d6;fire", "(1 + spell_level)d4;force", "melee_weapon_damage_roll"]
 );
 
@@ -39,67 +38,15 @@ impl_string_schema!(
     "examples": ["1d8 + spell_level", "2d4 + 2"]
 );
 
-#[derive(Clone, Copy)]
-enum DamageRollScope {
-    MeleeWeapon,
-    RangedWeapon,
-    Unarmed,
-    Melee,
-}
-
-impl DamageRollScope {
-    fn is_allowed(&self, kind: ActionAttackKind) -> bool {
-        match self {
-            DamageRollScope::MeleeWeapon => matches!(kind, ActionAttackKind::MeleeWeapon),
-            DamageRollScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
-            DamageRollScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
-            DamageRollScope::Melee => {
-                matches!(
-                    kind,
-                    ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
-                )
-            }
-        }
-    }
-}
-
-fn scoped_attack_damage_roll(
-    scope: DamageRollScope,
-    provider_name: &'static str,
-) -> Arc<DamageFunction> {
-    Arc::new(
-        move |world: &World, entity: Entity, action_context: &ActionContext| {
-            let attack = action_context
-                .attack
-                .as_ref()
-                .unwrap_or_else(|| panic!("{provider_name} requires an attack context"));
-            if !scope.is_allowed(attack.kind) {
-                panic!("{provider_name} does not support this attack context");
-            }
-            systems::loadout::attack_damage_roll(world, entity, action_context)
-        },
-    ) as Arc<DamageFunction>
-}
-
 static DAMAGE_DEFAULTS: LazyLock<HashMap<String, Arc<DamageFunction>>> = LazyLock::new(|| {
-    HashMap::from([
-        (
-            "melee_weapon_damage_roll".to_string(),
-            scoped_attack_damage_roll(DamageRollScope::MeleeWeapon, "melee_weapon_damage_roll"),
-        ),
-        (
-            "melee_damage_roll".to_string(),
-            scoped_attack_damage_roll(DamageRollScope::Melee, "melee_damage_roll"),
-        ),
-        (
-            "ranged_damage_roll".to_string(),
-            scoped_attack_damage_roll(DamageRollScope::RangedWeapon, "ranged_damage_roll"),
-        ),
-        (
-            "unarmed_damage_roll".to_string(),
-            scoped_attack_damage_roll(DamageRollScope::Unarmed, "unarmed_damage_roll"),
-        ),
-    ])
+    HashMap::from([(
+        "attack_context".to_string(),
+        Arc::new(
+            |world: &World, entity: Entity, action_context: &ActionContext| {
+                systems::loadout::attack_damage_roll(world, entity, action_context)
+            },
+        ) as Arc<DamageFunction>,
+    )])
 });
 
 #[derive(Clone, Serialize, Deserialize)]

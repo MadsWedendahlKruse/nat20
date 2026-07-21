@@ -42,16 +42,7 @@ local function reaction_body(game_state, reaction, event)
     )
 end
 
--- Used by the Reackless Attack effect
----@type AttackRollHookFn
-local function attack_roll_hook(game_state, entity, attack_roll)
-    if attack_roll.d20_check.modifiers:get_modifier("strength") then
-        attack_roll:add_advantage("advantage", "nat20_core::effect.barbarian.reckless_attack")
-    end
-end
-
 return {
     reaction_trigger = reaction_trigger,
     reaction_body = reaction_body,
-    attack_roll_hook = attack_roll_hook
 }

@@ -115,6 +115,8 @@ fn apply_species_base(
         );
     }
     if let Some(actions) = base.actions_by_level.get(&level) {
-        systems::actions::add_actions(&mut game_state.world, entity, actions);
+        for action in actions {
+            systems::actions::add_action(&mut game_state.world, entity, action);
+        }
     }
 }

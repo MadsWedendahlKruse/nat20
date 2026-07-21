@@ -339,7 +339,7 @@ impl ActionBarWindow {
                     &[],
                 );
                 if usability.is_ok() && first_usable_context.is_none() {
-                    first_usable_context = Some(i);
+                    first_usable_context.replace(i);
                 }
                 contexts_usability.push(usability);
             }
@@ -428,7 +428,8 @@ impl ActionBarWindow {
             }
 
             let disabled_token = ui.begin_disabled(
-                systems::resources::can_afford(&game_state.world, actor, cost).is_err(),
+                systems::actions::action_usable(game_state, actor, action, context, cost, &[])
+                    .is_err(),
             );
 
             let clicked = if let Some(spell) = &context.spell {

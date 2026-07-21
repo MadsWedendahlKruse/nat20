@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        actions::action::ActionTimeline,
+        actions::action::{ActionContext, ActionTimeline},
         id::SpellId,
         resource::ResourceAmountMap,
         spells::spell::{MagicSchool, Spell, SpellFlag},
@@ -28,6 +28,12 @@ pub struct SpellDefinition {
     #[serde(default)]
     pub flags: Vec<SpellFlag>,
     pub kind: ActionKindDefinition,
+    /// For spells the context is usually determined by the spell levels available
+    /// to the caster, in which case this should be left empty. For some spells the
+    /// context might be fixed, e.g the spell can only be cast a specific level,
+    /// which can then be specified here
+    #[serde(default)]
+    pub contexts: Vec<ActionContext>,
     pub resource_cost: ResourceAmountMap,
     pub targeting: TargetingDefinition,
     #[serde(default)]
@@ -45,6 +51,7 @@ impl From<SpellDefinition> for Spell {
             value.school,
             value.flags,
             value.kind.into(),
+            value.contexts,
             value.resource_cost,
             value.targeting.function(),
             value.reaction_trigger.map(Into::into),

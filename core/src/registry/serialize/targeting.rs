@@ -42,20 +42,32 @@ static TARGETING_DEFAULTS: LazyLock<HashMap<String, Arc<TargetingFunction>>> =
     LazyLock::new(|| {
         HashMap::from([
             (
-                "melee_weapon_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::MeleeWeapon, "melee_weapon_targeting"),
-            ),
-            (
-                "melee_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::Melee, "melee_targeting"),
-            ),
-            (
-                "ranged_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::RangedWeapon, "ranged_targeting"),
-            ),
-            (
-                "unarmed_targeting".to_string(),
-                scoped_attack_targeting(TargetingScope::Unarmed, "unarmed_targeting"),
+                "attack_context".to_string(),
+                Arc::new(
+                    |world: &World, entity: Entity, action_context: &ActionContext| {
+                        let range =
+                            systems::loadout::attack_targeting_range(world, entity, action_context);
+
+                        let trajectory = if range.is_melee() {
+                            LineOfSightTrajectory::Ray
+                        } else {
+                            LineOfSightTrajectory::Parabola {
+                                // TODO: Default arrow speed?
+                                launch_velocity: Velocity::new::<meter_per_second>(50.0),
+                            }
+                        };
+
+                        TargetingContext {
+                            kind: TargetingKind::Single,
+                            range,
+                            line_of_sight: LineOfSight {
+                                trajectory,
+                                extent: LineOfSightExtentTemplate::Point,
+                            },
+                            allowed_entities: vec![EntityFilter::not_dead(), EntityFilter::NotSelf],
+                        }
+                    },
+                ) as Arc<TargetingFunction>,
             ),
             (
                 "self".to_string(),
@@ -85,68 +97,6 @@ impl TargetingDefinition {
             TargetingDefinition::Custom(definition) => definition.function(),
         }
     }
-}
-
-#[derive(Clone, Copy)]
-enum TargetingScope {
-    MeleeWeapon,
-    RangedWeapon,
-    Unarmed,
-    Melee,
-}
-
-impl TargetingScope {
-    fn is_allowed(&self, kind: ActionAttackKind) -> bool {
-        match self {
-            TargetingScope::MeleeWeapon => matches!(kind, ActionAttackKind::MeleeWeapon),
-            TargetingScope::RangedWeapon => matches!(kind, ActionAttackKind::RangedWeapon),
-            TargetingScope::Unarmed => matches!(kind, ActionAttackKind::Unarmed),
-            TargetingScope::Melee => {
-                matches!(
-                    kind,
-                    ActionAttackKind::MeleeWeapon | ActionAttackKind::Unarmed
-                )
-            }
-        }
-    }
-}
-
-fn scoped_attack_targeting(
-    scope: TargetingScope,
-    provider_name: &'static str,
-) -> Arc<TargetingFunction> {
-    Arc::new(
-        move |world: &World, entity: Entity, action_context: &ActionContext| {
-            let attack = action_context
-                .attack
-                .as_ref()
-                .unwrap_or_else(|| panic!("{provider_name} requires an attack context"));
-            if !scope.is_allowed(attack.kind) {
-                panic!("{provider_name} does not support this attack context");
-            }
-
-            let range = systems::loadout::attack_targeting_range(world, entity, action_context);
-
-            let trajectory = if range.is_melee() {
-                LineOfSightTrajectory::Ray
-            } else {
-                LineOfSightTrajectory::Parabola {
-                    // TODO: Default arrow speed?
-                    launch_velocity: Velocity::new::<meter_per_second>(50.0),
-                }
-            };
-
-            TargetingContext {
-                kind: TargetingKind::Single,
-                range,
-                line_of_sight: LineOfSight {
-                    trajectory,
-                    extent: LineOfSightExtentTemplate::Point,
-                },
-                allowed_entities: vec![EntityFilter::not_dead(), EntityFilter::NotSelf],
-            }
-        },
-    ) as Arc<TargetingFunction>
 }
 
 // TODO: Should this live somewhere else?
