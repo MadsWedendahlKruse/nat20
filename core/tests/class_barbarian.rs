@@ -20,7 +20,7 @@ fn barbarian_scenario() -> Scenario {
     let mut scenario = Scenario::new();
     scenario
         .spawn("barbarian", "hero.barbarian")
-        .level(1)
+        .level(2)
         // Turn-based, so the real-time ticks in `perform` don't eat into the
         // Rage duration between the turn boundaries the tests drive manually
         .time_mode(TimeMode::TurnBased { encounter_id: None })
@@ -335,4 +335,37 @@ fn unarmored_defense() {
             ModifierSource::Item(ItemId::new("nat20_core", "item.chainmail")),
             16,
         )]));
+}
+
+#[test]
+fn reckless_attack_reaction() {
+    let mut scenario = barbarian_scenario();
+    scenario
+        .spawn("goblin", "monster.goblin_warrior")
+        .level(1)
+        .position([1.0, 0.0, 0.0], false)
+        .spawn();
+
+    // Force barbarian to miss to trigger the reaction
+    scenario
+        .probe("barbarian")
+        .d20_force_outcome(
+            D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+            D20CheckOutcome::Failure,
+        )
+        .act("action.melee_attack")
+        .target_entity("goblin")
+        .perform();
+
+    scenario.react("barbarian").option_index(0).perform();
+
+    scenario
+        .event_filter()
+        .actor("barbarian")
+        .d20_advantage(
+            D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+            ModifierSource::Effect("effect.barbarian.reckless_attack".into()),
+            AdvantageType::Advantage,
+        )
+        .assert_event();
 }
