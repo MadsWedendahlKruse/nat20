@@ -5,8 +5,8 @@ use nat20_core::{
             action::{
                 ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
                 ActionPayloadComponent, ActionResultComponent, DamageResult, EffectResultKind,
-                ReactionResult,
             },
+            reaction::ReactionResult,
             targeting::{AreaShape, TargetingKind, TargetingRange},
         },
         id::{ActionId, EntityIdentifier, SpellId},

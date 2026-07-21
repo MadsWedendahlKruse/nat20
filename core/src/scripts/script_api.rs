@@ -18,10 +18,11 @@ use crate::{
             },
             targeting::TargetInstance,
         },
+        d20::D20Check,
         damage::{
-            AttackSource, DamageComponent, DamageComponentResult, DamageMitigationEffect,
-            DamageMitigationResult, DamageModifiable, DamageRoll, DamageRollResult,
-            MitigationOperation,
+            AttackRoll, AttackSource, DamageComponent, DamageComponentResult,
+            DamageMitigationEffect, DamageMitigationResult, DamageModifiable, DamageRoll,
+            DamageRollResult, MitigationOperation,
         },
         effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
@@ -161,6 +162,8 @@ impl_from_lua_userdata!(
     ActionContext,
     ActionData,
     ActionResult,
+    AttackRoll,
+    D20Check,
     D20CheckDCKind,
     D20ResultKind,
     DamageComponent,
@@ -332,10 +335,19 @@ impl UserData for D20CheckKind {
     }
 }
 
+impl UserData for D20Check {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
+    }
+}
+
 impl UserData for D20ResultKind {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
         fields.add_field_method_get("total", |_, this| Ok(this.d20_result().total()));
+        fields.add_field_method_get("modifiers", |_, this| {
+            Ok(this.d20_result().modifiers().clone())
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
@@ -373,6 +385,46 @@ impl UserData for D20ResultKind {
                 })?;
                 let source = parse_source(&source)?;
                 this.d20_result_mut().add_modifier(source, bonus_value);
+                Ok(())
+            },
+        );
+
+        methods.add_method_mut(
+            "add_advantage",
+            |_, this, (advantage_type, source): (String, String)| {
+                let source = parse_source(&source)?;
+                let advantage_type = serde_plain::from_str(&advantage_type).map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to parse advantage type: {e}"))
+                })?;
+                this.d20_result_mut().add_advantage(advantage_type, source);
+                Ok(())
+            },
+        );
+    }
+}
+
+impl UserData for AttackRoll {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("source", |_, this| {
+            Ok(match this.source {
+                AttackSource::Weapon(weapon_kind) => Some(weapon_kind.to_string().to_lowercase()),
+                AttackSource::Spell => Some("spell".to_string()),
+            })
+        });
+        fields.add_field_method_get("d20_check", |_, this| Ok(this.d20_check.clone()));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method_mut(
+            "add_advantage",
+            |_, this, (advantage_type, source): (String, String)| {
+                let source = parse_source(&source)?;
+                let advantage_type = serde_plain::from_str(&advantage_type).map_err(|e| {
+                    LuaError::RuntimeError(format!("Failed to parse advantage type: {e}"))
+                })?;
+                this.d20_check
+                    .advantage_tracker_mut()
+                    .add(advantage_type, source);
                 Ok(())
             },
         );
@@ -503,6 +555,13 @@ impl UserData for ModifierResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("total", |_, this| Ok(this.total()));
     }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("get_modifier", |_, this, source: String| {
+            let source = parse_source(&source)?;
+            Ok(this.get(&source).map(|modifier| modifier.to_string()))
+        });
+    }
 }
 
 impl UserData for ActionContext {
@@ -546,6 +605,7 @@ impl UserData for ActionData {
                 }
                 // TODO: Could also check the variants recursively?
                 ActionKind::Variant { variants } => Ok(Vec::new()),
+                ActionKind::Reaction { .. } => Ok(Vec::new()),
             }
         });
         fields.add_field_method_get("trigger_event", |_, this| {

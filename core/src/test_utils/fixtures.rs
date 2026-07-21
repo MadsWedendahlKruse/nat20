@@ -106,6 +106,11 @@ pub mod creatures {
                             money: "50 GP".to_string(),
                         },
                     ),
+                    // Level 2
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
                 ],
             );
 

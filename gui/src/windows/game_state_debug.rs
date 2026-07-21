@@ -112,6 +112,32 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                     }
                     ui.unindent();
                 }
+
+                if ui.collapsing_header("Action Executions", TreeNodeFlags::empty()) {
+                    for (actor, execution) in game_state.action_executions.iter() {
+                        ui.indent();
+                        if ui.collapsing_header(
+                            &format!("Action Instance {:?}", actor),
+                            TreeNodeFlags::empty(),
+                        ) {
+                            ui.text(format!("{:#?}", execution));
+                        }
+                        ui.unindent();
+                    }
+                }
+
+                if ui.collapsing_header("Execution Mailbox", TreeNodeFlags::empty()) {
+                    for (actor, mailbox) in game_state.execution_mailbox.iter() {
+                        ui.indent();
+                        if ui.collapsing_header(
+                            &format!("Mailbox for {:?}", actor),
+                            TreeNodeFlags::empty(),
+                        ) {
+                            ui.text(format!("{:#?}", mailbox));
+                        }
+                        ui.unindent();
+                    }
+                }
             },
         );
     }

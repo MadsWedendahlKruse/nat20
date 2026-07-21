@@ -171,6 +171,10 @@ function TargetInstance:entity() end
 -- D20 / event views
 ------------------------------------------------------------
 
+---@class D20Check
+---@field modifiers ModifierMap
+local D20Check = {}
+
 ---@class D20CheckKind
 local D20CheckKind = {}
 ---@return string?
@@ -185,6 +189,7 @@ function D20CheckKind:attack_roll() end
 ---@class D20ResultKind
 ---@field kind D20CheckKind
 ---@field total integer
+---@field modifiers ModifierResult
 local D20ResultKind = {}
 ---@param dc D20CheckDCKind
 ---@return boolean
@@ -199,10 +204,22 @@ function D20ResultKind:reroll_bonus(bonus, source, force_use_new) end
 ---@param source string
 function D20ResultKind:modify_result(bonus, source) end
 
+---@param advantage string -- advantage/disadvantage
+---@param source string
+function D20ResultKind:add_advantage(advantage, source) end
+
 ---@class D20CheckDCKind
 ---@field kind D20CheckKind
 ---@field target ScriptEntity?
 local D20CheckDCKind = {}
+
+---@class AttackRoll
+---@field source string
+---@field d20_check D20Check
+local AttackRoll = {}
+---@param advantage string -- advantage/disadvantage
+---@param source string
+function AttackRoll:add_advantage(advantage, source) end
 
 ---@class Event
 local Event = {}
@@ -336,6 +353,9 @@ function FlatModifierMap:add_modifier(source, value) end
 ---@class ModifierResult
 ---@field total integer
 local ModifierResult = {}
+---@param source string
+---@return string?
+function ModifierResult:get_modifier(source) end
 
 ---@class TimeDuration
 ---@field seconds number
@@ -348,17 +368,18 @@ local TimeDuration = {}
 -- to get parameter type inference and nil checks.
 ------------------------------------------------------------
 
----@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
 ---@alias ActionHookFn fun(game_state: GameState, action: ActionData)
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
----@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
+---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
+---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
+---@alias AttackRollHookFn fun(game_state: GameState, entity: ScriptEntity, attack_roll: AttackRoll)
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
----@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)
----@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
----@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
----@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
----@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
+---@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
+---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
+---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)
+---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
+---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
+---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)
----@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?

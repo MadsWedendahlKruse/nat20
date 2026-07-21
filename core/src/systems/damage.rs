@@ -53,35 +53,51 @@ pub fn damage_roll_fn(
 
 pub fn attack_roll(
     mut attack_roll: AttackRoll,
-    world: &mut World,
+    game_state: &mut GameState,
     attacker: Entity,
     target: Entity,
 ) -> AttackRollResult {
     let attacked_hooks: Vec<(AttackedHook, EffectInstance)> =
-        systems::effects::effects_mut(world, target)
+        systems::effects::effects_mut(&mut game_state.world, target)
             .collect_one_shot_hooks_with_instance(|effect| effect.on_attacked.as_ref());
     for (hook, instance) in &attacked_hooks {
-        hook(world, instance, target, attacker, &mut attack_roll);
+        hook(
+            &game_state.world,
+            instance,
+            target,
+            attacker,
+            &mut attack_roll,
+        );
     }
 
+    systems::effects::effects(&game_state.world, attacker).pre_attack_roll(
+        game_state,
+        attacker,
+        &mut attack_roll,
+    );
+
     let mut result = {
-        let level =
-            systems::helpers::level(world, attacker).expect("Entity must have a level component");
+        let level = systems::helpers::level(&game_state.world, attacker)
+            .expect("Entity must have a level component");
         attack_roll.roll_raw(level.proficiency_bonus())
     };
 
-    systems::effects::effects(world, attacker).post_attack_roll(world, attacker, &mut result);
+    systems::effects::effects(&game_state.world, attacker).post_attack_roll(
+        &game_state.world,
+        attacker,
+        &mut result,
+    );
 
     result
 }
 
 pub fn attack_roll_fn(
     attack_roll_fn: &AttackRollFunction,
-    world: &mut World,
+    game_state: &mut GameState,
     entity: Entity,
     target: Entity,
     context: &ActionContext,
 ) -> AttackRollResult {
-    let roll = attack_roll_fn(world, entity, target, context);
-    attack_roll(roll, world, entity, target)
+    let roll = attack_roll_fn(&game_state.world, entity, target, context);
+    attack_roll(roll, game_state, entity, target)
 }

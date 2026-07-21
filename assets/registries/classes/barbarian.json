@@ -123,6 +123,9 @@
     "actions_by_level": {
         "1": [
             "nat20_core::action.barbarian.rage"
+        ],
+        "2": [
+            "nat20_core::action.barbarian.reckless_attack"
         ]
     }
 }

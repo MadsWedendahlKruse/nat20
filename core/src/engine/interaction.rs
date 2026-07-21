@@ -5,7 +5,7 @@ use hecs::Entity;
 use crate::engine::{
     action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
     encounter::EncounterId,
-    event::Event,
+    event::{Event, EventId},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -112,6 +112,18 @@ impl InteractionSession {
 
     pub fn pending_events_mut(&mut self) -> &mut VecDeque<PendingEvent> {
         &mut self.pending_events
+    }
+
+    pub fn take_pending_event(&mut self, event_id: &EventId) -> Option<(PendingEvent, usize)> {
+        if let Some(pos) = self
+            .pending_events
+            .iter()
+            .position(|pe| &pe.event.id == event_id)
+        {
+            Some((self.pending_events.remove(pos).unwrap(), pos))
+        } else {
+            None
+        }
     }
 
     pub fn clear_prompts(&mut self) {

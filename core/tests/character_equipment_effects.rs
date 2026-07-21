@@ -64,7 +64,7 @@ mod tests {
             entity,
             context,
         );
-        let result = systems::damage::attack_roll(roll, &mut game_state.world, entity, entity);
+        let result = systems::damage::attack_roll(roll, &mut game_state, entity, entity);
         assert_eq!(
             result.roll_result.advantage_tracker().roll_mode(),
             RollMode::Normal
@@ -80,7 +80,7 @@ mod tests {
             entity,
             context,
         );
-        let result = systems::damage::attack_roll(roll, &mut game_state.world, entity, entity);
+        let result = systems::damage::attack_roll(roll, &mut game_state, entity, entity);
         assert_eq!(
             result.roll_result.advantage_tracker().roll_mode(),
             RollMode::Advantage
@@ -94,7 +94,7 @@ mod tests {
             entity,
             context,
         );
-        let result = systems::damage::attack_roll(roll, &mut game_state.world, entity, entity);
+        let result = systems::damage::attack_roll(roll, &mut game_state, entity, entity);
         assert_eq!(
             result.roll_result.advantage_tracker().roll_mode(),
             RollMode::Normal

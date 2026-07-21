@@ -1,15 +1,12 @@
 use std::collections::HashSet;
 
-use hecs::World;
 use imgui::{MouseButton, TreeNodeFlags};
 use nat20_core::{
-    components::{
-        actions::targeting::TargetInstance, id::EntityIdentifier,
-        spells::spell::ConcentrationInstance, time::TurnBoundary,
-    },
+    components::{id::EntityIdentifier, spells::spell::ConcentrationInstance, time::TurnBoundary},
     engine::{
         action_prompt::ActionData,
         event::{EncounterEvent, Event, EventKind, EventLog},
+        game_state::GameState,
     },
     systems::{
         self,
@@ -62,22 +59,19 @@ pub fn event_log_level(event: &Event) -> LogLevel {
     }
 }
 
-pub fn render_action_description(ui: &imgui::Ui, action: &ActionData) {
-    TextSegments::new(vec![
-        (
-            format!("{}'s", action.actor.name().as_str()),
-            TextKind::Actor,
-        ),
-        (format!("{}", action.action_id), TextKind::Action),
-    ])
-    .render(ui);
-}
-
 pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
     match &event.kind {
         EventKind::ActionRequested { action } => {
-            render_action_description(ui, action);
+            TextSegments::new(vec![
+                (
+                    format!("{}'s", action.actor.name().as_str()),
+                    TextKind::Actor,
+                ),
+                (format!("{}", action.action_id), TextKind::Action),
+            ])
+            .render(ui);
         }
+
         EventKind::ActionResult { result, actor } => {
             if let Some(actor) = actor {
                 TextSegments::new(vec![
@@ -94,12 +88,15 @@ pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
                     .render(ui);
             }
         }
-        EventKind::D20CheckPerformed { actor, dc, .. } => {
+
+        EventKind::D20CheckPerformed { actor, dc, .. }
+        | EventKind::D20CheckResolved { actor, dc, .. } => {
             let label = get_dc_description(dc);
             let mut segments = vec![(format!("{}'s", actor.name().as_str()), TextKind::Actor)];
             segments.extend(label);
             TextSegments::new(segments).render(ui);
         }
+
         EventKind::MovingOutOfReach { mover, entity, .. } => {
             TextSegments::new(vec![
                 (mover.name().as_str(), TextKind::Actor),
@@ -145,42 +142,15 @@ pub fn filter_matching_events(events: Vec<&Event>) -> Vec<&Event> {
     filtered_events
 }
 
-fn should_render_as_top_level(log: &EventLog, event: &Event) -> bool {
-    if event.parent.is_none() {
-        return true;
-    }
-
-    // If the parent event triggered a reaction, it's going to look weird regarding
-    // the "chronology" of the events if we render the child event as a child of the
-    // event which triggerd the reaction. Suppose you have something like:
-    // Event A (triggers reaction)
-    // Event B (reaction to A)
-    //
-    // If we render a new Event C as a child of Event A, it will look like:
-    // Event A
-    //   Event C
-    // Event B
-    //
-    // This makes it look like Event C happened after Event A but before Event B,
-    // which is not true. So, if the parent event triggered a reaction, we will render
-    // the child event as a top-level event instead of a child of the parent event.
-    if let Some(parent_event) = event.parent
-        && log.triggered_reactions(&parent_event)
-    {
-        return true;
-    }
-
-    false
-}
-
-impl ImguiRenderableWithContext<&(&World, &LogLevel)> for EventLog {
-    fn render_with_context(&self, ui: &imgui::Ui, context: &(&World, &LogLevel)) {
-        let (world, log_level) = context;
-
+impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for EventLog {
+    fn render_with_context(
+        &self,
+        ui: &imgui::Ui,
+        (game_state, log_level): &(&GameState, &LogLevel),
+    ) {
         let mut log_level_events = self
             .events
             .iter()
-            .filter(|event| should_render_as_top_level(self, event))
             .filter(|event| event_log_level(event) <= **log_level)
             .collect::<Vec<_>>();
 
@@ -188,20 +158,52 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel)> for EventLog {
             log_level_events = filter_matching_events(log_level_events);
         }
 
-        for event in log_level_events {
-            event.render_with_context(ui, &(world, log_level, Some(self)));
+        for (i, event) in log_level_events.iter().enumerate() {
+            let prev_event = log_level_events
+                .get(i.wrapping_sub(1))
+                .map(|event| &**event);
+
+            let indent = should_indent(event, prev_event);
+
+            if indent {
+                ui.indent();
+            }
+
+            event.render_with_context(ui, &(game_state, log_level));
+
+            if indent {
+                ui.unindent();
+            }
         }
     }
 }
 
-impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Event {
+fn should_indent(event: &Event, prev_event: Option<&Event>) -> bool {
+    let Some(prev_event) = prev_event else {
+        return false;
+    };
+
+    if let Some(parent) = event.parent {
+        if parent == prev_event.id {
+            return true;
+        }
+
+        if let Some(prev_parent) = prev_event.parent {
+            if parent == prev_parent {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        context: &(&World, &LogLevel, Option<&EventLog>),
+        (game_state, log_level): &(&GameState, &LogLevel),
     ) {
-        let (world, log_level, event_log) = context;
-
         if event_log_level(self) > **log_level {
             return;
         }
@@ -216,7 +218,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
                 EncounterEvent::EncounterEnded(encounter_id, combat_log) => {
                     if ui.collapsing_header(format!("Log##{}", encounter_id), TreeNodeFlags::FRAMED)
                     {
-                        combat_log.render_with_context(ui, &(world, log_level));
+                        combat_log.render_with_context(ui, &(game_state, log_level));
                     }
                     ui.separator();
                 }
@@ -252,7 +254,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
                 .render(ui);
             }
             EventKind::ActionRequested { action } => {
-                action.render_with_context(ui, world);
+                action.render_with_context(ui, *game_state);
 
                 if let Some(trigger_event) = action.trigger_event.as_ref() {
                     TextSegment::new("as a response to".to_string(), TextKind::Normal).render(ui);
@@ -348,11 +350,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
 
                 ui.same_line();
 
-                participants
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .render_with_context(ui, &world);
+                participants.render(ui);
             }
             EventKind::RestFinished { kind, participants } => {
                 TextSegments::new(vec![
@@ -363,11 +361,7 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
 
                 ui.same_line();
 
-                participants
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .render_with_context(ui, &world);
+                participants.render(ui);
             }
             EventKind::LostConcentration { entity, instances } => {
                 let instance_descriptions = instances
@@ -431,31 +425,6 @@ impl ImguiRenderableWithContext<&(&World, &LogLevel, Option<&EventLog>)> for Eve
                     ui.text(debug_text);
                 });
         });
-
-        if let Some(event_log) = event_log {
-            let mut child_events = event_log
-                .child_events(&self.id)
-                .iter()
-                .filter(|child_event| !should_render_as_top_level(event_log, child_event))
-                .filter_map(|child_event| {
-                    if event_log_level(*child_event) <= **log_level {
-                        Some(*child_event)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            if **log_level == LogLevel::Info {
-                child_events = filter_matching_events(child_events);
-            }
-
-            for child_event in child_events {
-                ui.indent();
-                child_event.render_with_context(ui, context);
-                ui.unindent();
-            }
-        }
     }
 }
 
@@ -478,8 +447,8 @@ fn get_dc_description(dc_kind: &D20CheckDCKind) -> Vec<(String, TextKind)> {
     }
 }
 
-impl ImguiRenderableWithContext<&World> for ActionData {
-    fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
+impl ImguiRenderableWithContext<&GameState> for ActionData {
+    fn render_with_context(&self, ui: &imgui::Ui, game_state: &GameState) {
         TextSegments::new(vec![
             (self.actor.name().as_str(), TextKind::Actor),
             ("is using", TextKind::Normal),
@@ -488,24 +457,22 @@ impl ImguiRenderableWithContext<&World> for ActionData {
         .render(ui);
 
         if !self.is_self_target() && !self.targets.is_empty() {
-            let targets = self
-                .targets
+            let targets = systems::actions::get_targeted_entities(game_state, self, None)
                 .iter()
-                .filter_map(|t| match t {
-                    TargetInstance::Entity { entity, .. } => Some(entity.clone()),
-                    TargetInstance::Point(point) => None,
-                })
+                .map(|entity| EntityIdentifier::from_world(&game_state.world, *entity))
                 .collect::<Vec<_>>();
 
-            ui.same_line();
-            TextSegment::new("on", TextKind::Normal).render(ui);
-            targets.render_with_context(ui, &world);
+            if !targets.is_empty() {
+                ui.same_line();
+                TextSegment::new("on", TextKind::Normal).render(ui);
+                targets.render(ui);
+            }
         }
     }
 }
 
-impl ImguiRenderableWithContext<&World> for Vec<EntityIdentifier> {
-    fn render_with_context(&self, ui: &imgui::Ui, world: &World) {
+impl ImguiRenderable for Vec<EntityIdentifier> {
+    fn render(&self, ui: &imgui::Ui) {
         // Hashset has random order, so we can't just convert the vec to a set
         // since this will cause the order to change on each render
         let mut unique_targets = Vec::new();

@@ -8,9 +8,11 @@ use strum::Display;
 use crate::{
     components::{
         ability::Ability,
-        actions::action::{
-            Action, ActionKind, ActionTimeline, ActionUsabilityFunction, ReactionTrigger,
-            TargetingFunction,
+        actions::{
+            action::{
+                Action, ActionKind, ActionTimeline, ActionUsabilityFunction, TargetingFunction,
+            },
+            reaction::ReactionTrigger,
         },
         effects::effect::EffectInstanceId,
         id::{EffectId, IdProvider, SpellId},

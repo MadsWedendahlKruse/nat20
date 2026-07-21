@@ -20,9 +20,9 @@ use crate::{
                 EffectLifetimeTemplate, EffectStackingPolicy,
             },
             hooks::{
-                ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, DamageRollHook,
-                DamageRollResultHook, DeathHook, PostDamageMitigationHook, PreDamageMitigationHook,
-                ResourceCostHook, TurnStartHook,
+                ActionHook, ActionResultHook, ArmorClassHook, AttackRollHook, AttackedHook,
+                DamageRollHook, DamageRollResultHook, DeathHook, PostDamageMitigationHook,
+                PreDamageMitigationHook, ResourceCostHook, TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -113,6 +113,8 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub modifiers: Vec<EffectModifier>,
 
+    #[serde(default)]
+    pub pre_attack_roll: Vec<AttackRollHookDefinition>,
     // #[serde(default)]
     // pub post_attack_roll: Vec<AttackRollResultHookDef>,
     #[serde(default)]
@@ -201,6 +203,14 @@ impl From<EffectDefinition> for Effect {
         }
 
         // 2. Hook-based modifiers
+        // Build pre_attack_roll hooks
+        {
+            if !definition.pre_attack_roll.is_empty() {
+                let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
+                effect.pre_attack_roll = Some(AttackRollHookDefinition::combine_hooks(hooks));
+            }
+        }
+
         // Build on_attacked hooks
         {
             if !definition.on_attacked.is_empty() {
@@ -801,6 +811,40 @@ where
         .iter()
         .map(|def| def.build_hook(effect_id))
         .collect::<Vec<HookFn>>()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum AttackRollHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> AttackRollHook {
+        match self {
+            AttackRollHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &GameState, entity: Entity, attack_roll: &mut AttackRoll| {
+                        systems::scripts::evaluate_attack_roll_hook(
+                            &script_id,
+                            game_state,
+                            entity,
+                            attack_roll,
+                        );
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<AttackRollHook>) -> AttackRollHook {
+        Arc::new(move |world, entity, attack_roll| {
+            for hook in &hooks {
+                hook(world, entity, attack_roll);
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

@@ -12,8 +12,8 @@ use crate::{
                 ActionPayloadComponent, ActionPhaseSpec, ActionResult, ActionResultComponent,
                 DamageOnFailure, DamageResult, EffectResult, EffectResultKind, HealingResult,
                 PayloadDelivery, PhaseOutcomes, PhaseRequirement, PhaseTargets,
-                ReactionBodyFunction, ReactionResult,
             },
+            reaction::{ReactionBody, ReactionResult},
             targeting::TargetInstance,
         },
         activity::ActivityState,
@@ -410,7 +410,7 @@ impl StepState {
             ActionCondition::AttackRoll(attack_roll) => {
                 let attack_roll_result = systems::damage::attack_roll_fn(
                     attack_roll.as_ref(),
-                    &mut game_state.world,
+                    game_state,
                     actor,
                     self.target,
                     &action.context,
@@ -777,10 +777,10 @@ impl StepComponent {
                 Self::apply_effect(game_state, action, target, resolution, effect_id, effect)
             }
             PayloadResult::Reaction => {
-                let ActionPayloadComponent::Reaction(reaction_fn) = &self.payload else {
+                let ActionPayloadComponent::Reaction(reaction) = &self.payload else {
                     unreachable!()
                 };
-                Self::apply_reaction(game_state, action, resolution, Arc::clone(reaction_fn))
+                Self::apply_reaction(game_state, action, resolution, reaction)
             }
             PayloadResult::Displacement(displacement) => {
                 ActionResultComponent::Displacement(displacement.and_then(|displacement| {
@@ -914,73 +914,13 @@ impl StepComponent {
         game_state: &mut GameState,
         action: &ActionData,
         resolution: &ActionConditionResolution,
-        reaction_fn: Arc<ReactionBodyFunction>,
+        reaction: &ReactionBody,
     ) -> ActionResultComponent {
         if !resolution.is_success() {
             return ActionResultComponent::Reaction(ReactionResult::NoEffect);
         }
 
-        let Some(trigger_event) = action.trigger_event.as_ref() else {
-            panic!("No trigger event in action for reaction payload, cannot apply reaction");
-        };
-
-        // Take the pending trigger event out of the session while the reaction
-        // body (potentially) mutates it, then put it back
-        let scope = game_state.scope_for_entity(action.actor.id());
-        let pending_events = game_state
-            .interaction_engine
-            .session_mut(scope)
-            .pending_events_mut();
-        let Some(index) = pending_events
-            .iter()
-            .position(|pending| pending.event.id == trigger_event.id)
-        else {
-            panic!(
-                "Attempted to perform reaction to event which is not pending: {:#?}",
-                action
-            );
-        };
-        let mut pending = pending_events.remove(index).unwrap();
-
-        let result = reaction_fn(game_state, action, &mut pending.event);
-
-        let result = result.unwrap_or_else(|| {
-            // TODO: Not sure if this check actually works
-            if **trigger_event != pending.event {
-                ReactionResult::ModifyEvent {
-                    before: trigger_event.as_ref().clone(),
-                    after: pending.event.clone(),
-                }
-            } else {
-                ReactionResult::NoEffect // TEMP
-            }
-        });
-
-        let mut should_reinsert = true;
-
-        if let ReactionResult::CancelEvent { event, .. } = &result {
-            if event.id == pending.event.id {
-                debug!(
-                    "Reaction cancelled event {:?}, removing from pending events",
-                    event.id
-                );
-                should_reinsert = false;
-            } else {
-                // TODO: Not sure if this ever actually happens?
-                warn!(
-                    "Reaction cancelled event {:?}, but pending event is {:?}, not removing from pending events",
-                    event, pending.event
-                );
-            }
-        }
-
-        if should_reinsert {
-            game_state
-                .interaction_engine
-                .session_mut(scope)
-                .pending_events_mut()
-                .insert(index, pending);
-        }
+        let result = reaction.execute(game_state, action);
 
         ActionResultComponent::Reaction(result)
     }

@@ -4,7 +4,7 @@ use tracing::error;
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
+        damage::{AttackRoll, DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, ScriptId},
         items::equipment::armor::ArmorClass,
@@ -177,6 +177,29 @@ pub fn evaluate_armor_class_hook(
         error!(
             "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
             armor_class_hook, entity, err
+        );
+    }
+}
+
+pub fn evaluate_attack_roll_hook(
+    attack_roll_hook: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    attack_roll: &mut AttackRoll,
+) {
+    let script = ScriptsRegistry::get(attack_roll_hook).expect(
+        format!(
+            "Attack roll hook script not found in registry: {:?}",
+            attack_roll_hook
+        )
+        .as_str(),
+    );
+    if let Err(err) =
+        SCRIPT_ENGINE.evaluate_attack_roll_hook(script, game_state, entity, attack_roll)
+    {
+        error!(
+            "Error evaluating attack roll hook script {:?} for entity {:?}: {:?}",
+            attack_roll_hook, entity, err
         );
     }
 }

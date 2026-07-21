@@ -177,6 +177,31 @@
                     "required": [
                         "variants"
                     ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "reaction": {
+                            "type": "object",
+                            "properties": {
+                                "body": {
+                                    "description": "Script id of a Lua reaction body, e.g. `nat20_core::script.shield`, or the built-in `cancel_event`.",
+                                    "type": "string",
+                                    "examples": [
+                                        "nat20_core::script.shield",
+                                        "cancel_event"
+                                    ]
+                                }
+                            },
+                            "required": [
+                                "body"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "reaction"
+                    ]
                 }
             ]
         },

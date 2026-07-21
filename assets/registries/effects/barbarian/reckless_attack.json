@@ -1,0 +1,15 @@
+{
+    "id": "nat20_core::effect.barbarian.reckless_attack",
+    "description": "You have advantage on attack rolls, but enemies also have advantage on attack rolls against you.",
+    "kind": "buff",
+    "pre_attack_roll": [
+        {
+            "script": "nat20_core::script.action.barbarian.reckless_attack"
+        }
+    ],
+    "on_attacked": [
+        {
+            "modifier": "advantage"
+        }
+    ]
+}

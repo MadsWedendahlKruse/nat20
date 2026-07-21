@@ -28,8 +28,8 @@ use nat20_core::{
     engine::{
         action_prompt::{ActionData, ActionPromptKind},
         event::{
-            CallbackResult, EventCallback, EventFilter, EventKind, EventListener, EventListenerId,
-            ListenerSource,
+            CallbackResult, EventCallback, EventFilter, EventKind, EventKindTag, EventListener,
+            EventListenerId, ListenerSource,
         },
         game_state::GameState,
     },
@@ -208,34 +208,43 @@ impl ActionBarWindow {
                 // I think we can just do all the filtering in the callback?
                 true
             }),
-            EventCallback::new(move |_game_state, event, _source| {
-                let EventKind::ActionResult { result, .. } = &event.kind else {
-                    return CallbackResult::None;
-                };
-
-                if result.target.id() != entity {
-                    return CallbackResult::None;
-                }
-
-                let components = result.components_kind(ActionResultComponentKind::Effect);
-                for component in components {
-                    let ActionResultComponent::Effect(effect_result) = component else {
-                        continue;
-                    };
-                    if let Some(effect) = EffectsRegistry::get(effect_result.root())
-                        && !effect.actions.is_empty()
-                        && effect_result.result != EffectResultKind::None
-                    {
-                        flag.store(true, Ordering::Relaxed);
-                        return CallbackResult::None;
+            EventCallback::new(move |_game_state, event, _source| match &event.kind {
+                EventKind::ActionResult { result, .. } if result.target.id() != entity => {
+                    let components = result.components_kind(ActionResultComponentKind::Effect);
+                    for component in components {
+                        let ActionResultComponent::Effect(effect_result) = component else {
+                            continue;
+                        };
+                        if let Some(effect) = EffectsRegistry::get(effect_result.root())
+                            && !effect.actions.is_empty()
+                            && effect_result.result != EffectResultKind::None
+                        {
+                            flag.store(true, Ordering::Relaxed);
+                            return CallbackResult::None;
+                        }
                     }
+
+                    CallbackResult::None
                 }
 
-                CallbackResult::None
+                EventKind::EquipmentChanged {
+                    entity: event_entity,
+                    item,
+                    equipped,
+                } if event_entity.id() == entity => {
+                    flag.store(true, Ordering::Relaxed);
+                    CallbackResult::None
+                }
+
+                _ => CallbackResult::None,
             }),
             ListenerSource::Other,
             false,
-        );
+        )
+        .with_kinds(vec![
+            EventKindTag::ActionResult,
+            EventKindTag::EquipmentChanged,
+        ]);
         let listener_id = listener.id;
 
         game_state.event_dispatcher.register_listener(listener);
@@ -1012,6 +1021,12 @@ fn render_attack_hit_chance_tooltip(
         action.actor.id(),
         target,
         &action.context,
+    );
+
+    systems::effects::effects(&game_state.world, action.actor.id()).pre_attack_roll(
+        &game_state,
+        action.actor.id(),
+        &mut attack_roll,
     );
 
     // Effects on target

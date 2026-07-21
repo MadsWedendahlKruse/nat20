@@ -351,6 +351,11 @@ pub fn resume_waiting_executions(game_state: &mut GameState, scope: InteractionS
         .map(|(entity, _)| *entity)
         .collect();
 
+    debug!(
+        "Resuming waiting executions in scope {:?}: {:?}",
+        scope, waiting
+    );
+
     for entity in waiting {
         with_execution(game_state, entity, |execution, game_state| {
             execution.resume_from_event(game_state)

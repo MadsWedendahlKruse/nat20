@@ -10,8 +10,9 @@ use tracing::debug;
 
 use crate::{
     components::{
-        actions::action::{
-            ReactionBodyFunction, ReactionResult, ReactionTrigger, ReactionTriggerFunction,
+        actions::reaction::{
+            ReactionBody, ReactionBodyFunction, ReactionResult, ReactionTrigger,
+            ReactionTriggerFunction,
         },
         id::ScriptId,
         resource::{RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION, ResourceAmountMap},
@@ -33,7 +34,7 @@ impl_string_schema!(
 );
 
 impl_string_schema!(
-    ReactionBody,
+    ReactionBodyDefinition,
     "ReactionBody",
     "description": "Script id of a Lua reaction body, e.g. `nat20_core::script.shield`, \
          or the built-in `cancel_event`.",
@@ -158,18 +159,18 @@ impl From<ReactionTriggerDefinition> for ReactionTrigger {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct ReactionBody {
+pub struct ReactionBodyDefinition {
     pub raw: String,
     pub function: Arc<ReactionBodyFunction>,
     pub script: Option<ScriptId>,
 }
 
-impl FromStr for ReactionBody {
+impl FromStr for ReactionBodyDefinition {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(function) = REACTION_BODY_DEFAULTS.get(s) {
-            return Ok(ReactionBody {
+            return Ok(ReactionBodyDefinition {
                 raw: s.to_string(),
                 function: function.clone(),
                 script: None,
@@ -184,7 +185,7 @@ impl FromStr for ReactionBody {
         })?;
         let script = Some(script_id.clone());
 
-        Ok(ReactionBody {
+        Ok(ReactionBodyDefinition {
             raw: s.to_string(),
             function: Arc::new(move |game_state, reaction_data, event| {
                 systems::scripts::evaluate_reaction_body(
@@ -200,7 +201,7 @@ impl FromStr for ReactionBody {
     }
 }
 
-impl TryFrom<String> for ReactionBody {
+impl TryFrom<String> for ReactionBodyDefinition {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -208,8 +209,14 @@ impl TryFrom<String> for ReactionBody {
     }
 }
 
-impl From<ReactionBody> for String {
-    fn from(body: ReactionBody) -> Self {
+impl From<ReactionBodyDefinition> for String {
+    fn from(body: ReactionBodyDefinition) -> Self {
         body.raw
+    }
+}
+
+impl Into<ReactionBody> for ReactionBodyDefinition {
+    fn into(self) -> ReactionBody {
+        ReactionBody::new(self.function)
     }
 }

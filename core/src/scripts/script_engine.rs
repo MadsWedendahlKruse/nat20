@@ -46,7 +46,7 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
+        damage::{AttackRoll, DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, EntityIdentifier, ScriptId},
         items::equipment::armor::ArmorClass,
@@ -282,6 +282,29 @@ impl ScriptEngine {
                     scope.create_userdata_ref(game_state)?,
                     ent,
                     scope.create_userdata_ref_mut(armor_class.modifiers_mut())?,
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_attack_roll_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        attack_roll: &mut AttackRoll,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::AttackRollHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref_mut(attack_roll)?,
                 ))
             })
             .map_err(Self::runtime_error)

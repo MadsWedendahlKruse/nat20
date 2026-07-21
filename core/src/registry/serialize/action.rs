@@ -23,7 +23,7 @@ use crate::{
             effect::EffectInstanceDefinition,
             parser::{Evaluable, EvaluationError},
             quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
-            reaction::{ReactionBody, ReactionTriggerDefinition},
+            reaction::{ReactionBodyDefinition, ReactionTriggerDefinition},
             targeting::{AreaShapeDefinition, TargetingDefinition, TargetingKindDefinition},
             variables::{PARSER_VARIABLES, VariableMap},
         },
@@ -261,7 +261,7 @@ pub enum ActionPayloadComponentDefinition {
         healing: HealEquation,
     },
     Reaction {
-        reaction: ReactionBody,
+        reaction: ReactionBodyDefinition,
     },
     Displacement {
         displacement: DisplacementTemplateDefinition,
@@ -289,7 +289,7 @@ impl From<ActionPayloadComponentDefinition> for ActionPayloadComponent {
                 ActionPayloadComponent::Healing(healing.function)
             }
             ActionPayloadComponentDefinition::Reaction { reaction } => {
-                ActionPayloadComponent::Reaction(reaction.function)
+                ActionPayloadComponent::Reaction(reaction.into())
             }
             ActionPayloadComponentDefinition::Displacement { displacement } => {
                 ActionPayloadComponent::Displacement(Arc::new(
@@ -374,6 +374,7 @@ impl From<ActionPhaseDefinition> for ActionPhaseSpec {
 pub enum ActionKindDefinition {
     Standard { phases: Vec<ActionPhaseDefinition> },
     Variants { variants: Vec<ActionId> },
+    Reaction { body: ReactionBodyDefinition },
 }
 
 impl From<ActionKindDefinition> for ActionKind {
@@ -384,6 +385,8 @@ impl From<ActionKindDefinition> for ActionKind {
             },
 
             ActionKindDefinition::Variants { variants } => ActionKind::Variant { variants },
+
+            ActionKindDefinition::Reaction { body } => ActionKind::Reaction { body: body.into() },
         }
     }
 }
@@ -409,11 +412,21 @@ impl RegistryReferenceCollector for ActionKindDefinition {
                     }
                 }
             }
+
             ActionKindDefinition::Variants { .. } => {
                 // TODO: Although the variant references an ActionId, that might
                 // refer to the action associated with a spell, so the action ID
                 // would not be present in the action registry directly. So how do
                 // we validate that?
+            }
+
+            ActionKindDefinition::Reaction { body } => {
+                if let Some(script_id) = &body.script {
+                    collector.add(RegistryReference::Script(
+                        script_id.clone(),
+                        ScriptFunction::ReactionBody,
+                    ));
+                }
             }
         }
     }

@@ -336,6 +336,46 @@ impl D20CheckResult {
     pub fn reroll(&self) -> D20CheckResult {
         self.check.roll(self.proficiency_bonus)
     }
+
+    pub fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource) {
+        let original_roll_mode = self.check.advantage_tracker.roll_mode();
+
+        self.check.advantage_tracker_mut().add(kind, source);
+
+        let new_roll_mode = self.check.advantage_tracker().roll_mode();
+
+        if new_roll_mode == original_roll_mode {
+            return;
+        }
+
+        match (new_roll_mode, original_roll_mode) {
+            (RollMode::Normal, RollMode::Advantage) => {
+                // We had advantage before, but now we don't. Keep the highest roll.
+                self.rolls.iter().max().map(|&r| self.selected_roll = r);
+                self.rolls = vec![self.selected_roll];
+            }
+            (RollMode::Normal, RollMode::Disadvantage) => {
+                // We had disadvantage before, but now we don't. Keep the lowest roll.
+                self.rolls.iter().min().map(|&r| self.selected_roll = r);
+                self.rolls = vec![self.selected_roll];
+            }
+            (RollMode::Advantage, RollMode::Normal) => {
+                // We had no advantage before, but now we do. Reroll and keep the highest.
+                let mut rng = rand::rng();
+                let new_roll = rng.random_range(1..=20) as u8;
+                self.rolls.push(new_roll);
+                self.selected_roll = *self.rolls.iter().max().unwrap();
+            }
+            (RollMode::Disadvantage, RollMode::Normal) => {
+                // We had no disadvantage before, but now we do. Reroll and keep the lowest.
+                let mut rng = rand::rng();
+                let new_roll = rng.random_range(1..=20) as u8;
+                self.rolls.push(new_roll);
+                self.selected_roll = *self.rolls.iter().min().unwrap();
+            }
+            _ => {}
+        }
+    }
 }
 
 pub trait D20CheckKey: Eq + Hash + IntoEnumIterator + Copy {}

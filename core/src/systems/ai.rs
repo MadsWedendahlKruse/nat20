@@ -63,5 +63,9 @@ pub fn recommeneded_target_attitude(
         ActionKind::Variant { variants } => {
             todo!()
         }
+
+        ActionKind::Reaction { .. } => {
+            todo!()
+        }
     }
 }

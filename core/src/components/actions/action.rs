@@ -13,7 +13,8 @@ use crate::{
     components::{
         actions::{
             execution::PhaseState,
-            targeting::{AreaShape, TargetingContext},
+            reaction::{ReactionBody, ReactionResult, ReactionTrigger},
+            targeting::{AreaShape, TargetInstance, TargetingContext},
         },
         d20::D20CheckResult,
         damage::{
@@ -30,7 +31,7 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{Event, EventKindTag},
+        event::{Event, EventKind},
         game_state::GameState,
     },
     entities::projectile::ProjectileTemplate,
@@ -49,9 +50,6 @@ pub type SavingThrowFunction =
 pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> ModifierMap + Send + Sync;
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
-pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
-pub type ReactionBodyFunction =
-    dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionResult> + Send + Sync;
 pub type DisplacementFunction =
     dyn Fn(&World, Entity, &ActionContext) -> DisplacementTemplate + Send + Sync;
 pub type AreaShapeFunction = dyn Fn(&World, Entity, &ActionContext) -> AreaShape + Send + Sync;
@@ -154,6 +152,7 @@ impl PartialEq for Action {
 pub enum ActionKind {
     Standard { phases: Vec<ActionPhaseSpec> },
     Variant { variants: Vec<ActionId> },
+    Reaction { body: ReactionBody },
 }
 
 impl ActionKind {
@@ -182,12 +181,50 @@ impl ActionKind {
                     "ActionKind::Variants should be resolved to a specific variant before performing"
                 );
             }
+
+            ActionKind::Reaction { body } => {
+                // TODO: Definitely feels like a hack to bypass the whole action
+                // execution system like this, but if an entity wants to react to
+                // their own event in the middle of an action, then the execution
+                // pipeline will overwrite the current action with the new reaction
+
+                let result = body.execute(game_state, action_data);
+
+                let entity_targets = action_data
+                    .targets
+                    .iter()
+                    .filter_map(|target_instance| match target_instance {
+                        TargetInstance::Entity { entity, .. } => Some(entity.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+
+                let target = entity_targets.first().unwrap_or(&action_data.actor);
+                game_state.process_event(Event::new(EventKind::ActionResult {
+                    result: ActionResult {
+                        target: target.clone(),
+                        components: vec![ActionResultComponent::Reaction(result)],
+                    },
+                    actor: Some(action_data.actor.clone()),
+                }));
+
+                let scope = game_state.scope_for_entity(action_data.actor.id());
+                game_state
+                    .interaction_engine
+                    .session_mut(scope)
+                    .clear_blocker(action_data.actor.id());
+                game_state.resume_pending_events_if_ready(scope);
+            }
         }
 
         phases
     }
 
     pub fn is_reaction(&self) -> bool {
+        if let ActionKind::Reaction { .. } = self {
+            return true;
+        }
+
         self.phases().iter().any(|phase| {
             !phase
                 .payload
@@ -200,6 +237,7 @@ impl ActionKind {
         match self {
             ActionKind::Standard { phases } => phases,
             ActionKind::Variant { .. } => &[],
+            ActionKind::Reaction { .. } => &[],
         }
     }
 }
@@ -209,16 +247,9 @@ impl Debug for ActionKind {
         match self {
             ActionKind::Standard { .. } => write!(f, "Standard"),
             ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
+            ActionKind::Reaction { .. } => write!(f, "Reaction"),
         }
     }
-}
-
-#[derive(Clone)]
-pub struct ReactionTrigger {
-    /// Event kinds that can trigger this reaction. Should be checked before the
-    /// trigger function (typically Lua) runs.
-    pub events: Vec<EventKindTag>,
-    pub function: Arc<ReactionTriggerFunction>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -409,7 +440,7 @@ pub enum ActionPayloadComponent {
     },
     Effect(EffectInstanceTemplate),
     Healing(Arc<HealingFunction>),
-    Reaction(Arc<ReactionBodyFunction>),
+    Reaction(ReactionBody),
     Displacement(Arc<DisplacementFunction>),
 }
 
@@ -648,42 +679,6 @@ pub struct HealingResult {
     // TODO: Dedicated type for healing rolls?
     pub healing: ModifierResult,
     pub new_life_state: Option<LifeState>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ReactionResult {
-    ModifyEvent {
-        before: Event,
-        after: Event,
-    },
-    CancelEvent {
-        event: Box<Event>,
-        resources_refunded: ResourceAmountMap,
-    },
-    NoEffect,
-}
-
-impl PartialEq for ReactionResult {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                ReactionResult::ModifyEvent {
-                    before: b1,
-                    after: a1,
-                },
-                ReactionResult::ModifyEvent {
-                    before: b2,
-                    after: a2,
-                },
-            ) => b1.id == b2.id && a1.id == a2.id,
-            (
-                ReactionResult::CancelEvent { event: e1, .. },
-                ReactionResult::CancelEvent { event: e2, .. },
-            ) => e1.id == e2.id,
-            (ReactionResult::NoEffect, ReactionResult::NoEffect) => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Kinded)]

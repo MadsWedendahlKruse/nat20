@@ -105,6 +105,13 @@
                 "$ref": "#/definitions/DamageRollResultHookDefinition"
             }
         },
+        "pre_attack_roll": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/AttackRollHookDefinition"
+            }
+        },
         "pre_damage_mitigation": {
             "type": "array",
             "default": [],
@@ -199,6 +206,21 @@
                         "modifier"
                     ]
                 },
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
+        "AttackRollHookDefinition": {
+            "anyOf": [
                 {
                     "type": "object",
                     "properties": {
