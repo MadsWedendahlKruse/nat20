@@ -4,7 +4,8 @@ use tracing::error;
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        damage::{AttackRoll, DamageMitigationResult, DamageRoll, DamageRollResult},
+        d20::{D20Check, D20CheckResult},
+        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, ScriptId},
         items::equipment::armor::ArmorClass,
@@ -13,6 +14,7 @@ use crate::{
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::ScriptsRegistry,
     scripts::script_engine::SCRIPT_ENGINE,
+    systems::d20::D20CheckKind,
 };
 
 // TODO: Since we only have single languauge support, do we still need all these
@@ -181,25 +183,49 @@ pub fn evaluate_armor_class_hook(
     }
 }
 
-pub fn evaluate_attack_roll_hook(
-    attack_roll_hook: &ScriptId,
+pub fn evaluate_d20_check_hook(
+    check_hook: &ScriptId,
     game_state: &GameState,
     entity: Entity,
-    attack_roll: &mut AttackRoll,
+    kind: &D20CheckKind,
+    check: &mut D20Check,
 ) {
-    let script = ScriptsRegistry::get(attack_roll_hook).expect(
+    let script = ScriptsRegistry::get(check_hook).expect(
         format!(
-            "Attack roll hook script not found in registry: {:?}",
-            attack_roll_hook
+            "D20 check hook script not found in registry: {:?}",
+            check_hook
+        )
+        .as_str(),
+    );
+    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_check_hook(script, game_state, entity, kind, check)
+    {
+        error!(
+            "Error evaluating d20 check hook script {:?} for entity {:?}: {:?}",
+            check_hook, entity, err
+        );
+    }
+}
+
+pub fn evaluate_d20_result_hook(
+    result_hook: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    kind: &D20CheckKind,
+    result: &mut D20CheckResult,
+) {
+    let script = ScriptsRegistry::get(result_hook).expect(
+        format!(
+            "D20 result hook script not found in registry: {:?}",
+            result_hook
         )
         .as_str(),
     );
     if let Err(err) =
-        SCRIPT_ENGINE.evaluate_attack_roll_hook(script, game_state, entity, attack_roll)
+        SCRIPT_ENGINE.evaluate_d20_result_hook(script, game_state, entity, kind, result)
     {
         error!(
-            "Error evaluating attack roll hook script {:?} for entity {:?}: {:?}",
-            attack_roll_hook, entity, err
+            "Error evaluating d20 result hook script {:?} for entity {:?}: {:?}",
+            result_hook, entity, err
         );
     }
 }

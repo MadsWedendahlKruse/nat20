@@ -2,7 +2,7 @@ use core::panic;
 use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 use hecs::Entity;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use crate::{
     components::{
@@ -32,7 +32,7 @@ use crate::{
     registry::registry::SpellsRegistry,
     systems::{
         self,
-        d20::{D20CheckDCKind, D20ResultKind},
+        d20::D20CheckDCKind,
         effects::EffectApplicationResult,
         geometry::{Displacement, DisplacementTemplate},
     },
@@ -405,66 +405,14 @@ impl StepState {
             action.instance_id, self.condition
         );
 
-        match &self.condition {
+        let event = match &self.condition {
             ActionCondition::None => unreachable!(),
 
             ActionCondition::AttackRoll(attack_roll) => {
-                let attack_roll_result = systems::damage::attack_roll_fn(
-                    attack_roll.as_ref(),
-                    game_state,
-                    actor,
-                    self.target,
-                    &action.context,
-                );
+                let (source, check) =
+                    attack_roll(&game_state.world, actor, self.target, &action.context);
 
-                let armor_class = systems::loadout::armor_class(game_state, self.target);
-
-                let attack_event = Event::new(EventKind::D20CheckPerformed {
-                    actor: action.actor.clone(),
-                    result: D20ResultKind::AttackRoll {
-                        result: attack_roll_result.clone(),
-                    },
-                    dc: D20CheckDCKind::AttackRoll(
-                        EntityIdentifier::from_world(&game_state.world, self.target),
-                        attack_roll_result.source.clone(),
-                        armor_class,
-                    ),
-                })
-                .with_parent(
-                    game_state
-                        .event_log(action.actor.id())
-                        .action_event_id(&action.instance_id),
-                );
-
-                let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
-                    EventKind::D20CheckResolved { result, dc, .. } => {
-                        let armor_class = match dc {
-                            D20CheckDCKind::AttackRoll(_, _, armor_class) => armor_class.clone(),
-                            _ => panic!("Expected AttackRoll DC in callback, got {:?}", dc),
-                        };
-
-                        let attack_roll = match result {
-                            D20ResultKind::AttackRoll { result } => result.clone(),
-                            _ => panic!("Expected AttackRoll result in callback, got {:?}", result),
-                        };
-
-                        game_state.execution_mailbox.insert(
-                            actor,
-                            ResumePayload::Condition(ActionConditionResolution::AttackRoll {
-                                attack_roll,
-                                armor_class,
-                            }),
-                        );
-
-                        CallbackResult::None
-                    }
-                    _ => panic!(
-                        "Expected D20CheckResolved event in callback, got {:?}",
-                        event.kind
-                    ),
-                });
-
-                game_state.process_event_with_response_callback(attack_event, callback);
+                systems::d20::check_attack(game_state, actor, self.target, source, check)
             }
 
             ActionCondition::SavingThrow(saving_throw) => {
@@ -475,50 +423,38 @@ impl StepState {
                     action.instance_id, saving_throw_dc
                 );
 
-                let saving_throw_event = systems::d20::check(
+                systems::d20::check(
                     game_state,
                     self.target,
-                    &D20CheckDCKind::SavingThrow(saving_throw_dc.clone()),
+                    &D20CheckDCKind::SavingThrow(saving_throw_dc),
                 )
-                .with_parent(
-                    game_state
-                        .event_log(actor)
-                        .action_event_id(&action.instance_id),
-                );
-
-                let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
-                    EventKind::D20CheckResolved { result, dc, .. } => {
-                        let saving_throw_dc = match dc {
-                            D20CheckDCKind::SavingThrow(dc) => dc.clone(),
-                            _ => panic!("Expected SavingThrow DC in callback, got {:?}", dc),
-                        };
-
-                        let saving_throw_result = match result {
-                            D20ResultKind::SavingThrow { result, .. } => result.clone(),
-                            _ => {
-                                panic!("Expected SavingThrow result in callback, got {:?}", result)
-                            }
-                        };
-
-                        game_state.execution_mailbox.insert(
-                            actor,
-                            ResumePayload::Condition(ActionConditionResolution::SavingThrow {
-                                saving_throw_result,
-                                saving_throw_dc,
-                            }),
-                        );
-
-                        CallbackResult::None
-                    }
-                    _ => panic!(
-                        "Expected D20CheckResolved event in callback, got {:?}",
-                        event.kind
-                    ),
-                });
-
-                game_state.process_event_with_response_callback(saving_throw_event, callback);
             }
         }
+        .with_parent(
+            game_state
+                .event_log(actor)
+                .action_event_id(&action.instance_id),
+        );
+
+        let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
+            EventKind::D20CheckResolved { result, dc, .. } => {
+                game_state.execution_mailbox.insert(
+                    actor,
+                    ResumePayload::Condition(ActionConditionResolution::Conditional {
+                        dc: dc.clone(),
+                        result: result.clone(),
+                    }),
+                );
+
+                CallbackResult::None
+            }
+            _ => panic!(
+                "Expected D20CheckResolved event in callback, got {:?}",
+                event.kind
+            ),
+        });
+
+        game_state.process_event_with_response_callback(event, callback);
     }
 
     /// Returns false while a component is waiting on an event round-trip
@@ -664,12 +600,10 @@ impl StepComponent {
                 if let Some(DamageOnFailure::Half) = damage_on_failure
                     && !resolution.is_success()
                 {
-                    let failure_label = match resolution {
-                        ActionConditionResolution::Unconditional => unreachable!(),
-                        ActionConditionResolution::AttackRoll { .. } => "Attack Miss".to_string(),
-                        ActionConditionResolution::SavingThrow { .. } => {
-                            "Successful Save".to_string()
-                        }
+                    let failure_label = if resolution.is_attack_roll() {
+                        "Attack Miss".to_string()
+                    } else {
+                        "Successful Save".to_string()
                     };
 
                     for component in damage_roll.components.iter_mut() {
@@ -810,33 +744,12 @@ impl StepComponent {
             (None, None)
         };
 
-        let result = match resolution {
-            ActionConditionResolution::Unconditional => {
-                DamageResult::unconditional(damage_result, damage_taken, new_life_state)
-            }
-            ActionConditionResolution::AttackRoll {
-                attack_roll,
-                armor_class,
-            } => DamageResult::attack_roll(
-                damage_result,
-                damage_taken,
-                new_life_state,
-                attack_roll.clone(),
-                armor_class.clone(),
-            ),
-            ActionConditionResolution::SavingThrow {
-                saving_throw_dc,
-                saving_throw_result,
-            } => DamageResult::saving_throw(
-                damage_result,
-                damage_taken,
-                new_life_state,
-                saving_throw_dc.clone(),
-                saving_throw_result.clone(),
-            ),
-        };
-
-        ActionResultComponent::Damage(result)
+        ActionResultComponent::Damage(DamageResult {
+            resolution: resolution.clone(),
+            damage_roll: damage_result,
+            damage_taken,
+            new_life_state,
+        })
     }
 
     fn apply_healing(

@@ -63,6 +63,14 @@
                 "$ref": "#/definitions/ArmorClassHookDefinition"
             }
         },
+        "on_attack_roll": {
+            "description": "Scripted d20 check hooks (`check_hook` pre-roll, `result_hook`\npost-roll), one field per check kind just like the runtime maps",
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/AttackRollHookDefinition"
+            }
+        },
         "on_attacked": {
             "type": "array",
             "default": [],
@@ -84,6 +92,20 @@
                 "$ref": "#/definitions/ResourceCostHookDefinition"
             }
         },
+        "on_saving_throw": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/SavingThrowHookDefinition"
+            }
+        },
+        "on_skill_check": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/SkillCheckHookDefinition"
+            }
+        },
         "on_turn_start": {
             "type": "array",
             "default": [],
@@ -103,13 +125,6 @@
             "default": [],
             "items": {
                 "$ref": "#/definitions/DamageRollResultHookDefinition"
-            }
-        },
-        "pre_attack_roll": {
-            "type": "array",
-            "default": [],
-            "items": {
-                "$ref": "#/definitions/AttackRollHookDefinition"
             }
         },
         "pre_damage_mitigation": {
@@ -220,18 +235,30 @@
             ]
         },
         "AttackRollHookDefinition": {
-            "anyOf": [
-                {
-                    "type": "object",
-                    "properties": {
-                        "script": {
-                            "$ref": "#/definitions/ScriptId"
-                        }
-                    },
-                    "required": [
-                        "script"
+            "description": "A scripted d20 check hook: the script defines `check_hook` (pre-roll)\nand/or `result_hook` (post-roll). Registry validation requires at least\none of the two.",
+            "type": "object",
+            "properties": {
+                "script": {
+                    "$ref": "#/definitions/ScriptId"
+                },
+                "source": {
+                    "description": "Restrict to attacks from one source; all attacks when omitted",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null,
+                    "enum": [
+                        "melee_weapon",
+                        "ranged_weapon",
+                        "unarmed",
+                        "spell",
+                        null
                     ]
                 }
+            },
+            "required": [
+                "script"
             ]
         },
         "AttackedHookDefinition": {
@@ -751,10 +778,82 @@
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
         },
+        "SavingThrowHookDefinition": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "description": "Restrict to one saving throw kind; all of them when omitted",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null,
+                    "examples": [
+                        "dexterity",
+                        "constitution",
+                        "death",
+                        "concentration"
+                    ]
+                },
+                "script": {
+                    "$ref": "#/definitions/ScriptId"
+                }
+            },
+            "required": [
+                "script"
+            ]
+        },
         "ScriptId": {
             "description": "Registry id `[namespace::]script.<name>`, e.g. `nat20_core::script.example`. The namespace defaults to `nat20_core`.",
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?script[A-Za-z0-9_.]*$"
+        },
+        "Skill": {
+            "type": "string",
+            "enum": [
+                "athletics",
+                "acrobatics",
+                "sleight_of_hand",
+                "stealth",
+                "initiative",
+                "arcana",
+                "history",
+                "investigation",
+                "nature",
+                "religion",
+                "animal_handling",
+                "insight",
+                "medicine",
+                "perception",
+                "survival",
+                "deception",
+                "intimidation",
+                "performance",
+                "persuasion"
+            ]
+        },
+        "SkillCheckHookDefinition": {
+            "type": "object",
+            "properties": {
+                "script": {
+                    "$ref": "#/definitions/ScriptId"
+                },
+                "skill": {
+                    "description": "Restrict to one skill; all skills when omitted",
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/Skill"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            },
+            "required": [
+                "script"
+            ]
         },
         "SpellId": {
             "description": "Registry id `[namespace::]spell.<name>`, e.g. `nat20_core::spell.example`. The namespace defaults to `nat20_core`.",

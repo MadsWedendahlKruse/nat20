@@ -16,8 +16,22 @@ use crate::{
         proficiency::{Proficiency, ProficiencyLevel},
         range::Range,
     },
-    systems,
+    engine::game_state::GameState,
+    systems::{self, d20::D20CheckKind},
 };
+
+/// Trait describing rolls that can have advantage or disadvantage, currently only
+/// relevant for D20Check and D20CheckResult, but could be expanded to other roll
+/// types in the future?
+/// Mostly a convenience trait to avoid duplication in the Lua API, though worth
+/// noting that there's a difference applying it to a D20Check vs a D20CheckResult.
+/// For the check itself it will affect the next roll, while for the result it will
+/// have to take into account the previous roll and potentially reroll if the advantage
+/// state changes.
+pub trait AdvantageAware {
+    fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource);
+    fn remove_advantage(&mut self, source: &ModifierSource);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RollMode {
@@ -222,25 +236,45 @@ impl D20Check {
 
     pub fn roll_hooks(
         &self,
-        world: &World,
+        game_state: &GameState,
         entity: Entity,
+        kind: &D20CheckKind,
         hooks: &Vec<D20CheckHooks>,
     ) -> D20CheckResult {
         let mut check = self.clone();
         for hook in hooks {
-            (hook.check_hook)(world, entity, &mut check);
+            (hook.check_hook)(game_state, entity, kind, &mut check);
         }
 
-        let proficiency_bonus = systems::helpers::level(world, entity)
+        let proficiency_bonus = systems::helpers::level(&game_state.world, entity)
             .unwrap()
             .proficiency_bonus();
         let mut result = check.roll(proficiency_bonus);
 
         for hook in hooks {
-            (hook.result_hook)(world, entity, &mut result);
+            (hook.result_hook)(game_state, entity, kind, &mut result);
         }
 
         result
+    }
+
+    /// Folds another check's persistent state (modifiers, advantage, crit
+    /// threshold, forced outcome) into this one — used to combine a stored
+    /// attack roll template with the weapon-derived check. Proficiency is
+    /// deliberately left alone.
+    pub fn merge_from(&mut self, other: &D20Check) {
+        self.modifiers.add_modifier_map(&other.modifiers);
+
+        for (source, advantage) in other.advantage_tracker.summary() {
+            self.advantage_tracker.add(advantage, source.clone());
+        }
+
+        self.crit_threshold_reduction
+            .add_modifier_map(&other.crit_threshold_reduction);
+
+        if let Some((source, forced_outcome)) = &other.forced_outcome {
+            self.set_forced_outcome(source.clone(), *forced_outcome);
+        }
     }
 
     pub fn success_probability(&self, target_dc: u32, proficiency_bonus: u8) -> Range<f32> {
@@ -272,6 +306,16 @@ impl D20Check {
             min: roll_p[0] as f32,
             max: roll_p[1] as f32,
         }
+    }
+}
+
+impl AdvantageAware for D20Check {
+    fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource) {
+        self.advantage_tracker.add(kind, source);
+    }
+
+    fn remove_advantage(&mut self, source: &ModifierSource) {
+        self.advantage_tracker.remove(source);
     }
 }
 
@@ -317,10 +361,14 @@ impl D20CheckResult {
     where
         T: IntoEnumIterator + Copy + Eq + Hash,
     {
+        self.is_success_vs(dc.dc.total() as u32)
+    }
+
+    pub fn is_success_vs(&self, dc_total: u32) -> bool {
         if let Some(outcome) = &self.outcome {
             return outcome.is_success();
         }
-        return self.total() >= dc.dc.total() as u32;
+        self.total() >= dc_total
     }
 
     pub fn add_modifier<T>(&mut self, source: ModifierSource, value: T)
@@ -337,13 +385,7 @@ impl D20CheckResult {
         self.check.roll(self.proficiency_bonus)
     }
 
-    pub fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource) {
-        let original_roll_mode = self.check.advantage_tracker.roll_mode();
-
-        self.check.advantage_tracker_mut().add(kind, source);
-
-        let new_roll_mode = self.check.advantage_tracker().roll_mode();
-
+    fn update_roll_based_on_mode(&mut self, original_roll_mode: RollMode, new_roll_mode: RollMode) {
         if new_roll_mode == original_roll_mode {
             return;
         }
@@ -378,6 +420,28 @@ impl D20CheckResult {
     }
 }
 
+impl AdvantageAware for D20CheckResult {
+    fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource) {
+        let original_roll_mode = self.check.advantage_tracker.roll_mode();
+
+        self.check.advantage_tracker_mut().add(kind, source);
+
+        let new_roll_mode = self.check.advantage_tracker().roll_mode();
+
+        self.update_roll_based_on_mode(original_roll_mode, new_roll_mode);
+    }
+
+    fn remove_advantage(&mut self, source: &ModifierSource) {
+        let original_roll_mode = self.check.advantage_tracker.roll_mode();
+
+        self.check.advantage_tracker_mut().remove(source);
+
+        let new_roll_mode = self.check.advantage_tracker().roll_mode();
+
+        self.update_roll_based_on_mode(original_roll_mode, new_roll_mode);
+    }
+}
+
 pub trait D20CheckKey: Eq + Hash + IntoEnumIterator + Copy {}
 
 impl<T: Eq + Hash + IntoEnumIterator + Copy> D20CheckKey for T {}
@@ -388,6 +452,7 @@ where
     K: D20CheckKey,
 {
     checks: HashMap<K, D20Check>,
+    kind_mapper: fn(&K) -> D20CheckKind,
     ability_mapper: fn(&K) -> Option<Ability>,
     get_hooks: fn(&K, &World, Entity) -> Vec<D20CheckHooks>,
 }
@@ -397,6 +462,7 @@ where
     K: D20CheckKey,
 {
     pub fn new(
+        kind_mapper: fn(&K) -> D20CheckKind,
         ability_mapper: fn(&K) -> Option<Ability>,
         get_hooks: fn(&K, &World, Entity) -> Vec<D20CheckHooks>,
     ) -> Self {
@@ -413,6 +479,7 @@ where
             .collect();
         Self {
             checks,
+            kind_mapper,
             ability_mapper,
             get_hooks,
         }
@@ -464,21 +531,32 @@ where
         (self.ability_mapper)(key)
     }
 
-    pub fn check(&self, key: &K, world: &World, entity: Entity) -> D20CheckResult {
+    pub fn check(&self, key: &K, game_state: &GameState, entity: Entity) -> D20CheckResult {
         let mut d20 = self.get(key).clone();
         if let Some(ability) = self.ability(key) {
-            let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
+            let ability_scores =
+                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
             d20.add_modifier(
                 ModifierSource::Ability(ability),
                 ability_scores.ability_modifier(&ability).total(),
             );
         }
 
-        d20.roll_hooks(world, entity, &(self.get_hooks)(key, world, entity))
+        d20.roll_hooks(
+            game_state,
+            entity,
+            &(self.kind_mapper)(key),
+            &(self.get_hooks)(key, &game_state.world, entity),
+        )
     }
 
-    pub fn check_dc(&self, dc: &D20CheckDC<K>, world: &World, entity: Entity) -> D20CheckResult {
-        let mut result = self.check(&dc.key, world, entity);
+    pub fn check_dc(
+        &self,
+        dc: &D20CheckDC<K>,
+        game_state: &GameState,
+        entity: Entity,
+    ) -> D20CheckResult {
+        let mut result = self.check(&dc.key, game_state, entity);
         if result.outcome.is_none() {
             result.outcome = if result.total() >= dc.dc.total() as u32 {
                 Some(D20CheckOutcome::Success)

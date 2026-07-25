@@ -6,7 +6,7 @@ use crate::{
         d20::{D20CheckDC, D20CheckMap},
         effects::hooks::D20CheckHooks,
     },
-    systems,
+    systems::{self, d20::D20CheckKind},
 };
 
 use hecs::{Entity, World};
@@ -108,6 +108,10 @@ pub fn get_skill_hooks(skill: &Skill, world: &World, entity: Entity) -> Vec<D20C
 
 impl Default for SkillSet {
     fn default() -> Self {
-        SkillSet::new(skill_ability, get_skill_hooks)
+        SkillSet::new(
+            |skill| D20CheckKind::Skill(*skill),
+            skill_ability,
+            get_skill_hooks,
+        )
     }
 }

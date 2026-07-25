@@ -71,7 +71,7 @@ impl ImguiRenderableWithContext<(&GameState, &CreatureRenderMode)> for Entity {
 
                     if let Some(tab) = ui.tab_item("Skills") {
                         systems::helpers::get_component::<SkillSet>(&game_state.world, entity)
-                            .render_with_context(ui, (&game_state.world, entity));
+                            .render_with_context(ui, (game_state, entity));
                         tab.end();
                     }
 
@@ -176,7 +176,7 @@ fn render_overview(
             ui.separator_with_text("Armor Class");
             systems::loadout::armor_class(game_state, entity).render(ui);
             systems::helpers::get_component::<AbilityScoreMap>(world, entity)
-                .render_with_context(ui, (world, entity));
+                .render_with_context(ui, (game_state, entity));
             render_if_present::<DamageResistances>(ui, world, entity);
         }
         _ => {}
@@ -236,7 +236,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for Entity {
 
             if let Some(tab) = ui.tab_item("Skills") {
                 systems::helpers::get_component::<SkillSet>(&game_state.world, entity)
-                    .render_with_context(ui, (&game_state.world, entity));
+                    .render_with_context(ui, (game_state, entity));
                 tab.end();
             }
 

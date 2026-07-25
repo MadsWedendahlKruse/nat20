@@ -19,6 +19,7 @@ use nat20_core::{
         },
         activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
+        damage::get_attack_roll_hooks,
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
         resource::ResourceMap,
@@ -36,6 +37,7 @@ use nat20_core::{
     registry::registry::EffectsRegistry,
     systems::{
         self,
+        d20::D20CheckKind,
         geometry::{Displacement, DisplacementTemplate, RaycastHitKind},
         movement::TargetPathFindingResult,
     },
@@ -1017,18 +1019,18 @@ fn render_attack_hit_chance_tooltip(
     target: Entity,
     attack_roll_fn: &Arc<AttackRollFunction>,
 ) {
-    let mut attack_roll = attack_roll_fn(
+    let (source, mut attack_roll) = attack_roll_fn(
         &game_state.world,
         action.actor.id(),
         target,
         &action.context,
     );
 
-    systems::effects::effects(&game_state.world, action.actor.id()).pre_attack_roll(
-        &game_state,
-        action.actor.id(),
-        &mut attack_roll,
-    );
+    // Attacker's pre-roll hooks
+    let kind = D20CheckKind::AttackRoll(source);
+    for hooks in get_attack_roll_hooks(&source, &game_state.world, action.actor.id()) {
+        (hooks.check_hook)(game_state, action.actor.id(), &kind, &mut attack_roll);
+    }
 
     // Effects on target
     systems::effects::effects(&game_state.world, target).attacked_preview(
@@ -1041,17 +1043,18 @@ fn render_attack_hit_chance_tooltip(
     let target_ac = systems::loadout::armor_class(&game_state, target);
 
     let hit_chance = attack_roll
-        .hit_chance(
-            &game_state.world,
-            action.actor.id(),
+        .success_probability(
             target_ac.total() as u32,
+            systems::helpers::level(&game_state.world, action.actor.id())
+                .unwrap()
+                .proficiency_bonus(),
         )
         .scale(100.0);
 
     ui.tooltip(|| {
         ui.separator_with_text("Hit chance");
 
-        render_forced_outcome_or_advantage(ui, &attack_roll.d20_check, hit_chance, false);
+        render_forced_outcome_or_advantage(ui, &attack_roll, hit_chance, false);
 
         ui.separator();
 
@@ -1065,7 +1068,7 @@ fn render_attack_hit_chance_tooltip(
             .size([0.0, 0.0])
             .build(|| {
                 ui.separator_with_text("Attack Roll");
-                render_d20_modifiers(ui, attack_roll.d20_check);
+                render_d20_modifiers(ui, attack_roll);
             });
 
         ui.child_window("Armor Class")
@@ -1104,9 +1107,10 @@ fn render_save_success_chance_tooltip(
         systems::helpers::get_component::<SavingThrowSet>(&game_state.world, target);
     let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
 
+    let kind = D20CheckKind::SavingThrow(saving_throw_dc.key);
     for effect in systems::effects::effects(&game_state.world, target).values() {
         if let Some(on_saving_throw) = effect.effect().on_saving_throw.get(&saving_throw_dc.key) {
-            (on_saving_throw.check_hook)(&game_state.world, target, &mut d20_check);
+            (on_saving_throw.check_hook)(game_state, target, &kind, &mut d20_check);
         }
     }
     if let Some(ability) = saving_throws.ability(&saving_throw_dc.key) {

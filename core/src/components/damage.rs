@@ -10,14 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        d20::{D20Check, D20CheckOutcome, D20CheckResult},
-        items::equipment::{armor::ArmorClass, weapon::WeaponKind},
+        effects::hooks::D20CheckHooks,
+        items::equipment::weapon::WeaponKind,
         modifier::{
-            FlatModifiable, Modifiable, ModifierKind, ModifierKindResult, ModifierMap,
-            ModifierResult, ModifierSource, ModifierValue,
+            Modifiable, ModifierKind, ModifierKindResult, ModifierMap, ModifierResult,
+            ModifierSource, ModifierValue,
         },
-        proficiency::Proficiency,
-        range::Range,
     },
     systems::{self},
 };
@@ -464,104 +462,27 @@ pub enum AttackSource {
     Spell,
 }
 
-#[derive(Debug, Clone)]
-pub struct AttackRollTemplate {
-    pub d20_check: D20Check,
-}
-
-impl AttackRollTemplate {
-    pub fn new(d20_check: D20Check) -> Self {
-        Self { d20_check }
-    }
-
-    pub fn apply_to_roll(&self, attack_roll: &mut AttackRoll) {
-        attack_roll
-            .d20_check
-            .modifiers_mut()
-            .add_modifier_map(self.d20_check.modifiers());
-
-        for (source, advantage) in self.d20_check.advantage_tracker().summary() {
-            attack_roll
-                .d20_check
-                .advantage_tracker_mut()
-                .add(advantage, source.clone());
-        }
-
-        attack_roll
-            .d20_check
-            .crit_threshold_reduction_mut()
-            .add_modifier_map(self.d20_check.crit_threshold_reduction());
-
-        if let Some((source, forced_outcome)) = self.d20_check.forced_outcome() {
-            attack_roll
-                .d20_check
-                .set_forced_outcome(source.clone(), forced_outcome.clone());
-        }
-    }
-
-    pub fn instantiate(&self, source: AttackSource) -> AttackRoll {
-        AttackRoll::new(self.d20_check.clone(), source)
+impl AttackSource {
+    pub fn all() -> [AttackSource; 4] {
+        [
+            AttackSource::Weapon(WeaponKind::Melee),
+            AttackSource::Weapon(WeaponKind::Ranged),
+            AttackSource::Weapon(WeaponKind::Unarmed),
+            AttackSource::Spell,
+        ]
     }
 }
 
-impl Default for AttackRollTemplate {
-    fn default() -> Self {
-        Self {
-            d20_check: D20Check::new(Proficiency::default()),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AttackRoll {
-    pub d20_check: D20Check,
-    pub source: AttackSource,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AttackRollResult {
-    pub roll_result: D20CheckResult,
-    pub source: AttackSource,
-}
-
-impl AttackRollResult {
-    pub fn is_success(&self, armor_class: &ArmorClass) -> bool {
-        if let Some(outcome) = &self.roll_result.outcome {
-            return outcome.is_success();
-        }
-        return self.roll_result.total() >= armor_class.total() as u32;
-    }
-
-    pub fn is_crit(&self) -> bool {
-        matches!(
-            self.roll_result.outcome,
-            Some(D20CheckOutcome::CriticalSuccess)
-        )
-    }
-}
-
-impl AttackRoll {
-    pub fn new(d20_check: D20Check, source: AttackSource) -> Self {
-        Self { d20_check, source }
-    }
-
-    pub fn roll_raw(&self, proficiency_bonus: u8) -> AttackRollResult {
-        let roll_result = self.d20_check.roll(proficiency_bonus);
-
-        AttackRollResult {
-            roll_result,
-            source: self.source,
-        }
-    }
-
-    pub fn hit_chance(&self, world: &World, entity: Entity, target_ac: u32) -> Range<f32> {
-        self.d20_check.success_probability(
-            target_ac,
-            systems::helpers::level(world, entity)
-                .unwrap()
-                .proficiency_bonus(),
-        )
-    }
+pub fn get_attack_roll_hooks(
+    source: &AttackSource,
+    world: &World,
+    entity: Entity,
+) -> Vec<D20CheckHooks> {
+    systems::effects::effects(world, entity)
+        .values()
+        .filter_map(|e| e.effect().on_attack_roll.get(source))
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]

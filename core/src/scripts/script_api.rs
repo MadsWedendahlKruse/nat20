@@ -18,11 +18,11 @@ use crate::{
             },
             targeting::TargetInstance,
         },
-        d20::D20Check,
+        d20::{AdvantageAware, D20Check, D20CheckResult},
         damage::{
-            AttackRoll, AttackSource, DamageComponent, DamageComponentResult,
-            DamageMitigationEffect, DamageMitigationResult, DamageModifiable, DamageRoll,
-            DamageRollResult, MitigationOperation,
+            AttackSource, DamageComponent, DamageComponentResult, DamageMitigationEffect,
+            DamageMitigationResult, DamageModifiable, DamageRoll, DamageRollResult,
+            MitigationOperation,
         },
         effects::effect::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
@@ -162,7 +162,6 @@ impl_from_lua_userdata!(
     ActionContext,
     ActionData,
     ActionResult,
-    AttackRoll,
     D20Check,
     D20CheckDCKind,
     D20ResultKind,
@@ -335,9 +334,44 @@ impl UserData for D20CheckKind {
     }
 }
 
+fn add_advantage_method<T, M>(methods: &mut M)
+where
+    T: AdvantageAware + UserData,
+    M: UserDataMethods<T>,
+{
+    methods.add_method_mut(
+        "add_advantage",
+        |_, this, (advantage_type, source): (String, String)| {
+            let source = parse_source(&source)?;
+            let advantage_type = serde_plain::from_str(&advantage_type).map_err(|e| {
+                LuaError::RuntimeError(format!("Failed to parse advantage type: {e}"))
+            })?;
+            this.add_advantage(advantage_type, source);
+            Ok(())
+        },
+    );
+}
+
 impl UserData for D20Check {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        add_advantage_method(methods);
+    }
+}
+
+/// The bare rolled result, handed to `result_hook` scripts (as opposed to
+/// `D20ResultKind`, which also carries what kind of check it was)
+impl UserData for D20CheckResult {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("total", |_, this| Ok(this.total()));
+        fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        add_advantage_method(methods);
     }
 }
 
@@ -389,45 +423,7 @@ impl UserData for D20ResultKind {
             },
         );
 
-        methods.add_method_mut(
-            "add_advantage",
-            |_, this, (advantage_type, source): (String, String)| {
-                let source = parse_source(&source)?;
-                let advantage_type = serde_plain::from_str(&advantage_type).map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to parse advantage type: {e}"))
-                })?;
-                this.d20_result_mut().add_advantage(advantage_type, source);
-                Ok(())
-            },
-        );
-    }
-}
-
-impl UserData for AttackRoll {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("source", |_, this| {
-            Ok(match this.source {
-                AttackSource::Weapon(weapon_kind) => Some(weapon_kind.to_string().to_lowercase()),
-                AttackSource::Spell => Some("spell".to_string()),
-            })
-        });
-        fields.add_field_method_get("d20_check", |_, this| Ok(this.d20_check.clone()));
-    }
-
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut(
-            "add_advantage",
-            |_, this, (advantage_type, source): (String, String)| {
-                let source = parse_source(&source)?;
-                let advantage_type = serde_plain::from_str(&advantage_type).map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to parse advantage type: {e}"))
-                })?;
-                this.d20_check
-                    .advantage_tracker_mut()
-                    .add(advantage_type, source);
-                Ok(())
-            },
-        );
+        add_advantage_method(methods);
     }
 }
 
@@ -640,15 +636,8 @@ impl UserData for ActionConditionResolution {
         methods.add_method("is_unconditional", |_, this, ()| {
             Ok(matches!(this, ActionConditionResolution::Unconditional))
         });
-        methods.add_method("is_attack_roll", |_, this, ()| {
-            Ok(matches!(this, ActionConditionResolution::AttackRoll { .. }))
-        });
-        methods.add_method("is_saving_throw", |_, this, ()| {
-            Ok(matches!(
-                this,
-                ActionConditionResolution::SavingThrow { .. }
-            ))
-        });
+        methods.add_method("is_attack_roll", |_, this, ()| Ok(this.is_attack_roll()));
+        methods.add_method("is_saving_throw", |_, this, ()| Ok(this.is_saving_throw()));
         methods.add_method("is_success", |_, this, ()| Ok(this.is_success()));
         methods.add_method("is_crit", |_, this, ()| Ok(this.is_crit()));
     }

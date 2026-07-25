@@ -11,7 +11,7 @@ use crate::{
         effects::hooks::D20CheckHooks,
     },
     registry::serialize::schema::impl_string_schema,
-    systems::{self},
+    systems::{self, d20::D20CheckKind},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -112,6 +112,7 @@ pub fn get_saving_throw_hooks(
 impl Default for SavingThrowSet {
     fn default() -> Self {
         Self::new(
+            |kind| D20CheckKind::SavingThrow(*kind),
             |kind| match kind {
                 SavingThrowKind::Ability(ability) => Some(*ability),
                 SavingThrowKind::Death => None,

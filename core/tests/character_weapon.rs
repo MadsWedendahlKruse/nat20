@@ -228,7 +228,7 @@ mod tests {
 
         systems::loadout::equip(&mut game_state, entity, longsword).unwrap();
 
-        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
+        let (_, roll) = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
@@ -237,19 +237,16 @@ mod tests {
 
         println!("{:?}", roll);
         assert!(
-            roll.d20_check
-                .modifiers()
+            roll.modifiers()
                 .contains_key(&ModifierSource::Ability(Ability::Dexterity))
         );
         assert!(
             !roll
-                .d20_check
                 .modifiers()
                 .contains_key(&ModifierSource::Proficiency(ProficiencyLevel::Proficient))
         );
         assert!(
             !roll
-                .d20_check
                 .modifiers()
                 .contains_key(&ModifierSource::Custom("Enchantment".to_string()))
         );

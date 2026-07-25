@@ -1,14 +1,12 @@
 use std::collections::HashSet;
 
 use hecs::{Entity, World};
-use tracing::debug;
 
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext},
-        damage::{
-            AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
-        },
+        d20::D20Check,
+        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::{Effect, EffectInstance, EffectInstanceId, EffectsMap},
         id::ActionId,
         items::equipment::armor::ArmorClass,
@@ -171,20 +169,6 @@ impl EffectManager {
         );
     }
 
-    pub fn pre_attack_roll(&self, game_state: &GameState, entity: Entity, roll: &mut AttackRoll) {
-        self.for_each(
-            |effect| effect.pre_attack_roll.as_ref(),
-            |hook| hook(game_state, entity, roll),
-        );
-    }
-
-    pub fn post_attack_roll(&self, world: &World, entity: Entity, result: &mut AttackRollResult) {
-        self.for_each(
-            |effect| effect.post_attack_roll.as_ref(),
-            |hook| hook(world, entity, result),
-        );
-    }
-
     pub fn armor_class(&self, game_state: &GameState, entity: Entity, ac: &mut ArmorClass) {
         self.for_each(
             |effect| effect.on_armor_class.as_ref(),
@@ -271,11 +255,11 @@ impl EffectManager {
         world: &World,
         victim: Entity,
         attacker: Entity,
-        roll: &mut AttackRoll,
+        check: &mut D20Check,
     ) {
         self.for_each_with_instance(
             |effect| effect.on_attacked.as_ref(),
-            |hook, inst| hook(world, inst, victim, attacker, roll),
+            |hook, inst| hook(world, inst, victim, attacker, check),
         );
     }
 }

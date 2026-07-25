@@ -6,28 +6,27 @@ use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
-        damage::{
-            AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
-        },
+        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::ActionId,
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
+    systems::d20::D20CheckKind,
 };
 
 pub type ApplyEffectHook =
     Arc<dyn Fn(&mut GameState, Entity, Option<&ActionContext>) + Send + Sync>;
 pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
-pub type AttackRollHook = Arc<dyn Fn(&GameState, Entity, &mut AttackRoll) + Send + Sync>;
-pub type AttackRollResultHook = Arc<dyn Fn(&World, Entity, &mut AttackRollResult) + Send + Sync>;
-/// Hook for when an entity is attacked. Parameters are: world, victim, attacker, attack roll result.
+/// Hook for when an entity is attacked. Parameters are: world, effect instance,
+/// victim, attacker, the attacker's (not yet rolled) check.
 pub type AttackedHook =
-    Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut AttackRoll) + Send + Sync>;
+    Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
-pub type D20CheckHook = Arc<dyn Fn(&World, Entity, &mut D20Check) + Send + Sync>;
-pub type D20CheckResultHook = Arc<dyn Fn(&World, Entity, &mut D20CheckResult) + Send + Sync>;
+pub type D20CheckHook = Arc<dyn Fn(&GameState, Entity, &D20CheckKind, &mut D20Check) + Send + Sync>;
+pub type D20CheckResultHook =
+    Arc<dyn Fn(&GameState, Entity, &D20CheckKind, &mut D20CheckResult) + Send + Sync>;
 pub type DamageRollHook = Arc<
     dyn Fn(&GameState, Entity, &mut DamageRoll, &ActionData, &ActionConditionResolution)
         + Send
@@ -85,30 +84,22 @@ impl fmt::Debug for D20CheckHooks {
 }
 
 impl D20CheckHooks {
-    pub fn new() -> Self {
+    /// Folds several hook pairs into one, preserving order
+    pub fn combined(hooks: Vec<D20CheckHooks>) -> D20CheckHooks {
+        let check_hooks: Vec<D20CheckHook> = hooks.iter().map(|h| h.check_hook.clone()).collect();
+        let result_hooks: Vec<D20CheckResultHook> =
+            hooks.iter().map(|h| h.result_hook.clone()).collect();
         Self {
-            check_hook: Arc::new(|_, _, _| {}),
-            result_hook: Arc::new(|_, _, _| {}),
-        }
-    }
-
-    pub fn with_check_hook<F>(hook: F) -> Self
-    where
-        F: Fn(&World, Entity, &mut D20Check) + Send + Sync + 'static,
-    {
-        Self {
-            check_hook: Arc::new(hook),
-            result_hook: Arc::new(|_, _, _| {}),
-        }
-    }
-
-    pub fn with_result_hook<F>(hook: F) -> Self
-    where
-        F: Fn(&World, Entity, &mut D20CheckResult) + Send + Sync + 'static,
-    {
-        Self {
-            check_hook: Arc::new(|_, _, _| {}),
-            result_hook: Arc::new(hook),
+            check_hook: Arc::new(move |game_state, entity, kind, check| {
+                for hook in &check_hooks {
+                    hook(game_state, entity, kind, check);
+                }
+            }),
+            result_hook: Arc::new(move |game_state, entity, kind, result| {
+                for hook in &result_hooks {
+                    hook(game_state, entity, kind, result);
+                }
+            }),
         }
     }
 }

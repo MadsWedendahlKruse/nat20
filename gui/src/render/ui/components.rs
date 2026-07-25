@@ -8,7 +8,7 @@ use nat20_core::{
         activity::{ActivityState, ActivityStateKind},
         d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode},
         damage::{
-            AttackRollResult, DamageComponent, DamageComponentMitigation, DamageComponentResult,
+            DamageComponent, DamageComponentMitigation, DamageComponentResult,
             DamageMitigationEffect, DamageMitigationResult, DamageResistances, DamageRoll,
             DamageRollResult, MitigationOperation,
         },
@@ -35,6 +35,7 @@ use nat20_core::{
         spells::spellbook::Spellbook,
         time::{TimeDuration, TimeMode},
     },
+    engine::game_state::GameState,
     registry::registry::{EffectsRegistry, FeatsRegistry},
     systems::{
         self,
@@ -209,11 +210,12 @@ impl ImguiRenderable for AbilityScore {
     }
 }
 
-impl ImguiRenderableWithContext<(&World, Entity)> for AbilityScoreMap {
-    fn render_with_context(&self, ui: &imgui::Ui, (world, entity): (&World, Entity)) {
+impl ImguiRenderableWithContext<(&GameState, Entity)> for AbilityScoreMap {
+    fn render_with_context(&self, ui: &imgui::Ui, (game_state, entity): (&GameState, Entity)) {
         ui.separator_with_text("Abilities");
 
-        let saving_throws = systems::helpers::get_component::<SavingThrowSet>(world, entity);
+        let saving_throws =
+            systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity);
 
         let style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([0.5, 0.5]));
         for (i, ability) in Ability::iter().enumerate() {
@@ -247,7 +249,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for AbilityScoreMap {
                         ])
                         .render(ui);
                     }
-                    let result = saving_throws.check(&saving_throw_kind, world, entity);
+                    let result = saving_throws.check(&saving_throw_kind, game_state, entity);
                     let modifiers = &result.check.modifiers();
                     let range = modifiers.range();
                     ui.text(format!("Bonus: {}", range));
@@ -259,8 +261,8 @@ impl ImguiRenderableWithContext<(&World, Entity)> for AbilityScoreMap {
     }
 }
 
-impl ImguiRenderableWithContext<(&World, Entity)> for SkillSet {
-    fn render_with_context(&self, ui: &imgui::Ui, (world, entity): (&World, Entity)) {
+impl ImguiRenderableWithContext<(&GameState, Entity)> for SkillSet {
+    fn render_with_context(&self, ui: &imgui::Ui, (game_state, entity): (&GameState, Entity)) {
         // Empty column is for proficiency
         if let Some(table) = table_with_columns!(ui, "Skills", "", "Skill", "Bonus") {
             // Skills are ordered by ability, so if the ability changes, we can
@@ -294,7 +296,7 @@ impl ImguiRenderableWithContext<(&World, Entity)> for SkillSet {
                 // Bonus column
                 ui.table_next_column();
                 // TODO: Avoid doing an actual skill check here every time
-                let result = self.check(&skill, world, entity);
+                let result = self.check(&skill, game_state, entity);
                 result
                     .modifiers()
                     .render_with_context(ui, ModifierRenderMode::Hoverable);
@@ -880,12 +882,6 @@ impl ImguiRenderable for D20CheckResult {
     }
 }
 
-impl ImguiRenderable for AttackRollResult {
-    fn render(&self, ui: &imgui::Ui) {
-        self.roll_result.render(ui);
-    }
-}
-
 impl ImguiRenderable for DamageComponentMitigation {
     fn render(&self, ui: &imgui::Ui) {
         let text_kind = TextKind::Damage(self.damage_type);
@@ -919,11 +915,11 @@ impl ImguiRenderable for DamageComponentMitigation {
     }
 }
 
-impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)> for DamageComponentMitigation {
+impl ImguiRenderableWithContext<(&str, &Option<D20CheckResult>)> for DamageComponentMitigation {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (target_name, attack_roll): (&str, &Option<AttackRollResult>),
+        (target_name, attack_roll): (&str, &Option<D20CheckResult>),
     ) {
         let mut segments = vec![
             (target_name.to_string(), TextKind::Target),
@@ -934,10 +930,7 @@ impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)> for DamageCom
             ),
         ];
         if let Some(attack_roll) = attack_roll {
-            if matches!(
-                attack_roll.roll_result.outcome,
-                Some(D20CheckOutcome::CriticalSuccess)
-            ) {
+            if matches!(attack_roll.outcome, Some(D20CheckOutcome::CriticalSuccess)) {
                 segments.push(("(Critical Hit!)".to_string(), TextKind::Details));
             }
         }
@@ -945,13 +938,13 @@ impl ImguiRenderableWithContext<(&str, &Option<AttackRollResult>)> for DamageCom
     }
 }
 
-impl ImguiRenderableWithContext<(&str, &str, Option<AttackRollResult>)>
+impl ImguiRenderableWithContext<(&str, &str, Option<D20CheckResult>)>
     for Option<DamageMitigationResult>
 {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (target_name, no_damage_text, attack_roll): (&str, &str, Option<AttackRollResult>),
+        (target_name, no_damage_text, attack_roll): (&str, &str, Option<D20CheckResult>),
     ) {
         ui.group(|| match self {
             // Some damage was taken
@@ -967,10 +960,7 @@ impl ImguiRenderableWithContext<(&str, &str, Option<AttackRollResult>)>
                     (no_damage_text.to_string(), TextKind::Normal),
                 ];
                 if let Some(attack_roll) = attack_roll {
-                    if matches!(
-                        attack_roll.roll_result.outcome,
-                        Some(D20CheckOutcome::CriticalFailure)
-                    ) {
+                    if matches!(attack_roll.outcome, Some(D20CheckOutcome::CriticalFailure)) {
                         segments.push(("(Critical Miss!)".to_string(), TextKind::Details));
                     }
                 }
@@ -1138,7 +1128,7 @@ impl ImguiRenderable for D20ResultKind {
             D20ResultKind::SavingThrow { result, .. } | D20ResultKind::Skill { result, .. } => {
                 result.render(ui);
             }
-            D20ResultKind::AttackRoll { result } => {
+            D20ResultKind::AttackRoll { result, .. } => {
                 TextSegment::new("Attack Roll:", TextKind::Normal).render(ui);
                 ui.indent();
                 result.render(ui);

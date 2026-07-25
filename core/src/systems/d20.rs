@@ -2,11 +2,11 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
-        d20::{D20Check, D20CheckDC, D20CheckResult},
-        damage::{AttackRollResult, AttackSource},
+        d20::{AdvantageAware, AdvantageType, D20Check, D20CheckDC, D20CheckResult},
+        damage::{AttackSource, get_attack_roll_hooks},
         id::EntityIdentifier,
         items::equipment::{armor::ArmorClass, loadout::Loadout},
-        modifier::ModifierResult,
+        modifier::{FlatModifiable, ModifierResult, ModifierSource},
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
         spells::spellbook::Spellbook,
@@ -44,18 +44,14 @@ pub fn get_mut(
         ),
 
         D20CheckKind::AttackRoll(source) => match source {
-            AttackSource::Weapon(weapon_kind) => {
-                mutator(
-                    &mut systems::helpers::get_component_mut::<Loadout>(world, entity)
-                        .attack_roll_template_mut(weapon_kind)
-                        .d20_check,
-                );
-            }
+            AttackSource::Weapon(weapon_kind) => mutator(
+                systems::helpers::get_component_mut::<Loadout>(world, entity)
+                    .attack_roll_template_mut(weapon_kind),
+            ),
 
             AttackSource::Spell => mutator(
-                &mut systems::helpers::get_component_mut::<Spellbook>(world, entity)
-                    .attack_roll_template_mut()
-                    .d20_check,
+                systems::helpers::get_component_mut::<Spellbook>(world, entity)
+                    .attack_roll_template_mut(),
             ),
         },
     }
@@ -92,6 +88,14 @@ impl D20CheckDCKind {
             D20CheckDCKind::AttackRoll(_, source, _) => D20CheckKind::AttackRoll(source.clone()),
         }
     }
+
+    pub fn dc_total(&self) -> u32 {
+        match self {
+            D20CheckDCKind::SavingThrow(dc) => dc.dc.total() as u32,
+            D20CheckDCKind::Skill(dc) => dc.dc.total() as u32,
+            D20CheckDCKind::AttackRoll(_, _, armor_class) => armor_class.total() as u32,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,40 +109,29 @@ pub enum D20ResultKind {
         result: D20CheckResult,
     },
     AttackRoll {
-        result: AttackRollResult,
+        source: AttackSource,
+        result: D20CheckResult,
     },
 }
 
 impl D20ResultKind {
     pub fn is_success(&self, dc: &D20CheckDCKind) -> bool {
-        match (self, dc) {
-            (D20ResultKind::SavingThrow { result, .. }, D20CheckDCKind::SavingThrow(dc)) => {
-                result.is_success(dc)
-            }
-            (D20ResultKind::Skill { result, .. }, D20CheckDCKind::Skill(dc)) => {
-                result.is_success(dc)
-            }
-            (
-                D20ResultKind::AttackRoll { result },
-                D20CheckDCKind::AttackRoll(_, _, armor_class),
-            ) => result.is_success(armor_class),
-            _ => false,
-        }
+        self.d20_result().is_success_vs(dc.dc_total())
     }
 
     pub fn d20_result(&self) -> &D20CheckResult {
         match self {
-            D20ResultKind::SavingThrow { result, .. } => result,
-            D20ResultKind::Skill { result, .. } => result,
-            D20ResultKind::AttackRoll { result } => &result.roll_result,
+            D20ResultKind::SavingThrow { result, .. }
+            | D20ResultKind::Skill { result, .. }
+            | D20ResultKind::AttackRoll { result, .. } => result,
         }
     }
 
     pub fn d20_result_mut(&mut self) -> &mut D20CheckResult {
         match self {
-            D20ResultKind::SavingThrow { result, .. } => result,
-            D20ResultKind::Skill { result, .. } => result,
-            D20ResultKind::AttackRoll { result } => &mut result.roll_result,
+            D20ResultKind::SavingThrow { result, .. }
+            | D20ResultKind::Skill { result, .. }
+            | D20ResultKind::AttackRoll { result, .. } => result,
         }
     }
 
@@ -146,7 +139,7 @@ impl D20ResultKind {
         match self {
             D20ResultKind::SavingThrow { kind, .. } => D20CheckKind::SavingThrow(*kind),
             D20ResultKind::Skill { skill, .. } => D20CheckKind::Skill(*skill),
-            D20ResultKind::AttackRoll { result } => D20CheckKind::AttackRoll(result.source.clone()),
+            D20ResultKind::AttackRoll { source, .. } => D20CheckKind::AttackRoll(source.clone()),
         }
     }
 
@@ -157,23 +150,38 @@ impl D20ResultKind {
     }
 }
 
-pub fn check_no_event(world: &World, entity: Entity, dc: &D20CheckDCKind) -> D20ResultKind {
+impl AdvantageAware for D20ResultKind {
+    fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource) {
+        self.d20_result_mut().add_advantage(kind, source);
+    }
+
+    fn remove_advantage(&mut self, source: &ModifierSource) {
+        self.d20_result_mut().remove_advantage(source);
+    }
+}
+
+pub fn check_no_event(
+    game_state: &GameState,
+    entity: Entity,
+    dc: &D20CheckDCKind,
+) -> D20ResultKind {
     match dc {
         D20CheckDCKind::SavingThrow(dc) => D20ResultKind::SavingThrow {
             kind: dc.key,
-            result: systems::helpers::get_component::<SavingThrowSet>(world, entity)
-                .check_dc(dc, world, entity),
+            result: systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
+                .check_dc(dc, game_state, entity),
         },
         D20CheckDCKind::Skill(dc) => D20ResultKind::Skill {
             skill: dc.key,
-            result: systems::helpers::get_component::<SkillSet>(world, entity)
-                .check_dc(dc, world, entity),
+            result: systems::helpers::get_component::<SkillSet>(&game_state.world, entity)
+                .check_dc(dc, game_state, entity),
         },
-        // D20CheckDCKind::AttackRoll(slot, target, armor_class) => D20ResultKind::AttackRoll {
-        //     result: systems::combat::attack_roll_against_target(world, entity, slot, target),
-        // },
         D20CheckDCKind::AttackRoll(_, _, _) => {
-            todo!("systems::d20 attack roll checks are not yet implemented");
+            // An attack's D20Check depends on the action context (weapon in
+            // hand etc.), so it can't be derived from the DC alone
+            panic!(
+                "Attack rolls are rolled through systems::d20::check_attack, not check_no_event"
+            );
         }
     }
 }
@@ -182,7 +190,38 @@ pub fn check_no_event(world: &World, entity: Entity, dc: &D20CheckDCKind) -> D20
 pub fn check(game_state: &mut GameState, entity: Entity, dc: &D20CheckDCKind) -> Event {
     Event::new(EventKind::D20CheckPerformed {
         actor: EntityIdentifier::from_world(&game_state.world, entity),
-        result: check_no_event(&game_state.world, entity, dc),
+        result: check_no_event(game_state, entity, dc),
         dc: dc.clone(),
+    })
+}
+
+#[must_use]
+pub fn check_attack(
+    game_state: &mut GameState,
+    attacker: Entity,
+    target: Entity,
+    source: AttackSource,
+    mut check: D20Check,
+) -> Event {
+    let attacked_hooks = systems::effects::effects_mut(&mut game_state.world, target)
+        .collect_one_shot_hooks_with_instance(|effect| effect.on_attacked.as_ref());
+    for (hook, instance) in &attacked_hooks {
+        hook(&game_state.world, instance, target, attacker, &mut check);
+    }
+
+    let kind = D20CheckKind::AttackRoll(source);
+    let hooks = get_attack_roll_hooks(&source, &game_state.world, attacker);
+    let result = check.roll_hooks(game_state, attacker, &kind, &hooks);
+
+    let armor_class = systems::loadout::armor_class(game_state, target);
+
+    Event::new(EventKind::D20CheckPerformed {
+        actor: EntityIdentifier::from_world(&game_state.world, attacker),
+        result: D20ResultKind::AttackRoll { source, result },
+        dc: D20CheckDCKind::AttackRoll(
+            EntityIdentifier::from_world(&game_state.world, target),
+            source,
+            armor_class,
+        ),
     })
 }

@@ -30,7 +30,7 @@ use crate::{
         },
         class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel},
         d20::{D20Check, D20CheckDC},
-        damage::{AttackRoll, AttackRollTemplate, AttackSource},
+        damage::AttackSource,
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
         modifier::{Modifiable, ModifierKind, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
@@ -239,7 +239,7 @@ pub struct Spellbook {
     concentration: ConcentrationTracker,
 
     saving_throw: ModifierMap,
-    attack_roll: AttackRollTemplate,
+    attack_roll: D20Check,
 }
 
 impl Spellbook {
@@ -252,10 +252,10 @@ impl Spellbook {
                 ModifierSource::Base,
                 ModifierKind::Flat(BASE_SPELL_SAVE_DC),
             ),
-            attack_roll: AttackRollTemplate::new(D20Check::new(Proficiency::new(
+            attack_roll: D20Check::new(Proficiency::new(
                 ProficiencyLevel::Proficient,
                 ModifierSource::Base,
-            ))),
+            )),
         }
     }
 
@@ -751,11 +751,11 @@ impl Spellbook {
         &mut self.saving_throw
     }
 
-    pub fn attack_roll_template(&self) -> &AttackRollTemplate {
+    pub fn attack_roll_template(&self) -> &D20Check {
         &self.attack_roll
     }
 
-    pub fn attack_roll_template_mut(&mut self) -> &mut AttackRollTemplate {
+    pub fn attack_roll_template_mut(&mut self) -> &mut D20Check {
         &mut self.attack_roll
     }
 }
@@ -765,9 +765,9 @@ impl AttackRollProvider for Spellbook {
         &self,
         world: &World,
         entity: Entity,
-        target: Entity,
+        _target: Entity,
         context: &ActionContext,
-    ) -> AttackRoll {
+    ) -> (AttackSource, D20Check) {
         let spell_context = context
             .spell
             .as_ref()
@@ -776,15 +776,15 @@ impl AttackRollProvider for Spellbook {
         let ability_scores = systems::helpers::get_component::<AbilityScoreMap>(world, entity);
         let spellcasting_ability = self.spellcasting_ability(world, entity, &spell_context.source);
 
-        let mut attack_roll = self.attack_roll.instantiate(AttackSource::Spell);
+        let mut attack_roll = self.attack_roll.clone();
         let spellcasting_modifier = ability_scores
             .ability_modifier(&spellcasting_ability)
             .total();
-        attack_roll.d20_check.add_modifier(
+        attack_roll.add_modifier(
             ModifierSource::Ability(spellcasting_ability),
             spellcasting_modifier,
         );
-        attack_roll
+        (AttackSource::Spell, attack_roll)
     }
 }
 

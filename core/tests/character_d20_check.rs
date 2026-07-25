@@ -2,7 +2,6 @@ extern crate nat20_core;
 
 mod tests {
 
-    use hecs::World;
     use nat20_core::{
         components::{
             ability::{Ability, AbilityScore, AbilityScoreMap},
@@ -21,13 +20,15 @@ mod tests {
 
     #[test]
     fn character_saving_throw_modifier() {
-        let mut world = World::new();
+        let mut game_state = fixtures::engine::game_state();
 
-        let entity = world.spawn(Character::default());
+        let entity = game_state.world.spawn(Character::default());
 
         {
-            let mut ability_scores =
-                systems::helpers::get_component_mut::<AbilityScoreMap>(&mut world, entity);
+            let mut ability_scores = systems::helpers::get_component_mut::<AbilityScoreMap>(
+                &mut game_state.world,
+                entity,
+            );
             ability_scores.set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));
             ability_scores.add_modifier(
                 &Ability::Strength,
@@ -37,11 +38,12 @@ mod tests {
             assert_eq!(ability_scores.get(&Ability::Strength).total(), 19);
         }
 
-        let result = systems::helpers::get_component::<SavingThrowSet>(&world, entity).check(
-            &SavingThrowKind::Ability(Ability::Strength),
-            &world,
-            entity,
-        );
+        let result = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
+            .check(
+                &SavingThrowKind::Ability(Ability::Strength),
+                &game_state,
+                entity,
+            );
         assert_eq!(result.total_modifier(), 4);
     }
 
@@ -65,7 +67,7 @@ mod tests {
         let result = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
             .check(
                 &SavingThrowKind::Ability(Ability::Strength),
-                &game_state.world,
+                &game_state,
                 entity,
             );
         assert_eq!(result.total_modifier(), 6);
@@ -91,7 +93,7 @@ mod tests {
         let result = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
             .check(
                 &SavingThrowKind::Ability(Ability::Strength),
-                &game_state.world,
+                &game_state,
                 entity,
             );
         assert_eq!(result.total_modifier(), 9);
@@ -111,7 +113,7 @@ mod tests {
         );
 
         let result = systems::helpers::get_component::<SkillSet>(&game_state.world, character)
-            .check(&Skill::Stealth, &game_state.world, character);
+            .check(&Skill::Stealth, &game_state, character);
         assert!(result.advantage_tracker().roll_mode() == RollMode::Disadvantage);
     }
 }

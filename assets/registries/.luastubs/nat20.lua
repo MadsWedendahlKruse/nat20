@@ -174,6 +174,17 @@ function TargetInstance:entity() end
 ---@class D20Check
 ---@field modifiers ModifierMap
 local D20Check = {}
+---@param advantage string -- advantage/disadvantage
+---@param source string
+function D20Check:add_advantage(advantage, source) end
+
+---@class D20CheckResult
+---@field total integer
+---@field modifiers ModifierResult
+local D20CheckResult = {}
+---@param advantage string -- advantage/disadvantage
+---@param source string
+function D20CheckResult:add_advantage(advantage, source) end
 
 ---@class D20CheckKind
 local D20CheckKind = {}
@@ -212,14 +223,6 @@ function D20ResultKind:add_advantage(advantage, source) end
 ---@field kind D20CheckKind
 ---@field target ScriptEntity?
 local D20CheckDCKind = {}
-
----@class AttackRoll
----@field source string
----@field d20_check D20Check
-local AttackRoll = {}
----@param advantage string -- advantage/disadvantage
----@param source string
-function AttackRoll:add_advantage(advantage, source) end
 
 ---@class Event
 local Event = {}
@@ -372,7 +375,8 @@ local TimeDuration = {}
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
----@alias AttackRollHookFn fun(game_state: GameState, entity: ScriptEntity, attack_roll: AttackRoll)
+---@alias D20CheckHookFn fun(game_state: GameState, entity: ScriptEntity, kind: D20CheckKind, d20_check: D20Check)
+---@alias D20CheckResultHookFn fun(game_state: GameState, entity: ScriptEntity, kind: D20CheckKind, result: D20CheckResult)
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)

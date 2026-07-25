@@ -308,11 +308,7 @@ impl ScenarioActionBuilder<'_> {
     pub fn target_entity(mut self, handle: impl Into<String>) -> Self {
         self.builder.target_entity(
             &mut self.scenario.game_state,
-            self.scenario
-                .creatures
-                .get(&handle.into())
-                .unwrap()
-                .id(),
+            self.scenario.creatures.get(&handle.into()).unwrap().id(),
         );
         self
     }
@@ -320,13 +316,7 @@ impl ScenarioActionBuilder<'_> {
     pub fn target_entities(mut self, handles: Vec<impl Into<String>>) -> Self {
         let targets = handles
             .into_iter()
-            .map(|handle| {
-                self.scenario
-                    .creatures
-                    .get(&handle.into())
-                    .unwrap()
-                    .id()
-            })
+            .map(|handle| self.scenario.creatures.get(&handle.into()).unwrap().id())
             .collect::<Vec<_>>();
         for target in targets {
             self.builder
@@ -456,8 +446,11 @@ impl ScenarioProbe<'_> {
         // TODO: This technically bypasses the normal damage pipeline, which is
         // quite complex, but I guess it's fine for testing?
         let entity = self.entity();
-        systems::helpers::get_component_mut::<HitPoints>(&mut self.scenario.game_state.world, entity)
-            .damage(amount);
+        systems::helpers::get_component_mut::<HitPoints>(
+            &mut self.scenario.game_state.world,
+            entity,
+        )
+        .damage(amount);
         self
     }
 
@@ -481,23 +474,32 @@ impl ScenarioProbe<'_> {
         self
     }
 
-    pub fn d20_force_outcome(
-        &mut self,
-        kind: D20CheckKind,
-        outcome: D20CheckOutcome,
-    ) -> &mut Self {
+    pub fn d20_force_outcome(&mut self, kind: D20CheckKind, outcome: D20CheckOutcome) -> &mut Self {
         let entity = self.entity();
-        systems::d20::get_mut(&mut self.scenario.game_state.world, entity, &kind, |check| {
-            check.set_forced_outcome(ModifierSource::Custom("Test outcome".to_string()), outcome);
-        });
+        systems::d20::get_mut(
+            &mut self.scenario.game_state.world,
+            entity,
+            &kind,
+            |check| {
+                check.set_forced_outcome(
+                    ModifierSource::Custom("Test outcome".to_string()),
+                    outcome,
+                );
+            },
+        );
         self
     }
 
     pub fn d20_clear_forced_outcome(&mut self, kind: D20CheckKind) -> &mut Self {
         let entity = self.entity();
-        systems::d20::get_mut(&mut self.scenario.game_state.world, entity, &kind, |check| {
-            check.clear_forced_outcome();
-        });
+        systems::d20::get_mut(
+            &mut self.scenario.game_state.world,
+            entity,
+            &kind,
+            |check| {
+                check.clear_forced_outcome();
+            },
+        );
         self
     }
 
@@ -530,7 +532,9 @@ impl ScenarioProbe<'_> {
         let Some(amount) = resources.get(&resource) else {
             panic!(
                 "Expected creature {:?} to have resource {:?}, but it was not found. Current resources: {:#?}",
-                self.creature(), resource, resources
+                self.creature(),
+                resource,
+                resources
             );
         };
         let ResourceBudgetKind::Flat(budget) = amount else {
@@ -549,7 +553,9 @@ impl ScenarioProbe<'_> {
         let Some(amount) = resources.get(&resource) else {
             panic!(
                 "Expected creature {:?} to have resource {:?}, but it was not found. Current resources: {:#?}",
-                self.creature(), resource, resources
+                self.creature(),
+                resource,
+                resources
             );
         };
         let ResourceBudgetKind::Tiered(budgets) = amount else {
@@ -756,7 +762,8 @@ impl ScenarioProbe<'_> {
             .filter(|instance| instance.effect_id == effect_id)
             .count();
         assert_eq!(
-            count, expected,
+            count,
+            expected,
             "Expected creature {:?} to have {} instances of effect {:?}, but found {}",
             self.creature(),
             expected,
@@ -927,17 +934,15 @@ impl ScenarioProbe<'_> {
             D20CheckKind::AttackRoll(attack_source) => match attack_source {
                 AttackSource::Weapon(weapon_kind) => {
                     assertor(
-                        &systems::helpers::get_component::<Loadout>(world, entity)
-                            .attack_roll_template(weapon_kind)
-                            .d20_check,
+                        systems::helpers::get_component::<Loadout>(world, entity)
+                            .attack_roll_template(weapon_kind),
                     );
                 }
 
                 AttackSource::Spell => {
                     assertor(
-                        &systems::helpers::get_component::<Spellbook>(world, entity)
-                            .attack_roll_template()
-                            .d20_check,
+                        systems::helpers::get_component::<Spellbook>(world, entity)
+                            .attack_roll_template(),
                     );
                 }
             },

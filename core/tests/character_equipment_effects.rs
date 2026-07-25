@@ -1,4 +1,4 @@
-extern crate nat20_core;
+﻿extern crate nat20_core;
 
 mod tests {
 
@@ -58,47 +58,35 @@ mod tests {
         // Before equipping the ring
         let context = &ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand);
 
-        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
+        let (_, roll) = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
             context,
         );
-        let result = systems::damage::attack_roll(roll, &mut game_state, entity, entity);
-        assert_eq!(
-            result.roll_result.advantage_tracker().roll_mode(),
-            RollMode::Normal
-        );
+        assert_eq!(roll.advantage_tracker().roll_mode(), RollMode::Normal);
 
         // Equip the ring
         let _ =
             systems::loadout::equip_in_slot(&mut game_state, entity, &EquipmentSlot::Ring1, ring);
 
-        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
+        let (_, roll) = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
             context,
         );
-        let result = systems::damage::attack_roll(roll, &mut game_state, entity, entity);
-        assert_eq!(
-            result.roll_result.advantage_tracker().roll_mode(),
-            RollMode::Advantage
-        );
+        assert_eq!(roll.advantage_tracker().roll_mode(), RollMode::Advantage);
 
         // Unequip the ring
         systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::Ring1);
-        let roll = systems::loadout::loadout(&game_state.world, entity).attack_roll(
+        let (_, roll) = systems::loadout::loadout(&game_state.world, entity).attack_roll(
             &game_state.world,
             entity,
             entity,
             context,
         );
-        let result = systems::damage::attack_roll(roll, &mut game_state, entity, entity);
-        assert_eq!(
-            result.roll_result.advantage_tracker().roll_mode(),
-            RollMode::Normal
-        );
+        assert_eq!(roll.advantage_tracker().roll_mode(), RollMode::Normal);
     }
 
     #[test]
@@ -122,7 +110,7 @@ mod tests {
 
         let check = systems::helpers::get_component::<SkillSet>(&game_state.world, entity).check(
             &Skill::Stealth,
-            &game_state.world,
+            &game_state,
             entity,
         );
         assert_eq!(check.total_modifier(), 2);
@@ -132,7 +120,7 @@ mod tests {
 
         let check = systems::helpers::get_component::<SkillSet>(&game_state.world, entity).check(
             &Skill::Stealth,
-            &game_state.world,
+            &game_state,
             entity,
         );
         assert_eq!(check.total_modifier(), 0);
@@ -164,7 +152,7 @@ mod tests {
         let throw = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
             .check(
                 &SavingThrowKind::Ability(Ability::Constitution),
-                &game_state.world,
+                &game_state,
                 entity,
             );
         assert_eq!(throw.advantage_tracker().roll_mode(), RollMode::Advantage);
@@ -175,7 +163,7 @@ mod tests {
         let throw = systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity)
             .check(
                 &SavingThrowKind::Ability(Ability::Constitution),
-                &game_state.world,
+                &game_state,
                 entity,
             );
         assert_eq!(throw.advantage_tracker().roll_mode(), RollMode::Normal);

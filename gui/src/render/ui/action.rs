@@ -17,7 +17,10 @@ use nat20_core::{
         spells::spell::ConcentrationError,
     },
     registry::registry::SpellsRegistry,
-    systems::{self, actions::ActionUsabilityError, geometry::Displacement, time::RestKind},
+    systems::{
+        self, actions::ActionUsabilityError, d20::D20CheckDCKind, geometry::Displacement,
+        time::RestKind,
+    },
 };
 use uom::si::{angle::degree, length::meter};
 
@@ -347,10 +350,10 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
     ) {
         match self {
             ActionResultComponent::Damage(damage) => {
-                let no_damage_text = match damage.resolution {
-                    ActionConditionResolution::Unconditional => "took no damage",
-                    ActionConditionResolution::AttackRoll { .. } => "was not hit",
-                    ActionConditionResolution::SavingThrow { .. } => "took no damage",
+                let no_damage_text = if damage.resolution.is_attack_roll() {
+                    "was not hit"
+                } else {
+                    "took no damage"
                 };
 
                 ui.group(|| {
@@ -488,15 +491,17 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
 }
 
 fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageResult) {
-    match damage.resolution {
+    match &damage.resolution {
         ActionConditionResolution::Unconditional => {
             (&damage.damage_roll, &damage.damage_taken).render(ui);
         }
 
-        ActionConditionResolution::AttackRoll {
-            ref attack_roll,
-            ref armor_class,
+        ActionConditionResolution::Conditional {
+            dc: D20CheckDCKind::AttackRoll(_, _, armor_class),
+            result,
         } => {
+            let attack_roll = result.d20_result();
+
             TextSegment::new(format!("{}'s", target_name), TextKind::Target).render(ui);
             ui.same_line();
             ui.text("Armor Class:");
@@ -521,16 +526,18 @@ fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageRe
             } else {
                 ui.text(format!(
                     "Attack did not hit. Attack roll ({}) was less than Armor Class ({})",
-                    attack_roll.roll_result.total(),
+                    attack_roll.total(),
                     armor_class.total()
                 ));
             }
         }
 
-        ActionConditionResolution::SavingThrow {
-            ref saving_throw_dc,
-            ref saving_throw_result,
+        ActionConditionResolution::Conditional {
+            dc: D20CheckDCKind::SavingThrow(saving_throw_dc),
+            result,
         } => {
+            let saving_throw_result = result.d20_result();
+
             ui.text("Saving Throw DC:");
             ui.same_line();
             saving_throw_dc.render(ui);
@@ -549,6 +556,12 @@ fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageRe
             TextSegment::new(label, kind).render(ui);
 
             ui.text("");
+            (&damage.damage_roll, &damage.damage_taken).render(ui);
+        }
+
+        ActionConditionResolution::Conditional { dc, result } => {
+            dc.render(ui);
+            result.d20_result().render(ui);
             (&damage.damage_roll, &damage.damage_taken).render(ui);
         }
     }

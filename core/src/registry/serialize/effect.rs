@@ -2,16 +2,17 @@ use hecs::{Entity, World};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::sync::Arc;
+use strum::IntoEnumIterator;
 use tracing::debug;
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        d20::{D20CheckKey, D20CheckMap},
+        d20::{D20Check, D20CheckKey, D20CheckMap},
         damage::{
-            AttackRoll, AttackRollTemplate, AttackSource, DamageMitigationEffect,
-            DamageMitigationResult, DamageResistances, DamageRoll, DamageRollResult,
+            AttackSource, DamageMitigationEffect, DamageMitigationResult, DamageResistances,
+            DamageRoll, DamageRollResult,
         },
         effects::{
             effect::{
@@ -20,18 +21,18 @@ use crate::{
                 EffectLifetimeTemplate, EffectStackingPolicy,
             },
             hooks::{
-                ActionHook, ActionResultHook, ArmorClassHook, AttackRollHook, AttackedHook,
+                ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, D20CheckHooks,
                 DamageRollHook, DamageRollResultHook, DeathHook, PostDamageMitigationHook,
                 PreDamageMitigationHook, ResourceCostHook, TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
         id::{ActionId, EffectId, ResourceId, ScriptId},
-        items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
+        items::equipment::{armor::ArmorClass, loadout::Loadout},
         modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
-        saving_throw::SavingThrowSet,
-        skill::SkillSet,
+        saving_throw::{SavingThrowKind, SavingThrowSet},
+        skill::{Skill, SkillSet},
         speed::Speed,
         spells::spellbook::Spellbook,
         time::{TimeDuration, TurnBoundary},
@@ -41,6 +42,7 @@ use crate::{
         event::{CallbackResult, EventCallback, EventKind, EventKindTag, ListenerSource},
         game_state::GameState,
     },
+    registry::registry::ScriptsRegistry,
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
@@ -111,10 +113,14 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub modifiers: Vec<EffectModifier>,
 
+    /// Scripted d20 check hooks (`check_hook` pre-roll, `result_hook`
+    /// post-roll), one field per check kind just like the runtime maps
     #[serde(default)]
-    pub pre_attack_roll: Vec<AttackRollHookDefinition>,
-    // #[serde(default)]
-    // pub post_attack_roll: Vec<AttackRollResultHookDef>,
+    pub on_attack_roll: Vec<AttackRollHookDefinition>,
+    #[serde(default)]
+    pub on_saving_throw: Vec<SavingThrowHookDefinition>,
+    #[serde(default)]
+    pub on_skill_check: Vec<SkillCheckHookDefinition>,
     #[serde(default)]
     pub on_attacked: Vec<AttackedHookDefinition>,
     #[serde(default)]
@@ -201,11 +207,40 @@ impl From<EffectDefinition> for Effect {
         }
 
         // 2. Hook-based modifiers
-        // Build pre_attack_roll hooks
+        // Build the scripted d20 check hooks, fanning out over all keys when
+        // no filter is given
         {
-            if !definition.pre_attack_roll.is_empty() {
-                let hooks = collect_effect_hooks(&definition.pre_attack_roll, &effect_id);
-                effect.pre_attack_roll = Some(AttackRollHookDefinition::combine_hooks(hooks));
+            for def in &definition.on_attack_roll {
+                let sources = match &def.source {
+                    Some(source) => vec![source.source],
+                    None => AttackSource::all().to_vec(),
+                };
+                let hooks = build_d20_check_hooks(&def.script);
+                for source in sources {
+                    insert_d20_check_hooks(&mut effect.on_attack_roll, source, hooks.clone());
+                }
+            }
+
+            for def in &definition.on_saving_throw {
+                let kinds = match &def.kind {
+                    Some(kind) => vec![*kind],
+                    None => SavingThrowKind::iter().collect(),
+                };
+                let hooks = build_d20_check_hooks(&def.script);
+                for kind in kinds {
+                    insert_d20_check_hooks(&mut effect.on_saving_throw, kind, hooks.clone());
+                }
+            }
+
+            for def in &definition.on_skill_check {
+                let skills = match &def.skill {
+                    Some(skill) => vec![*skill],
+                    None => Skill::iter().collect(),
+                };
+                let hooks = build_d20_check_hooks(&def.script);
+                for skill in skills {
+                    insert_d20_check_hooks(&mut effect.on_skill_check, skill, hooks.clone());
+                }
             }
         }
 
@@ -326,6 +361,21 @@ impl RegistryReferenceCollector for EffectDefinition {
                     ScriptFunction::EventFilter,
                 ));
             }
+        }
+        let d20_hook_scripts = self
+            .on_attack_roll
+            .iter()
+            .map(|hook| &hook.script)
+            .chain(self.on_saving_throw.iter().map(|hook| &hook.script))
+            .chain(self.on_skill_check.iter().map(|hook| &hook.script));
+        for script in d20_hook_scripts {
+            collector.add(RegistryReference::ScriptAnyOf(
+                script.clone(),
+                vec![
+                    ScriptFunction::D20CheckHook,
+                    ScriptFunction::D20CheckResultHook,
+                ],
+            ));
         }
         for hook in &self.post_damage_roll {
             match hook {
@@ -497,67 +547,40 @@ impl EffectModifier {
                 attack_roll_source: attack_source,
                 attack_roll_modifier: modifier,
             } => {
-                // TODO: Not the prettiest solution, but needed to avoid double mutable borrows
-                match attack_source {
-                    Some(attack_source) => {
-                        // Specific source means only apply to that source's attack rolls
-                        match attack_source.source {
-                            AttackSource::Weapon(weapon_kind) => {
-                                let mut loadout = systems::helpers::get_component_mut::<Loadout>(
-                                    &mut game_state.world,
-                                    entity,
-                                );
-                                Self::apply_attack_roll_modifier(
-                                    loadout.attack_roll_template_mut(&weapon_kind),
-                                    modifier,
-                                    &source,
-                                    phase,
-                                );
-                            }
+                let sources = match attack_source {
+                    // Specific source means only apply to that source's attack rolls
+                    Some(attack_source) => vec![attack_source.source],
+                    // No source means all attack rolls
+                    None => AttackSource::all().to_vec(),
+                };
 
-                            AttackSource::Spell => {
-                                let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
-                                    &mut game_state.world,
-                                    entity,
-                                );
-                                Self::apply_attack_roll_modifier(
-                                    spellbook.attack_roll_template_mut(),
-                                    modifier,
-                                    &source,
-                                    phase,
-                                );
-                            }
-                        }
-                    }
-
-                    None => {
-                        // No source means all attack rolls
-                        {
+                for attack_source in sources {
+                    match attack_source {
+                        AttackSource::Weapon(weapon_kind) => {
                             let mut loadout = systems::helpers::get_component_mut::<Loadout>(
                                 &mut game_state.world,
                                 entity,
                             );
-                            for weapon_kind in
-                                &[WeaponKind::Melee, WeaponKind::Ranged, WeaponKind::Unarmed]
-                            {
-                                Self::apply_attack_roll_modifier(
-                                    loadout.attack_roll_template_mut(weapon_kind),
-                                    modifier,
-                                    &source,
-                                    phase,
-                                );
-                            }
+                            Self::apply_attack_roll_modifier(
+                                loadout.attack_roll_template_mut(&weapon_kind),
+                                modifier,
+                                &source,
+                                phase,
+                            );
                         }
-                        let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
-                            &mut game_state.world,
-                            entity,
-                        );
-                        Self::apply_attack_roll_modifier(
-                            spellbook.attack_roll_template_mut(),
-                            modifier,
-                            &source,
-                            phase,
-                        );
+
+                        AttackSource::Spell => {
+                            let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
+                                &mut game_state.world,
+                                entity,
+                            );
+                            Self::apply_attack_roll_modifier(
+                                spellbook.attack_roll_template_mut(),
+                                modifier,
+                                &source,
+                                phase,
+                            );
+                        }
                     }
                 }
             }
@@ -715,7 +738,9 @@ impl EffectModifier {
         for kind in &modifier.kind {
             match phase {
                 EffectPhase::Apply => {
-                    modifier.modifier.apply(modifiable.get_mut(kind), source.clone());
+                    modifier
+                        .modifier
+                        .apply(modifiable.get_mut(kind), source.clone());
                 }
                 EffectPhase::Unapply => {
                     modifier.modifier.remove(modifiable.get_mut(kind), &source);
@@ -725,14 +750,14 @@ impl EffectModifier {
     }
 
     fn apply_attack_roll_modifier(
-        template: &mut AttackRollTemplate,
+        check: &mut D20Check,
         modifier: &D20Modifier,
         source: &ModifierSource,
         phase: EffectPhase,
     ) {
         match phase {
-            EffectPhase::Apply => modifier.apply(&mut template.d20_check, source.clone()),
-            EffectPhase::Unapply => modifier.remove(&mut template.d20_check, source),
+            EffectPhase::Apply => modifier.apply(check, source.clone()),
+            EffectPhase::Unapply => modifier.remove(check, source),
         }
     }
 }
@@ -757,37 +782,82 @@ where
         .collect::<Vec<HookFn>>()
 }
 
+/// A scripted d20 check hook: the script defines `check_hook` (pre-roll)
+/// and/or `result_hook` (post-roll). Registry validation requires at least
+/// one of the two.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum AttackRollHookDefinition {
-    Script { script: ScriptId },
+pub struct AttackRollHookDefinition {
+    pub script: ScriptId,
+    /// Restrict to attacks from one source; all attacks when omitted
+    #[serde(default)]
+    pub source: Option<AttackSourceDefinition>,
 }
 
-impl HookEffect<AttackRollHook> for AttackRollHookDefinition {
-    fn build_hook(&self, _effect: &EffectId) -> AttackRollHook {
-        match self {
-            AttackRollHookDefinition::Script { script } => {
-                let script_id = script.clone();
-                Arc::new(
-                    move |game_state: &GameState, entity: Entity, attack_roll: &mut AttackRoll| {
-                        systems::scripts::evaluate_attack_roll_hook(
-                            &script_id,
-                            game_state,
-                            entity,
-                            attack_roll,
-                        );
-                    },
-                )
-            }
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SavingThrowHookDefinition {
+    pub script: ScriptId,
+    /// Restrict to one saving throw kind; all of them when omitted
+    #[serde(default)]
+    pub kind: Option<SavingThrowKind>,
+}
 
-    fn combine_hooks(hooks: Vec<AttackRollHook>) -> AttackRollHook {
-        Arc::new(move |world, entity, attack_roll| {
-            for hook in &hooks {
-                hook(world, entity, attack_roll);
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SkillCheckHookDefinition {
+    pub script: ScriptId,
+    /// Restrict to one skill; all skills when omitted
+    #[serde(default)]
+    pub skill: Option<Skill>,
+}
+
+/// Wires a script into a `D20CheckHooks` pair. Each side only fires if the
+/// script actually defines the corresponding function.
+fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
+    let check_script = script.clone();
+    let result_script = script.clone();
+    D20CheckHooks {
+        check_hook: Arc::new(move |game_state, entity, kind, check| {
+            if script_defines(&check_script, ScriptFunction::D20CheckHook) {
+                systems::scripts::evaluate_d20_check_hook(
+                    &check_script,
+                    game_state,
+                    entity,
+                    kind,
+                    check,
+                );
             }
-        })
+        }),
+        result_hook: Arc::new(move |game_state, entity, kind, result| {
+            if script_defines(&result_script, ScriptFunction::D20CheckResultHook) {
+                systems::scripts::evaluate_d20_result_hook(
+                    &result_script,
+                    game_state,
+                    entity,
+                    kind,
+                    result,
+                );
+            }
+        }),
+    }
+}
+
+fn script_defines(script: &ScriptId, function: ScriptFunction) -> bool {
+    ScriptsRegistry::get(script).is_some_and(|s| function.defined_in_script(s))
+}
+
+fn insert_d20_check_hooks<K>(
+    map: &mut std::collections::HashMap<K, D20CheckHooks>,
+    key: K,
+    hooks: D20CheckHooks,
+) where
+    K: Eq + std::hash::Hash + Clone,
+{
+    match map.remove(&key) {
+        Some(existing) => {
+            map.insert(key, D20CheckHooks::combined(vec![existing, hooks]));
+        }
+        None => {
+            map.insert(key, hooks);
+        }
     }
 }
 
@@ -820,7 +890,7 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                           effect: &EffectInstance,
                           victim: Entity,
                           attacker: Entity,
-                          attack_roll: &mut AttackRoll| {
+                          check: &mut D20Check| {
                         if let Some(distance_expression) = &distance {
                             let distance_between = systems::geometry::distance_between_entities(
                                 world, victim, attacker,
@@ -847,7 +917,7 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                             }
                         }
 
-                        modifier.apply(&mut attack_roll.d20_check, modifier_source.clone());
+                        modifier.apply(check, modifier_source.clone());
                     }
                 })
             }
@@ -1403,13 +1473,19 @@ fn repeat_apply_condition_callback() -> EventCallback {
         match &instance.action_resolution {
             ActionConditionResolution::Unconditional => { /* No check to repeat */ }
 
-            ActionConditionResolution::AttackRoll {
-                attack_roll,
-                armor_class,
-            } => todo!(),
+            ActionConditionResolution::Conditional {
+                dc: dc @ (D20CheckDCKind::AttackRoll(..) | D20CheckDCKind::Skill(_)),
+                ..
+            } => {
+                // TODO: Is this used anywhere?
+                todo!(
+                    "Repeat apply condition for attack roll or skill check DCs is not yet implemented"
+                );
+            }
 
-            ActionConditionResolution::SavingThrow {
-                saving_throw_dc, ..
+            ActionConditionResolution::Conditional {
+                dc: D20CheckDCKind::SavingThrow(saving_throw_dc),
+                ..
             } => {
                 let event = systems::d20::check(
                     game_state,

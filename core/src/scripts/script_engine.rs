@@ -46,7 +46,8 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        damage::{AttackRoll, DamageMitigationResult, DamageRoll, DamageRollResult},
+        d20::{D20Check, D20CheckResult},
+        damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstance,
         id::{ActionId, EntityIdentifier, ScriptId},
         items::equipment::armor::ArmorClass,
@@ -59,6 +60,7 @@ use crate::{
         script::{Script, ScriptError, ScriptFunction},
         script_api::ScriptEntity,
     },
+    systems::d20::D20CheckKind,
 };
 
 pub static SCRIPT_ENGINE: LazyLock<ScriptEngine> = LazyLock::new(ScriptEngine::new);
@@ -287,14 +289,15 @@ impl ScriptEngine {
             .map_err(Self::runtime_error)
     }
 
-    pub fn evaluate_attack_roll_hook(
+    pub fn evaluate_d20_check_hook(
         &self,
         script: &Script,
         game_state: &GameState,
         entity: Entity,
-        attack_roll: &mut AttackRoll,
+        kind: &D20CheckKind,
+        check: &mut D20Check,
     ) -> Result<(), ScriptError> {
-        let func = self.get_function(script, ScriptFunction::AttackRollHook)?;
+        let func = self.get_function(script, ScriptFunction::D20CheckHook)?;
         let ent = self
             .lua
             .create_userdata(ScriptEntity::from(entity))
@@ -304,7 +307,33 @@ impl ScriptEngine {
                 func.call::<()>((
                     scope.create_userdata_ref(game_state)?,
                     ent,
-                    scope.create_userdata_ref_mut(attack_roll)?,
+                    kind.clone(),
+                    scope.create_userdata_ref_mut(check)?,
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_d20_result_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        kind: &D20CheckKind,
+        result: &mut D20CheckResult,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::D20CheckResultHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    kind.clone(),
+                    scope.create_userdata_ref_mut(result)?,
                 ))
             })
             .map_err(Self::runtime_error)

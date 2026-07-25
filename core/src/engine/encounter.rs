@@ -44,7 +44,7 @@ impl Encounter {
             initiative_order: Vec::new(),
             event_log: EventLog::new(),
         };
-        encounter.roll_initiative(&game_state.world);
+        encounter.roll_initiative(game_state);
         encounter.start_turn(game_state);
         encounter
             .event_log
@@ -55,16 +55,13 @@ impl Encounter {
         encounter
     }
 
-    fn roll_initiative(&mut self, world: &World) {
+    fn roll_initiative(&mut self, game_state: &GameState) {
         let mut indexed_rolls: Vec<(Entity, D20CheckResult)> = self
             .participants
             .iter()
             .map(|entity| {
-                let roll = systems::helpers::get_component::<SkillSet>(world, *entity).check(
-                    &Skill::Initiative,
-                    world,
-                    *entity,
-                );
+                let roll = systems::helpers::get_component::<SkillSet>(&game_state.world, *entity)
+                    .check(&Skill::Initiative, game_state, *entity);
                 (entity.clone(), roll)
             })
             .collect();

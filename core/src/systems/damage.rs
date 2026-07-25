@@ -1,16 +1,13 @@
-use hecs::{Entity, World};
-
 use crate::{
     components::{
-        actions::action::{
-            ActionConditionResolution, ActionContext, AttackRollFunction, DamageFunction,
-        },
-        damage::{AttackRoll, AttackRollResult, DamageRoll, DamageRollResult},
-        effects::{effect::EffectInstance, hooks::AttackedHook},
+        actions::action::{ActionConditionResolution, DamageFunction},
+        damage::{DamageRoll, DamageRollResult},
     },
     engine::{action_prompt::ActionData, game_state::GameState},
     systems,
 };
+
+// TODO: Maybe a bit overkill with an entire file for two functions?
 
 pub fn damage_roll(
     mut damage_roll: DamageRoll,
@@ -49,55 +46,4 @@ pub fn damage_roll_fn(
 ) -> DamageRollResult {
     let roll = damage_roll_fn(&game_state.world, action.actor.id(), &action.context);
     damage_roll(roll, game_state, action, resolution)
-}
-
-pub fn attack_roll(
-    mut attack_roll: AttackRoll,
-    game_state: &mut GameState,
-    attacker: Entity,
-    target: Entity,
-) -> AttackRollResult {
-    let attacked_hooks: Vec<(AttackedHook, EffectInstance)> =
-        systems::effects::effects_mut(&mut game_state.world, target)
-            .collect_one_shot_hooks_with_instance(|effect| effect.on_attacked.as_ref());
-    for (hook, instance) in &attacked_hooks {
-        hook(
-            &game_state.world,
-            instance,
-            target,
-            attacker,
-            &mut attack_roll,
-        );
-    }
-
-    systems::effects::effects(&game_state.world, attacker).pre_attack_roll(
-        game_state,
-        attacker,
-        &mut attack_roll,
-    );
-
-    let mut result = {
-        let level = systems::helpers::level(&game_state.world, attacker)
-            .expect("Entity must have a level component");
-        attack_roll.roll_raw(level.proficiency_bonus())
-    };
-
-    systems::effects::effects(&game_state.world, attacker).post_attack_roll(
-        &game_state.world,
-        attacker,
-        &mut result,
-    );
-
-    result
-}
-
-pub fn attack_roll_fn(
-    attack_roll_fn: &AttackRollFunction,
-    game_state: &mut GameState,
-    entity: Entity,
-    target: Entity,
-    context: &ActionContext,
-) -> AttackRollResult {
-    let roll = attack_roll_fn(&game_state.world, entity, target, context);
-    attack_roll(roll, game_state, entity, target)
 }

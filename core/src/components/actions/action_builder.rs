@@ -1045,7 +1045,6 @@ mod tests {
         // Force the fighter to hit the attack so the wizard has a reason to react
         systems::loadout::loadout_mut(&mut game_state.world, fighter.id())
             .attack_roll_template_mut(&WeaponKind::Melee)
-            .d20_check
             .set_forced_outcome(
                 ModifierSource::Custom("Testing".to_string()),
                 D20CheckOutcome::CriticalSuccess,

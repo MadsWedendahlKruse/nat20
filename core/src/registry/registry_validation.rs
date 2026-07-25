@@ -25,6 +25,7 @@ pub enum RegistryReference {
     Item(ItemId),
     Resource(ResourceId),
     Script(ScriptId, ScriptFunction),
+    ScriptAnyOf(ScriptId, Vec<ScriptFunction>),
     Species(SpeciesId),
     Spell(SpellId),
     Subclass(SubclassId),
@@ -44,6 +45,9 @@ impl Display for RegistryReference {
             RegistryReference::Resource(id) => write!(f, "Resource '{}'", id),
             RegistryReference::Script(id, function) => {
                 write!(f, "Script '{}' (function: {:?})", id, function)
+            }
+            RegistryReference::ScriptAnyOf(id, functions) => {
+                write!(f, "Script '{}' (any function of: {:?})", id, functions)
             }
             RegistryReference::Species(id) => write!(f, "Species '{}'", id),
             RegistryReference::Spell(id) => write!(f, "Spell '{}'", id),

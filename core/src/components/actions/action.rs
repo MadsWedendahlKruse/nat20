@@ -16,14 +16,12 @@ use crate::{
             reaction::{ReactionBody, ReactionResult, ReactionTrigger},
             targeting::{AreaShape, TargetInstance, TargetingContext},
         },
-        d20::D20CheckResult,
-        damage::{
-            AttackRoll, AttackRollResult, DamageMitigationResult, DamageRoll, DamageRollResult,
-        },
+        d20::{D20Check, D20CheckOutcome},
+        damage::{AttackSource, DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstanceTemplate,
         health::life_state::LifeState,
         id::{ActionId, EffectId, EntityIdentifier, IdProvider, ResourceId, SpellId},
-        items::equipment::{armor::ArmorClass, slots::EquipmentSlot},
+        items::equipment::slots::EquipmentSlot,
         modifier::{ModifierMap, ModifierResult},
         resource::{RechargeRule, ResourceAmountMap},
         saving_throw::{SavingThrowDC, SavingThrowKind},
@@ -38,13 +36,14 @@ use crate::{
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{
         self,
+        d20::{D20CheckDCKind, D20ResultKind},
         geometry::{Displacement, DisplacementTemplate},
     },
 };
 
 pub type DamageFunction = dyn Fn(&World, Entity, &ActionContext) -> DamageRoll + Send + Sync;
 pub type AttackRollFunction =
-    dyn Fn(&World, Entity, Entity, &ActionContext) -> AttackRoll + Send + Sync;
+    dyn Fn(&World, Entity, Entity, &ActionContext) -> (AttackSource, D20Check) + Send + Sync;
 pub type SavingThrowFunction =
     dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
 pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> ModifierMap + Send + Sync;
@@ -389,7 +388,7 @@ pub trait AttackRollProvider {
         actor: Entity,
         target: Entity,
         context: &ActionContext,
-    ) -> AttackRoll;
+    ) -> (AttackSource, D20Check);
 }
 
 pub trait SavingThrowProvider {
@@ -556,13 +555,9 @@ impl PhaseOutcomes {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionConditionResolution {
     Unconditional,
-    AttackRoll {
-        attack_roll: AttackRollResult,
-        armor_class: ArmorClass,
-    },
-    SavingThrow {
-        saving_throw_dc: SavingThrowDC,
-        saving_throw_result: D20CheckResult,
+    Conditional {
+        dc: D20CheckDCKind,
+        result: D20ResultKind,
     },
 }
 
@@ -570,24 +565,45 @@ impl ActionConditionResolution {
     pub fn is_success(&self) -> bool {
         match self {
             ActionConditionResolution::Unconditional => true,
-            ActionConditionResolution::AttackRoll {
-                attack_roll,
-                armor_class,
-            } => attack_roll.is_success(armor_class),
-            ActionConditionResolution::SavingThrow {
-                saving_throw_dc,
-                saving_throw_result,
-            } => {
+            ActionConditionResolution::Conditional { dc, result } => match dc {
                 // For saving throws, a successful save means the action's effect
                 // is avoided or reduced, so we check for failure here.
-                !saving_throw_result.is_success(saving_throw_dc)
-            }
+                D20CheckDCKind::SavingThrow(_) => !result.is_success(dc),
+                _ => result.is_success(dc),
+            },
         }
     }
 
+    pub fn is_attack_roll(&self) -> bool {
+        matches!(
+            self,
+            ActionConditionResolution::Conditional {
+                dc: D20CheckDCKind::AttackRoll(..),
+                ..
+            }
+        )
+    }
+
+    pub fn is_saving_throw(&self) -> bool {
+        matches!(
+            self,
+            ActionConditionResolution::Conditional {
+                dc: D20CheckDCKind::SavingThrow(_),
+                ..
+            }
+        )
+    }
+
+    /// Only attack rolls can crit for damage purposes
     pub fn is_crit(&self) -> bool {
         match self {
-            ActionConditionResolution::AttackRoll { attack_roll, .. } => attack_roll.is_crit(),
+            ActionConditionResolution::Conditional {
+                dc: D20CheckDCKind::AttackRoll(..),
+                result,
+            } => matches!(
+                result.d20_result().outcome,
+                Some(D20CheckOutcome::CriticalSuccess)
+            ),
             _ => false,
         }
     }
@@ -602,55 +618,6 @@ pub struct DamageResult {
 }
 
 impl DamageResult {
-    pub fn unconditional(
-        damage_roll: Option<DamageRollResult>,
-        damage_taken: Option<DamageMitigationResult>,
-        new_life_state: Option<LifeState>,
-    ) -> Self {
-        DamageResult {
-            resolution: ActionConditionResolution::Unconditional,
-            damage_roll,
-            damage_taken,
-            new_life_state,
-        }
-    }
-
-    pub fn attack_roll(
-        damage_roll: Option<DamageRollResult>,
-        damage_taken: Option<DamageMitigationResult>,
-        new_life_state: Option<LifeState>,
-        attack_roll: AttackRollResult,
-        armor_class: ArmorClass,
-    ) -> Self {
-        DamageResult {
-            resolution: ActionConditionResolution::AttackRoll {
-                attack_roll,
-                armor_class,
-            },
-            damage_roll,
-            damage_taken,
-            new_life_state,
-        }
-    }
-
-    pub fn saving_throw(
-        damage_roll: Option<DamageRollResult>,
-        damage_taken: Option<DamageMitigationResult>,
-        new_life_state: Option<LifeState>,
-        saving_throw_dc: SavingThrowDC,
-        saving_throw_result: D20CheckResult,
-    ) -> Self {
-        DamageResult {
-            resolution: ActionConditionResolution::SavingThrow {
-                saving_throw_dc,
-                saving_throw_result,
-            },
-            damage_roll,
-            damage_taken,
-            new_life_state,
-        }
-    }
-
     pub fn empty(resolution: ActionConditionResolution) -> Self {
         DamageResult {
             resolution,

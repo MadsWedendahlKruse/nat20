@@ -582,6 +582,27 @@ impl RegistrySet {
 
                         found
                     }
+                    RegistryReference::ScriptAnyOf(id, functions) => {
+                        let found = registries.scripts.entries.contains_key(id);
+
+                        if found {
+                            let script_entry = &registries.scripts.entries[id].value;
+                            if !functions.iter().any(|f| f.defined_in_script(script_entry)) {
+                                errors.push(RegistryError::ScriptError(
+                                    ScriptError::MissingFunction {
+                                        function_name: functions
+                                            .iter()
+                                            .map(|f| f.fn_name())
+                                            .collect::<Vec<_>>()
+                                            .join(" or "),
+                                        script_id: id.clone(),
+                                    },
+                                ));
+                            }
+                        }
+
+                        found
+                    }
                 };
 
                 if !found {
@@ -626,7 +647,7 @@ impl RegistrySet {
             RegistryReference::Subspecies(id) => {
                 (id.to_string(), registries.subspecies.all_keys_strings())
             }
-            RegistryReference::Script(id, _) => (
+            RegistryReference::Script(id, _) | RegistryReference::ScriptAnyOf(id, _) => (
                 id.to_string(),
                 registries
                     .scripts

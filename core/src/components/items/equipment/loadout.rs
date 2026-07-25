@@ -13,8 +13,8 @@ use crate::{
             },
             targeting::TargetingRange,
         },
-        d20::{AdvantageType, D20Check},
-        damage::{AttackRoll, AttackRollTemplate, AttackSource, DamageRoll, DamageType},
+        d20::{AdvantageType, D20Check, D20CheckMap},
+        damage::{AttackSource, DamageRoll, DamageType, get_attack_roll_hooks},
         id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
@@ -34,7 +34,7 @@ use crate::{
     },
     engine::game_state::GameState,
     registry::registry::ItemsRegistry,
-    systems::{self},
+    systems::{self, d20::D20CheckKind},
 };
 
 // TODO: Probably shouldn't hardcode these :)
@@ -136,7 +136,10 @@ impl Into<EquipmentInstance> for &LazyLock<ItemId> {
 #[derive(Debug, Clone)]
 pub struct Loadout {
     equipment: HashMap<EquipmentSlot, EquipmentInstance>,
-    attack_roll_templates: HashMap<WeaponKind, AttackRollTemplate>,
+    /// Persistent per-weapon-kind attack roll checks, same structure as
+    /// `SkillSet`/`SavingThrowSet`. The weapon-specific parts (ability
+    /// modifier, enchantment, proficiency) are merged in at roll time.
+    attack_rolls: D20CheckMap<WeaponKind>,
     saving_throw_modifiers: HashMap<WeaponKind, ModifierMap>,
 }
 
@@ -144,24 +147,23 @@ impl Loadout {
     pub fn new() -> Self {
         Self {
             equipment: HashMap::new(),
-            attack_roll_templates: HashMap::from_iter(vec![
-                (WeaponKind::Melee, AttackRollTemplate::default()),
-                (WeaponKind::Ranged, AttackRollTemplate::default()),
-                (WeaponKind::Unarmed, AttackRollTemplate::default()),
-            ]),
+            attack_rolls: D20CheckMap::new(
+                |kind| D20CheckKind::AttackRoll(AttackSource::Weapon(*kind)),
+                |_| None,
+                |kind, game_state, entity| {
+                    get_attack_roll_hooks(&AttackSource::Weapon(*kind), game_state, entity)
+                },
+            ),
             saving_throw_modifiers: HashMap::new(),
         }
     }
 
-    pub fn attack_roll_template(&self, weapon_kind: &WeaponKind) -> &AttackRollTemplate {
-        self.attack_roll_templates.get(weapon_kind).unwrap()
+    pub fn attack_roll_template(&self, weapon_kind: &WeaponKind) -> &D20Check {
+        self.attack_rolls.get(weapon_kind)
     }
 
-    pub fn attack_roll_template_mut(
-        &mut self,
-        weapon_kind: &WeaponKind,
-    ) -> &mut AttackRollTemplate {
-        self.attack_roll_templates.get_mut(weapon_kind).unwrap()
+    pub fn attack_roll_template_mut(&mut self, weapon_kind: &WeaponKind) -> &mut D20Check {
+        self.attack_rolls.get_mut(weapon_kind)
     }
 
     pub fn saving_throw_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierMap {
@@ -431,7 +433,7 @@ impl AttackRollProvider for Loadout {
         actor: Entity,
         target: Entity,
         context: &ActionContext,
-    ) -> AttackRoll {
+    ) -> (AttackSource, D20Check) {
         let attack_context = context
             .attack
             .as_ref()
@@ -458,22 +460,20 @@ impl AttackRollProvider for Loadout {
                     let distance =
                         systems::geometry::distance_between_entities(world, actor, target).unwrap();
                     if distance > range.normal() {
-                        attack_roll.d20_check.advantage_tracker_mut().add(
+                        attack_roll.advantage_tracker_mut().add(
                             AdvantageType::Disadvantage,
                             ModifierSource::Custom("Target is outside normal range".to_string()),
                         );
                     }
                 }
 
-                if let Some(template) = self.attack_roll_templates.get(weapon.kind()) {
-                    template.apply_to_roll(&mut attack_roll);
-                }
+                attack_roll.merge_from(self.attack_rolls.get(weapon.kind()));
 
-                attack_roll
+                (AttackSource::Weapon(*weapon.kind()), attack_roll)
             }
 
             ActionAttackKind::Unarmed => {
-                let mut d20_check = D20Check::new(Proficiency::new(
+                let mut attack_roll = D20Check::new(Proficiency::new(
                     ProficiencyLevel::Proficient,
                     ModifierSource::Base,
                 ));
@@ -481,17 +481,13 @@ impl AttackRollProvider for Loadout {
                     systems::helpers::get_component::<AbilityScoreMap>(world, actor)
                         .ability_modifier(&Ability::Strength)
                         .total();
-                d20_check.add_modifier(
+                attack_roll.add_modifier(
                     ModifierSource::Ability(Ability::Strength),
                     strength_modifier,
                 );
-                let mut attack_roll =
-                    AttackRoll::new(d20_check, AttackSource::Weapon(WeaponKind::Unarmed));
-                if let Some(template) = self.attack_roll_templates.get(&WeaponKind::Unarmed) {
-                    template.apply_to_roll(&mut attack_roll);
-                }
+                attack_roll.merge_from(self.attack_rolls.get(&WeaponKind::Unarmed));
 
-                attack_roll
+                (AttackSource::Weapon(WeaponKind::Unarmed), attack_roll)
             }
         }
     }

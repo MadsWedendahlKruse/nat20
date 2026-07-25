@@ -15,7 +15,7 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::targeting::TargetingRange,
         d20::D20Check,
-        damage::{AttackRoll, AttackSource, DamageComponent, DamageRoll, DamageType},
+        damage::{DamageComponent, DamageRoll, DamageType},
         dice::DiceSet,
         id::{ActionId, EffectId},
         items::{
@@ -302,7 +302,7 @@ impl Weapon {
         &self,
         ability_scores: &AbilityScoreMap,
         weapon_proficiency: &Proficiency,
-    ) -> AttackRoll {
+    ) -> D20Check {
         let mut attack_roll = D20Check::new(weapon_proficiency.clone());
 
         self.add_ability_modifier(ability_scores, attack_roll.modifiers_mut());
@@ -313,7 +313,7 @@ impl Weapon {
             enchantment as i32,
         );
 
-        AttackRoll::new(attack_roll, AttackSource::Weapon(*self.kind()))
+        attack_roll
     }
 
     pub fn damage_roll(
