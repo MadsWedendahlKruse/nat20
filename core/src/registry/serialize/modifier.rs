@@ -6,9 +6,10 @@ use strum::IntoEnumIterator;
 use crate::{
     components::{
         ability::Ability,
-        d20::{AdvantageType, D20CheckOutcome},
+        d20::{AdvantageType, D20Check, D20CheckOutcome},
         damage::{AttackSource, DamageType, MitigationOperation},
         items::equipment::weapon::WeaponKind,
+        modifier::{Modifiable, ModifierSource},
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
@@ -114,6 +115,34 @@ impl_string_schema!(
          `critical_failure`) or a lowered crit threshold (`crit(-N)`).",
     "examples": ["advantage", "+2", "crit(-1)"]
 );
+
+impl D20Modifier {
+    pub fn apply(&self, check: &mut D20Check, source: ModifierSource) {
+        match self {
+            D20Modifier::Flat(delta) => {
+                check.add_modifier(source, *delta);
+            }
+            D20Modifier::Advantage(advantage) => {
+                check.advantage_tracker_mut().add(*advantage, source)
+            }
+            D20Modifier::ForceOutcome(outcome) => check.set_forced_outcome(source, *outcome),
+            D20Modifier::CritThreshold(reduction) => {
+                check.add_crit_threshold_reduction(source, *reduction)
+            }
+        }
+    }
+
+    pub fn remove(&self, check: &mut D20Check, source: &ModifierSource) {
+        match self {
+            D20Modifier::Flat(_) => {
+                check.remove_modifier(source);
+            }
+            D20Modifier::Advantage(_) => check.advantage_tracker_mut().remove(source),
+            D20Modifier::ForceOutcome(_) => check.clear_forced_outcome(),
+            D20Modifier::CritThreshold(_) => check.remove_crit_threshold_reduction(source),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

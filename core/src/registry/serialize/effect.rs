@@ -28,9 +28,7 @@ use crate::{
         health::hit_points::{HitPoints, TemporaryHitPoints},
         id::{ActionId, EffectId, ResourceId, ScriptId},
         items::equipment::{armor::ArmorClass, loadout::Loadout, weapon::WeaponKind},
-        modifier::{
-            FlatModifiable, KeyedFlatModifiable, KeyedModifiable, Modifiable, ModifierSource,
-        },
+        modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         saving_throw::SavingThrowSet,
         skill::SkillSet,
@@ -714,35 +712,13 @@ impl EffectModifier {
     ) where
         K: D20CheckKey + DeserializeOwned,
     {
-        match phase {
-            EffectPhase::Apply => match modifier.modifier {
-                D20Modifier::Flat(delta) => {
-                    for kind in &modifier.kind {
-                        modifiable.add_modifier(kind, source.clone(), delta);
-                    }
+        for kind in &modifier.kind {
+            match phase {
+                EffectPhase::Apply => {
+                    modifier.modifier.apply(modifiable.get_mut(kind), source.clone());
                 }
-                D20Modifier::Advantage(advantage_type) => {
-                    for kind in &modifier.kind {
-                        modifiable.add_advantage(kind, advantage_type, source.clone());
-                    }
-                }
-                D20Modifier::ForceOutcome(force_outcome) => {
-                    for kind in &modifier.kind {
-                        modifiable.set_forced_outcome(kind, source.clone(), force_outcome);
-                    }
-                }
-                D20Modifier::CritThreshold(reduction) => {
-                    for kind in &modifier.kind {
-                        modifiable.add_crit_threshold_reduction(kind, source.clone(), reduction);
-                    }
-                }
-            },
-            EffectPhase::Unapply => {
-                for kind in &modifier.kind {
-                    modifiable.remove_modifier(kind, &source);
-                    modifiable.remove_advantage(kind, &source);
-                    modifiable.clear_forced_outcome(kind);
-                    modifiable.remove_crit_threshold_reduction(kind, &source);
+                EffectPhase::Unapply => {
+                    modifier.modifier.remove(modifiable.get_mut(kind), &source);
                 }
             }
         }
@@ -754,41 +730,9 @@ impl EffectModifier {
         source: &ModifierSource,
         phase: EffectPhase,
     ) {
-        match (modifier, phase) {
-            (D20Modifier::Flat(bonus), EffectPhase::Apply) => {
-                template.d20_check.add_modifier(source.clone(), *bonus);
-            }
-            (D20Modifier::Flat(_), EffectPhase::Unapply) => {
-                template.d20_check.remove_modifier(source);
-            }
-
-            (D20Modifier::Advantage(advantage), EffectPhase::Apply) => {
-                template
-                    .d20_check
-                    .advantage_tracker_mut()
-                    .add(*advantage, source.clone());
-            }
-            (D20Modifier::Advantage(_), EffectPhase::Unapply) => {
-                template.d20_check.advantage_tracker_mut().remove(source);
-            }
-
-            (D20Modifier::CritThreshold(threshold), EffectPhase::Apply) => {
-                template
-                    .d20_check
-                    .add_crit_threshold_reduction(source.clone(), *threshold);
-            }
-            (D20Modifier::CritThreshold(_), EffectPhase::Unapply) => {
-                template.d20_check.remove_crit_threshold_reduction(source);
-            }
-
-            (D20Modifier::ForceOutcome(outcome), EffectPhase::Apply) => {
-                template
-                    .d20_check
-                    .set_forced_outcome(source.clone(), *outcome);
-            }
-            (D20Modifier::ForceOutcome(_), EffectPhase::Unapply) => {
-                template.d20_check.clear_forced_outcome();
-            }
+        match phase {
+            EffectPhase::Apply => modifier.apply(&mut template.d20_check, source.clone()),
+            EffectPhase::Unapply => modifier.remove(&mut template.d20_check, source),
         }
     }
 }
@@ -903,30 +847,7 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                             }
                         }
 
-                        match modifier {
-                            D20Modifier::Flat(bonus) => {
-                                attack_roll
-                                    .d20_check
-                                    .add_modifier(modifier_source.clone(), bonus);
-                            }
-                            D20Modifier::Advantage(advantage) => {
-                                attack_roll
-                                    .d20_check
-                                    .advantage_tracker_mut()
-                                    .add(advantage, modifier_source.clone());
-                            }
-                            D20Modifier::CritThreshold(threshold) => {
-                                attack_roll.d20_check.add_crit_threshold_reduction(
-                                    modifier_source.clone(),
-                                    threshold,
-                                );
-                            }
-                            D20Modifier::ForceOutcome(outcome) => {
-                                attack_roll
-                                    .d20_check
-                                    .set_forced_outcome(modifier_source.clone(), outcome);
-                            }
-                        }
+                        modifier.apply(&mut attack_roll.d20_check, modifier_source.clone());
                     }
                 })
             }
