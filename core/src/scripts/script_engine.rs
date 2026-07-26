@@ -60,7 +60,6 @@ use crate::{
         script::{Script, ScriptError, ScriptFunction},
         script_api::ScriptEntity,
     },
-    systems::d20::D20CheckKind,
 };
 
 pub static SCRIPT_ENGINE: LazyLock<ScriptEngine> = LazyLock::new(ScriptEngine::new);
@@ -294,7 +293,6 @@ impl ScriptEngine {
         script: &Script,
         game_state: &GameState,
         entity: Entity,
-        kind: &D20CheckKind,
         check: &mut D20Check,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::D20CheckHook)?;
@@ -307,7 +305,6 @@ impl ScriptEngine {
                 func.call::<()>((
                     scope.create_userdata_ref(game_state)?,
                     ent,
-                    kind.clone(),
                     scope.create_userdata_ref_mut(check)?,
                 ))
             })
@@ -319,7 +316,6 @@ impl ScriptEngine {
         script: &Script,
         game_state: &GameState,
         entity: Entity,
-        kind: &D20CheckKind,
         result: &mut D20CheckResult,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::D20CheckResultHook)?;
@@ -332,7 +328,6 @@ impl ScriptEngine {
                 func.call::<()>((
                     scope.create_userdata_ref(game_state)?,
                     ent,
-                    kind.clone(),
                     scope.create_userdata_ref_mut(result)?,
                 ))
             })

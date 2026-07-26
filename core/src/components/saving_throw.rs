@@ -1,17 +1,14 @@
 use std::{fmt::Display, str::FromStr};
 
-use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::{
     components::{
         ability::Ability,
-        d20::{D20CheckDC, D20CheckMap},
-        effects::hooks::D20CheckHooks,
+        d20::{D20CheckDC, D20CheckKind, D20CheckMap},
     },
     registry::serialize::schema::impl_string_schema,
-    systems::{self, d20::D20CheckKind},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -97,18 +94,6 @@ pub type SavingThrowSet = D20CheckMap<SavingThrowKind>;
 
 pub type SavingThrowDC = D20CheckDC<SavingThrowKind>;
 
-pub fn get_saving_throw_hooks(
-    kind: &SavingThrowKind,
-    world: &World,
-    entity: Entity,
-) -> Vec<D20CheckHooks> {
-    systems::effects::effects(world, entity)
-        .values()
-        .filter_map(|e| e.effect().on_saving_throw.get(&kind))
-        .cloned()
-        .collect()
-}
-
 impl Default for SavingThrowSet {
     fn default() -> Self {
         Self::new(
@@ -118,7 +103,6 @@ impl Default for SavingThrowSet {
                 SavingThrowKind::Death => None,
                 SavingThrowKind::Concentration => Some(Ability::Constitution),
             },
-            get_saving_throw_hooks,
         )
     }
 }

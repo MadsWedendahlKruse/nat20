@@ -29,7 +29,7 @@ use crate::{
             ActionContext, ActionMap, ActionProvider, AttackRollProvider, SavingThrowProvider,
         },
         class::{CastingReadinessModel, ClassAndSubclass, SpellAccessModel},
-        d20::{D20Check, D20CheckDC},
+        d20::{D20Check, D20CheckDC, D20CheckKind},
         damage::AttackSource,
         id::{EffectId, FeatId, ItemId, ResourceId, SpeciesId, SpellId},
         modifier::{Modifiable, ModifierKind, ModifierMap, ModifierSource},
@@ -252,10 +252,10 @@ impl Spellbook {
                 ModifierSource::Base,
                 ModifierKind::Flat(BASE_SPELL_SAVE_DC),
             ),
-            attack_roll: D20Check::new(Proficiency::new(
-                ProficiencyLevel::Proficient,
-                ModifierSource::Base,
-            )),
+            attack_roll: D20Check::new(
+                D20CheckKind::AttackRoll(AttackSource::Spell),
+                Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::Base),
+            ),
         }
     }
 

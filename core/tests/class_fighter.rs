@@ -3,7 +3,7 @@ extern crate nat20_core;
 use nat20_core::{
     components::{
         ability::Ability,
-        d20::{AdvantageType, D20CheckOutcome},
+        d20::{AdvantageType, D20CheckKind, D20CheckOutcome},
         damage::AttackSource,
         dice::{DiceSet, DieSize},
         items::equipment::weapon::WeaponKind,
@@ -12,7 +12,7 @@ use nat20_core::{
         skill::Skill,
         time::TimeMode,
     },
-    systems::d20::{D20CheckDCKind, D20CheckKind},
+    systems::d20::D20CheckDCKind,
     test_utils::scenario::{Operator, Scenario},
 };
 

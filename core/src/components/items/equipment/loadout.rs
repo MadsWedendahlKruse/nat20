@@ -13,8 +13,8 @@ use crate::{
             },
             targeting::TargetingRange,
         },
-        d20::{AdvantageType, D20Check, D20CheckMap},
-        damage::{AttackSource, DamageRoll, DamageType, get_attack_roll_hooks},
+        d20::{AdvantageType, D20Check, D20CheckKind, D20CheckMap},
+        damage::{AttackSource, DamageRoll, DamageType},
         id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
@@ -34,7 +34,7 @@ use crate::{
     },
     engine::game_state::GameState,
     registry::registry::ItemsRegistry,
-    systems::{self, d20::D20CheckKind},
+    systems::{self},
 };
 
 // TODO: Probably shouldn't hardcode these :)
@@ -150,9 +150,6 @@ impl Loadout {
             attack_rolls: D20CheckMap::new(
                 |kind| D20CheckKind::AttackRoll(AttackSource::Weapon(*kind)),
                 |_| None,
-                |kind, game_state, entity| {
-                    get_attack_roll_hooks(&AttackSource::Weapon(*kind), game_state, entity)
-                },
             ),
             saving_throw_modifiers: HashMap::new(),
         }
@@ -473,10 +470,10 @@ impl AttackRollProvider for Loadout {
             }
 
             ActionAttackKind::Unarmed => {
-                let mut attack_roll = D20Check::new(Proficiency::new(
-                    ProficiencyLevel::Proficient,
-                    ModifierSource::Base,
-                ));
+                let mut attack_roll = D20Check::new(
+                    D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Unarmed)),
+                    Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::Base),
+                );
                 let strength_modifier =
                     systems::helpers::get_component::<AbilityScoreMap>(world, actor)
                         .ability_modifier(&Ability::Strength)

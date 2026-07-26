@@ -14,7 +14,6 @@ use crate::{
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::ScriptsRegistry,
     scripts::script_engine::SCRIPT_ENGINE,
-    systems::d20::D20CheckKind,
 };
 
 // TODO: Since we only have single languauge support, do we still need all these
@@ -187,7 +186,6 @@ pub fn evaluate_d20_check_hook(
     check_hook: &ScriptId,
     game_state: &GameState,
     entity: Entity,
-    kind: &D20CheckKind,
     check: &mut D20Check,
 ) {
     let script = ScriptsRegistry::get(check_hook).expect(
@@ -197,8 +195,7 @@ pub fn evaluate_d20_check_hook(
         )
         .as_str(),
     );
-    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_check_hook(script, game_state, entity, kind, check)
-    {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_check_hook(script, game_state, entity, check) {
         error!(
             "Error evaluating d20 check hook script {:?} for entity {:?}: {:?}",
             check_hook, entity, err
@@ -210,7 +207,6 @@ pub fn evaluate_d20_result_hook(
     result_hook: &ScriptId,
     game_state: &GameState,
     entity: Entity,
-    kind: &D20CheckKind,
     result: &mut D20CheckResult,
 ) {
     let script = ScriptsRegistry::get(result_hook).expect(
@@ -220,9 +216,7 @@ pub fn evaluate_d20_result_hook(
         )
         .as_str(),
     );
-    if let Err(err) =
-        SCRIPT_ENGINE.evaluate_d20_result_hook(script, game_state, entity, kind, result)
-    {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_result_hook(script, game_state, entity, result) {
         error!(
             "Error evaluating d20 result hook script {:?} for entity {:?}: {:?}",
             result_hook, entity, err

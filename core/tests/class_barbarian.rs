@@ -3,7 +3,7 @@ extern crate nat20_core;
 use nat20_core::{
     components::{
         ability::Ability,
-        d20::{AdvantageType, D20CheckOutcome},
+        d20::{AdvantageType, D20CheckKind, D20CheckOutcome},
         damage::{AttackSource, DamageComponent, DamageType},
         id::ItemId,
         items::equipment::{slots::EquipmentSlot, weapon::WeaponKind},
@@ -12,7 +12,6 @@ use nat20_core::{
         skill::Skill,
         time::TimeMode,
     },
-    systems::d20::D20CheckKind,
     test_utils::scenario::{Operator, Scenario},
 };
 
@@ -410,4 +409,45 @@ fn reckless_attack_action() {
             AdvantageType::Advantage,
         )
         .assert_event();
+}
+
+#[test]
+fn danger_sense() {
+    let mut scenario = barbarian_scenario();
+
+    scenario.probe("barbarian").assert_d20_advantage(
+        &D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
+        &ModifierSource::Effect("effect.barbarian.danger_sense".into()),
+        AdvantageType::Advantage,
+    );
+
+    // Danger Sense is disabled when incapacitated
+    scenario
+        .spawn("warlock", "hero.warlock")
+        .level(4)
+        .position([3.0, 0.0, 0.0], false)
+        .spawn();
+
+    scenario.probe("barbarian").d20_force_outcome(
+        D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Wisdom)),
+        D20CheckOutcome::CriticalFailure,
+    );
+
+    scenario
+        .probe("warlock")
+        .assert_action_available("action.hold_person")
+        .act("action.hold_person")
+        .target_entity("barbarian")
+        .perform();
+
+    scenario
+        .probe("barbarian")
+        .assert_effect("effect.spell.hold_person")
+        .assert_effect("effect.condition.paralyzed")
+        .assert_effect("effect.condition.incapacitated")
+        .assert_d20_no_advantage(
+            &D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
+            &ModifierSource::Effect("effect.barbarian.danger_sense".into()),
+            AdvantageType::Advantage,
+        );
 }

@@ -18,8 +18,7 @@ use nat20_core::{
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
         },
         activity::Activity,
-        d20::{AdvantageType, D20Check, D20CheckOutcome, RollMode},
-        damage::get_attack_roll_hooks,
+        d20::{AdvantageType, D20Check, D20CheckKind, D20CheckOutcome, RollMode},
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
         resource::ResourceMap,
@@ -37,7 +36,6 @@ use nat20_core::{
     registry::registry::EffectsRegistry,
     systems::{
         self,
-        d20::D20CheckKind,
         geometry::{Displacement, DisplacementTemplate, RaycastHitKind},
         movement::TargetPathFindingResult,
     },
@@ -1028,9 +1026,12 @@ fn render_attack_hit_chance_tooltip(
 
     // Attacker's pre-roll hooks
     let kind = D20CheckKind::AttackRoll(source);
-    for hooks in get_attack_roll_hooks(&source, &game_state.world, action.actor.id()) {
-        (hooks.check_hook)(game_state, action.actor.id(), &kind, &mut attack_roll);
-    }
+    systems::effects::effects(&game_state.world, action.actor.id()).pre_d20_check(
+        game_state,
+        action.actor.id(),
+        &kind,
+        &mut attack_roll,
+    );
 
     // Effects on target
     systems::effects::effects(&game_state.world, target).attacked_preview(
@@ -1108,11 +1109,13 @@ fn render_save_success_chance_tooltip(
     let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
 
     let kind = D20CheckKind::SavingThrow(saving_throw_dc.key);
-    for effect in systems::effects::effects(&game_state.world, target).values() {
-        if let Some(on_saving_throw) = effect.effect().on_saving_throw.get(&saving_throw_dc.key) {
-            (on_saving_throw.check_hook)(game_state, target, &kind, &mut d20_check);
-        }
-    }
+    systems::effects::effects(&game_state.world, target).pre_d20_check(
+        game_state,
+        action.actor.id(),
+        &kind,
+        &mut d20_check,
+    );
+
     if let Some(ability) = saving_throws.ability(&saving_throw_dc.key) {
         let ability_scores =
             systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, target);

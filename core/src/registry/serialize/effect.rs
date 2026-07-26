@@ -815,24 +815,17 @@ fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
     let check_script = script.clone();
     let result_script = script.clone();
     D20CheckHooks {
-        check_hook: Arc::new(move |game_state, entity, kind, check| {
+        check_hook: Arc::new(move |game_state, entity, check| {
             if script_defines(&check_script, ScriptFunction::D20CheckHook) {
-                systems::scripts::evaluate_d20_check_hook(
-                    &check_script,
-                    game_state,
-                    entity,
-                    kind,
-                    check,
-                );
+                systems::scripts::evaluate_d20_check_hook(&check_script, game_state, entity, check);
             }
         }),
-        result_hook: Arc::new(move |game_state, entity, kind, result| {
+        result_hook: Arc::new(move |game_state, entity, result| {
             if script_defines(&result_script, ScriptFunction::D20CheckResultHook) {
                 systems::scripts::evaluate_d20_result_hook(
                     &result_script,
                     game_state,
                     entity,
-                    kind,
                     result,
                 );
             }

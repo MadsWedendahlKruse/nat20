@@ -1,6 +1,6 @@
 use std::{cmp::max, collections::HashMap, hash::Hash};
 
-use hecs::{Entity, World};
+use hecs::Entity;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use strum::{Display, IntoEnumIterator};
@@ -8,16 +8,18 @@ use strum::{Display, IntoEnumIterator};
 use crate::{
     components::{
         ability::{Ability, AbilityScoreMap},
-        effects::hooks::D20CheckHooks,
+        damage::AttackSource,
         modifier::{
             FlatModifierMap, KeyedModifiable, Modifiable, ModifierKind, ModifierMap,
             ModifierResult, ModifierSource,
         },
-        proficiency::{Proficiency, ProficiencyLevel},
+        proficiency::Proficiency,
         range::Range,
+        saving_throw::SavingThrowKind,
+        skill::Skill,
     },
     engine::game_state::GameState,
-    systems::{self, d20::D20CheckKind},
+    systems::{self},
 };
 
 /// Trait describing rolls that can have advantage or disadvantage, currently only
@@ -113,8 +115,17 @@ impl D20CheckOutcome {
     }
 }
 
+// TODO: Why do we call it SavingTHROW and AttackROLL, but not SkillCHECK?
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum D20CheckKind {
+    SavingThrow(SavingThrowKind),
+    Skill(Skill),
+    AttackRoll(AttackSource),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20Check {
+    kind: D20CheckKind,
     modifiers: ModifierMap,
     proficiency: Proficiency,
     advantage_tracker: AdvantageTracker,
@@ -123,14 +134,19 @@ pub struct D20Check {
 }
 
 impl D20Check {
-    pub fn new(proficiency: Proficiency) -> Self {
+    pub fn new(kind: D20CheckKind, proficiency: Proficiency) -> Self {
         Self {
+            kind,
             modifiers: ModifierMap::default(),
             proficiency,
             advantage_tracker: AdvantageTracker::new(),
             forced_outcome: None,
             crit_threshold_reduction: FlatModifierMap::default(),
         }
+    }
+
+    pub fn kind(&self) -> &D20CheckKind {
+        &self.kind
     }
 
     pub fn crit_threshold(&self) -> u8 {
@@ -234,26 +250,23 @@ impl D20Check {
         }
     }
 
-    pub fn roll_hooks(
-        &self,
-        game_state: &GameState,
-        entity: Entity,
-        kind: &D20CheckKind,
-        hooks: &Vec<D20CheckHooks>,
-    ) -> D20CheckResult {
+    pub fn roll_hooks(&self, game_state: &GameState, entity: Entity) -> D20CheckResult {
         let mut check = self.clone();
-        for hook in hooks {
-            (hook.check_hook)(game_state, entity, kind, &mut check);
-        }
+
+        systems::effects::effects(&game_state.world, entity)
+            .pre_d20_check(game_state, entity, &self.kind, &mut check);
 
         let proficiency_bonus = systems::helpers::level(&game_state.world, entity)
             .unwrap()
             .proficiency_bonus();
         let mut result = check.roll(proficiency_bonus);
 
-        for hook in hooks {
-            (hook.result_hook)(game_state, entity, kind, &mut result);
-        }
+        systems::effects::effects(&game_state.world, entity).post_d20_check(
+            game_state,
+            entity,
+            &self.kind,
+            &mut result,
+        );
 
         result
     }
@@ -452,9 +465,7 @@ where
     K: D20CheckKey,
 {
     checks: HashMap<K, D20Check>,
-    kind_mapper: fn(&K) -> D20CheckKind,
     ability_mapper: fn(&K) -> Option<Ability>,
-    get_hooks: fn(&K, &World, Entity) -> Vec<D20CheckHooks>,
 }
 
 impl<K> D20CheckMap<K>
@@ -464,24 +475,13 @@ where
     pub fn new(
         kind_mapper: fn(&K) -> D20CheckKind,
         ability_mapper: fn(&K) -> Option<Ability>,
-        get_hooks: fn(&K, &World, Entity) -> Vec<D20CheckHooks>,
     ) -> Self {
         let checks = K::iter()
-            .map(|k| {
-                (
-                    k,
-                    D20Check::new(Proficiency::new(
-                        ProficiencyLevel::None,
-                        ModifierSource::None,
-                    )),
-                )
-            })
+            .map(|k| (k, D20Check::new(kind_mapper(&k), Proficiency::default())))
             .collect();
         Self {
             checks,
-            kind_mapper,
             ability_mapper,
-            get_hooks,
         }
     }
 
@@ -542,12 +542,7 @@ where
             );
         }
 
-        d20.roll_hooks(
-            game_state,
-            entity,
-            &(self.kind_mapper)(key),
-            &(self.get_hooks)(key, &game_state.world, entity),
-        )
+        d20.roll_hooks(game_state, entity)
     }
 
     pub fn check_dc(
@@ -591,16 +586,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::components::id::ItemId;
+    use crate::components::{id::ItemId, proficiency::ProficiencyLevel};
 
     use super::*;
 
     #[test]
     fn d20_check() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.modifiers.add_modifier(
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
@@ -619,10 +614,10 @@ mod tests {
 
     #[test]
     fn d20_check_with_advantage() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.modifiers.add_modifier(
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
@@ -652,10 +647,13 @@ mod tests {
 
     #[test]
     fn d20_check_with_disadvantage() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Expertise,
-            ModifierSource::Custom("Somewhere".to_string()),
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(
+                ProficiencyLevel::Expertise,
+                ModifierSource::Custom("Somewhere".to_string()),
+            ),
+        );
         check.advantage_tracker.add(
             AdvantageType::Disadvantage,
             ModifierSource::Item(ItemId::new("nat20_core", "item.cursed_ring")),
@@ -681,10 +679,13 @@ mod tests {
 
     #[test]
     fn d20_check_with_advantage_and_disadvantage() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Expertise,
-            ModifierSource::Custom("Genetics".to_string()),
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(
+                ProficiencyLevel::Expertise,
+                ModifierSource::Custom("Genetics".to_string()),
+            ),
+        );
         check.advantage_tracker.add(
             AdvantageType::Advantage,
             ModifierSource::Item(ItemId::new("nat20_core", "item.lucky_charm")),
@@ -706,10 +707,10 @@ mod tests {
 
     #[test]
     fn d20_check_critical_success() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.modifiers.add_modifier(
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
@@ -730,10 +731,10 @@ mod tests {
 
     #[test]
     fn d20_check_critical_failure() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.modifiers.add_modifier(
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
@@ -754,10 +755,10 @@ mod tests {
 
     #[test]
     fn d20_check_success_probability() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.modifiers.add_modifier(
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
@@ -779,10 +780,10 @@ mod tests {
 
     #[test]
     fn d20_forced_outcome() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.set_forced_outcome(
             ModifierSource::Custom("Test".to_string()),
             D20CheckOutcome::CriticalSuccess,
@@ -798,10 +799,10 @@ mod tests {
 
     #[test]
     fn d20_check_crit_threshold_reduction() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.add_crit_threshold_reduction(ModifierSource::Custom("Test".to_string()), 2);
 
         let mut result = check.roll(2);
@@ -818,10 +819,10 @@ mod tests {
 
     #[test]
     fn d20_check_crit_threshold_reduction_above_20() {
-        let mut check = D20Check::new(Proficiency::new(
-            ProficiencyLevel::Proficient,
-            ModifierSource::None,
-        ));
+        let mut check = D20Check::new(
+            D20CheckKind::Skill(Skill::Athletics),
+            Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+        );
         check.add_crit_threshold_reduction(ModifierSource::Custom("Test".to_string()), 100);
 
         let result = check.roll(2);

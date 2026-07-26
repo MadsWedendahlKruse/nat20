@@ -18,7 +18,7 @@ pub fn feats(world: &World, entity: Entity) -> hecs::Ref<'_, Vec<FeatId>> {
     systems::helpers::get_component::<Vec<FeatId>>(world, entity)
 }
 
-pub fn feats_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, Vec<FeatId>> {
+pub fn feats_mut(world: &mut World, entity: Entity) -> &mut Vec<FeatId> {
     systems::helpers::get_component_mut::<Vec<FeatId>>(world, entity)
 }
 

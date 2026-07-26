@@ -5,9 +5,12 @@ use hecs::{Entity, World};
 use crate::{
     components::{
         actions::action::{ActionConditionResolution, ActionContext},
-        d20::D20Check,
+        d20::{D20Check, D20CheckKind, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
-        effects::effect::{Effect, EffectInstance, EffectInstanceId, EffectsMap},
+        effects::{
+            effect::{Effect, EffectInstance, EffectInstanceId, EffectsMap},
+            hooks::D20CheckHooks,
+        },
         id::ActionId,
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
@@ -174,6 +177,40 @@ impl EffectManager {
             |effect| effect.on_armor_class.as_ref(),
             |hook| hook(game_state, entity, ac),
         );
+    }
+
+    pub fn pre_d20_check(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        kind: &D20CheckKind,
+        check: &mut D20Check,
+    ) {
+        self.for_each(Self::get_d20_hooks(kind), |hook| {
+            (hook.check_hook)(game_state, entity, check)
+        });
+    }
+
+    pub fn post_d20_check(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        kind: &D20CheckKind,
+        result: &mut D20CheckResult,
+    ) {
+        self.for_each(Self::get_d20_hooks(kind), |hook| {
+            (hook.result_hook)(game_state, entity, result)
+        });
+    }
+
+    fn get_d20_hooks(kind: &D20CheckKind) -> impl Fn(&Effect) -> Option<&D20CheckHooks> {
+        move |effect| match kind {
+            D20CheckKind::SavingThrow(saving_throw_kind) => {
+                effect.on_saving_throw.get(saving_throw_kind)
+            }
+            D20CheckKind::Skill(skill) => effect.on_skill_check.get(skill),
+            D20CheckKind::AttackRoll(attack_source) => effect.on_attack_roll.get(attack_source),
+        }
     }
 
     pub fn pre_damage_roll(

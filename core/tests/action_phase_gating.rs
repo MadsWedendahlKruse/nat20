@@ -6,13 +6,13 @@ use nat20_core::{
             },
             targeting::TargetInstance,
         },
-        d20::D20CheckOutcome,
+        d20::{D20CheckKind, D20CheckOutcome},
         damage::{AttackSource, DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
         modifier::{ModifierMap, ModifierSource},
     },
     engine::action_prompt::ActionData,
-    systems::{self, d20::D20CheckKind},
+    systems::{self},
     test_utils::scenario::Scenario,
 };
 use rstest::rstest;

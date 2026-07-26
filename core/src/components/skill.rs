@@ -1,15 +1,10 @@
 use std::{fmt, hash::Hash};
 
-use crate::{
-    components::{
-        ability::Ability,
-        d20::{D20CheckDC, D20CheckMap},
-        effects::hooks::D20CheckHooks,
-    },
-    systems::{self, d20::D20CheckKind},
+use crate::components::{
+    ability::Ability,
+    d20::{D20CheckDC, D20CheckKind, D20CheckMap},
 };
 
-use hecs::{Entity, World};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
@@ -98,20 +93,8 @@ pub type SkillSet = D20CheckMap<Skill>;
 
 pub type SkillCheckDC = D20CheckDC<Skill>;
 
-pub fn get_skill_hooks(skill: &Skill, world: &World, entity: Entity) -> Vec<D20CheckHooks> {
-    systems::effects::effects(world, entity)
-        .values()
-        .filter_map(|e| e.effect().on_skill_check.get(&skill))
-        .cloned()
-        .collect()
-}
-
 impl Default for SkillSet {
     fn default() -> Self {
-        SkillSet::new(
-            |skill| D20CheckKind::Skill(*skill),
-            skill_ability,
-            get_skill_hooks,
-        )
+        SkillSet::new(|skill| D20CheckKind::Skill(*skill), skill_ability)
     }
 }

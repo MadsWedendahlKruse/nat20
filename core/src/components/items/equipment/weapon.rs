@@ -14,8 +14,8 @@ use crate::{
     components::{
         ability::{Ability, AbilityScoreMap},
         actions::targeting::TargetingRange,
-        d20::D20Check,
-        damage::{DamageComponent, DamageRoll, DamageType},
+        d20::{D20Check, D20CheckKind},
+        damage::{AttackSource, DamageComponent, DamageRoll, DamageType},
         dice::DiceSet,
         id::{ActionId, EffectId},
         items::{
@@ -303,7 +303,10 @@ impl Weapon {
         ability_scores: &AbilityScoreMap,
         weapon_proficiency: &Proficiency,
     ) -> D20Check {
-        let mut attack_roll = D20Check::new(weapon_proficiency.clone());
+        let mut attack_roll = D20Check::new(
+            D20CheckKind::AttackRoll(AttackSource::Weapon(*self.kind())),
+            weapon_proficiency.clone(),
+        );
 
         self.add_ability_modifier(ability_scores, attack_roll.modifiers_mut());
 

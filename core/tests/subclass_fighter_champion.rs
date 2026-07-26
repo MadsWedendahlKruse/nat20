@@ -2,20 +2,22 @@ extern crate nat20_core;
 
 use nat20_core::{
     components::{
-        d20::{AdvantageType, D20CheckOutcome},
+        d20::{AdvantageType, D20CheckKind, D20CheckOutcome},
         damage::AttackSource,
         items::equipment::weapon::WeaponKind,
         modifier::ModifierSource,
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
-    systems::d20::D20CheckKind,
     test_utils::scenario::{Operator, Scenario},
 };
 
 fn fighter_scenario(level: u8) -> Scenario {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(level).spawn();
+    scenario
+        .spawn("fighter", "hero.fighter")
+        .level(level)
+        .spawn();
     scenario
 }
 

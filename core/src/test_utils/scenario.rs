@@ -13,8 +13,8 @@ use crate::{
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
-        d20::{AdvantageType, D20Check, D20CheckOutcome},
-        damage::{AttackSource, DamageComponent, DamageResistances, DamageType},
+        d20::{AdvantageType, D20Check, D20CheckKind, D20CheckOutcome},
+        damage::{DamageComponent, DamageResistances, DamageType},
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ItemId, ResourceId},
         items::equipment::{loadout::Loadout, slots::EquipmentSlot},
@@ -23,7 +23,6 @@ use crate::{
             ModifierSource,
         },
         resource::{ResourceAmountMap, ResourceBudgetKind, ResourceMap},
-        saving_throw::SavingThrowSet,
         skill::{Skill, SkillSet},
         speed::Speed,
         spells::{spell::ConcentrationInstance, spellbook::Spellbook},
@@ -36,10 +35,7 @@ use crate::{
         game_state::GameState,
     },
     registry::registry::ItemsRegistry,
-    systems::{
-        self,
-        d20::{D20CheckDCKind, D20CheckKind},
-    },
+    systems::{self, d20::D20CheckDCKind},
     test_utils::{creature_builder::CreatureBuilder, fixtures},
 };
 
@@ -476,30 +472,15 @@ impl ScenarioProbe<'_> {
 
     pub fn d20_force_outcome(&mut self, kind: D20CheckKind, outcome: D20CheckOutcome) -> &mut Self {
         let entity = self.entity();
-        systems::d20::get_mut(
-            &mut self.scenario.game_state.world,
-            entity,
-            &kind,
-            |check| {
-                check.set_forced_outcome(
-                    ModifierSource::Custom("Test outcome".to_string()),
-                    outcome,
-                );
-            },
-        );
+        systems::d20::get_mut(&mut self.scenario.game_state.world, entity, kind)
+            .set_forced_outcome(ModifierSource::Custom("Test outcome".to_string()), outcome);
         self
     }
 
     pub fn d20_clear_forced_outcome(&mut self, kind: D20CheckKind) -> &mut Self {
         let entity = self.entity();
-        systems::d20::get_mut(
-            &mut self.scenario.game_state.world,
-            entity,
-            &kind,
-            |check| {
-                check.clear_forced_outcome();
-            },
-        );
+        systems::d20::get_mut(&mut self.scenario.game_state.world, entity, kind)
+            .clear_forced_outcome();
         self
     }
 
@@ -872,20 +853,48 @@ impl ScenarioProbe<'_> {
         source: &ModifierSource,
         advantage_type: AdvantageType,
     ) -> &mut Self {
-        let creature = self.creature();
-        let kind = kind.clone();
-        let source = source.clone();
-        self.assert_d20(&kind, |check| {
+        {
+            let d20_check = self.get_d20_check(kind);
             assert!(
-                check.advantage_tracker().summary().contains(&(&source, advantage_type)),
+                d20_check
+                    .advantage_tracker()
+                    .summary()
+                    .contains(&(&source, advantage_type)),
                 "Expected creature {:?} to have {:?} {:?} on {:?} check, but it was not found. Current advantages: {:#?}",
-                creature,
+                self.creature(),
                 advantage_type,
                 source,
                 kind,
-                check.advantage_tracker().summary()
+                d20_check.advantage_tracker().summary()
             );
-        });
+        }
+
+        self
+    }
+
+    #[track_caller]
+    pub fn assert_d20_no_advantage(
+        &mut self,
+        kind: &D20CheckKind,
+        source: &ModifierSource,
+        advantage_type: AdvantageType,
+    ) -> &mut Self {
+        {
+            let d20_check = self.get_d20_check(kind);
+            assert!(
+                !d20_check
+                    .advantage_tracker()
+                    .summary()
+                    .contains(&(&source, advantage_type)),
+                "Expected creature {:?} to not have {:?} {:?} on {:?} check, but it was found. Current advantages: {:#?}",
+                self.creature(),
+                advantage_type,
+                source,
+                kind,
+                d20_check.advantage_tracker().summary()
+            );
+        }
+
         self
     }
 
@@ -896,57 +905,35 @@ impl ScenarioProbe<'_> {
         source: &ModifierSource,
         operator: Operator<i32>,
     ) -> &mut Self {
-        let creature = self.creature();
-        let kind = kind.clone();
-        let source = source.clone();
-        self.assert_d20(&kind, |check| {
-            let reduction = check.crit_threshold_reduction().get(&source);
+        {
+            let d20_check = self.get_d20_check(kind);
+            let reduction = d20_check.crit_threshold_reduction().get(&source);
             assert!(
                 reduction.map(|r| operator.evaluate(r)).unwrap_or(false),
                 "Expected creature {:?} to have critical threshold reduction from {:?} on {:?} check satisfying condition {:?}, but it was {:?}. Current reductions: {:#?}",
-                creature,
+                self.creature(),
                 source,
                 kind,
                 operator,
                 reduction,
-                check.crit_threshold_reduction()
+                d20_check.crit_threshold_reduction()
             );
-        });
+        }
+
         self
     }
 
-    #[track_caller]
-    fn assert_d20(&self, kind: &D20CheckKind, assertor: impl Fn(&D20Check)) {
-        let entity = self.entity();
-        let world = self.world();
-        match kind {
-            D20CheckKind::SavingThrow(saving_throw_kind) => {
-                assertor(
-                    systems::helpers::get_component::<SavingThrowSet>(world, entity)
-                        .get(saving_throw_kind),
-                );
-            }
+    fn get_d20_check(&self, kind: &D20CheckKind) -> D20Check {
+        let mut d20_check = (*systems::d20::get(self.world(), self.entity(), kind.clone())).clone();
 
-            D20CheckKind::Skill(skill) => {
-                assertor(systems::helpers::get_component::<SkillSet>(world, entity).get(skill));
-            }
+        systems::effects::effects(self.world(), self.entity()).pre_d20_check(
+            &self.scenario.game_state,
+            self.entity(),
+            kind,
+            &mut d20_check,
+        );
 
-            D20CheckKind::AttackRoll(attack_source) => match attack_source {
-                AttackSource::Weapon(weapon_kind) => {
-                    assertor(
-                        systems::helpers::get_component::<Loadout>(world, entity)
-                            .attack_roll_template(weapon_kind),
-                    );
-                }
-
-                AttackSource::Spell => {
-                    assertor(
-                        systems::helpers::get_component::<Spellbook>(world, entity)
-                            .attack_roll_template(),
-                    );
-                }
-            },
-        }
+        d20_check
     }
 
     // TODO: Update this if we add support for concentration on things other than effects

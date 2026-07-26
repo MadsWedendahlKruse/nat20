@@ -49,6 +49,9 @@
         "1": [
             "nat20_core::effect.barbarian.unarmored_defense"
         ],
+        "2": [
+            "nat20_core::effect.barbarian.danger_sense"
+        ],
         "5": [
             "nat20_core::effect.extra_attack"
         ]

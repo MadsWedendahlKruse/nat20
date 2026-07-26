@@ -13,7 +13,6 @@ use crate::{
         resource::ResourceAmountMap,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
-    systems::d20::D20CheckKind,
 };
 
 pub type ApplyEffectHook =
@@ -24,9 +23,8 @@ pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 pub type AttackedHook =
     Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
-pub type D20CheckHook = Arc<dyn Fn(&GameState, Entity, &D20CheckKind, &mut D20Check) + Send + Sync>;
-pub type D20CheckResultHook =
-    Arc<dyn Fn(&GameState, Entity, &D20CheckKind, &mut D20CheckResult) + Send + Sync>;
+pub type D20CheckHook = Arc<dyn Fn(&GameState, Entity, &mut D20Check) + Send + Sync>;
+pub type D20CheckResultHook = Arc<dyn Fn(&GameState, Entity, &mut D20CheckResult) + Send + Sync>;
 pub type DamageRollHook = Arc<
     dyn Fn(&GameState, Entity, &mut DamageRoll, &ActionData, &ActionConditionResolution)
         + Send
@@ -90,14 +88,14 @@ impl D20CheckHooks {
         let result_hooks: Vec<D20CheckResultHook> =
             hooks.iter().map(|h| h.result_hook.clone()).collect();
         Self {
-            check_hook: Arc::new(move |game_state, entity, kind, check| {
+            check_hook: Arc::new(move |game_state, entity, check| {
                 for hook in &check_hooks {
-                    hook(game_state, entity, kind, check);
+                    hook(game_state, entity, check);
                 }
             }),
-            result_hook: Arc::new(move |game_state, entity, kind, result| {
+            result_hook: Arc::new(move |game_state, entity, result| {
                 for hook in &result_hooks {
-                    hook(game_state, entity, kind, result);
+                    hook(game_state, entity, result);
                 }
             }),
         }

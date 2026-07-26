@@ -473,18 +473,6 @@ impl AttackSource {
     }
 }
 
-pub fn get_attack_roll_hooks(
-    source: &AttackSource,
-    world: &World,
-    entity: Entity,
-) -> Vec<D20CheckHooks> {
-    systems::effects::effects(world, entity)
-        .values()
-        .filter_map(|e| e.effect().on_attack_roll.get(source))
-        .cloned()
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
 

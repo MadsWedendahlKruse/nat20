@@ -18,7 +18,7 @@ use crate::{
             },
             targeting::TargetInstance,
         },
-        d20::{AdvantageAware, D20Check, D20CheckResult},
+        d20::{AdvantageAware, D20Check, D20CheckKind, D20CheckResult},
         damage::{
             AttackSource, DamageComponent, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageModifiable, DamageRoll, DamageRollResult,
@@ -54,7 +54,7 @@ use crate::{
     },
     systems::{
         self,
-        d20::{D20CheckDCKind, D20CheckKind, D20ResultKind},
+        d20::{D20CheckDCKind, D20ResultKind},
         effects::EffectApplicationResult,
     },
 };
@@ -354,6 +354,7 @@ where
 
 impl UserData for D20Check {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
         fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
     }
 

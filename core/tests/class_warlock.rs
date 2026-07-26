@@ -1,6 +1,6 @@
 use nat20_core::{
     components::{
-        d20::{AdvantageType, D20CheckOutcome},
+        d20::{AdvantageType, D20CheckKind, D20CheckOutcome},
         damage::{AttackSource, DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
         id::EffectId,
@@ -8,7 +8,6 @@ use nat20_core::{
         modifier::{ModifierMap, ModifierSource},
         skill::Skill,
     },
-    systems::d20::D20CheckKind,
     test_utils::scenario::Scenario,
 };
 use rstest::rstest;

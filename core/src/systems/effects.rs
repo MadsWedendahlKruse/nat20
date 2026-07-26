@@ -32,7 +32,7 @@ pub fn effects(world: &World, entity: Entity) -> Ref<'_, EffectManager> {
     systems::helpers::get_component::<EffectManager>(world, entity)
 }
 
-pub fn effects_mut(world: &mut World, entity: Entity) -> RefMut<'_, EffectManager> {
+pub fn effects_mut(world: &mut World, entity: Entity) -> &mut EffectManager {
     systems::helpers::get_component_mut::<EffectManager>(world, entity)
 }
 

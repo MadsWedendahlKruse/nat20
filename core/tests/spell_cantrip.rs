@@ -1,13 +1,12 @@
 use nat20_core::{
     components::{
         ability::Ability,
-        d20::D20CheckOutcome,
+        d20::{D20CheckKind, D20CheckOutcome},
         damage::{AttackSource, DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
         modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
     },
-    systems::d20::D20CheckKind,
     test_utils::scenario::{Operator, Scenario},
 };
 use rstest::rstest;

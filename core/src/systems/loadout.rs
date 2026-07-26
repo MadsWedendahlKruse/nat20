@@ -28,7 +28,7 @@ pub fn loadout(world: &World, entity: Entity) -> Ref<'_, Loadout> {
     systems::helpers::get_component::<Loadout>(world, entity)
 }
 
-pub fn loadout_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, Loadout> {
+pub fn loadout_mut(world: &mut World, entity: Entity) -> &mut Loadout {
     systems::helpers::get_component_mut::<Loadout>(world, entity)
 }
 

@@ -16,12 +16,12 @@ pub fn get_component<'a, T: hecs::Component + 'static>(
 }
 
 #[track_caller]
-pub fn get_component_mut<'a, T: hecs::Component + 'static>(
+pub fn get_component_mut<'a, T: hecs::Component>(
     world: &'a mut World,
     entity: Entity,
-) -> hecs::RefMut<'a, T> {
+) -> &'a mut T {
     world
-        .get::<&mut T>(entity)
+        .query_one_mut::<&mut T>(entity)
         .unwrap_or_else(|_| missing_component_panic::<T>(entity))
 }
 

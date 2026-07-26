@@ -5,10 +5,6 @@
 -- assets/registries/. It is never executed at runtime — keep declarations in
 -- sync with the UserData impls in core/src/scripts/lua/lua_types.rs.
 
-------------------------------------------------------------
--- Core handles
-------------------------------------------------------------
-
 ---@class ScriptEntity
 ---@field id integer
 
@@ -168,10 +164,11 @@ local TargetInstance = {}
 function TargetInstance:entity() end
 
 ------------------------------------------------------------
--- D20 / event views
+-- D20
 ------------------------------------------------------------
 
 ---@class D20Check
+---@field kind D20CheckKind
 ---@field modifiers ModifierMap
 local D20Check = {}
 ---@param advantage string -- advantage/disadvantage
@@ -224,6 +221,10 @@ function D20ResultKind:add_advantage(advantage, source) end
 ---@field target ScriptEntity?
 local D20CheckDCKind = {}
 
+------------------------------------------------------------
+-- Events
+------------------------------------------------------------
+
 ---@class Event
 local Event = {}
 ---@return ScriptEntity?, D20ResultKind?, D20CheckDCKind?
@@ -249,7 +250,36 @@ function Event:as_moving_out_of_reach() end
 function Event:as_equipment_changed() end
 
 ------------------------------------------------------------
--- GameState — the main script-facing world handle
+-- Modifiers
+------------------------------------------------------------
+
+---@class ModifierMap
+local ModifierMap = {}
+---@param source string
+---@param value string
+function ModifierMap:add_modifier(source, value) end
+
+---@param source string
+---@return string?
+function ModifierMap:get_modifier(source) end
+
+---@class FlatModifierMap
+---@field total integer
+local FlatModifierMap = {}
+---@param source string
+---@param value integer
+function FlatModifierMap:add_modifier(source, value) end
+
+---@class ModifierResult
+---@field total integer
+local ModifierResult = {}
+---@param source string
+---@return string?
+function ModifierResult:get_modifier(source) end
+
+------------------------------------------------------------
+-- GameState
+-- Functions for interacting with the world and entities
 ------------------------------------------------------------
 
 ---@class GameState
@@ -336,29 +366,9 @@ function GameState:extend_effect_duration(entity, effect_id, turns) end
 ---@param amount table
 function GameState:heal(target, amount) end
 
----@class ModifierMap
-local ModifierMap = {}
----@param source string
----@param value string
-function ModifierMap:add_modifier(source, value) end
-
----@param source string
----@return string?
-function ModifierMap:get_modifier(source) end
-
----@class FlatModifierMap
----@field total integer
-local FlatModifierMap = {}
----@param source string
----@param value integer
-function FlatModifierMap:add_modifier(source, value) end
-
----@class ModifierResult
----@field total integer
-local ModifierResult = {}
----@param source string
----@return string?
-function ModifierResult:get_modifier(source) end
+------------------------------------------------------------
+-- Misc
+------------------------------------------------------------
 
 ---@class TimeDuration
 ---@field seconds number
@@ -375,8 +385,8 @@ local TimeDuration = {}
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
----@alias D20CheckHookFn fun(game_state: GameState, entity: ScriptEntity, kind: D20CheckKind, d20_check: D20Check)
----@alias D20CheckResultHookFn fun(game_state: GameState, entity: ScriptEntity, kind: D20CheckKind, result: D20CheckResult)
+---@alias D20CheckHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check)
+---@alias D20CheckResultHookFn fun(game_state: GameState, entity: ScriptEntity, result: D20CheckResult)
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)

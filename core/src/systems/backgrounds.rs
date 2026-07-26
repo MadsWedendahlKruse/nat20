@@ -17,7 +17,7 @@ pub fn background(world: &World, entity: Entity) -> hecs::Ref<'_, BackgroundId> 
     systems::helpers::get_component::<BackgroundId>(world, entity)
 }
 
-pub fn background_mut(world: &mut World, entity: Entity) -> hecs::RefMut<'_, BackgroundId> {
+pub fn background_mut(world: &mut World, entity: Entity) -> &mut BackgroundId {
     systems::helpers::get_component_mut::<BackgroundId>(world, entity)
 }
 

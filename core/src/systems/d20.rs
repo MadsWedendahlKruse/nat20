@@ -1,9 +1,9 @@
-use hecs::{Entity, World};
+use hecs::{Entity, Ref, World};
 
 use crate::{
     components::{
-        d20::{AdvantageAware, AdvantageType, D20Check, D20CheckDC, D20CheckResult},
-        damage::{AttackSource, get_attack_roll_hooks},
+        d20::{AdvantageAware, AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckResult},
+        damage::AttackSource,
         id::EntityIdentifier,
         items::equipment::{armor::ArmorClass, loadout::Loadout},
         modifier::{FlatModifiable, ModifierResult, ModifierSource},
@@ -18,41 +18,51 @@ use crate::{
     systems,
 };
 
-// TODO: Why do we call it SavingTHROW and AttackROLL, but not SkillCHECK?
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum D20CheckKind {
-    SavingThrow(SavingThrowKind),
-    Skill(Skill),
-    AttackRoll(AttackSource),
-}
-
-// The D20Check is a temporary reference, so we can't return it from here
-pub fn get_mut(
-    world: &mut World,
-    entity: Entity,
-    kind: &D20CheckKind,
-    mutator: impl FnOnce(&mut D20Check),
-) {
+pub fn get(world: &World, entity: Entity, kind: D20CheckKind) -> Ref<'_, D20Check> {
     match kind {
-        D20CheckKind::SavingThrow(saving_throw) => mutator(
-            &mut systems::helpers::get_component_mut::<SavingThrowSet>(world, entity)
-                .get_mut(saving_throw),
+        D20CheckKind::SavingThrow(saving_throw) => Ref::map(
+            systems::helpers::get_component::<SavingThrowSet>(world, entity),
+            |set| set.get(&saving_throw),
         ),
 
-        D20CheckKind::Skill(skill) => mutator(
-            &mut systems::helpers::get_component_mut::<SkillSet>(world, entity).get_mut(skill),
+        D20CheckKind::Skill(skill) => Ref::map(
+            systems::helpers::get_component::<SkillSet>(world, entity),
+            |set| set.get(&skill),
         ),
 
         D20CheckKind::AttackRoll(source) => match source {
-            AttackSource::Weapon(weapon_kind) => mutator(
-                systems::helpers::get_component_mut::<Loadout>(world, entity)
-                    .attack_roll_template_mut(weapon_kind),
+            AttackSource::Weapon(weapon_kind) => Ref::map(
+                systems::helpers::get_component::<Loadout>(world, entity),
+                |loadout| loadout.attack_roll_template(&weapon_kind),
             ),
 
-            AttackSource::Spell => mutator(
-                systems::helpers::get_component_mut::<Spellbook>(world, entity)
-                    .attack_roll_template_mut(),
+            AttackSource::Spell => Ref::map(
+                systems::helpers::get_component::<Spellbook>(world, entity),
+                |spellbook| spellbook.attack_roll_template(),
             ),
+        },
+    }
+}
+
+pub fn get_mut(world: &mut World, entity: Entity, kind: D20CheckKind) -> &mut D20Check {
+    match kind {
+        D20CheckKind::SavingThrow(saving_throw) => {
+            systems::helpers::get_component_mut::<SavingThrowSet>(world, entity)
+                .get_mut(&saving_throw)
+        }
+
+        D20CheckKind::Skill(skill) => {
+            systems::helpers::get_component_mut::<SkillSet>(world, entity).get_mut(&skill)
+        }
+
+        D20CheckKind::AttackRoll(source) => match source {
+            AttackSource::Weapon(weapon_kind) => {
+                systems::helpers::get_component_mut::<Loadout>(world, entity)
+                    .attack_roll_template_mut(&weapon_kind)
+            }
+
+            AttackSource::Spell => systems::helpers::get_component_mut::<Spellbook>(world, entity)
+                .attack_roll_template_mut(),
         },
     }
 }
@@ -209,9 +219,7 @@ pub fn check_attack(
         hook(&game_state.world, instance, target, attacker, &mut check);
     }
 
-    let kind = D20CheckKind::AttackRoll(source);
-    let hooks = get_attack_roll_hooks(&source, &game_state.world, attacker);
-    let result = check.roll_hooks(game_state, attacker, &kind, &hooks);
+    let result = check.roll_hooks(game_state, attacker);
 
     let armor_class = systems::loadout::armor_class(game_state, target);
 
