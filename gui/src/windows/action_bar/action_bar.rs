@@ -7,7 +7,6 @@ use hecs::Entity;
 use imgui::{ChildFlags, HoveredFlags, MouseButton};
 use nat20_core::{
     components::{
-        ability::AbilityScoreMap,
         actions::{
             action::{
                 ActionCondition, ActionPayloadComponent, ActionResultComponent,
@@ -18,11 +17,10 @@ use nat20_core::{
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
         },
         activity::Activity,
-        d20::{AdvantageType, D20Check, D20CheckKind, D20CheckOutcome, RollMode},
+        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome, RollMode},
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
         resource::ResourceMap,
-        saving_throw::SavingThrowSet,
         speed::Speed,
     },
     engine::{
@@ -1104,29 +1102,11 @@ fn render_save_success_chance_tooltip(
     saving_throw_fn: &Arc<SavingThrowFunction>,
 ) {
     let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor.id(), &action.context);
-    let saving_throws =
-        systems::helpers::get_component::<SavingThrowSet>(&game_state.world, target);
-    let mut d20_check = saving_throws.get(&saving_throw_dc.key).clone();
 
-    let kind = D20CheckKind::SavingThrow(saving_throw_dc.key);
-    systems::effects::effects(&game_state.world, target).pre_d20_check(
-        game_state,
-        action.actor.id(),
-        &kind,
-        &mut d20_check,
-    );
+    let result = systems::d20::check_no_event(game_state, target, &saving_throw_dc);
 
-    if let Some(ability) = saving_throws.ability(&saving_throw_dc.key) {
-        let ability_scores =
-            systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, target);
-        d20_check.add_modifier(
-            ModifierSource::Ability(ability),
-            ability_scores.ability_modifier(&ability).total(),
-        );
-    }
-
-    let save_chance = d20_check.success_probability(
-        saving_throw_dc.dc.total() as u32,
+    let save_chance = result.check.success_probability(
+        saving_throw_dc.total() as u32,
         systems::helpers::level(&game_state.world, target)
             .unwrap()
             .proficiency_bonus(),
@@ -1141,7 +1121,7 @@ fn render_save_success_chance_tooltip(
     ui.tooltip(|| {
         ui.separator_with_text("Hit chance");
 
-        render_forced_outcome_or_advantage(ui, &d20_check, success_chance, true);
+        render_forced_outcome_or_advantage(ui, &result.check, success_chance, true);
 
         ui.separator();
 
@@ -1158,13 +1138,14 @@ fn render_save_success_chance_tooltip(
 
                 TextSegments::new([
                     ("Total:", TextKind::Details),
-                    (&format!("{}", saving_throw_dc.dc.total()), TextKind::Normal),
+                    (&format!("{}", saving_throw_dc.total()), TextKind::Normal),
                 ])
                 .render(ui);
 
-                saving_throw_dc
-                    .dc
-                    .render_with_context(ui, ModifierRenderMode::List(true));
+                let D20CheckDC::SavingThrow { dc, .. } = &saving_throw_dc else {
+                    panic!("Expected saving throw DC");
+                };
+                dc.render_with_context(ui, ModifierRenderMode::List(true));
             });
 
         ui.child_window("Saving Throw")
@@ -1177,7 +1158,7 @@ fn render_save_success_chance_tooltip(
             .size([0.0, 0.0])
             .build(|| {
                 ui.separator_with_text("Saving Throw");
-                render_d20_modifiers(ui, d20_check);
+                render_d20_modifiers(ui, result.check);
             });
     });
 }

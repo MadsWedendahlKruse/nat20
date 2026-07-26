@@ -9,9 +9,11 @@ use crate::{
     components::{
         ability::{Ability, AbilityScoreMap},
         damage::AttackSource,
+        id::EntityIdentifier,
+        items::equipment::armor::ArmorClass,
         modifier::{
-            FlatModifierMap, KeyedModifiable, Modifiable, ModifierKind, ModifierMap,
-            ModifierResult, ModifierSource,
+            FlatModifiable, FlatModifierMap, KeyedModifiable, Modifiable, ModifierKind,
+            ModifierMap, ModifierResult, ModifierSource,
         },
         proficiency::Proficiency,
         range::Range,
@@ -93,9 +95,9 @@ impl AdvantageTracker {
     }
 }
 
-pub static D20_CRITICAL_SUCCESS: u8 = 20;
-pub static D20_CRITICAL_FAILURE: u8 = 1;
-pub static D20_MIN_CRIT_THRESHOLD: u8 = 1;
+pub const D20_CRITICAL_SUCCESS: u8 = 20;
+pub const D20_CRITICAL_FAILURE: u8 = 1;
+pub const D20_MIN_CRIT_THRESHOLD: u8 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -121,6 +123,16 @@ pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
     Skill(Skill),
     AttackRoll(AttackSource),
+}
+
+impl D20CheckKind {
+    pub fn ability(&self) -> Option<Ability> {
+        match self {
+            D20CheckKind::SavingThrow(kind) => kind.ability(),
+            D20CheckKind::Skill(skill) => Some(skill.ability()),
+            D20CheckKind::AttackRoll(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,7 +216,7 @@ impl D20Check {
     pub fn roll(&self, proficiency_bonus: u8) -> D20CheckResult {
         let mut check = self.clone();
         if proficiency_bonus > 0 {
-            check.modifiers.add_modifier(
+            check.modifiers.replace_modifier(
                 ModifierSource::Proficiency(self.proficiency.level().clone()),
                 self.proficiency.bonus(proficiency_bonus) as i32,
             );
@@ -253,6 +265,15 @@ impl D20Check {
     pub fn roll_hooks(&self, game_state: &GameState, entity: Entity) -> D20CheckResult {
         let mut check = self.clone();
 
+        if let Some(ability) = check.kind.ability() {
+            let ability_scores =
+                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
+            check.add_modifier(
+                ModifierSource::Ability(ability),
+                ability_scores.ability_modifier(&ability).total(),
+            );
+        }
+
         systems::effects::effects(&game_state.world, entity)
             .pre_d20_check(game_state, entity, &self.kind, &mut check);
 
@@ -269,6 +290,41 @@ impl D20Check {
         );
 
         result
+    }
+
+    pub fn roll_dc(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        dc: &D20CheckDC,
+    ) -> Result<D20CheckResult, D20Error> {
+        if !self.matches_kind(&dc.kind()) {
+            return Err(D20Error::KindMismatch {
+                check_kind: self.kind.clone(),
+                dc_kind: dc.kind().clone(),
+            });
+        }
+
+        let mut result = self.roll_hooks(game_state, entity);
+
+        if result.outcome.is_none() {
+            result.outcome = if result.total() >= dc.total() {
+                Some(D20CheckOutcome::Success)
+            } else {
+                Some(D20CheckOutcome::Failure)
+            };
+        }
+
+        Ok(result)
+    }
+
+    pub fn matches_kind(&self, other: &D20CheckKind) -> bool {
+        match (&self.kind, other) {
+            (D20CheckKind::SavingThrow(a), D20CheckKind::SavingThrow(b)) => a == b,
+            (D20CheckKind::Skill(a), D20CheckKind::Skill(b)) => a == b,
+            (D20CheckKind::AttackRoll(a), D20CheckKind::AttackRoll(b)) => a == b,
+            _ => false,
+        }
     }
 
     /// Folds another check's persistent state (modifiers, advantage, crit
@@ -343,6 +399,14 @@ impl Modifiable for D20Check {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum D20Error {
+    KindMismatch {
+        check_kind: D20CheckKind,
+        dc_kind: D20CheckKind,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20CheckResult {
     pub check: D20Check,
     pub rolls: Vec<u8>,
@@ -362,22 +426,19 @@ impl D20CheckResult {
         self.modifier_result.total()
     }
 
-    pub fn total(&self) -> u32 {
-        max(self.selected_roll as i32 + self.total_modifier(), 0) as u32
+    pub fn total(&self) -> i32 {
+        max(self.selected_roll as i32 + self.total_modifier(), 0)
     }
 
     pub fn advantage_tracker(&self) -> &AdvantageTracker {
         &self.check.advantage_tracker
     }
 
-    pub fn is_success<T>(&self, dc: &D20CheckDC<T>) -> bool
-    where
-        T: IntoEnumIterator + Copy + Eq + Hash,
-    {
-        self.is_success_vs(dc.dc.total() as u32)
+    pub fn is_success(&self, dc: &D20CheckDC) -> bool {
+        self.check.matches_kind(&dc.kind()) && self.is_success_vs(dc.total())
     }
 
-    pub fn is_success_vs(&self, dc_total: u32) -> bool {
+    pub fn is_success_vs(&self, dc_total: i32) -> bool {
         if let Some(outcome) = &self.outcome {
             return outcome.is_success();
         }
@@ -465,24 +526,17 @@ where
     K: D20CheckKey,
 {
     checks: HashMap<K, D20Check>,
-    ability_mapper: fn(&K) -> Option<Ability>,
 }
 
 impl<K> D20CheckMap<K>
 where
     K: D20CheckKey,
 {
-    pub fn new(
-        kind_mapper: fn(&K) -> D20CheckKind,
-        ability_mapper: fn(&K) -> Option<Ability>,
-    ) -> Self {
+    pub fn new(kind_mapper: fn(&K) -> D20CheckKind) -> Self {
         let checks = K::iter()
             .map(|k| (k, D20Check::new(kind_mapper(&k), Proficiency::default())))
             .collect();
-        Self {
-            checks,
-            ability_mapper,
-        }
+        Self { checks }
     }
 
     pub fn get(&self, key: &K) -> &D20Check {
@@ -527,40 +581,8 @@ where
         self.get_mut(key).remove_crit_threshold_reduction(source);
     }
 
-    pub fn ability(&self, key: &K) -> Option<Ability> {
-        (self.ability_mapper)(key)
-    }
-
     pub fn check(&self, key: &K, game_state: &GameState, entity: Entity) -> D20CheckResult {
-        let mut d20 = self.get(key).clone();
-        if let Some(ability) = self.ability(key) {
-            let ability_scores =
-                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
-            d20.add_modifier(
-                ModifierSource::Ability(ability),
-                ability_scores.ability_modifier(&ability).total(),
-            );
-        }
-
-        d20.roll_hooks(game_state, entity)
-    }
-
-    pub fn check_dc(
-        &self,
-        dc: &D20CheckDC<K>,
-        game_state: &GameState,
-        entity: Entity,
-    ) -> D20CheckResult {
-        let mut result = self.check(&dc.key, game_state, entity);
-        if result.outcome.is_none() {
-            result.outcome = if result.total() >= dc.dc.total() as u32 {
-                Some(D20CheckOutcome::Success)
-            } else {
-                Some(D20CheckOutcome::Failure)
-            };
-        }
-
-        result
+        self.get(key).clone().roll_hooks(game_state, entity)
     }
 }
 
@@ -576,12 +598,40 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct D20CheckDC<T>
-where
-    T: IntoEnumIterator + Copy + Eq + Hash,
-{
-    pub key: T,
-    pub dc: ModifierResult,
+pub enum D20CheckDC {
+    SavingThrow {
+        saving_throw: SavingThrowKind,
+        dc: ModifierResult,
+    },
+    Skill {
+        skill: Skill,
+        dc: ModifierResult,
+    },
+    AttackRoll {
+        target: EntityIdentifier,
+        source: AttackSource,
+        armor_class: ArmorClass,
+    },
+}
+
+impl D20CheckDC {
+    pub fn kind(&self) -> D20CheckKind {
+        match self {
+            D20CheckDC::SavingThrow { saving_throw, .. } => {
+                D20CheckKind::SavingThrow(*saving_throw)
+            }
+            D20CheckDC::Skill { skill, .. } => D20CheckKind::Skill(*skill),
+            D20CheckDC::AttackRoll { source, .. } => D20CheckKind::AttackRoll(*source),
+        }
+    }
+
+    pub fn total(&self) -> i32 {
+        match self {
+            D20CheckDC::SavingThrow { dc, .. } => dc.total(),
+            D20CheckDC::Skill { dc, .. } => dc.total(),
+            D20CheckDC::AttackRoll { armor_class, .. } => armor_class.total(),
+        }
+    }
 }
 
 #[cfg(test)]

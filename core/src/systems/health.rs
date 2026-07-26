@@ -22,7 +22,7 @@ use crate::{
     },
     entities::{character::CharacterTag, monster::MonsterTag},
     registry::registry::ClassesRegistry,
-    systems::{self, d20::D20CheckDCKind},
+    systems::{self},
 };
 
 pub fn heal(world: &mut World, target: Entity, amount: u32) -> Option<LifeState> {
@@ -218,18 +218,20 @@ pub fn damage(
             target
         );
 
-        let dc = max(
-            CONCENTRATION_SAVING_THROW_DC_DEFAULT,
-            damage_taken as i32 / 2,
-        );
-        let saving_throw_dc = D20CheckDC {
-            key: SavingThrowKind::Concentration,
-            dc: ModifierMap::from(ModifierSource::Base, dc).evaluate(),
-        };
         let saving_throw_event = systems::d20::check(
             game_state,
             target,
-            &D20CheckDCKind::SavingThrow(saving_throw_dc),
+            &D20CheckDC::SavingThrow {
+                saving_throw: SavingThrowKind::Concentration,
+                dc: ModifierMap::from(
+                    ModifierSource::Base,
+                    max(
+                        CONCENTRATION_SAVING_THROW_DC_DEFAULT,
+                        damage_taken as i32 / 2,
+                    ),
+                )
+                .evaluate(),
+            },
         );
         let callback = EventCallback::new({
             move |game_state, event, _| {

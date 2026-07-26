@@ -12,6 +12,7 @@ use crate::{
             targeting::EntityFilter,
         },
         activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
+        d20::D20CheckDC,
         speed::Speed,
         time::{TimeMode, TimeStep},
     },
@@ -32,7 +33,7 @@ use crate::{
         character::CreatureTag,
         projectile::{Projectile, ProjectileTag},
     },
-    systems::{self, d20::D20CheckDCKind, movement::MovementError, time::RestKind},
+    systems::{self, movement::MovementError, time::RestKind},
 };
 
 // TODO: WorldState instead?
@@ -661,11 +662,15 @@ impl GameState {
             EventKind::D20CheckPerformed { actor, result, dc } => {
                 let dc = match dc {
                     // TODO: Do we ever need to recalculate DCs for saving throws or skills?
-                    D20CheckDCKind::SavingThrow(_) | D20CheckDCKind::Skill(_) => dc.clone(),
-                    D20CheckDCKind::AttackRoll(target, source, _) => {
+                    D20CheckDC::SavingThrow { .. } | D20CheckDC::Skill { .. } => dc.clone(),
+                    D20CheckDC::AttackRoll { target, source, .. } => {
                         // Recalculate AC in case it changed due to reactions
                         let armor_class = systems::loadout::armor_class(self, target.id());
-                        D20CheckDCKind::AttackRoll(target.clone(), source.clone(), armor_class)
+                        D20CheckDC::AttackRoll {
+                            target: target.clone(),
+                            source: source.clone(),
+                            armor_class,
+                        }
                     }
                 };
 

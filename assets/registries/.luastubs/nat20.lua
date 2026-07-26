@@ -167,22 +167,6 @@ function TargetInstance:entity() end
 -- D20
 ------------------------------------------------------------
 
----@class D20Check
----@field kind D20CheckKind
----@field modifiers ModifierMap
-local D20Check = {}
----@param advantage string -- advantage/disadvantage
----@param source string
-function D20Check:add_advantage(advantage, source) end
-
----@class D20CheckResult
----@field total integer
----@field modifiers ModifierResult
-local D20CheckResult = {}
----@param advantage string -- advantage/disadvantage
----@param source string
-function D20CheckResult:add_advantage(advantage, source) end
-
 ---@class D20CheckKind
 local D20CheckKind = {}
 ---@return string?
@@ -194,32 +178,41 @@ function D20CheckKind:skill() end
 ---@return string?
 function D20CheckKind:attack_roll() end
 
----@class D20ResultKind
+---@class D20Check
+---@field kind D20CheckKind
+---@field modifiers ModifierMap
+local D20Check = {}
+---@param advantage string -- advantage/disadvantage
+---@param source string
+function D20Check:add_advantage(advantage, source) end
+
+---@class D20CheckResult
 ---@field kind D20CheckKind
 ---@field total integer
 ---@field modifiers ModifierResult
-local D20ResultKind = {}
----@param dc D20CheckDCKind
+local D20CheckResult = {}
+
+---@param dc D20CheckDC
 ---@return boolean
-function D20ResultKind:is_success(dc) end
+function D20CheckResult:is_success(dc) end
+
+---@param modifier string
+---@param source string
+function D20CheckResult:add_modifier(modifier, source) end
+
+---@param advantage string -- advantage/disadvantage
+---@param source string
+function D20CheckResult:add_advantage(advantage, source) end
 
 ---@param bonus string
 ---@param source string
 ---@param force_use_new boolean
-function D20ResultKind:reroll_bonus(bonus, source, force_use_new) end
+function D20CheckResult:reroll_bonus(bonus, source, force_use_new) end
 
----@param bonus string
----@param source string
-function D20ResultKind:modify_result(bonus, source) end
-
----@param advantage string -- advantage/disadvantage
----@param source string
-function D20ResultKind:add_advantage(advantage, source) end
-
----@class D20CheckDCKind
+---@class D20CheckDC
 ---@field kind D20CheckKind
 ---@field target ScriptEntity?
-local D20CheckDCKind = {}
+local D20CheckDC = {}
 
 ------------------------------------------------------------
 -- Events
@@ -227,10 +220,10 @@ local D20CheckDCKind = {}
 
 ---@class Event
 local Event = {}
----@return ScriptEntity?, D20ResultKind?, D20CheckDCKind?
+---@return ScriptEntity?, D20CheckResult?, D20CheckDC?
 function Event:as_d20_check_performed() end
 
----@param callback fun(result: D20ResultKind, dc: D20CheckDCKind)
+---@param callback fun(result: D20CheckResult, dc: D20CheckDC)
 function Event:with_d20_check(callback) end
 
 ---@return ActionData?

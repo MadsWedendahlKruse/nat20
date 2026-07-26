@@ -18,7 +18,7 @@ use crate::{
             },
             targeting::TargetInstance,
         },
-        d20::{AdvantageAware, D20Check, D20CheckKind, D20CheckResult},
+        d20::{AdvantageAware, D20Check, D20CheckDC, D20CheckKind, D20CheckResult},
         damage::{
             AttackSource, DamageComponent, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageModifiable, DamageRoll, DamageRollResult,
@@ -52,11 +52,7 @@ use crate::{
             variables::{PARSER_VARIABLES, VariableMap},
         },
     },
-    systems::{
-        self,
-        d20::{D20CheckDCKind, D20ResultKind},
-        effects::EffectApplicationResult,
-    },
+    systems::{self, effects::EffectApplicationResult},
 };
 
 /// `Entity` is owned by hecs, so to implement `UserData` for it we need to wrap
@@ -163,8 +159,7 @@ impl_from_lua_userdata!(
     ActionData,
     ActionResult,
     D20Check,
-    D20CheckDCKind,
-    D20ResultKind,
+    D20CheckDC,
     DamageComponent,
     DamageMitigationResult,
     DamageResult,
@@ -363,47 +358,31 @@ impl UserData for D20Check {
     }
 }
 
-/// The bare rolled result, handed to `result_hook` scripts (as opposed to
-/// `D20ResultKind`, which also carries what kind of check it was)
 impl UserData for D20CheckResult {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("kind", |_, this| Ok(this.check.kind().clone()));
         fields.add_field_method_get("total", |_, this| Ok(this.total()));
         fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        add_advantage_method(methods);
-    }
-}
-
-impl UserData for D20ResultKind {
-    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
-        fields.add_field_method_get("total", |_, this| Ok(this.d20_result().total()));
-        fields.add_field_method_get("modifiers", |_, this| {
-            Ok(this.d20_result().modifiers().clone())
-        });
-    }
-
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_success", |_, this, dc: D20CheckDCKind| {
+        methods.add_method("is_success", |_, this, dc: D20CheckDC| {
             Ok(this.is_success(&dc))
         });
 
         methods.add_method_mut(
             "reroll_bonus",
-            |_, this, (bonus, source, force_use_new): (String, String, bool)| {
-                let bonus: ModifierExpression = bonus.parse()?;
-                let mut new_result = this.reroll();
-                let bonus_value = bonus.evaluate_without_variables().map_err(|e| {
+            |_, this, (modifier, source, force_use_new): (String, String, bool)| {
+                let modifier: ModifierExpression = modifier.parse()?;
+                let modifier_value = modifier.evaluate_without_variables().map_err(|e| {
                     LuaError::RuntimeError(format!("Failed to evaluate bonus expression: {e}"))
                 })?;
                 let source = parse_source(&source)?;
-                new_result
-                    .d20_result_mut()
-                    .add_modifier(source, bonus_value);
 
-                if force_use_new || new_result.d20_result().total() > this.d20_result().total() {
+                let mut new_result = this.reroll();
+                new_result.add_modifier(source, modifier_value);
+
+                if force_use_new || new_result.total() > this.total() {
                     *this = new_result;
                 }
 
@@ -412,14 +391,14 @@ impl UserData for D20ResultKind {
         );
 
         methods.add_method_mut(
-            "modify_result",
-            |_, this, (bonus, source): (String, String)| {
-                let bonus: ModifierExpression = bonus.parse()?;
-                let bonus_value = bonus.evaluate_without_variables().map_err(|e| {
+            "add_modifier",
+            |_, this, (modifier, source): (String, String)| {
+                let modifier: ModifierExpression = modifier.parse()?;
+                let modifier_value = modifier.evaluate_without_variables().map_err(|e| {
                     LuaError::RuntimeError(format!("Failed to evaluate bonus expression: {e}"))
                 })?;
                 let source = parse_source(&source)?;
-                this.d20_result_mut().add_modifier(source, bonus_value);
+                this.add_modifier(source, modifier_value);
                 Ok(())
             },
         );
@@ -491,15 +470,15 @@ impl EvaluableWithoutVariables for ModifierTable {
     }
 }
 
-impl UserData for D20CheckDCKind {
+impl UserData for D20CheckDC {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
         // TODO: Kind of a funky method
         fields.add_field_method_get("target", |_, this| {
             Ok(match this {
-                D20CheckDCKind::SavingThrow { .. } => None,
-                D20CheckDCKind::Skill { .. } => None,
-                D20CheckDCKind::AttackRoll(target, ..) => Some(ScriptEntity::from(target.id())),
+                D20CheckDC::SavingThrow { .. } => None,
+                D20CheckDC::Skill { .. } => None,
+                D20CheckDC::AttackRoll { target, .. } => Some(ScriptEntity::from(target.id())),
             })
         });
     }

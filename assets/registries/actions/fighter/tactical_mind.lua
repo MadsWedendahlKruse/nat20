@@ -19,7 +19,7 @@ end
 ---@type ReactionBodyFn
 local function reaction_body(game_state, reaction, event)
     event:with_d20_check(function(result, dc)
-        result:modify_result("1d10", "nat20_core::action.fighter.tactical_mind")
+        result:add_modifier("1d10", "nat20_core::action.fighter.tactical_mind")
     end)
 end
 

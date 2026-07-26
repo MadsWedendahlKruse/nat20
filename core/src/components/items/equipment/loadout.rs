@@ -13,7 +13,7 @@ use crate::{
             },
             targeting::TargetingRange,
         },
-        d20::{AdvantageType, D20Check, D20CheckKind, D20CheckMap},
+        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckMap},
         damage::{AttackSource, DamageRoll, DamageType},
         id::{ActionId, EffectId, ItemId},
         items::{
@@ -30,7 +30,7 @@ use crate::{
         },
         modifier::{Modifiable, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
-        saving_throw::{SavingThrowDC, SavingThrowKind},
+        saving_throw::SavingThrowKind,
     },
     engine::game_state::GameState,
     registry::registry::ItemsRegistry,
@@ -147,10 +147,9 @@ impl Loadout {
     pub fn new() -> Self {
         Self {
             equipment: HashMap::new(),
-            attack_rolls: D20CheckMap::new(
-                |kind| D20CheckKind::AttackRoll(AttackSource::Weapon(*kind)),
-                |_| None,
-            ),
+            attack_rolls: D20CheckMap::new(|kind| {
+                D20CheckKind::AttackRoll(AttackSource::Weapon(*kind))
+            }),
             saving_throw_modifiers: HashMap::new(),
         }
     }
@@ -497,7 +496,7 @@ impl SavingThrowProvider for Loadout {
         actor: Entity,
         context: &ActionContext,
         kind: SavingThrowKind,
-    ) -> SavingThrowDC {
+    ) -> D20CheckDC {
         let attack_context = context
             .attack
             .as_ref()
@@ -539,8 +538,8 @@ impl SavingThrowProvider for Loadout {
             dc.add_modifier_map(modifiers);
         }
 
-        SavingThrowDC {
-            key: kind,
+        D20CheckDC::SavingThrow {
+            saving_throw: kind,
             dc: dc.evaluate(),
         }
     }

@@ -3,7 +3,7 @@ extern crate nat20_core;
 use nat20_core::{
     components::{
         ability::Ability,
-        d20::{AdvantageType, D20CheckKind, D20CheckOutcome},
+        d20::{AdvantageType, D20CheckDC, D20CheckKind, D20CheckOutcome},
         damage::AttackSource,
         dice::{DiceSet, DieSize},
         items::equipment::weapon::WeaponKind,
@@ -12,7 +12,6 @@ use nat20_core::{
         skill::Skill,
         time::TimeMode,
     },
-    systems::d20::D20CheckDCKind,
     test_utils::scenario::{Operator, Scenario},
 };
 
@@ -95,10 +94,10 @@ fn fighter_tactical_mind() {
             D20CheckKind::Skill(Skill::Stealth),
             D20CheckOutcome::CriticalFailure,
         )
-        .d20_check(&D20CheckDCKind::skill_check(
-            Skill::Stealth,
-            ModifierMap::from(ModifierSource::Custom("Test skill check".into()), 3).evaluate(),
-        ))
+        .d20_check(&D20CheckDC::Skill {
+            skill: Skill::Stealth,
+            dc: ModifierMap::from(ModifierSource::Custom("Test skill check".into()), 3).evaluate(),
+        })
         .react()
         .option_id("action.fighter.tactical_mind")
         .perform();
@@ -214,14 +213,14 @@ fn fighter_indomitable() {
             D20CheckKind::SavingThrow(saving_throw),
             D20CheckOutcome::CriticalFailure,
         )
-        .d20_check(&D20CheckDCKind::saving_throw(
+        .d20_check(&D20CheckDC::SavingThrow {
             saving_throw,
-            ModifierMap::from(
+            dc: ModifierMap::from(
                 ModifierSource::Custom("Test saving throw DC".to_string()),
                 99,
             )
             .evaluate(),
-        ))
+        })
         .react()
         .option_id("action.fighter.indomitable")
         .perform();

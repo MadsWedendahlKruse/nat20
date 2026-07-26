@@ -2,16 +2,18 @@ use std::collections::HashSet;
 
 use imgui::{MouseButton, TreeNodeFlags};
 use nat20_core::{
-    components::{id::EntityIdentifier, spells::spell::ConcentrationInstance, time::TurnBoundary},
+    components::{
+        d20::{D20CheckDC, D20CheckKind},
+        id::EntityIdentifier,
+        spells::spell::ConcentrationInstance,
+        time::TurnBoundary,
+    },
     engine::{
         action_prompt::ActionData,
         event::{EncounterEvent, Event, EventKind, EventLog},
         game_state::GameState,
     },
-    systems::{
-        self,
-        d20::{D20CheckDCKind, D20ResultKind},
-    },
+    systems::{self},
 };
 use strum::{Display, EnumIter};
 
@@ -44,9 +46,9 @@ pub fn event_log_level(event: &Event) -> LogLevel {
         EventKind::ActionRequested { .. } => LogLevel::Info,
         EventKind::LifeStateChanged { .. } => LogLevel::Info,
         EventKind::D20CheckPerformed { result, .. }
-        | EventKind::D20CheckResolved { result, .. } => match result {
-            D20ResultKind::SavingThrow { .. } | D20ResultKind::Skill { .. } => LogLevel::Info,
-            systems::d20::D20ResultKind::AttackRoll { .. } => LogLevel::Debug,
+        | EventKind::D20CheckResolved { result, .. } => match result.check.kind() {
+            D20CheckKind::SavingThrow(_) | D20CheckKind::Skill(_) => LogLevel::Info,
+            D20CheckKind::AttackRoll(_) => LogLevel::Debug,
         },
         EventKind::DamageRollPerformed { .. } => LogLevel::Debug,
         EventKind::DamageRollResolved { .. } => LogLevel::Debug,
@@ -428,17 +430,17 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
     }
 }
 
-fn get_dc_description(dc_kind: &D20CheckDCKind) -> Vec<(String, TextKind)> {
+fn get_dc_description(dc_kind: &D20CheckDC) -> Vec<(String, TextKind)> {
     match dc_kind {
-        D20CheckDCKind::SavingThrow(dc) => vec![
-            (dc.key.to_string(), TextKind::Ability),
+        D20CheckDC::SavingThrow { saving_throw, .. } => vec![
+            (saving_throw.to_string(), TextKind::Ability),
             ("saving throw".to_string(), TextKind::Normal),
         ],
-        D20CheckDCKind::Skill(dc) => vec![
-            (dc.key.to_string(), TextKind::Ability),
+        D20CheckDC::Skill { skill, .. } => vec![
+            (skill.to_string(), TextKind::Ability),
             ("check".to_string(), TextKind::Normal),
         ],
-        D20CheckDCKind::AttackRoll(target, _, _) => {
+        D20CheckDC::AttackRoll { target, .. } => {
             vec![
                 ("attack roll against".to_string(), TextKind::Normal),
                 (target.name().to_string(), TextKind::Actor),

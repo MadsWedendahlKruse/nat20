@@ -9,7 +9,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        d20::{D20Check, D20CheckKey, D20CheckMap},
+        d20::{D20Check, D20CheckDC, D20CheckKey, D20CheckMap},
         damage::{
             AttackSource, DamageMitigationEffect, DamageMitigationResult, DamageResistances,
             DamageRoll, DamageRollResult,
@@ -42,8 +42,8 @@ use crate::{
         event::{CallbackResult, EventCallback, EventKind, EventKindTag, ListenerSource},
         game_state::GameState,
     },
-    registry::registry::ScriptsRegistry,
     registry::{
+        registry::ScriptsRegistry,
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             dice::HealEquation,
@@ -57,7 +57,7 @@ use crate::{
         },
     },
     scripts::script::ScriptFunction,
-    systems::{self, d20::D20CheckDCKind},
+    systems::{self},
 };
 
 // TODO: Should this be it's own time module?
@@ -1467,7 +1467,7 @@ fn repeat_apply_condition_callback() -> EventCallback {
             ActionConditionResolution::Unconditional => { /* No check to repeat */ }
 
             ActionConditionResolution::Conditional {
-                dc: dc @ (D20CheckDCKind::AttackRoll(..) | D20CheckDCKind::Skill(_)),
+                dc: dc @ (D20CheckDC::AttackRoll { .. } | D20CheckDC::Skill { .. }),
                 ..
             } => {
                 // TODO: Is this used anywhere?
@@ -1477,14 +1477,10 @@ fn repeat_apply_condition_callback() -> EventCallback {
             }
 
             ActionConditionResolution::Conditional {
-                dc: D20CheckDCKind::SavingThrow(saving_throw_dc),
+                dc: dc @ D20CheckDC::SavingThrow { .. },
                 ..
             } => {
-                let event = systems::d20::check(
-                    game_state,
-                    entity,
-                    &D20CheckDCKind::SavingThrow(saving_throw_dc.clone()),
-                );
+                let event = systems::d20::check(game_state, entity, dc);
                 game_state.process_event_with_response_callback(
                     event,
                     EventCallback::new(move |game_state, event, _| {

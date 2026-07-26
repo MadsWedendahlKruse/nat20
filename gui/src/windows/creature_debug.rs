@@ -13,7 +13,7 @@ use nat20_core::{
         time::{EntityClock, TimeStep, TurnBoundary},
     },
     engine::game_state::GameState,
-    systems::{self, d20::D20CheckDCKind, geometry::Pose, time::RestKind},
+    systems::{self, geometry::Pose, time::RestKind},
 };
 use parry3d::na::UnitQuaternion;
 use strum::IntoEnumIterator;
@@ -190,13 +190,13 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                         let kind = SavingThrowKind::iter()
                             .nth(index)
                             .expect("Invalid ability index");
-                        let dc = D20CheckDCKind::SavingThrow(D20CheckDC {
+                        let dc = D20CheckDC::SavingThrow {
+                            saving_throw: kind,
                             dc: ModifierResult::from_iter([(
-                                ModifierSource::Custom("Saving Throw DC".to_string()),
+                                ModifierSource::Custom("Debug Saving Throw DC".to_string()),
                                 ModifierKindResult::Flat(*dc_value),
                             )]),
-                            key: kind,
-                        });
+                        };
                         let event = systems::d20::check(game_state, self.creature, &dc);
                         game_state.process_event(event);
                         ui.close_current_popup();
@@ -221,13 +221,13 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
 
                     if let Some(index) = choice {
                         let skill = Skill::iter().nth(index).expect("Invalid skill index");
-                        let dc = D20CheckDCKind::Skill(D20CheckDC {
+                        let dc = D20CheckDC::Skill {
+                            skill,
                             dc: ModifierResult::from_iter([(
-                                ModifierSource::Custom("Skill Check DC".to_string()),
+                                ModifierSource::Custom("Debug Skill Check DC".to_string()),
                                 ModifierKindResult::Flat(*dc_value),
                             )]),
-                            key: skill,
-                        });
+                        };
                         let event = systems::d20::check(game_state, self.creature, &dc);
                         game_state.process_event(event);
                         ui.close_current_popup();

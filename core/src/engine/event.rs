@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::{
     components::{
         actions::action::{ActionResult, ActionResultComponent},
+        d20::{D20CheckDC, D20CheckResult},
         damage::DamageRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
@@ -24,10 +25,7 @@ use crate::{
         encounter::EncounterId,
         game_state::GameState,
     },
-    systems::{
-        d20::{D20CheckDCKind, D20ResultKind},
-        time::RestKind,
-    },
+    systems::time::RestKind,
 };
 
 pub type EventId = Uuid;
@@ -142,14 +140,14 @@ pub enum EventKind {
     /// The initial D20 roll which can be reacted to, e.g. with the Lucky feat.
     D20CheckPerformed {
         actor: EntityIdentifier,
-        result: D20ResultKind,
-        dc: D20CheckDCKind,
+        result: D20CheckResult,
+        dc: D20CheckDC,
     },
     /// The final result of a D20 check after reactions have been applied.
     D20CheckResolved {
         actor: EntityIdentifier,
-        result: D20ResultKind,
-        dc: D20CheckDCKind,
+        result: D20CheckResult,
+        dc: D20CheckDC,
     },
     DamageRollPerformed {
         actor: EntityIdentifier,

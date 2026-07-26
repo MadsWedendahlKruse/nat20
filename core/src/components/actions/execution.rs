@@ -32,7 +32,6 @@ use crate::{
     registry::registry::SpellsRegistry,
     systems::{
         self,
-        d20::D20CheckDCKind,
         effects::EffectApplicationResult,
         geometry::{Displacement, DisplacementTemplate},
     },
@@ -423,11 +422,7 @@ impl StepState {
                     action.instance_id, saving_throw_dc
                 );
 
-                systems::d20::check(
-                    game_state,
-                    self.target,
-                    &D20CheckDCKind::SavingThrow(saving_throw_dc),
-                )
+                systems::d20::check(game_state, self.target, &saving_throw_dc)
             }
         }
         .with_parent(

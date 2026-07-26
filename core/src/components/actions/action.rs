@@ -16,7 +16,7 @@ use crate::{
             reaction::{ReactionBody, ReactionResult, ReactionTrigger},
             targeting::{AreaShape, TargetInstance, TargetingContext},
         },
-        d20::{D20Check, D20CheckOutcome},
+        d20::{D20Check, D20CheckDC, D20CheckOutcome, D20CheckResult},
         damage::{AttackSource, DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstanceTemplate,
         health::life_state::LifeState,
@@ -24,7 +24,7 @@ use crate::{
         items::equipment::slots::EquipmentSlot,
         modifier::{ModifierMap, ModifierResult},
         resource::{RechargeRule, ResourceAmountMap},
-        saving_throw::{SavingThrowDC, SavingThrowKind},
+        saving_throw::SavingThrowKind,
         spells::spellbook::SpellSource,
     },
     engine::{
@@ -36,7 +36,6 @@ use crate::{
     registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
     systems::{
         self,
-        d20::{D20CheckDCKind, D20ResultKind},
         geometry::{Displacement, DisplacementTemplate},
     },
 };
@@ -44,8 +43,7 @@ use crate::{
 pub type DamageFunction = dyn Fn(&World, Entity, &ActionContext) -> DamageRoll + Send + Sync;
 pub type AttackRollFunction =
     dyn Fn(&World, Entity, Entity, &ActionContext) -> (AttackSource, D20Check) + Send + Sync;
-pub type SavingThrowFunction =
-    dyn Fn(&World, Entity, &ActionContext) -> SavingThrowDC + Send + Sync;
+pub type SavingThrowFunction = dyn Fn(&World, Entity, &ActionContext) -> D20CheckDC + Send + Sync;
 pub type HealingFunction = dyn Fn(&World, Entity, &ActionContext) -> ModifierMap + Send + Sync;
 pub type TargetingFunction =
     dyn Fn(&World, Entity, &ActionContext) -> TargetingContext + Send + Sync;
@@ -391,6 +389,8 @@ pub trait AttackRollProvider {
     ) -> (AttackSource, D20Check);
 }
 
+// TODO: Since SavingThrowDC has been removed we can no longer guarantee that this
+// returns a DC for a saving throw. Might not be an actual problem?
 pub trait SavingThrowProvider {
     fn saving_throw(
         &self,
@@ -398,7 +398,7 @@ pub trait SavingThrowProvider {
         actor: Entity,
         context: &ActionContext,
         kind: SavingThrowKind,
-    ) -> SavingThrowDC;
+    ) -> D20CheckDC;
 }
 
 #[derive(Clone)]
@@ -556,8 +556,8 @@ impl PhaseOutcomes {
 pub enum ActionConditionResolution {
     Unconditional,
     Conditional {
-        dc: D20CheckDCKind,
-        result: D20ResultKind,
+        dc: D20CheckDC,
+        result: D20CheckResult,
     },
 }
 
@@ -568,7 +568,7 @@ impl ActionConditionResolution {
             ActionConditionResolution::Conditional { dc, result } => match dc {
                 // For saving throws, a successful save means the action's effect
                 // is avoided or reduced, so we check for failure here.
-                D20CheckDCKind::SavingThrow(_) => !result.is_success(dc),
+                D20CheckDC::SavingThrow { .. } => !result.is_success(dc),
                 _ => result.is_success(dc),
             },
         }
@@ -578,7 +578,7 @@ impl ActionConditionResolution {
         matches!(
             self,
             ActionConditionResolution::Conditional {
-                dc: D20CheckDCKind::AttackRoll(..),
+                dc: D20CheckDC::AttackRoll { .. },
                 ..
             }
         )
@@ -588,7 +588,7 @@ impl ActionConditionResolution {
         matches!(
             self,
             ActionConditionResolution::Conditional {
-                dc: D20CheckDCKind::SavingThrow(_),
+                dc: D20CheckDC::SavingThrow { .. },
                 ..
             }
         )
@@ -598,12 +598,9 @@ impl ActionConditionResolution {
     pub fn is_crit(&self) -> bool {
         match self {
             ActionConditionResolution::Conditional {
-                dc: D20CheckDCKind::AttackRoll(..),
+                dc: D20CheckDC::AttackRoll { .. },
                 result,
-            } => matches!(
-                result.d20_result().outcome,
-                Some(D20CheckOutcome::CriticalSuccess)
-            ),
+            } => matches!(result.outcome, Some(D20CheckOutcome::CriticalSuccess)),
             _ => false,
         }
     }

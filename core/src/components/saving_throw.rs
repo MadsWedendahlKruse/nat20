@@ -19,6 +19,16 @@ pub enum SavingThrowKind {
     Concentration,
 }
 
+impl SavingThrowKind {
+    pub fn ability(&self) -> Option<Ability> {
+        match self {
+            SavingThrowKind::Ability(ability) => Some(*ability),
+            SavingThrowKind::Death => None,
+            SavingThrowKind::Concentration => Some(Ability::Constitution),
+        }
+    }
+}
+
 impl Default for SavingThrowKind {
     fn default() -> Self {
         SavingThrowKind::Ability(Ability::Strength)
@@ -92,17 +102,8 @@ impl From<SavingThrowKind> for String {
 
 pub type SavingThrowSet = D20CheckMap<SavingThrowKind>;
 
-pub type SavingThrowDC = D20CheckDC<SavingThrowKind>;
-
 impl Default for SavingThrowSet {
     fn default() -> Self {
-        Self::new(
-            |kind| D20CheckKind::SavingThrow(*kind),
-            |kind| match kind {
-                SavingThrowKind::Ability(ability) => Some(*ability),
-                SavingThrowKind::Death => None,
-                SavingThrowKind::Concentration => Some(Ability::Constitution),
-            },
-        )
+        Self::new(|kind| D20CheckKind::SavingThrow(*kind))
     }
 }

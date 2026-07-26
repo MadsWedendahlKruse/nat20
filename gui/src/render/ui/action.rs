@@ -9,18 +9,15 @@ use nat20_core::{
             reaction::ReactionResult,
             targeting::{AreaShape, TargetingKind, TargetingRange},
         },
+        d20::D20CheckDC,
         id::{ActionId, EntityIdentifier, SpellId},
         items::equipment::weapon::MELEE_RANGE_DEFAULT,
         modifier::FlatModifiable,
         resource::{RechargeRule, ResourceAmountMap},
-        saving_throw::SavingThrowKind,
         spells::spell::ConcentrationError,
     },
     registry::registry::SpellsRegistry,
-    systems::{
-        self, actions::ActionUsabilityError, d20::D20CheckDCKind, geometry::Displacement,
-        time::RestKind,
-    },
+    systems::{self, actions::ActionUsabilityError, geometry::Displacement, time::RestKind},
 };
 use uom::si::{angle::degree, length::meter};
 
@@ -85,12 +82,14 @@ impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
                         }
                         ActionCondition::SavingThrow(saving_throw) => {
                             let saving_throw = saving_throw(world, entity, &context);
-                            let saving_throw_ability = match saving_throw.key {
-                                SavingThrowKind::Ability(ability) => ability,
-                                _ => todo!(),
+                            let saving_throw_kind = match saving_throw {
+                                D20CheckDC::SavingThrow { saving_throw, .. } => saving_throw,
+                                _ => {
+                                    unreachable!("Expected SavingThrow DC, got {:?}", saving_throw)
+                                }
                             };
                             TextSegments::new(vec![
-                                (saving_throw_ability.to_string(), TextKind::Ability),
+                                (saving_throw_kind.to_string(), TextKind::Ability),
                                 ("Saving Throw".to_string(), TextKind::Details),
                             ])
                             .render(ui);
@@ -497,11 +496,9 @@ fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageRe
         }
 
         ActionConditionResolution::Conditional {
-            dc: D20CheckDCKind::AttackRoll(_, _, armor_class),
+            dc: D20CheckDC::AttackRoll { armor_class, .. },
             result,
         } => {
-            let attack_roll = result.d20_result();
-
             TextSegment::new(format!("{}'s", target_name), TextKind::Target).render(ui);
             ui.same_line();
             ui.text("Armor Class:");
@@ -511,7 +508,7 @@ fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageRe
             ui.text("");
             ui.text("Attack Roll:");
             ui.same_line();
-            attack_roll.render(ui);
+            result.render(ui);
 
             if let Some(damage_taken) = &damage.damage_taken {
                 ui.text("");
@@ -526,29 +523,27 @@ fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageRe
             } else {
                 ui.text(format!(
                     "Attack did not hit. Attack roll ({}) was less than Armor Class ({})",
-                    attack_roll.total(),
+                    result.total(),
                     armor_class.total()
                 ));
             }
         }
 
         ActionConditionResolution::Conditional {
-            dc: D20CheckDCKind::SavingThrow(saving_throw_dc),
+            dc: dc @ D20CheckDC::SavingThrow { .. },
             result,
         } => {
-            let saving_throw_result = result.d20_result();
-
             ui.text("Saving Throw DC:");
             ui.same_line();
-            saving_throw_dc.render(ui);
+            dc.render(ui);
 
             ui.text("");
             ui.text("Saving Throw:");
             ui.same_line();
-            saving_throw_result.render(ui);
+            result.render(ui);
 
             ui.same_line();
-            let (label, kind) = if saving_throw_result.is_success(saving_throw_dc) {
+            let (label, kind) = if result.is_success(dc) {
                 ("Success", TextKind::Green)
             } else {
                 ("Failure", TextKind::Red)
@@ -561,7 +556,7 @@ fn render_damage_resolution(ui: &imgui::Ui, target_name: &str, damage: &DamageRe
 
         ActionConditionResolution::Conditional { dc, result } => {
             dc.render(ui);
-            result.d20_result().render(ui);
+            result.render(ui);
             (&damage.damage_roll, &damage.damage_taken).render(ui);
         }
     }

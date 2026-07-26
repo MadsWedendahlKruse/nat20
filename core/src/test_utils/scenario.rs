@@ -13,7 +13,7 @@ use crate::{
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
-        d20::{AdvantageType, D20Check, D20CheckKind, D20CheckOutcome},
+        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome},
         damage::{DamageComponent, DamageResistances, DamageType},
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ItemId, ResourceId},
@@ -35,7 +35,7 @@ use crate::{
         game_state::GameState,
     },
     registry::registry::ItemsRegistry,
-    systems::{self, d20::D20CheckDCKind},
+    systems::{self},
     test_utils::{creature_builder::CreatureBuilder, fixtures},
 };
 
@@ -450,7 +450,7 @@ impl ScenarioProbe<'_> {
         self
     }
 
-    pub fn d20_check(&mut self, dc: &D20CheckDCKind) -> &mut Self {
+    pub fn d20_check(&mut self, dc: &D20CheckDC) -> &mut Self {
         let entity = self.entity();
         let event = systems::d20::check(&mut self.scenario.game_state, entity, dc);
         self.scenario.game_state.process_event(event);
@@ -459,7 +459,7 @@ impl ScenarioProbe<'_> {
 
     pub fn d20_check_with_callback(
         &mut self,
-        dc: &D20CheckDCKind,
+        dc: &D20CheckDC,
         callback: EventCallback,
     ) -> &mut Self {
         let entity = self.entity();
@@ -1183,9 +1183,7 @@ impl EventFilterKind {
                 }
 
                 if let Some((modifier_source, modifier_value)) = modifier {
-                    let Some(event_modifier) =
-                        result.d20_result().modifier_result.get(modifier_source)
-                    else {
+                    let Some(event_modifier) = result.modifier_result.get(modifier_source) else {
                         return false;
                     };
 
@@ -1196,7 +1194,6 @@ impl EventFilterKind {
 
                 if let Some((advantage_source, advantage_type)) = advantage
                     && !result
-                        .d20_result()
                         .advantage_tracker()
                         .summary()
                         .contains(&(advantage_source, *advantage_type))

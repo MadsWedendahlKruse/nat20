@@ -35,7 +35,7 @@ use crate::{
         modifier::{Modifiable, ModifierKind, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
-        saving_throw::{SavingThrowDC, SavingThrowKind},
+        saving_throw::SavingThrowKind,
         spells::spell::{ConcentrationTracker, SPELL_CASTING_ABILITIES},
     },
     registry::registry::{ClassesRegistry, SpellsRegistry},
@@ -795,7 +795,7 @@ impl SavingThrowProvider for Spellbook {
         entity: Entity,
         context: &ActionContext,
         kind: SavingThrowKind,
-    ) -> SavingThrowDC {
+    ) -> D20CheckDC {
         let source = &context
             .spell
             .as_ref()
@@ -823,8 +823,8 @@ impl SavingThrowProvider for Spellbook {
             proficiency_bonus as i32,
         );
 
-        D20CheckDC {
-            key: kind,
+        D20CheckDC::SavingThrow {
+            saving_throw: kind,
             dc: spell_save_dc.evaluate(),
         }
     }

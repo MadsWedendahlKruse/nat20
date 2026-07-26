@@ -19,7 +19,7 @@ use crate::{
         game_state::GameState,
         interaction::InteractionScopeId,
     },
-    systems::{self, d20::D20CheckDCKind},
+    systems::{self},
 };
 
 pub type EncounterId = Uuid;
@@ -168,14 +168,14 @@ impl Encounter {
             let death_saving_throw_event = systems::d20::check(
                 game_state,
                 current_entity,
-                &D20CheckDCKind::SavingThrow(D20CheckDC {
+                &D20CheckDC::SavingThrow {
+                    saving_throw: SavingThrowKind::Death,
                     dc: ModifierMap::from(
                         ModifierSource::Custom("Death Saving Throw".to_string()),
                         DEATH_SAVING_THROW_DC as i32,
                     )
                     .evaluate(),
-                    key: SavingThrowKind::Death,
-                }),
+                },
             );
 
             game_state.process_event_with_response_callback(
@@ -190,7 +190,7 @@ impl Encounter {
 
                             if let LifeState::Unconscious(ref mut death_saving_throws) = *life_state
                             {
-                                death_saving_throws.update(result.d20_result());
+                                death_saving_throws.update(result);
 
                                 let next_state = death_saving_throws.next_state();
 

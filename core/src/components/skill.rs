@@ -39,6 +39,34 @@ pub enum Skill {
     Persuasion,
 }
 
+impl Skill {
+    pub fn ability(&self) -> Ability {
+        match self {
+            Skill::Athletics => Ability::Strength,
+
+            Skill::Acrobatics | Skill::SleightOfHand | Skill::Stealth | Skill::Initiative => {
+                Ability::Dexterity
+            }
+
+            Skill::Arcana
+            | Skill::History
+            | Skill::Investigation
+            | Skill::Nature
+            | Skill::Religion => Ability::Intelligence,
+
+            Skill::AnimalHandling
+            | Skill::Insight
+            | Skill::Medicine
+            | Skill::Perception
+            | Skill::Survival => Ability::Wisdom,
+
+            Skill::Deception | Skill::Intimidation | Skill::Performance | Skill::Persuasion => {
+                Ability::Charisma
+            }
+        }
+    }
+}
+
 impl fmt::Display for Skill {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
@@ -51,50 +79,10 @@ impl Default for Skill {
     }
 }
 
-#[macro_export]
-macro_rules! skill_ability_map {
-    ( $( $skill:ident => $ability:ident ),* $(,)? ) => {
-        pub const fn skill_ability(skill: &Skill) -> Option<Ability> {
-            match skill {
-                $( Skill::$skill => Some(Ability::$ability) ),*
-            }
-        }
-    };
-}
-
-skill_ability_map! {
-    Athletics => Strength,
-
-    Acrobatics => Dexterity,
-    SleightOfHand => Dexterity,
-    Stealth => Dexterity,
-
-    Arcana => Intelligence,
-    History => Intelligence,
-    Investigation => Intelligence,
-    Nature => Intelligence,
-    Religion => Intelligence,
-
-    AnimalHandling => Wisdom,
-    Insight => Wisdom,
-    Medicine => Wisdom,
-    Perception => Wisdom,
-    Survival => Wisdom,
-
-    Deception => Charisma,
-    Intimidation => Charisma,
-    Performance => Charisma,
-    Persuasion => Charisma,
-
-    Initiative => Dexterity,
-}
-
 pub type SkillSet = D20CheckMap<Skill>;
-
-pub type SkillCheckDC = D20CheckDC<Skill>;
 
 impl Default for SkillSet {
     fn default() -> Self {
-        SkillSet::new(|skill| D20CheckKind::Skill(*skill), skill_ability)
+        SkillSet::new(|skill| D20CheckKind::Skill(*skill))
     }
 }

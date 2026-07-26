@@ -29,19 +29,15 @@ use nat20_core::{
         proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         saving_throw::{SavingThrowKind, SavingThrowSet},
-        skill::{Skill, SkillSet, skill_ability},
+        skill::{Skill, SkillSet},
         species::{CreatureSize, CreatureType},
         speed::Speed,
         spells::spellbook::Spellbook,
         time::{TimeDuration, TimeMode},
     },
     engine::game_state::GameState,
-    registry::registry::{EffectsRegistry, FeatsRegistry},
-    systems::{
-        self,
-        d20::{D20CheckDCKind, D20ResultKind},
-        geometry::DisplacementTemplate,
-    },
+    registry::registry::FeatsRegistry,
+    systems::{self, geometry::DisplacementTemplate},
 };
 use strum::IntoEnumIterator;
 use uom::si::{length::meter, mass::kilogram};
@@ -271,7 +267,7 @@ impl ImguiRenderableWithContext<(&GameState, Entity)> for SkillSet {
             let mut prev_ability = Ability::Charisma;
 
             for skill in Skill::iter() {
-                let ability = skill_ability(&skill).unwrap();
+                let ability = skill.ability();
 
                 // If the ability has changed, render a separator
                 if ability != prev_ability {
@@ -1086,53 +1082,31 @@ impl ImguiRenderable for (&Option<DamageRollResult>, &Option<DamageMitigationRes
     }
 }
 
-impl ImguiRenderable for D20CheckDC<SavingThrowKind> {
-    fn render(&self, ui: &imgui::Ui) {
-        self.dc.render_with_context(ui, ModifierRenderMode::Line);
-        ui.same_line();
-        TextSegments::new(vec![
-            (format!("({})", self.key), TextKind::Ability),
-            (format!("= {}", self.dc.total()), TextKind::Normal),
-        ])
-        .render(ui);
-    }
-}
-
-impl ImguiRenderable for D20CheckDC<Skill> {
-    fn render(&self, ui: &imgui::Ui) {
-        self.dc.render_with_context(ui, ModifierRenderMode::Line);
-        ui.same_line();
-        TextSegments::new(vec![
-            (format!("({})", self.key), TextKind::Skill),
-            (format!("= {}", self.dc.total()), TextKind::Normal),
-        ])
-        .render(ui);
-    }
-}
-
-impl ImguiRenderable for D20CheckDCKind {
+impl ImguiRenderable for D20CheckDC {
     fn render(&self, ui: &imgui::Ui) {
         match self {
-            D20CheckDCKind::SavingThrow(dc) => dc.render(ui),
-            D20CheckDCKind::Skill(dc) => dc.render(ui),
-            D20CheckDCKind::AttackRoll(target, source, armor_class) => {
+            D20CheckDC::SavingThrow { saving_throw, dc } => {
+                dc.render_with_context(ui, ModifierRenderMode::Line);
+                ui.same_line();
+                TextSegments::new(vec![
+                    (format!("({})", saving_throw), TextKind::Ability),
+                    (format!("= {}", dc.total()), TextKind::Normal),
+                ])
+                .render(ui);
+            }
+
+            D20CheckDC::Skill { skill, dc } => {
+                dc.render_with_context(ui, ModifierRenderMode::Line);
+                ui.same_line();
+                TextSegments::new(vec![
+                    (format!("({})", skill), TextKind::Skill),
+                    (format!("= {}", dc.total()), TextKind::Normal),
+                ])
+                .render(ui);
+            }
+
+            D20CheckDC::AttackRoll { armor_class, .. } => {
                 armor_class.render(ui);
-            }
-        }
-    }
-}
-
-impl ImguiRenderable for D20ResultKind {
-    fn render(&self, ui: &imgui::Ui) {
-        match self {
-            D20ResultKind::SavingThrow { result, .. } | D20ResultKind::Skill { result, .. } => {
-                result.render(ui);
-            }
-            D20ResultKind::AttackRoll { result, .. } => {
-                TextSegment::new("Attack Roll:", TextKind::Normal).render(ui);
-                ui.indent();
-                result.render(ui);
-                ui.unindent();
             }
         }
     }
