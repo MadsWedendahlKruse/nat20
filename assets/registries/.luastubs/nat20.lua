@@ -277,10 +277,8 @@ function FlatModifierMap:add_modifier(source, value) end
 
 ---@class Speed
 local Speed = {}
---- `value` is either a length expression ("10 feet") or a multiplier ("x2"),
---- the same grammar as the `speed` effect modifier in JSON.
 ---@param source string
----@param value string
+---@param value string either a length expression ("10 feet") or a multiplier ("x2"), the same grammar as the `speed` effect modifier in JSON.
 function Speed:add_modifier(source, value) end
 
 ---@class ModifierResult

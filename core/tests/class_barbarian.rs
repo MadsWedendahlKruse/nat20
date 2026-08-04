@@ -525,3 +525,37 @@ fn primal_knowledge() {
             .assert_d20_ability(&D20CheckKind::Skill(skill.clone()), &Ability::Strength);
     }
 }
+
+#[test]
+fn instinctive_pounce() {
+    let mut scenario = barbarian_scenario(7);
+
+    // Base speed is 30 feet for a Dragonborn + 10 feet from Fast Movement at level 5
+    let base_speed = Length::new::<foot>(30.0 + 10.0);
+
+    scenario
+        .probe("barbarian")
+        .assert_effect("effect.barbarian.instinctive_pounce")
+        .assert_movement_speed(Operator::Equal(base_speed));
+
+    enter_rage(&mut scenario);
+
+    // Instinctive Pounce adds half the base speed to the total speed while raging
+    scenario
+        .probe("barbarian")
+        .assert_effect("effect.barbarian.rage")
+        .assert_effect("effect.barbarian.instinctive_pounce_active")
+        .assert_movement_speed(Operator::Equal(base_speed + Length::new::<foot>(20.0)));
+
+    // Speed disappears when Rage ends
+    scenario
+        .probe("barbarian")
+        .end_turn()
+        .start_turn()
+        .end_turn();
+    scenario
+        .probe("barbarian")
+        .assert_no_effect("effect.barbarian.rage")
+        .assert_no_effect("effect.barbarian.instinctive_pounce_active")
+        .assert_movement_speed(Operator::Equal(base_speed));
+}

@@ -60,7 +60,8 @@
             "nat20_core::effect.barbarian.fast_movement"
         ],
         "7": [
-            "nat20_core::effect.barbarian.feral_instinct"
+            "nat20_core::effect.barbarian.feral_instinct",
+            "nat20_core::effect.barbarian.instinctive_pounce"
         ]
     },
     "resources_by_level": {

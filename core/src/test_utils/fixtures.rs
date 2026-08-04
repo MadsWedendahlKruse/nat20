@@ -139,6 +139,16 @@ pub mod creatures {
                         "nat20_core",
                         "class.barbarian",
                     ))),
+                    // Level 6
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 7
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
                 ],
             );
 

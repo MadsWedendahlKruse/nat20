@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.barbarian.instinctive_pounce",
+    "kind": "buff",
+    "description": "As part of the Bonus Action you take to enter your Rage, you can move up to half your Speed.",
+    "on_action_result": [
+        {
+            "script": "nat20_core::script.effect.barbarian.instinctive_pounce"
+        }
+    ]
+}
