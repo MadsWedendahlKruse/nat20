@@ -52,6 +52,9 @@
         "2": [
             "nat20_core::effect.barbarian.danger_sense"
         ],
+        "3": [
+            "nat20_core::effect.barbarian.primal_knowledge"
+        ],
         "5": [
             "nat20_core::effect.extra_attack"
         ]
@@ -119,6 +122,22 @@
                     ],
                     "picks": 1,
                     "allow_duplicates": false
+                }
+            }
+        ],
+        "3": [
+            {
+                "skill_proficiency": {
+                    "skills": [
+                        "animal_handling",
+                        "athletics",
+                        "intimidation",
+                        "nature",
+                        "perception",
+                        "survival"
+                    ],
+                    "choices": 1,
+                    "source": "nat20_core::effect.barbarian.primal_knowledge"
                 }
             }
         ]

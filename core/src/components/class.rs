@@ -155,11 +155,11 @@ impl Class {
         prompts_by_level
             .entry(1)
             .or_default()
-            .push(LevelUpPrompt::SkillProficiency(
-                skill_proficiencies.clone(),
-                skill_prompts,
-                ModifierSource::ClassFeature(id.clone()),
-            ));
+            .push(LevelUpPrompt::SkillProficiency {
+                skills: skill_proficiencies.clone(),
+                choices: skill_prompts,
+                source: ModifierSource::ClassFeature(id.clone()),
+            });
 
         // Add subclass prompt
         // NOTE: *DON'T* make a helper method in LevelUpPrompt for subclass prompts.

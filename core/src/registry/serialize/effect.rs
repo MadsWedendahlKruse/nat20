@@ -1,7 +1,7 @@
 use hecs::{Entity, World};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::sync::Arc;
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 use strum::IntoEnumIterator;
 use tracing::debug;
 
@@ -372,6 +372,7 @@ impl RegistryReferenceCollector for EffectDefinition {
             collector.add(RegistryReference::ScriptAnyOf(
                 script.clone(),
                 vec![
+                    ScriptFunction::D20AbilityHook,
                     ScriptFunction::D20CheckHook,
                     ScriptFunction::D20CheckResultHook,
                 ],
@@ -812,22 +813,31 @@ pub struct SkillCheckHookDefinition {
 /// Wires a script into a `D20CheckHooks` pair. Each side only fires if the
 /// script actually defines the corresponding function.
 fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
-    let check_script = script.clone();
-    let result_script = script.clone();
     D20CheckHooks {
-        check_hook: Arc::new(move |game_state, entity, check| {
-            if script_defines(&check_script, ScriptFunction::D20CheckHook) {
-                systems::scripts::evaluate_d20_check_hook(&check_script, game_state, entity, check);
+        ability_hook: Arc::new({
+            let script = script.clone();
+            move |game_state, entity, check| {
+                if script_defines(&script, ScriptFunction::D20AbilityHook) {
+                    systems::scripts::evaluate_d20_ability_hook(&script, game_state, entity, check)
+                } else {
+                    None
+                }
             }
         }),
-        result_hook: Arc::new(move |game_state, entity, result| {
-            if script_defines(&result_script, ScriptFunction::D20CheckResultHook) {
-                systems::scripts::evaluate_d20_result_hook(
-                    &result_script,
-                    game_state,
-                    entity,
-                    result,
-                );
+        check_hook: Arc::new({
+            let script = script.clone();
+            move |game_state, entity, check| {
+                if script_defines(&script, ScriptFunction::D20CheckHook) {
+                    systems::scripts::evaluate_d20_check_hook(&script, game_state, entity, check);
+                }
+            }
+        }),
+        result_hook: Arc::new({
+            let script = script.clone();
+            move |game_state, entity, result| {
+                if script_defines(&script, ScriptFunction::D20CheckResultHook) {
+                    systems::scripts::evaluate_d20_result_hook(&script, game_state, entity, result);
+                }
             }
         }),
     }
@@ -837,12 +847,9 @@ fn script_defines(script: &ScriptId, function: ScriptFunction) -> bool {
     ScriptsRegistry::get(script).is_some_and(|s| function.defined_in_script(s))
 }
 
-fn insert_d20_check_hooks<K>(
-    map: &mut std::collections::HashMap<K, D20CheckHooks>,
-    key: K,
-    hooks: D20CheckHooks,
-) where
-    K: Eq + std::hash::Hash + Clone,
+fn insert_d20_check_hooks<K>(map: &mut HashMap<K, D20CheckHooks>, key: K, hooks: D20CheckHooks)
+where
+    K: Eq + Hash + Clone,
 {
     match map.remove(&key) {
         Some(existing) => {

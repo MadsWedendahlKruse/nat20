@@ -98,9 +98,25 @@ local function action_hook(game_state, action)
     end
 end
 
+---@type D20CheckHookFn
+local function d20_check_hook(game_state, entity, check)
+    -- Since Primal Knowledge lets you use Strength for skill checks that don't
+    -- normally use Strength, we can't just give advantage to the regular Strength
+    -- checks, but we have to check if the skill check uses Strength instead.
+    if not check.kind:skill() then
+        return
+    end
+
+    local ability = check.ability;
+    if ability and ability == "strength" then
+        check:add_advantage("advantage", "nat20_core::effect.barbarian.rage")
+    end
+end
+
 return {
     action_usability = action_usability,
     damage_roll_hook = damage_roll_hook,
     event_filter = event_filter,
     action_hook = action_hook,
+    d20_check_hook = d20_check_hook
 }

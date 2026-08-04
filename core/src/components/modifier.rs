@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::Deref;
+use std::{collections::BTreeMap, str::FromStr};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,7 @@ use crate::components::{
     },
     range::Range,
 };
+use crate::registry::serialize::schema::impl_string_schema;
 
 use super::{ability::Ability, proficiency::ProficiencyLevel};
 
@@ -52,6 +53,10 @@ impl ModifierMap {
         T: Into<ModifierKind>,
     {
         let value = value.into();
+        if value.is_zero() {
+            self.modifiers.remove(&source);
+            return;
+        }
         self.modifiers.insert(source, value);
     }
 
@@ -494,9 +499,24 @@ fn compare_map_result(
     true
 }
 
-#[derive(
-    Debug, Hash, Eq, PartialEq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
-)]
+impl_string_schema!(
+    ModifierSource,
+    "ModifierSource",
+    "description": "The source of a modifier, e.g. an ability score, a feat, or an \
+    effect. Abilities can be specified by either their full name or their acronym. \
+    All IDs are supported, as well as the special values `base` and `none`. Note that \
+    there is no validation performed as to whether the ID actually exists \
+    in the registry",
+    "examples": [
+        "base", "none",
+        "strength", "str",
+        "nat20_core::feat.ability_score_improvement",
+        "nat20_core::effect.spell.hex"
+    ]
+);
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "String", rename_all = "snake_case")]
 pub enum ModifierSource {
     Base, // The base value, no specific source
     Background(BackgroundId),
@@ -557,6 +577,34 @@ impl From<Id> for ModifierSource {
             Id::SubspeciesId(subspecies_id) => ModifierSource::Subspecies(subspecies_id),
             other => ModifierSource::Custom(other.to_string()),
         }
+    }
+}
+
+impl FromStr for ModifierSource {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(id) = s.parse::<Id>() {
+            return Ok(ModifierSource::from(id));
+        }
+
+        if let Ok(ability) = Ability::from_str(s) {
+            return Ok(ModifierSource::Ability(ability));
+        }
+
+        match s.to_lowercase().as_str() {
+            "base" => Ok(ModifierSource::Base),
+            "none" => Ok(ModifierSource::None),
+            other => Err(format!("Unknown modifier source: {}", other)),
+        }
+    }
+}
+
+impl TryFrom<String> for ModifierSource {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse::<ModifierSource>()
     }
 }
 

@@ -4,6 +4,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
+        ability::AbilityScoreMap,
         actions::action::{ActionConditionResolution, ActionContext},
         d20::{D20Check, D20CheckKind, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
@@ -13,10 +14,12 @@ use crate::{
         },
         id::ActionId,
         items::equipment::armor::ArmorClass,
+        modifier::{Modifiable, ModifierSource},
         resource::ResourceAmountMap,
         time::TimeStep,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
+    systems,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -179,14 +182,29 @@ impl EffectManager {
         );
     }
 
-    pub fn pre_d20_check(
-        &self,
-        game_state: &GameState,
-        entity: Entity,
-        kind: &D20CheckKind,
-        check: &mut D20Check,
-    ) {
-        self.for_each(Self::get_d20_hooks(kind), |hook| {
+    // TODO: Could be argued that this has perhaps a bit too much logic to live in
+    // the EffectManager, but it makes it a lot easier to apply everything correctly
+    pub fn pre_d20_check(&self, game_state: &GameState, entity: Entity, check: &mut D20Check) {
+        let kind = check.kind().clone();
+
+        for instance in self.effects.values() {
+            if let Some(hook) = Self::get_d20_hooks(&kind)(instance.effect()) {
+                if let Some(ability) = (hook.ability_hook)(game_state, entity, check) {
+                    check.set_ability(Some(ability));
+                }
+            }
+        }
+
+        if let Some(ability) = check.ability() {
+            let ability_scores =
+                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
+            check.replace_modifier(
+                ModifierSource::Ability(ability),
+                ability_scores.ability_modifier(&ability).total(),
+            );
+        }
+
+        self.for_each(Self::get_d20_hooks(&kind), |hook| {
             (hook.check_hook)(game_state, entity, check)
         });
     }
@@ -195,10 +213,9 @@ impl EffectManager {
         &self,
         game_state: &GameState,
         entity: Entity,
-        kind: &D20CheckKind,
         result: &mut D20CheckResult,
     ) {
-        self.for_each(Self::get_d20_hooks(kind), |hook| {
+        self.for_each(Self::get_d20_hooks(&result.check.kind().clone()), |hook| {
             (hook.result_hook)(game_state, entity, result)
         });
     }

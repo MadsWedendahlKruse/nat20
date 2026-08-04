@@ -7,7 +7,7 @@ use strum::{Display, IntoEnumIterator};
 
 use crate::{
     components::{
-        ability::{Ability, AbilityScoreMap},
+        ability::Ability,
         damage::AttackSource,
         id::EntityIdentifier,
         items::equipment::armor::ArmorClass,
@@ -138,6 +138,7 @@ impl D20CheckKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20Check {
     kind: D20CheckKind,
+    ability: Option<Ability>,
     modifiers: ModifierMap,
     proficiency: Proficiency,
     advantage_tracker: AdvantageTracker,
@@ -147,8 +148,10 @@ pub struct D20Check {
 
 impl D20Check {
     pub fn new(kind: D20CheckKind, proficiency: Proficiency) -> Self {
+        let ability = kind.ability();
         Self {
             kind,
+            ability,
             modifiers: ModifierMap::default(),
             proficiency,
             advantage_tracker: AdvantageTracker::new(),
@@ -159,6 +162,14 @@ impl D20Check {
 
     pub fn kind(&self) -> &D20CheckKind {
         &self.kind
+    }
+
+    pub fn ability(&self) -> Option<Ability> {
+        self.ability
+    }
+
+    pub fn set_ability(&mut self, ability: Option<Ability>) {
+        self.ability = ability;
     }
 
     pub fn crit_threshold(&self) -> u8 {
@@ -213,14 +224,8 @@ impl D20Check {
         self.proficiency = proficiency;
     }
 
-    pub fn roll(&self, proficiency_bonus: u8) -> D20CheckResult {
-        let mut check = self.clone();
-        if proficiency_bonus > 0 {
-            check.modifiers.replace_modifier(
-                ModifierSource::Proficiency(self.proficiency.level().clone()),
-                self.proficiency.bonus(proficiency_bonus) as i32,
-            );
-        }
+    pub fn roll(&self) -> D20CheckResult {
+        let check: D20Check = self.clone();
 
         let mut rng = rand::rng();
         let roll_mode = self.advantage_tracker.roll_mode();
@@ -258,34 +263,29 @@ impl D20Check {
             outcome,
             crit_threshold,
             modifier_result,
-            proficiency_bonus,
         }
     }
 
     pub fn roll_hooks(&self, game_state: &GameState, entity: Entity) -> D20CheckResult {
         let mut check = self.clone();
 
-        if let Some(ability) = check.kind.ability() {
-            let ability_scores =
-                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
-            check.add_modifier(
-                ModifierSource::Ability(ability),
-                ability_scores.ability_modifier(&ability).total(),
-            );
-        }
-
-        systems::effects::effects(&game_state.world, entity)
-            .pre_d20_check(game_state, entity, &self.kind, &mut check);
-
         let proficiency_bonus = systems::helpers::level(&game_state.world, entity)
             .unwrap()
             .proficiency_bonus();
-        let mut result = check.roll(proficiency_bonus);
+
+        check.replace_modifier(
+            ModifierSource::Proficiency(check.proficiency.level().clone()),
+            check.proficiency.bonus(proficiency_bonus) as i32,
+        );
+
+        systems::effects::effects(&game_state.world, entity)
+            .pre_d20_check(game_state, entity, &mut check);
+
+        let mut result = check.roll();
 
         systems::effects::effects(&game_state.world, entity).post_d20_check(
             game_state,
             entity,
-            &self.kind,
             &mut result,
         );
 
@@ -414,7 +414,6 @@ pub struct D20CheckResult {
     pub outcome: Option<D20CheckOutcome>,
     pub crit_threshold: u8,
     pub modifier_result: ModifierResult,
-    pub proficiency_bonus: u8,
 }
 
 impl D20CheckResult {
@@ -456,7 +455,7 @@ impl D20CheckResult {
     }
 
     pub fn reroll(&self) -> D20CheckResult {
-        self.check.roll(self.proficiency_bonus)
+        self.check.roll()
     }
 
     fn update_roll_based_on_mode(&mut self, original_roll_mode: RollMode, new_roll_mode: RollMode) {
@@ -651,12 +650,12 @@ mod tests {
             2,
         );
         println!("Check: {:?}", check);
-        let result = check.roll(2);
+        let result = check.roll();
 
-        // 1d20 + 2 + 2
-        // Min: 1 + 2 + 2 = 5
-        // Max: 20 + 2 + 2 = 24
-        assert!(result.total() >= 5 && result.total() <= 24);
+        // 1d20 + 2
+        // Min: 1 + 2 = 3
+        // Max: 20 + 2 = 22
+        assert!(result.total() >= 3 && result.total() <= 22);
         assert_eq!(result.rolls.len(), 1);
         assert_eq!(result.check.advantage_tracker.roll_mode(), RollMode::Normal);
         println!("Result: {:?}", result);
@@ -676,7 +675,7 @@ mod tests {
             AdvantageType::Advantage,
             ModifierSource::Item(ItemId::new("nat20_core", "item.lucky_charm")),
         );
-        let result = check.roll(0);
+        let result = check.roll();
 
         // 1d20 + 2
         // Min: 1 + 2 = 3
@@ -708,12 +707,8 @@ mod tests {
             AdvantageType::Disadvantage,
             ModifierSource::Item(ItemId::new("nat20_core", "item.cursed_ring")),
         );
-        let result = check.roll(4);
+        let result = check.roll();
 
-        // 1d20
-        // Min: 1 + 8 = 9
-        // Max: 20 + 8 = 28
-        assert!(result.total() >= 9 && result.total() <= 28);
         assert_eq!(result.rolls.len(), 2);
         assert_eq!(
             result.check.advantage_tracker.roll_mode(),
@@ -744,12 +739,8 @@ mod tests {
             AdvantageType::Disadvantage,
             ModifierSource::Item(ItemId::new("nat20_core", "item.cursed_ring")),
         );
-        let result = check.roll(4);
+        let result = check.roll();
 
-        // 1d20
-        // Min: 1 + 8 = 9
-        // Max: 20 + 8 = 28
-        assert!(result.total() >= 9 && result.total() <= 28);
         assert_eq!(result.rolls.len(), 1);
         assert_eq!(result.check.advantage_tracker.roll_mode(), RollMode::Normal);
         println!("Result: {:?}", result);
@@ -765,13 +756,12 @@ mod tests {
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
         );
-        let mut result = check.roll(0);
+        let mut result = check.roll();
         while result.selected_roll != 20 {
             // Simulate rolling again until we get a critical success
-            result = check.roll(0);
+            result = check.roll();
         }
 
-        // Simulate a critical success by setting the selected roll to 20
         assert!(matches!(
             result.outcome,
             Some(D20CheckOutcome::CriticalSuccess)
@@ -789,13 +779,12 @@ mod tests {
             ModifierSource::Item(ItemId::new("nat20_core", "item.ring_of_rolling")),
             2,
         );
-        let mut result = check.roll(0);
+        let mut result = check.roll();
         while result.selected_roll != 1 {
             // Simulate rolling again until we get a critical failure
-            result = check.roll(0);
+            result = check.roll();
         }
 
-        // Simulate a critical failure by setting the selected roll to 1
         println!("Result: {:?}", result);
         assert!(matches!(
             result.outcome,
@@ -838,7 +827,7 @@ mod tests {
             ModifierSource::Custom("Test".to_string()),
             D20CheckOutcome::CriticalSuccess,
         );
-        let result = check.roll(2);
+        let result = check.roll();
 
         assert!(matches!(
             result.outcome,
@@ -855,10 +844,10 @@ mod tests {
         );
         check.add_crit_threshold_reduction(ModifierSource::Custom("Test".to_string()), 2);
 
-        let mut result = check.roll(2);
+        let mut result = check.roll();
         while result.selected_roll < 18 {
             // Simulate rolling again until we get a critical success with reduced threshold
-            result = check.roll(2);
+            result = check.roll();
         }
 
         assert!(matches!(
@@ -875,7 +864,7 @@ mod tests {
         );
         check.add_crit_threshold_reduction(ModifierSource::Custom("Test".to_string()), 100);
 
-        let result = check.roll(2);
+        let result = check.roll();
 
         println!(
             "Result with crit threshold reduction above 20: {:?}",

@@ -111,6 +111,16 @@ pub mod creatures {
                         "nat20_core",
                         "class.barbarian",
                     ))),
+                    // Level 3
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Subclass(SubclassId::new(
+                        "nat20_core",
+                        "subclass.barbarian.path_of_the_berserker",
+                    ))),
+                    LevelUpDecision::SkillProficiency(HashSet::from([Skill::Survival])),
                 ],
             );
 

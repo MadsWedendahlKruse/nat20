@@ -163,10 +163,10 @@ impl LevelUpDecisionProgress {
                 decisions: Vec::new(),
                 required: spec.picks,
             },
-            LevelUpPrompt::SkillProficiency(_, required, _) => {
+            LevelUpPrompt::SkillProficiency { choices, .. } => {
                 LevelUpDecisionProgress::SkillProficiency {
                     selected: HashSet::new(),
-                    remaining_decisions: *required,
+                    remaining_decisions: *choices,
                     all_skills: HashMap::new(),
                 }
             }
@@ -255,14 +255,14 @@ impl LevelUpDecisionProgress {
                         };
                     }
 
-                    LevelUpPrompt::SkillProficiency(_, num_options, _) => {
+                    LevelUpPrompt::SkillProficiency { choices, .. } => {
                         let skill_set = systems::helpers::get_component::<SkillSet>(world, entity);
                         let all_skills = Skill::iter()
                             .map(|skill| (skill, skill_set.get(&skill).proficiency().clone()))
                             .collect();
                         return LevelUpDecisionProgress::SkillProficiency {
                             selected: HashSet::new(),
-                            remaining_decisions: *num_options,
+                            remaining_decisions: *choices,
                             all_skills,
                         };
                     }
@@ -752,7 +752,11 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                 }
             }
 
-            LevelUpPrompt::SkillProficiency(skill_options, num_options, source) => {
+            LevelUpPrompt::SkillProficiency {
+                skills,
+                choices,
+                source,
+            } => {
                 if let LevelUpDecisionProgress::SkillProficiency {
                     ref mut selected,
                     ref mut remaining_decisions,
@@ -761,13 +765,13 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                 {
                     ui.text(format!(
                         "Select up to {} skills ({} selected):",
-                        num_options,
+                        choices,
                         selected.len()
                     ));
 
                     if ui.button("Reset##Skills") {
                         selected.clear();
-                        *remaining_decisions = *num_options;
+                        *remaining_decisions = *choices;
                     }
 
                     if let Some(table) = table_with_columns!(ui, "Skills", "", "Skill", "") {
@@ -780,7 +784,7 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                             ui.text(skill.to_string());
 
                             ui.table_next_column();
-                            if skill_options.contains(&skill) {
+                            if skills.contains(&skill) {
                                 let mut checked = selected.contains(&skill);
 
                                 let already_proficient =

@@ -1023,11 +1023,9 @@ fn render_attack_hit_chance_tooltip(
     );
 
     // Attacker's pre-roll hooks
-    let kind = D20CheckKind::AttackRoll(source);
     systems::effects::effects(&game_state.world, action.actor.id()).pre_d20_check(
         game_state,
         action.actor.id(),
-        &kind,
         &mut attack_roll,
     );
 

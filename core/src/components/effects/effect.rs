@@ -6,6 +6,7 @@ use std::{
 };
 
 use hecs::Entity;
+use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -36,7 +37,7 @@ use crate::{
     systems,
 };
 
-pub type EffectsMap = HashMap<EffectInstanceId, EffectInstance>;
+pub type EffectsMap = IndexMap<EffectInstanceId, EffectInstance>;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "EffectDefinition")]

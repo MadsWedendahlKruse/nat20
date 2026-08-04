@@ -4,20 +4,15 @@ use std::{
     str::FromStr,
 };
 
-use hecs::{Entity, World};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    components::{
-        effects::hooks::D20CheckHooks,
-        items::equipment::weapon::WeaponKind,
-        modifier::{
-            Modifiable, ModifierKind, ModifierKindResult, ModifierMap, ModifierResult,
-            ModifierSource, ModifierValue,
-        },
+use crate::components::{
+    items::equipment::weapon::WeaponKind,
+    modifier::{
+        Modifiable, ModifierKind, ModifierKindResult, ModifierMap, ModifierResult, ModifierSource,
+        ModifierValue,
     },
-    systems::{self},
 };
 
 pub const CRIT_DICE_MULTIPLIER: u32 = 2;

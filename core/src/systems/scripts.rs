@@ -3,6 +3,7 @@ use tracing::error;
 
 use crate::{
     components::{
+        ability::Ability,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
@@ -179,6 +180,31 @@ pub fn evaluate_armor_class_hook(
             "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
             armor_class_hook, entity, err
         );
+    }
+}
+
+pub fn evaluate_d20_ability_hook(
+    ability_hook: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    check: &D20Check,
+) -> Option<Ability> {
+    let script = ScriptsRegistry::get(ability_hook).expect(
+        format!(
+            "D20 ability hook script not found in registry: {:?}",
+            ability_hook
+        )
+        .as_str(),
+    );
+    match SCRIPT_ENGINE.evaluate_d20_ability_hook(script, game_state, entity, check) {
+        Ok(result) => result,
+        Err(err) => {
+            error!(
+                "Error evaluating d20 ability hook script {:?} for entity {:?}: {:?}",
+                ability_hook, entity, err
+            );
+            None
+        }
     }
 }
 

@@ -17,9 +17,6 @@
             "saving_throw": "strength advantage"
         },
         {
-            "skill": "athletics advantage"
-        },
-        {
             "break_concentration": true,
             "block_concentration": true
         }
@@ -51,6 +48,11 @@
     "actions": [
         {
             "id": "nat20_core::action.barbarian.extend_rage"
+        }
+    ],
+    "on_skill_check": [
+        {
+            "script": "nat20_core::script.action.barbarian.rage"
         }
     ]
 }

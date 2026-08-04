@@ -19,7 +19,7 @@ fn barbarian_scenario() -> Scenario {
     let mut scenario = Scenario::new();
     scenario
         .spawn("barbarian", "hero.barbarian")
-        .level(2)
+        .level(3)
         // Turn-based, so the real-time ticks in `perform` don't eat into the
         // Rage duration between the turn boundaries the tests drive manually
         .time_mode(TimeMode::TurnBased { encounter_id: None })
@@ -49,16 +49,20 @@ fn melee_attack(scenario: &mut Scenario) {
 fn rage_costs_a_bonus_action_and_a_rage_charge() {
     let mut scenario = barbarian_scenario();
 
+    let rage_charges = scenario
+        .probe("barbarian")
+        .resource("resource.barbarian.rage");
+
     scenario
         .probe("barbarian")
-        .assert_resource("resource.barbarian.rage", Operator::Equal(2))
+        .assert_resource("resource.barbarian.rage", Operator::Equal(rage_charges))
         .assert_resource("resource.bonus_action", Operator::Equal(1));
 
     enter_rage(&mut scenario);
 
     scenario
         .probe("barbarian")
-        .assert_resource("resource.barbarian.rage", Operator::Equal(1))
+        .assert_resource("resource.barbarian.rage", Operator::Equal(rage_charges - 1))
         .assert_resource("resource.bonus_action", Operator::Equal(0));
 }
 
@@ -205,8 +209,16 @@ fn rage_extends_when_making_an_attack_roll() {
 fn rage_extends_with_the_extend_rage_action() {
     let mut scenario = barbarian_scenario();
 
+    let rage_charges = scenario
+        .probe("barbarian")
+        .resource("resource.barbarian.rage");
+
     enter_rage(&mut scenario);
-    scenario.probe("barbarian").end_turn();
+
+    scenario
+        .probe("barbarian")
+        .assert_resource("resource.barbarian.rage", Operator::Equal(rage_charges - 1))
+        .end_turn();
     assert_eq!(
         scenario
             .probe("barbarian")
@@ -231,7 +243,7 @@ fn rage_extends_with_the_extend_rage_action() {
     // Extending doesn't cost a Rage charge, and doesn't stack a second instance
     scenario
         .probe("barbarian")
-        .assert_resource("resource.barbarian.rage", Operator::Equal(1))
+        .assert_resource("resource.barbarian.rage", Operator::Equal(rage_charges - 1))
         .assert_effect_instances("effect.barbarian.rage", 1);
 
     // Can't extend past the next turn, even with a Bonus Action available
@@ -450,4 +462,38 @@ fn danger_sense() {
             &ModifierSource::Effect("effect.barbarian.danger_sense".into()),
             AdvantageType::Advantage,
         );
+}
+
+#[test]
+fn primal_knowledge() {
+    let mut scenario = barbarian_scenario();
+
+    scenario
+        .probe("barbarian")
+        .assert_effect("effect.barbarian.primal_knowledge");
+
+    // Skills affected by Primal Knowledge
+    let skills = [
+        Skill::Acrobatics,
+        Skill::Intimidation,
+        Skill::Perception,
+        Skill::Stealth,
+        Skill::Survival,
+    ];
+
+    // Regular abilities before entering Rage
+    for skill in &skills {
+        scenario
+            .probe("barbarian")
+            .assert_d20_ability(&D20CheckKind::Skill(skill.clone()), &skill.ability());
+    }
+
+    enter_rage(&mut scenario);
+
+    // Ability is replaced with Strength after entering Rage
+    for skill in &skills {
+        scenario
+            .probe("barbarian")
+            .assert_d20_ability(&D20CheckKind::Skill(skill.clone()), &Ability::Strength);
+    }
 }

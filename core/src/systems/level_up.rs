@@ -53,9 +53,7 @@ impl LevelUpDecision {
                 LevelUpDecision::AbilityScoreImprovement(_),
                 LevelUpPrompt::AbilityScoreImprovement { .. },
             ) => true,
-            (LevelUpDecision::SkillProficiency(_), LevelUpPrompt::SkillProficiency(_, _, _)) => {
-                true
-            }
+            (LevelUpDecision::SkillProficiency(_), LevelUpPrompt::SkillProficiency { .. }) => true,
             (LevelUpDecision::ReplaceSpells { .. }, LevelUpPrompt::ReplaceSpells { .. }) => true,
             _ => false,
         }
@@ -387,10 +385,14 @@ fn resolve_level_up_prompt(
         }
 
         (
-            LevelUpPrompt::SkillProficiency(skills, num_prompts, source),
+            LevelUpPrompt::SkillProficiency {
+                skills,
+                choices,
+                source,
+            },
             LevelUpDecision::SkillProficiency(selected_skills),
         ) => {
-            if selected_skills.len() != *num_prompts as usize {
+            if selected_skills.len() != *choices as usize {
                 return Err(LevelUpError::InvalidDecision {
                     prompt,
                     decision,

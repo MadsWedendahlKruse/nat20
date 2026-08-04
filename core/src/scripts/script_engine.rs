@@ -8,6 +8,7 @@
 
 use std::{
     collections::HashMap,
+    str::FromStr,
     sync::{LazyLock, Mutex},
 };
 
@@ -45,6 +46,7 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 
 use crate::{
     components::{
+        ability::Ability,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
@@ -286,6 +288,43 @@ impl ScriptEngine {
                 ))
             })
             .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_d20_ability_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        check: &D20Check,
+    ) -> Result<Option<Ability>, ScriptError> {
+        let func = self.get_function(script, ScriptFunction::D20AbilityHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        let result = self
+            .lua
+            .scope(|scope| {
+                func.call::<Option<String>>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref(check)?,
+                ))
+            })
+            .map_err(Self::runtime_error)?;
+
+        let ability = result
+            .map(|s| {
+                Ability::from_str(&s).map_err(|e| {
+                    ScriptError::RuntimeError(format!(
+                        "Lua script returned invalid ability name '{}': {e}",
+                        s
+                    ))
+                })
+            })
+            .transpose()?;
+
+        Ok(ability)
     }
 
     pub fn evaluate_d20_check_hook(

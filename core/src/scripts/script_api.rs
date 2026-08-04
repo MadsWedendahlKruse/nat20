@@ -9,7 +9,7 @@ use mlua::{
 
 use crate::{
     components::{
-        ability::{Ability, AbilityScoreMap},
+        ability::AbilityScoreMap,
         actions::{
             action::{
                 ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
@@ -28,12 +28,12 @@ use crate::{
             EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
         },
         health::hit_points::HitPoints,
-        id::{ClassId, EffectId, EntityIdentifier, Id, ResourceId},
+        id::{ClassId, EffectId, EntityIdentifier, ResourceId},
         items::inventory::ItemInstance,
         level::CharacterLevels,
         modifier::{
-            FlatModifierMap, Modifiable, ModifierKindResult, ModifierMap, ModifierResult,
-            ModifierSource,
+            FlatModifierMap, Modifiable, ModifierKind, ModifierKindResult, ModifierMap,
+            ModifierResult, ModifierSource,
         },
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
         time::{TimeDuration, TurnBoundary},
@@ -256,17 +256,11 @@ fn add_damage_component(
     damage_type: String,
     source: String,
 ) -> LuaResult<()> {
-    let modifier: ModifierExpression = amount.parse()?;
     let damage_type = serde_plain::from_str(&damage_type)
         .map_err(|e| LuaError::RuntimeError(format!("Invalid damage type: {e}")))?;
-    let source = parse_source(&source)?;
-
-    let modifier = modifier
-        .evaluate_without_variables()
-        .map_err(|e| LuaError::RuntimeError(format!("Failed to evaluate damage amount: {e}")))?;
 
     damage_modifiable.add_damage_component(DamageComponent::new(
-        ModifierMap::from(source, modifier),
+        ModifierMap::from(parse_source(&source)?, parse_modifier(&amount)?),
         damage_type,
     ));
 
@@ -350,10 +344,36 @@ where
 impl UserData for D20Check {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("kind", |_, this| Ok(this.kind().clone()));
+        fields.add_field_method_get("ability", |_, this| {
+            Ok(this
+                .ability()
+                .map(|ability| ability.to_string().to_lowercase()))
+        });
         fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method_mut(
+            "add_modifier",
+            |_, this, (modifier, source): (String, String)| {
+                this.add_modifier(parse_source(&source)?, parse_modifier(&modifier)?);
+                Ok(())
+            },
+        );
+
+        methods.add_method_mut("remove_modifier", |_, this, source: String| {
+            this.remove_modifier(&parse_source(&source)?);
+            Ok(())
+        });
+
+        methods.add_method_mut(
+            "replace_modifier",
+            |_, this, (modifier, source): (String, String)| {
+                this.replace_modifier(parse_source(&source)?, parse_modifier(&modifier)?);
+                Ok(())
+            },
+        );
+
         add_advantage_method(methods);
     }
 }
@@ -373,14 +393,8 @@ impl UserData for D20CheckResult {
         methods.add_method_mut(
             "reroll_bonus",
             |_, this, (modifier, source, force_use_new): (String, String, bool)| {
-                let modifier: ModifierExpression = modifier.parse()?;
-                let modifier_value = modifier.evaluate_without_variables().map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to evaluate bonus expression: {e}"))
-                })?;
-                let source = parse_source(&source)?;
-
                 let mut new_result = this.reroll();
-                new_result.add_modifier(source, modifier_value);
+                new_result.add_modifier(parse_source(&source)?, parse_modifier(&modifier)?);
 
                 if force_use_new || new_result.total() > this.total() {
                     *this = new_result;
@@ -393,12 +407,7 @@ impl UserData for D20CheckResult {
         methods.add_method_mut(
             "add_modifier",
             |_, this, (modifier, source): (String, String)| {
-                let modifier: ModifierExpression = modifier.parse()?;
-                let modifier_value = modifier.evaluate_without_variables().map_err(|e| {
-                    LuaError::RuntimeError(format!("Failed to evaluate bonus expression: {e}"))
-                })?;
-                let source = parse_source(&source)?;
-                this.add_modifier(source, modifier_value);
+                this.add_modifier(parse_source(&source)?, parse_modifier(&modifier)?);
                 Ok(())
             },
         );
@@ -407,21 +416,21 @@ impl UserData for D20CheckResult {
     }
 }
 
-// TODO: Should this not live somewhere else?
-fn parse_source(source: &str) -> Result<ModifierSource, LuaError> {
-    if source == "base" {
-        return Ok(ModifierSource::Base);
-    }
-    if let Ok(ability) = source.parse::<Ability>() {
-        return Ok(ModifierSource::Ability(ability));
-    }
-    let id: Id = source.parse().map_err(|e| {
-        LuaError::RuntimeError(format!(
-            "Failed to parse modifier source ID '{}': {e}",
-            source
-        ))
-    })?;
-    Ok(ModifierSource::from(id))
+fn parse_source(source: &str) -> LuaResult<ModifierSource> {
+    source
+        .parse()
+        .map_err(|e| LuaError::RuntimeError(format!("Failed to parse modifier source: {e}")))
+}
+
+fn parse_modifier(modifier: &str) -> Result<ModifierKind, LuaError> {
+    modifier
+        .parse::<ModifierExpression>()
+        .map_err(|e| LuaError::RuntimeError(format!("Failed to parse modifier expression: {e}")))
+        .and_then(|modifier| {
+            modifier.evaluate_without_variables().map_err(|e| {
+                LuaError::RuntimeError(format!("Failed to evaluate modifier expression: {e}"))
+            })
+        })
 }
 
 type ModifierTable = BTreeMap<ModifierSource, ModifierExpression>;

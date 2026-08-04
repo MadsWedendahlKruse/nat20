@@ -663,27 +663,39 @@
                     "type": "object",
                     "properties": {
                         "skill_proficiency": {
-                            "type": "array",
-                            "items": [
-                                {
+                            "type": "object",
+                            "properties": {
+                                "choices": {
+                                    "type": "integer",
+                                    "format": "uint8",
+                                    "maximum": 255,
+                                    "minimum": 0
+                                },
+                                "skills": {
                                     "type": "array",
                                     "items": {
                                         "$ref": "#/definitions/Skill"
                                     },
                                     "uniqueItems": true
                                 },
-                                {
-                                    "type": "integer",
-                                    "format": "uint8",
-                                    "maximum": 255,
-                                    "minimum": 0
-                                },
-                                {
-                                    "$ref": "#/definitions/ModifierSource"
+                                "source": {
+                                    "description": "The source of a modifier, e.g. an ability score, a feat, or an effect. Abilities can be specified by either their full name or their acronym. All IDs are supported, as well as the special values `base` and `none`. Note that there is no validation performed as to whether the ID actually exists in the registry",
+                                    "type": "string",
+                                    "examples": [
+                                        "base",
+                                        "none",
+                                        "strength",
+                                        "str",
+                                        "nat20_core::feat.ability_score_improvement",
+                                        "nat20_core::effect.spell.hex"
+                                    ]
                                 }
-                            ],
-                            "maxItems": 3,
-                            "minItems": 3
+                            },
+                            "required": [
+                                "skills",
+                                "choices",
+                                "source"
+                            ]
                         }
                     },
                     "additionalProperties": false,
@@ -725,214 +737,6 @@
                         "replace_spells"
                     ]
                 }
-            ]
-        },
-        "ModifierSource": {
-            "oneOf": [
-                {
-                    "type": "string",
-                    "enum": [
-                        "Base",
-                        "None"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Background": {
-                            "$ref": "#/definitions/BackgroundId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Background"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Item": {
-                            "$ref": "#/definitions/ItemId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Item"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "ClassFeature": {
-                            "$ref": "#/definitions/ClassId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "ClassFeature"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "ClassLevel": {
-                            "$ref": "#/definitions/ClassId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "ClassLevel"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "SubclassFeature": {
-                            "$ref": "#/definitions/SubclassId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "SubclassFeature"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Action": {
-                            "$ref": "#/definitions/ActionId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Action"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Effect": {
-                            "$ref": "#/definitions/EffectId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Effect"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Ability": {
-                            "description": "An ability, by full name or acronym (`str`, `dex`, ...), case-insensitive.",
-                            "type": "string",
-                            "examples": [
-                                "strength",
-                                "dexterity",
-                                "constitution",
-                                "intelligence",
-                                "wisdom",
-                                "charisma"
-                            ]
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Ability"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Proficiency": {
-                            "$ref": "#/definitions/ProficiencyLevel"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Proficiency"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Feat": {
-                            "$ref": "#/definitions/FeatId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Feat"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "FeatRepeatable": {
-                            "type": "array",
-                            "items": [
-                                {
-                                    "$ref": "#/definitions/FeatId"
-                                },
-                                {
-                                    "type": "string",
-                                    "format": "uuid"
-                                }
-                            ],
-                            "maxItems": 2,
-                            "minItems": 2
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "FeatRepeatable"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Species": {
-                            "$ref": "#/definitions/SpeciesId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Species"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Subspecies": {
-                            "$ref": "#/definitions/SubspeciesId"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Subspecies"
-                    ]
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "Custom": {
-                            "type": "string"
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "Custom"
-                    ]
-                }
-            ]
-        },
-        "ProficiencyLevel": {
-            "type": "string",
-            "enum": [
-                "none",
-                "proficient",
-                "expertise",
-                "half"
             ]
         },
         "ResourceBudgetKindDefinition": {

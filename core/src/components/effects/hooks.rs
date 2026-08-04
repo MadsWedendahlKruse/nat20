@@ -4,6 +4,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{
+        ability::Ability,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
@@ -23,6 +24,8 @@ pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 pub type AttackedHook =
     Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
+pub type D20AbilityHook =
+    Arc<dyn Fn(&GameState, Entity, &D20Check) -> Option<Ability> + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&GameState, Entity, &mut D20Check) + Send + Sync>;
 pub type D20CheckResultHook = Arc<dyn Fn(&GameState, Entity, &mut D20CheckResult) + Send + Sync>;
 pub type DamageRollHook = Arc<
@@ -68,6 +71,7 @@ pub type TurnStartHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct D20CheckHooks {
+    pub ability_hook: D20AbilityHook,
     pub check_hook: D20CheckHook,
     pub result_hook: D20CheckResultHook,
 }
@@ -75,6 +79,7 @@ pub struct D20CheckHooks {
 impl fmt::Debug for D20CheckHooks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("D20CheckHookPair")
+            .field("ability_hook", &"<Fn>")
             .field("check_hook", &"<Fn>")
             .field("result_hook", &"<Fn>")
             .finish()
@@ -82,12 +87,22 @@ impl fmt::Debug for D20CheckHooks {
 }
 
 impl D20CheckHooks {
-    /// Folds several hook pairs into one, preserving order
     pub fn combined(hooks: Vec<D20CheckHooks>) -> D20CheckHooks {
         let check_hooks: Vec<D20CheckHook> = hooks.iter().map(|h| h.check_hook.clone()).collect();
         let result_hooks: Vec<D20CheckResultHook> =
             hooks.iter().map(|h| h.result_hook.clone()).collect();
         Self {
+            ability_hook: Arc::new(move |game_state, entity, check| {
+                // TODO: Not really sure what to do here, but on the other hand I
+                // don't think we'll ever have more than one ability hook on the
+                // same effect, so this is probably fine
+                for hook in &hooks {
+                    if let Some(ability) = (hook.ability_hook)(game_state, entity, check) {
+                        return Some(ability);
+                    }
+                }
+                None
+            }),
             check_hook: Arc::new(move |game_state, entity, check| {
                 for hook in &check_hooks {
                     hook(game_state, entity, check);

@@ -8,6 +8,7 @@ use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
+        ability::Ability,
         actions::{
             action::{ActionContext, ActionResultComponent},
             action_builder::{ActionBuilder, ReactionBuilder},
@@ -847,6 +848,21 @@ impl ScenarioProbe<'_> {
     }
 
     #[track_caller]
+    pub fn assert_d20_ability(&mut self, kind: &D20CheckKind, ability: &Ability) -> &mut Self {
+        let d20_check = self.get_d20_check(kind);
+        assert_eq!(
+            d20_check.ability(),
+            Some(ability.clone()),
+            "Expected creature {:?} to have ability {:?} on {:?} check, but it was {:?}",
+            self.creature(),
+            ability,
+            kind,
+            d20_check.ability()
+        );
+        self
+    }
+
+    #[track_caller]
     pub fn assert_d20_advantage(
         &mut self,
         kind: &D20CheckKind,
@@ -929,7 +945,6 @@ impl ScenarioProbe<'_> {
         systems::effects::effects(self.world(), self.entity()).pre_d20_check(
             &self.scenario.game_state,
             self.entity(),
-            kind,
             &mut d20_check,
         );
 

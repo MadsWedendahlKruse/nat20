@@ -180,11 +180,23 @@ function D20CheckKind:attack_roll() end
 
 ---@class D20Check
 ---@field kind D20CheckKind
+---@field ability string?
 ---@field modifiers ModifierMap
 local D20Check = {}
 ---@param advantage string -- advantage/disadvantage
 ---@param source string
 function D20Check:add_advantage(advantage, source) end
+
+---@param modifier string
+---@param source string
+function D20Check:add_modifier(modifier, source) end
+
+---@param source string
+function D20Check:remove_modifier(source) end
+
+---@param new_modifier string
+---@param source string
+function D20Check:replace_modifier(new_modifier, source) end
 
 ---@class D20CheckResult
 ---@field kind D20CheckKind
@@ -369,8 +381,8 @@ function GameState:heal(target, amount) end
 local TimeDuration = {}
 
 ------------------------------------------------------------
--- Hook function signatures. Annotate your script-side functions with
---   ---@type <HookName>Fn
+-- Hook function signatures. Annotate script-side functions with
+-- ---@type <HookName>Fn
 -- to get parameter type inference and nil checks.
 ------------------------------------------------------------
 
@@ -378,6 +390,7 @@ local TimeDuration = {}
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
+---@alias D20AbilityHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check): string|nil
 ---@alias D20CheckHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check)
 ---@alias D20CheckResultHookFn fun(game_state: GameState, entity: ScriptEntity, result: D20CheckResult)
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)

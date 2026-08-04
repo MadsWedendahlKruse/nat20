@@ -170,7 +170,11 @@ pub enum LevelUpPrompt {
         abilities: HashSet<Ability>,
         max_score: u8,
     },
-    SkillProficiency(HashSet<Skill>, u8, ModifierSource),
+    SkillProficiency {
+        skills: HashSet<Skill>,
+        choices: u8,
+        source: ModifierSource,
+    },
     ReplaceSpells {
         spells: Vec<SpellId>,
         source: SpellSource,
@@ -183,7 +187,7 @@ impl LevelUpPrompt {
         match self {
             LevelUpPrompt::Choice(spec) => spec.priority(),
             LevelUpPrompt::AbilityScores(_, _) => 4,
-            LevelUpPrompt::SkillProficiency(_, _, _) => 5,
+            LevelUpPrompt::SkillProficiency { .. } => 5,
             LevelUpPrompt::ReplaceSpells { .. } => 7,
             LevelUpPrompt::AbilityScoreImprovement { .. } => 8,
         }
@@ -339,7 +343,7 @@ impl Display for LevelUpPrompt {
             LevelUpPrompt::AbilityScoreImprovement { .. } => {
                 write!(f, "Ability Score Improvement")
             }
-            LevelUpPrompt::SkillProficiency(_, _, _) => {
+            LevelUpPrompt::SkillProficiency { .. } => {
                 write!(f, "Skill Proficiency")
             }
             LevelUpPrompt::ReplaceSpells { .. } => {
