@@ -57,6 +57,9 @@
         ],
         "5": [
             "nat20_core::effect.extra_attack"
+        ],
+        "7": [
+            "nat20_core::effect.barbarian.feral_instinct"
         ]
     },
     "resources_by_level": {

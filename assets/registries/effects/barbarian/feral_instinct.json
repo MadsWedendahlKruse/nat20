@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.barbarian.feral_instinct",
+    "kind": "buff",
+    "description": "Your instincts are so honed that you have Advantage on Initiative rolls.",
+    "modifiers": [
+        {
+            "skill": "initiative advantage"
+        }
+    ]
+}

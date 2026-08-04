@@ -785,10 +785,10 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
 
                             ui.table_next_column();
                             if skills.contains(&skill) {
-                                let mut checked = selected.contains(&skill);
-
                                 let already_proficient =
                                     proficiency.level() != &ProficiencyLevel::None;
+
+                                let mut checked = selected.contains(&skill) || already_proficient;
 
                                 let disabled_token = ui.begin_disabled(already_proficient);
 

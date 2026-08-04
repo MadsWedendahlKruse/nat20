@@ -15,11 +15,11 @@ use nat20_core::{
     test_utils::scenario::{Operator, Scenario},
 };
 
-fn barbarian_scenario() -> Scenario {
+fn barbarian_scenario(level: u8) -> Scenario {
     let mut scenario = Scenario::new();
     scenario
         .spawn("barbarian", "hero.barbarian")
-        .level(3)
+        .level(level)
         // Turn-based, so the real-time ticks in `perform` don't eat into the
         // Rage duration between the turn boundaries the tests drive manually
         .time_mode(TimeMode::TurnBased { encounter_id: None })
@@ -47,7 +47,7 @@ fn melee_attack(scenario: &mut Scenario) {
 
 #[test]
 fn rage_costs_a_bonus_action_and_a_rage_charge() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     let rage_charges = scenario
         .probe("barbarian")
@@ -68,7 +68,7 @@ fn rage_costs_a_bonus_action_and_a_rage_charge() {
 
 #[test]
 fn rage_grants_resistances_advantage_and_extend_rage() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     scenario
         .probe("barbarian")
@@ -107,7 +107,7 @@ fn rage_grants_resistances_advantage_and_extend_rage() {
 
 #[test]
 fn rage_bonus_damage_on_strength_attacks() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
     scenario
         .spawn("goblin", "monster.goblin_warrior")
         .level(1)
@@ -139,7 +139,7 @@ fn rage_bonus_damage_on_strength_attacks() {
 
 #[test]
 fn rage_lasts_until_the_end_of_the_next_turn() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     enter_rage(&mut scenario);
     assert_eq!(
@@ -165,7 +165,7 @@ fn rage_lasts_until_the_end_of_the_next_turn() {
 
 #[test]
 fn rage_extends_when_making_an_attack_roll() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     enter_rage(&mut scenario);
 
@@ -207,7 +207,7 @@ fn rage_extends_when_making_an_attack_roll() {
 
 #[test]
 fn rage_extends_with_the_extend_rage_action() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     let rage_charges = scenario
         .probe("barbarian")
@@ -263,7 +263,7 @@ fn rage_extends_with_the_extend_rage_action() {
 
 #[test]
 fn rage_requires_no_heavy_armor_and_no_active_rage() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     scenario
         .probe("barbarian")
@@ -283,7 +283,7 @@ fn rage_requires_no_heavy_armor_and_no_active_rage() {
 
 #[test]
 fn rage_ends_when_equipping_heavy_armor() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     enter_rage(&mut scenario);
 
@@ -299,7 +299,7 @@ fn rage_ends_when_equipping_heavy_armor() {
 
 #[test]
 fn rage_ends_when_incapacitated() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
     scenario
         .spawn("warlock", "hero.warlock")
         .level(4)
@@ -331,7 +331,7 @@ fn rage_ends_when_incapacitated() {
 
 #[test]
 fn unarmored_defense() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     scenario
         .probe("barbarian")
@@ -350,7 +350,7 @@ fn unarmored_defense() {
 
 #[test]
 fn reckless_attack_reaction() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
     scenario
         .spawn("goblin", "monster.goblin_warrior")
         .level(1)
@@ -393,7 +393,7 @@ fn reckless_attack_reaction() {
 
 #[test]
 fn reckless_attack_action() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
     scenario
         .spawn("goblin", "monster.goblin_warrior")
         .level(1)
@@ -425,7 +425,7 @@ fn reckless_attack_action() {
 
 #[test]
 fn danger_sense() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     scenario.probe("barbarian").assert_d20_advantage(
         &D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Dexterity)),
@@ -466,7 +466,7 @@ fn danger_sense() {
 
 #[test]
 fn primal_knowledge() {
-    let mut scenario = barbarian_scenario();
+    let mut scenario = barbarian_scenario(3);
 
     scenario
         .probe("barbarian")
