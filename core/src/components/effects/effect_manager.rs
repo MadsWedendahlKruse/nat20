@@ -16,6 +16,7 @@ use crate::{
         items::equipment::armor::ArmorClass,
         modifier::{Modifiable, ModifierSource},
         resource::ResourceAmountMap,
+        speed::Speed,
         time::TimeStep,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
@@ -179,6 +180,13 @@ impl EffectManager {
         self.for_each(
             |effect| effect.on_armor_class.as_ref(),
             |hook| hook(game_state, entity, ac),
+        );
+    }
+
+    pub fn speed(&self, game_state: &GameState, entity: Entity, speed: &mut Speed) {
+        self.for_each(
+            |effect| effect.on_speed.as_ref(),
+            |hook| hook(game_state, entity, speed),
         );
     }
 

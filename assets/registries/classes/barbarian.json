@@ -56,7 +56,8 @@
             "nat20_core::effect.barbarian.primal_knowledge"
         ],
         "5": [
-            "nat20_core::effect.extra_attack"
+            "nat20_core::effect.extra_attack",
+            "nat20_core::effect.barbarian.fast_movement"
         ],
         "7": [
             "nat20_core::effect.barbarian.feral_instinct"

@@ -1,13 +1,20 @@
 // TODO: Consider a different name?
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
 
 use tracing::warn;
 use uom::si::{f32::Length, length::meter};
 
 use crate::components::modifier::ModifierSource;
 
-// Internally, speed is stored in meters (per turn).
+/// Movement speed of an entity, internally stored in meters (per turn).
+///
+/// This tracks the base speed and multipliers, as well as the distance moved this
+/// turn and the free movement used this turn.
+/// Since some effects can (conditionally) modify the speed, stuff like the total
+/// and remaining movement is retrieved from [`EffectiveSpeed`] instead, which is
+/// a wrapper where all the effect hooks have been applied. This can be grabbed via
+/// [`crate::systems::movement::speed`].
 #[derive(Debug, Clone)]
 pub struct Speed {
     flat: HashMap<ModifierSource, f32>,
@@ -15,7 +22,7 @@ pub struct Speed {
     moved_this_turn: f32,
 
     free_movement_multipliers: HashMap<ModifierSource, f32>,
-    free_movement_remaining: f32,
+    free_movement_used: f32,
 }
 
 impl Speed {
@@ -28,7 +35,7 @@ impl Speed {
             multipliers: HashMap::new(),
             moved_this_turn: 0.0,
             free_movement_multipliers: HashMap::new(),
-            free_movement_remaining: 0.0,
+            free_movement_used: 0.0,
         }
     }
 
@@ -54,69 +61,22 @@ impl Speed {
         self.multipliers.remove(source);
     }
 
-    pub fn total_speed(&self) -> Length {
-        let base_speed: f32 = self.flat.values().sum();
-
-        let total_multiplier: f32 = if self.multipliers.is_empty() {
-            1.0
-        } else {
-            self.multipliers.values().product()
-        };
-
-        Length::new::<meter>(base_speed * total_multiplier)
-    }
-
     pub fn moved_this_turn(&self) -> Length {
         Length::new::<meter>(self.moved_this_turn)
     }
 
+    // Both counters are pure turn state, so this stays correct on the stored component even
+    // though the totals they're measured against depend on effect hooks.
     pub fn record_movement(&mut self, distance: Length) {
         let distance = distance.get::<meter>();
-
-        if distance > self.remaining_movement().get::<meter>() {
-            self.moved_this_turn = self.total_speed().get::<meter>();
-        } else {
-            self.moved_this_turn += distance;
-        }
-
-        if distance > self.free_movement_remaining {
-            self.free_movement_remaining = 0.0;
-        } else {
-            self.free_movement_remaining -= distance;
-        }
+        self.moved_this_turn += distance;
+        self.free_movement_used += distance;
     }
 
     /// Should be called at the start (or end?) of each turn
     pub fn reset(&mut self) {
         self.moved_this_turn = 0.0;
-        self.free_movement_remaining = self.max_free_movement();
-    }
-
-    pub fn remaining_movement(&self) -> Length {
-        let total_speed = self.total_speed().get::<meter>();
-        let remaining = (total_speed - self.moved_this_turn).max(0.0);
-        Length::new::<meter>(remaining)
-    }
-
-    pub fn can_move(&self) -> bool {
-        self.remaining_movement().get::<meter>() > 0.0
-    }
-
-    pub fn free_movement_remaining(&self) -> Length {
-        Length::new::<meter>(self.free_movement_remaining)
-    }
-
-    fn max_free_movement(&self) -> f32 {
-        if self.free_movement_multipliers.is_empty() {
-            0.0
-        } else {
-            let free_movement_multiplier = self
-                .free_movement_multipliers
-                .values()
-                .sum::<f32>()
-                .min(1.0);
-            free_movement_multiplier * self.total_speed().get::<meter>()
-        }
+        self.free_movement_used = 0.0;
     }
 
     pub fn add_free_movement_multiplier<T>(&mut self, source: ModifierSource, value: T)
@@ -132,14 +92,11 @@ impl Speed {
             );
             return;
         }
-        self.free_movement_remaining += self.total_speed().get::<meter>() * value;
-        self.free_movement_multipliers.insert(source, value.into());
+        self.free_movement_multipliers.insert(source, value);
     }
 
     pub fn remove_free_movement_multiplier(&mut self, source: &ModifierSource) {
-        if let Some(value) = self.free_movement_multipliers.remove(source) {
-            self.free_movement_remaining -= self.total_speed().get::<meter>() * value;
-        }
+        self.free_movement_multipliers.remove(source);
     }
 
     pub fn flat_bonuses(&self) -> &HashMap<ModifierSource, f32> {
@@ -161,16 +118,85 @@ impl Default for Speed {
     }
 }
 
+/// A [`Speed`] with every effect hook applied. It owns all the derived values,
+/// so reading one is proof that the hooks ran.
+/// The only way to get one is [`crate::systems::movement::speed`].
+///
+/// TODO: Not sure if I'm sold on the name
+#[derive(Debug, Clone)]
+pub struct EffectiveSpeed(Speed);
+
+impl EffectiveSpeed {
+    pub(crate) fn new(speed: Speed) -> Self {
+        Self(speed)
+    }
+
+    pub fn total_speed(&self) -> Length {
+        let base_speed: f32 = self.0.flat.values().sum();
+
+        let total_multiplier: f32 = if self.0.multipliers.is_empty() {
+            1.0
+        } else {
+            self.0.multipliers.values().product()
+        };
+
+        Length::new::<meter>(base_speed * total_multiplier)
+    }
+
+    pub fn remaining_movement(&self) -> Length {
+        let total_speed = self.total_speed().get::<meter>();
+        let remaining = (total_speed - self.0.moved_this_turn).max(0.0);
+        Length::new::<meter>(remaining)
+    }
+
+    pub fn can_move(&self) -> bool {
+        self.remaining_movement().get::<meter>() > 0.0
+    }
+
+    pub fn free_movement_remaining(&self) -> Length {
+        let remaining = (self.max_free_movement() - self.0.free_movement_used).max(0.0);
+        Length::new::<meter>(remaining)
+    }
+
+    fn max_free_movement(&self) -> f32 {
+        if self.0.free_movement_multipliers.is_empty() {
+            0.0
+        } else {
+            let free_movement_multiplier = self
+                .0
+                .free_movement_multipliers
+                .values()
+                .sum::<f32>()
+                .min(1.0);
+            free_movement_multiplier * self.total_speed().get::<meter>()
+        }
+    }
+}
+
+/// Convenience implementation to acces the underlying [`Speed`] as read-only.
+impl Deref for EffectiveSpeed {
+    type Target = Speed;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::components::id::{EffectId, ItemId};
 
     use super::*;
 
+    // Stands in for `systems::movement::speed` when there are no hooks to run
+    fn effective(speed: &Speed) -> EffectiveSpeed {
+        EffectiveSpeed::new(speed.clone())
+    }
+
     #[test]
     fn new_speed() {
         let speed = Speed::default();
-        assert_eq!(speed.total_speed().get::<meter>(), 10.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 10.0);
         assert_eq!(speed.moved_this_turn().get::<meter>(), 0.0);
     }
 
@@ -181,7 +207,7 @@ mod tests {
             ModifierSource::Item(ItemId::new("nat20_core", "Boots of Speed!")),
             5.0,
         );
-        assert_eq!(speed.total_speed().get::<meter>(), 15.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 15.0);
     }
 
     #[test]
@@ -195,7 +221,7 @@ mod tests {
             "nat20_core",
             "Boots of Speed!",
         )));
-        assert_eq!(speed.total_speed().get::<meter>(), 10.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 10.0);
     }
 
     #[test]
@@ -205,7 +231,7 @@ mod tests {
             ModifierSource::Effect(EffectId::new("nat20_core", "Expeditious Retreat!")),
             2.0,
         );
-        assert_eq!(speed.total_speed().get::<meter>(), 20.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 20.0);
     }
 
     #[test]
@@ -219,7 +245,7 @@ mod tests {
             "nat20_core",
             "Expeditious Retreat!",
         )));
-        assert_eq!(speed.total_speed().get::<meter>(), 10.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 10.0);
     }
 
     #[test]
@@ -227,7 +253,14 @@ mod tests {
         let mut speed = Speed::default();
         speed.record_movement(Length::new::<meter>(3.0));
         assert_eq!(speed.moved_this_turn().get::<meter>(), 3.0);
-        assert_eq!(speed.remaining_movement().get::<meter>(), 7.0);
+        assert_eq!(effective(&speed).remaining_movement().get::<meter>(), 7.0);
+    }
+
+    #[test]
+    fn remaining_movement_never_goes_negative() {
+        let mut speed = Speed::default();
+        speed.record_movement(Length::new::<meter>(15.0));
+        assert_eq!(effective(&speed).remaining_movement().get::<meter>(), 0.0);
     }
 
     #[test]
@@ -241,9 +274,9 @@ mod tests {
     #[test]
     fn can_move() {
         let mut speed = Speed::default();
-        assert!(speed.can_move());
+        assert!(effective(&speed).can_move());
         speed.record_movement(Length::new::<meter>(10.0));
-        assert!(!speed.can_move());
+        assert!(!effective(&speed).can_move());
     }
 
     #[test]
@@ -253,7 +286,36 @@ mod tests {
             ModifierSource::Effect(EffectId::new("nat20_core", "Fear!")),
             0.0,
         );
-        assert_eq!(speed.total_speed().get::<meter>(), 0.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 0.0);
+    }
+
+    #[test]
+    fn free_movement_follows_the_current_total() {
+        let mut speed = Speed::default();
+        speed.add_free_movement_multiplier(
+            ModifierSource::Effect(EffectId::new("nat20_core", "Tactical Shift!")),
+            0.5,
+        );
+        assert_eq!(
+            effective(&speed).free_movement_remaining().get::<meter>(),
+            5.0
+        );
+
+        // A speed bump after the fact rescales the free movement too
+        speed.add_flat_modifier(
+            ModifierSource::Item(ItemId::new("nat20_core", "Boots of Speed!")),
+            10.0,
+        );
+        assert_eq!(
+            effective(&speed).free_movement_remaining().get::<meter>(),
+            10.0
+        );
+
+        speed.record_movement(Length::new::<meter>(4.0));
+        assert_eq!(
+            effective(&speed).free_movement_remaining().get::<meter>(),
+            6.0
+        );
     }
 
     #[test]
@@ -267,6 +329,6 @@ mod tests {
             ModifierSource::Effect(EffectId::new("nat20_core", "Expeditious Retreat!")),
             2.0,
         );
-        assert_eq!(speed.total_speed().get::<meter>(), 30.0);
+        assert_eq!(effective(&speed).total_speed().get::<meter>(), 30.0);
     }
 }

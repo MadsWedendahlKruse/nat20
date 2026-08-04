@@ -31,7 +31,7 @@ use nat20_core::{
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
         species::{CreatureSize, CreatureType},
-        speed::Speed,
+        speed::EffectiveSpeed,
         spells::spellbook::Spellbook,
         time::{TimeDuration, TimeMode},
     },
@@ -1257,7 +1257,7 @@ impl ImguiRenderable for ResourceAmountMap {
 pub static SPEED_COLOR: [f32; 4] = [0.3, 0.7, 0.8, 1.0];
 pub static SPEED_COLOR_BG: [f32; 4] = [0.15, 0.35, 0.4, 1.0];
 
-impl ImguiRenderable for Speed {
+impl ImguiRenderable for EffectiveSpeed {
     fn render(&self, ui: &imgui::Ui) {
         let total_speed = self.total_speed();
         let remaining_speed = self.remaining_movement();

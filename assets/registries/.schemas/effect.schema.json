@@ -106,6 +106,13 @@
                 "$ref": "#/definitions/SkillCheckHookDefinition"
             }
         },
+        "on_speed": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/SpeedHookDefinition"
+            }
+        },
         "on_turn_start": {
             "type": "array",
             "default": [],
@@ -853,6 +860,21 @@
             },
             "required": [
                 "script"
+            ]
+        },
+        "SpeedHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
             ]
         },
         "SpellId": {

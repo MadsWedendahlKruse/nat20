@@ -121,6 +121,24 @@ pub mod creatures {
                         "subclass.barbarian.path_of_the_berserker",
                     ))),
                     LevelUpDecision::SkillProficiency(HashSet::from([Skill::Survival])),
+                    // Level 4
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Strength,
+                        2,
+                    )])),
+                    // Level 5
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
                 ],
             );
 

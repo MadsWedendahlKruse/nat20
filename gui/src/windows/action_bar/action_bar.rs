@@ -21,7 +21,6 @@ use nat20_core::{
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
         resource::ResourceMap,
-        speed::Speed,
     },
     engine::{
         action_prompt::{ActionData, ActionPromptKind},
@@ -392,7 +391,7 @@ impl ActionBarWindow {
                     .render(ui);
 
                 ui.separator_with_text("Speed");
-                systems::helpers::get_component::<Speed>(&game_state.world, entity).render(ui);
+                systems::movement::speed(game_state, entity).render(ui);
             });
     }
 

@@ -25,7 +25,6 @@ use crate::{
         },
         resource::{ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         skill::{Skill, SkillSet},
-        speed::Speed,
         spells::{spell::ConcentrationInstance, spellbook::Spellbook},
         time::{TimeMode, TimeStep, TurnBoundary},
     },
@@ -388,6 +387,10 @@ impl ScenarioProbe<'_> {
         &self.scenario.game_state.world
     }
 
+    fn game_state(&self) -> &GameState {
+        &self.scenario.game_state
+    }
+
     // -- Actions --
 
     pub fn act(&mut self, action: impl Into<ActionId>) -> ScenarioActionBuilder<'_> {
@@ -500,7 +503,7 @@ impl ScenarioProbe<'_> {
     }
 
     pub fn movement_speed(&self) -> Length {
-        systems::helpers::get_component::<Speed>(self.world(), self.entity()).total_speed()
+        systems::movement::speed(self.game_state(), self.entity()).total_speed()
     }
 
     pub fn position(&self) -> Point3<f32> {
@@ -830,7 +833,7 @@ impl ScenarioProbe<'_> {
         source: ModifierSource,
         operator: Operator<f32>,
     ) -> &mut Self {
-        let speed = systems::helpers::get_component::<Speed>(self.world(), self.entity());
+        let speed = systems::movement::speed(self.game_state(), self.entity());
         assert!(
             speed
                 .free_movement_multipliers()
@@ -843,7 +846,6 @@ impl ScenarioProbe<'_> {
             operator,
             speed.free_movement_multipliers()
         );
-        drop(speed);
         self
     }
 

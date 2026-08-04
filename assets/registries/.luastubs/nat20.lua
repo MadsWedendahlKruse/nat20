@@ -275,6 +275,14 @@ local FlatModifierMap = {}
 ---@param value integer
 function FlatModifierMap:add_modifier(source, value) end
 
+---@class Speed
+local Speed = {}
+--- `value` is either a length expression ("10 feet") or a multiplier ("x2"),
+--- the same grammar as the `speed` effect modifier in JSON.
+---@param source string
+---@param value string
+function Speed:add_modifier(source, value) end
+
 ---@class ModifierResult
 ---@field total integer
 local ModifierResult = {}
@@ -402,4 +410,5 @@ local TimeDuration = {}
 ---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
+---@alias SpeedHookFn fun(game_state: GameState, entity: ScriptEntity, speed: Speed)
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)

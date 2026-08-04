@@ -55,6 +55,7 @@ use crate::{
         items::equipment::armor::ArmorClass,
         modifier::FlatModifiable,
         resource::ResourceAmountMap,
+        speed::Speed,
     },
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::REGISTRY_ROOT,
@@ -285,6 +286,29 @@ impl ScriptEngine {
                     scope.create_userdata_ref(game_state)?,
                     ent,
                     scope.create_userdata_ref_mut(armor_class.modifiers_mut())?,
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_speed_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        speed: &mut Speed,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::SpeedHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    scope.create_userdata_ref_mut(speed)?,
                 ))
             })
             .map_err(Self::runtime_error)

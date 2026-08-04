@@ -10,7 +10,6 @@ use nat20_core::{
         resource::ResourceMap,
         skill::SkillSet,
         species::{CreatureSize, CreatureType},
-        speed::Speed,
         spells::spellbook::Spellbook,
         time::EntityClock,
     },
@@ -171,7 +170,7 @@ fn render_overview(
             render_if_present::<LifeState>(ui, world, entity);
             render_if_present::<HitPoints>(ui, world, entity);
 
-            render_if_present::<Speed>(ui, world, entity);
+            systems::movement::speed(game_state, entity).render(ui);
 
             ui.separator_with_text("Armor Class");
             systems::loadout::armor_class(game_state, entity).render(ui);

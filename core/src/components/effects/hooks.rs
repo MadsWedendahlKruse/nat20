@@ -12,6 +12,7 @@ use crate::{
         id::ActionId,
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
+        speed::Speed,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
 };
@@ -24,6 +25,7 @@ pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 pub type AttackedHook =
     Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
+pub type SpeedHook = Arc<dyn Fn(&GameState, Entity, &mut Speed) + Send + Sync>;
 pub type D20AbilityHook =
     Arc<dyn Fn(&GameState, Entity, &D20Check) -> Option<Ability> + Send + Sync>;
 pub type D20CheckHook = Arc<dyn Fn(&GameState, Entity, &mut D20Check) + Send + Sync>;

@@ -11,6 +11,7 @@ use crate::{
         id::{ActionId, ScriptId},
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
+        speed::Speed,
     },
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::ScriptsRegistry,
@@ -179,6 +180,22 @@ pub fn evaluate_armor_class_hook(
         error!(
             "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
             armor_class_hook, entity, err
+        );
+    }
+}
+
+pub fn evaluate_speed_hook(
+    speed_hook: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    speed: &mut Speed,
+) {
+    let script = ScriptsRegistry::get(speed_hook)
+        .expect(format!("Speed hook script not found in registry: {:?}", speed_hook).as_str());
+    if let Err(err) = SCRIPT_ENGINE.evaluate_speed_hook(script, game_state, entity, speed) {
+        error!(
+            "Error evaluating speed hook script {:?} for entity {:?}: {:?}",
+            speed_hook, entity, err
         );
     }
 }

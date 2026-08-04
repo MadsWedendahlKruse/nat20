@@ -25,7 +25,7 @@ use crate::{
         dice::{DiceSet, DieSize},
         id::EntityIdentifier,
         modifier::{ModifierKind, ModifierMap, ModifierSource},
-        speed::Speed,
+        speed::{EffectiveSpeed, Speed},
     },
     engine::{
         action_prompt::{ActionData, ActionError},
@@ -77,6 +77,15 @@ impl PathResult {
     }
 }
 
+/// The entity's speed with every effect hook applied. Always read derived movement
+/// values from here rather than straight off the `Speed` component, otherwise
+/// conditional modifiers (e.g. the Barbarian's Fast Movement) are missed.
+pub fn speed(game_state: &GameState, entity: Entity) -> EffectiveSpeed {
+    let mut speed = systems::helpers::get_component_clone::<Speed>(&game_state.world, entity);
+    systems::effects::effects(&game_state.world, entity).speed(game_state, entity, &mut speed);
+    EffectiveSpeed::new(speed)
+}
+
 pub fn path(
     game_state: &GameState,
     entity: Entity,
@@ -87,8 +96,7 @@ pub fn path(
     let full_path = systems::geometry::path(&game_state.world, &game_state.geometry, entity, *goal)
         .ok_or(MovementError::NoPathFound)?;
 
-    let remaining_movement =
-        systems::helpers::get_component::<Speed>(&game_state.world, entity).remaining_movement();
+    let remaining_movement = speed(game_state, entity).remaining_movement();
 
     let taken_path = if full_path.length > remaining_movement && trim_to_movement {
         if !allow_partial {
@@ -431,8 +439,7 @@ pub fn calculate_opportunity_attack(
         return None;
     }
 
-    let free_movement = systems::helpers::get_component::<Speed>(&game_state.world, entity)
-        .free_movement_remaining();
+    let free_movement = speed(game_state, entity).free_movement_remaining();
     if (from_position - new_position).norm() <= free_movement.get::<meter>() {
         trace!(
             "Entity {:?} has enough free movement to move from {:?} to {:?} without provoking opportunity attacks.",

@@ -14,6 +14,7 @@ use nat20_core::{
     },
     test_utils::scenario::{Operator, Scenario},
 };
+use uom::si::{f32::Length, length::foot};
 
 fn barbarian_scenario(level: u8) -> Scenario {
     let mut scenario = Scenario::new();
@@ -462,6 +463,33 @@ fn danger_sense() {
             &ModifierSource::Effect("effect.barbarian.danger_sense".into()),
             AdvantageType::Advantage,
         );
+}
+
+#[test]
+fn fast_movement() {
+    // Dragonborn base speed
+    let base_speed = Length::new::<foot>(30.0);
+
+    let mut scenario = barbarian_scenario(3);
+    scenario
+        .probe("barbarian")
+        .assert_no_effect("effect.barbarian.fast_movement")
+        .assert_movement_speed(Operator::Equal(base_speed));
+
+    let mut scenario = barbarian_scenario(5);
+    scenario
+        .probe("barbarian")
+        .assert_effect("effect.barbarian.fast_movement")
+        .assert_movement_speed(Operator::Equal(base_speed + Length::new::<foot>(10.0)))
+        // Light armor keeps the bonus, Heavy armor suppresses it
+        .equip("item.studded_leather_armor")
+        .assert_movement_speed(Operator::Equal(base_speed + Length::new::<foot>(10.0)))
+        .equip("item.chainmail")
+        .assert_movement_speed(Operator::Equal(base_speed))
+        // ...and taking it off brings it back, without the effect ever being re-applied
+        .unequip(&EquipmentSlot::Armor)
+        .assert_effect("effect.barbarian.fast_movement")
+        .assert_movement_speed(Operator::Equal(base_speed + Length::new::<foot>(10.0)));
 }
 
 #[test]

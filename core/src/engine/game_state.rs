@@ -13,7 +13,6 @@ use crate::{
         },
         activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
         d20::D20CheckDC,
-        speed::Speed,
         time::{TimeMode, TimeStep},
     },
     engine::{
@@ -198,8 +197,7 @@ impl GameState {
             self.in_combat.contains_key(&entity),
         )?;
 
-        if systems::helpers::get_component::<Speed>(&self.world, entity).remaining_movement()
-            <= Length::new::<meter>(0.0)
+        if systems::movement::speed(self, entity).remaining_movement() <= Length::new::<meter>(0.0)
         {
             return Err(MovementError::InsufficientSpeed);
         }

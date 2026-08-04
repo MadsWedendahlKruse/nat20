@@ -36,6 +36,7 @@ use crate::{
             ModifierResult, ModifierSource,
         },
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
+        speed::Speed,
         time::{TimeDuration, TurnBoundary},
     },
     engine::{
@@ -46,6 +47,7 @@ use crate::{
     registry::{
         registry::{ActionsRegistry, ItemsRegistry},
         serialize::{
+            modifier::SpeedModifier,
             parser::{
                 Evaluable, EvaluableWithoutVariables, EvaluationError, ModifierExpression, Parser,
             },
@@ -533,6 +535,34 @@ impl UserData for FlatModifierMap {
             this.add_modifier(parse_source(&source)?, value as i32);
             Ok(())
         });
+    }
+}
+
+impl UserData for Speed {
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        // Same grammar as the `speed` effect modifier in JSON: either a length
+        // expression ("10 feet") or a multiplier ("x2")
+        methods.add_method_mut(
+            "add_modifier",
+            |_, this, (source, value): (String, String)| {
+                let source = parse_source(&source)?;
+                let modifier: SpeedModifier = value.parse().map_err(LuaError::RuntimeError)?;
+                match modifier {
+                    SpeedModifier::Flat(length) => {
+                        let length = length.evaluate_without_variables().map_err(|e| {
+                            LuaError::RuntimeError(format!(
+                                "Failed to evaluate length expression: {e}"
+                            ))
+                        })?;
+                        this.add_flat_modifier(source, length.value);
+                    }
+                    SpeedModifier::Multiplier(multiplier) => {
+                        this.add_multiplier(source, multiplier);
+                    }
+                }
+                Ok(())
+            },
+        );
     }
 }
 

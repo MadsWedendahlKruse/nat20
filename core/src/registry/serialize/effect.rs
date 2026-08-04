@@ -23,7 +23,7 @@ use crate::{
             hooks::{
                 ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, D20CheckHooks,
                 DamageRollHook, DamageRollResultHook, DeathHook, PostDamageMitigationHook,
-                PreDamageMitigationHook, ResourceCostHook, TurnStartHook,
+                PreDamageMitigationHook, ResourceCostHook, SpeedHook, TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -143,6 +143,8 @@ pub struct EffectDefinition {
     pub on_death: Vec<DeathHookDefinition>,
     #[serde(default)]
     pub on_turn_start: Vec<TurnStartHookDefinition>,
+    #[serde(default)]
+    pub on_speed: Vec<SpeedHookDefinition>,
 }
 
 impl From<EffectDefinition> for Effect {
@@ -334,6 +336,14 @@ impl From<EffectDefinition> for Effect {
             }
         }
 
+        // Build speed hooks
+        {
+            if !definition.on_speed.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_speed, &effect_id);
+                effect.on_speed = Some(SpeedHookDefinition::combine_hooks(hooks));
+            }
+        }
+
         effect
     }
 }
@@ -445,6 +455,16 @@ impl RegistryReferenceCollector for EffectDefinition {
                     collector.add(RegistryReference::Script(
                         script.clone(),
                         ScriptFunction::TurnStartHook,
+                    ));
+                }
+            }
+        }
+        for hook in &self.on_speed {
+            match hook {
+                SpeedHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::SpeedHook,
                     ));
                 }
             }
@@ -1367,6 +1387,37 @@ impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
         Arc::new(move |game_state, entity| {
             for hook in &hooks {
                 hook(game_state, entity);
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum SpeedHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<SpeedHook> for SpeedHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> SpeedHook {
+        match self {
+            SpeedHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &GameState, entity: Entity, speed: &mut Speed| {
+                        systems::scripts::evaluate_speed_hook(
+                            &script_id, game_state, entity, speed,
+                        );
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<SpeedHook>) -> SpeedHook {
+        Arc::new(move |game_state, entity, speed| {
+            for hook in &hooks {
+                hook(game_state, entity, speed);
             }
         })
     }

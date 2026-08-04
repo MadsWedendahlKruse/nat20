@@ -1,0 +1,10 @@
+{
+    "id": "nat20_core::effect.barbarian.fast_movement",
+    "description": "Your speed increases by 10 feet while you aren’t wearing Heavy armor.",
+    "kind": "buff",
+    "on_speed": [
+        {
+            "script": "nat20_core::script.effect.barbarian.fast_movement"
+        }
+    ]
+}
