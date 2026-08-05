@@ -403,12 +403,22 @@ impl ScenarioProbe<'_> {
 
     // -- World mutations --
 
-    pub fn start_turn(&mut self) -> &mut Self {
-        self.turn_boundary(TurnBoundary::Start)
-    }
-
+    /// End this creature's turn, which also starts the next one: the next
+    /// participant's inside an encounter, this creature's own outside one. Ending
+    /// your turn is the only turn control a player has, so it's the only one the
+    /// harness offers. Assertions about the start of a turn go after the
+    /// `end_turn` that leads into it.
     pub fn end_turn(&mut self) -> &mut Self {
-        self.turn_boundary(TurnBoundary::End)
+        let entity = self.entity();
+        if self.scenario.game_state.in_combat.contains_key(&entity) {
+            // The encounter fires both boundaries and moves initiative on
+            self.scenario.game_state.end_turn(entity);
+            self.scenario.game_state.update(0.0);
+            self
+        } else {
+            self.turn_boundary(TurnBoundary::End)
+                .turn_boundary(TurnBoundary::Start)
+        }
     }
 
     fn turn_boundary(&mut self, boundary: TurnBoundary) -> &mut Self {

@@ -307,6 +307,15 @@
                 }
             ]
         },
+        "D20CheckKindTag": {
+            "description": "Auto-generated discriminant enum variants",
+            "type": "string",
+            "enum": [
+                "saving_throw",
+                "skill",
+                "attack_roll"
+            ]
+        },
         "DamageRollHookDefinition": {
             "anyOf": [
                 {
@@ -412,6 +421,50 @@
                     "additionalProperties": false,
                     "required": [
                         "turn_boundary"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "d20_check": {
+                            "type": "object",
+                            "properties": {
+                                "against": {
+                                    "description": "Who the roll is made against. Only attack rolls have a target, so a\nfilter with `against` never matches saving throws or skill checks.",
+                                    "anyOf": [
+                                        {
+                                            "$ref": "#/definitions/EffectEntiyReference"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ],
+                                    "default": null
+                                },
+                                "kind": {
+                                    "$ref": "#/definitions/D20CheckKindTag"
+                                },
+                                "roller": {
+                                    "description": "Who makes the roll. Omit to match any roller.",
+                                    "anyOf": [
+                                        {
+                                            "$ref": "#/definitions/EffectEntiyReference"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ],
+                                    "default": null
+                                }
+                            },
+                            "required": [
+                                "kind"
+                            ]
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "d20_check"
                     ]
                 },
                 {

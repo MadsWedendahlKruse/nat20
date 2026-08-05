@@ -7,5 +7,17 @@
             "modifier": "advantage",
             "attacked_by": "applier"
         }
+    ],
+    "end_conditions": [
+        {
+            "event": {
+                "d20_check": {
+                    "kind": "attack_roll",
+                    "roller": "applier",
+                    "against": "target"
+                }
+            },
+            "on_trigger": "remove"
+        }
     ]
 }

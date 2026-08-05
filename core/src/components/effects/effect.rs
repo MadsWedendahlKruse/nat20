@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::{
     components::{
         actions::action::ActionConditionResolution,
+        d20::{D20CheckDC, D20CheckKindTag},
         damage::AttackSource,
         effects::hooks::{
             ActionHook, ActionResultHook, ApplyEffectHook, ArmorClassHook, AttackedHook,
@@ -149,9 +150,6 @@ pub struct EffectInstance {
     pub parent: Option<EffectInstanceId>,
     pub children: HashSet<EffectInstanceId>,
     pub end_condition: Option<EffectEndCondition>,
-    // TODO: Currently this is only actually used for the attacked hook, but it can
-    // still be set on any kind of instance
-    pub one_shot: bool,
 }
 
 impl EffectInstance {
@@ -162,7 +160,6 @@ impl EffectInstance {
         applier: Option<Entity>,
         action_resolution: ActionConditionResolution,
         end_condition: Option<EffectEndCondition>,
-        one_shot: bool,
     ) -> Self {
         Self {
             instance_id: Uuid::new_v4(),
@@ -174,7 +171,6 @@ impl EffectInstance {
             parent: None,
             children: HashSet::new(),
             end_condition,
-            one_shot,
         }
     }
 
@@ -267,8 +263,6 @@ pub struct EffectInstanceTemplate {
     pub lifetime: EffectLifetimeTemplate,
     #[serde(default)]
     pub end_condition: Option<EffectEndConditionTemplate>,
-    #[serde(default)]
-    pub one_shot: bool,
 }
 
 impl EffectInstanceTemplate {
@@ -290,7 +284,6 @@ impl EffectInstanceTemplate {
             self.end_condition
                 .as_ref()
                 .map(|cond| cond.instantiate(applier, target)),
-            self.one_shot,
         );
         let parent_id = parent_instance.instance_id;
 
@@ -303,7 +296,6 @@ impl EffectInstanceTemplate {
                 effect_id: child_effect_id.clone(),
                 lifetime: self.lifetime, // Child effects inherit the same lifetime template
                 end_condition: self.end_condition.clone(),
-                one_shot: self.one_shot,
             };
 
             let (child_root_id, child_instances) = child_template.instantiate(
@@ -373,6 +365,15 @@ pub enum EffectEntiyReference {
     Target,
 }
 
+impl EffectEntiyReference {
+    pub fn resolve(&self, applier: Entity, target: Entity) -> Entity {
+        match self {
+            EffectEntiyReference::Applier => applier,
+            EffectEntiyReference::Target => target,
+        }
+    }
+}
+
 /// Effect lifetimes are unique in the sense that they can refer to different entities,
 /// but those entities are only known at runtime. Therefore, we need a template
 /// that can be instantiated into a concrete `EffectLifetime` when the effect is applied.
@@ -436,6 +437,17 @@ pub enum EffectEventFilter {
         entity: EffectEntiyReference,
         boundary: TurnBoundary,
     },
+    /// A d20 roll of a given flavor was made, optionally by and/or against a
+    /// specific entity. The bread and butter of "until the next roll" effects
+    /// (Studied Attacks, Vex/Sap, Sundering Blow).
+    D20Check {
+        kind: D20CheckKindTag,
+        /// Who makes the roll. `None` matches any roller.
+        roller: Option<EffectEntiyReference>,
+        /// Who the roll is made against. Only attack rolls have a target, so a
+        /// filter with `against` never matches saving throws or skill checks.
+        against: Option<EffectEntiyReference>,
+    },
     Script {
         /// Event kinds this filter can match
         events: Vec<EventKindTag>,
@@ -447,6 +459,7 @@ impl EffectEventFilter {
     pub fn kinds(&self) -> Vec<EventKindTag> {
         match self {
             EffectEventFilter::TurnBoundary { .. } => vec![EventKindTag::TurnBoundary],
+            EffectEventFilter::D20Check { .. } => vec![EventKindTag::D20CheckPerformed],
             EffectEventFilter::Script { events, .. } => events.clone(),
         }
     }
@@ -454,10 +467,7 @@ impl EffectEventFilter {
     pub fn instantiate(&self, applier: Entity, target: Entity) -> EventFilter {
         match self {
             EffectEventFilter::TurnBoundary { entity, boundary } => {
-                let entity = match entity {
-                    EffectEntiyReference::Applier => applier,
-                    EffectEntiyReference::Target => target,
-                };
+                let entity = entity.resolve(applier, target);
                 EventFilter::new({
                     let entity = entity;
                     let boundary = *boundary;
@@ -474,6 +484,38 @@ impl EffectEventFilter {
                     }
                 })
             }
+
+            EffectEventFilter::D20Check {
+                kind,
+                roller,
+                against,
+            } => {
+                let kind = *kind;
+                let roller = roller.map(|entity| entity.resolve(applier, target));
+                let against = against.map(|entity| entity.resolve(applier, target));
+                EventFilter::new(move |event| {
+                    let EventKind::D20CheckPerformed { actor, dc, .. } = &event.kind else {
+                        return false;
+                    };
+
+                    if D20CheckKindTag::from(dc.kind()) != kind {
+                        return false;
+                    }
+
+                    if roller.is_some_and(|roller| roller != actor.id()) {
+                        return false;
+                    }
+
+                    match (against, dc) {
+                        (None, _) => true,
+                        (Some(against), D20CheckDC::AttackRoll { target, .. }) => {
+                            against == target.id()
+                        }
+                        (Some(_), _) => false,
+                    }
+                })
+            }
+
             EffectEventFilter::Script { events, script } => {
                 let events = events.clone();
                 let script = script.clone();

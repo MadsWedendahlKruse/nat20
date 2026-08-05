@@ -6,7 +6,6 @@ local function action_result_hook(game_state, action, result)
             action.actor,
             "nat20_core::effect.barbarian.instinctive_pounce_active",
             1,
-            false,
             "nat20_core::effect.barbarian.instinctive_pounce",
             nil,
             nil

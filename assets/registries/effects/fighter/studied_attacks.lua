@@ -7,7 +7,6 @@ local function action_result_hook(game_state, action, result)
             result.target,
             "nat20_core::effect.fighter.studied_attacks_advantage",
             1,
-            true,
             "nat20_core::effect.fighter.studied_attacks",
             action.action_context,
             resolution

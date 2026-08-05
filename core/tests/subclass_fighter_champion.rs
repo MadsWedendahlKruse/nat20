@@ -151,6 +151,6 @@ fn champion_survivor() {
     let prev_hp = scenario.probe("fighter").hp();
     scenario
         .probe("fighter")
-        .start_turn()
+        .end_turn()
         .assert_hp(Operator::Equal(prev_hp + 5 + 4)); // 5 + CON mod
 }

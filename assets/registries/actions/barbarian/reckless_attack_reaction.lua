@@ -35,7 +35,6 @@ local function reaction_body(game_state, reaction, event)
         reaction.actor,
         "nat20_core::effect.barbarian.reckless_attack",
         1,
-        false,
         "nat20_core::effect.barbarian.reckless_attack",
         nil,
         nil

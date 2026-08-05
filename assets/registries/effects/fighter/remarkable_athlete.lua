@@ -7,7 +7,6 @@ local function action_result_hook(game_state, action, result)
             action.actor,
             "nat20_core::effect.fighter.champion.remarkable_athlete_disengage",
             1,
-            true,
             "nat20_core::effect.fighter.champion.remarkable_athlete",
             action.action_context,
             resolution

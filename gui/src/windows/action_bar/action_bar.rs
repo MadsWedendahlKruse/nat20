@@ -17,7 +17,7 @@ use nat20_core::{
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
         },
         activity::Activity,
-        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome, RollMode},
+        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckOutcome, RollMode},
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
         resource::ResourceMap,
@@ -1029,7 +1029,7 @@ fn render_attack_hit_chance_tooltip(
     );
 
     // Effects on target
-    systems::effects::effects(&game_state.world, target).attacked_preview(
+    systems::effects::effects(&game_state.world, target).on_attacked(
         &game_state.world,
         target,
         action.actor.id(),

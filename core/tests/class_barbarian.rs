@@ -102,7 +102,6 @@ fn rage_grants_resistances_advantage_and_extend_rage() {
     scenario
         .probe("barbarian")
         .end_turn()
-        .start_turn()
         .assert_action_available("action.barbarian.extend_rage");
 }
 
@@ -179,10 +178,8 @@ fn rage_extends_when_making_an_attack_roll() {
         Some(2)
     );
 
-    scenario.probe("barbarian").end_turn();
-
     // Attacking on the next turn extends the Rage for another round
-    scenario.probe("barbarian").start_turn();
+    scenario.probe("barbarian").end_turn();
     melee_attack(&mut scenario);
     assert_eq!(
         scenario
@@ -201,7 +198,6 @@ fn rage_extends_when_making_an_attack_roll() {
     // A turn without any attacks lets the Rage run out
     scenario
         .probe("barbarian")
-        .start_turn()
         .end_turn()
         .assert_no_effect("effect.barbarian.rage");
 }
@@ -219,6 +215,7 @@ fn rage_extends_with_the_extend_rage_action() {
     scenario
         .probe("barbarian")
         .assert_resource("resource.barbarian.rage", Operator::Equal(rage_charges - 1))
+        // Also recharges the Bonus Action spent on entering the Rage
         .end_turn();
     assert_eq!(
         scenario
@@ -227,10 +224,8 @@ fn rage_extends_with_the_extend_rage_action() {
         Some(1)
     );
 
-    // Recharge the Bonus Action spent on entering the Rage
     scenario
         .probe("barbarian")
-        .start_turn()
         .assert_action_available("action.barbarian.extend_rage")
         .act("action.barbarian.extend_rage")
         .perform();
@@ -247,11 +242,19 @@ fn rage_extends_with_the_extend_rage_action() {
         .assert_resource("resource.barbarian.rage", Operator::Equal(rage_charges - 1))
         .assert_effect_instances("effect.barbarian.rage", 1);
 
-    // Can't extend past the next turn, even with a Bonus Action available
+    // Extending again on a later turn tops the Rage back up, but never past the
+    // end of the next turn
     scenario
         .probe("barbarian")
-        .start_turn()
-        .assert_action_unavailable("action.barbarian.extend_rage");
+        .end_turn()
+        .act("action.barbarian.extend_rage")
+        .perform();
+    assert_eq!(
+        scenario
+            .probe("barbarian")
+            .effect_remaining_turns("effect.barbarian.rage"),
+        Some(2)
+    );
 
     // Once the Rage runs out the granted action goes away with it
     scenario
@@ -278,7 +281,7 @@ fn rage_requires_no_heavy_armor_and_no_active_rage() {
     // Recharge the Bonus Action so only the usability check blocks a second Rage
     scenario
         .probe("barbarian")
-        .start_turn()
+        .end_turn()
         .assert_action_unavailable("action.barbarian.rage");
 }
 
@@ -386,7 +389,7 @@ fn reckless_attack_reaction() {
         .assert_event();
 
     // The effect is removed at the start of the next turn
-    scenario.probe("barbarian").start_turn();
+    scenario.probe("barbarian").end_turn();
     scenario
         .probe("barbarian")
         .assert_no_effect("effect.barbarian.reckless_attack");
@@ -540,22 +543,17 @@ fn instinctive_pounce() {
 
     enter_rage(&mut scenario);
 
-    // Instinctive Pounce adds half the base speed to the total speed while raging
+    // Instinctive Pounce adds half the base speed to the total speed when entering Rage
     scenario
         .probe("barbarian")
         .assert_effect("effect.barbarian.rage")
         .assert_effect("effect.barbarian.instinctive_pounce_active")
         .assert_movement_speed(Operator::Equal(base_speed + Length::new::<foot>(20.0)));
 
-    // Speed disappears when Rage ends
+    // Speed disappears after the first turn
+    scenario.probe("barbarian").end_turn();
     scenario
         .probe("barbarian")
-        .end_turn()
-        .start_turn()
-        .end_turn();
-    scenario
-        .probe("barbarian")
-        .assert_no_effect("effect.barbarian.rage")
         .assert_no_effect("effect.barbarian.instinctive_pounce_active")
         .assert_movement_speed(Operator::Equal(base_speed));
 }

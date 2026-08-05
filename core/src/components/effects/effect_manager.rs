@@ -46,7 +46,7 @@ impl EffectManager {
     }
 
     pub fn remove(&mut self, instance_id: &EffectInstanceId) -> Option<EffectInstance> {
-        let removed = self.effects.remove(instance_id);
+        let removed = self.effects.shift_remove(instance_id);
         self.marked_for_removal.remove(instance_id);
         removed
     }
@@ -80,24 +80,6 @@ impl EffectManager {
         }
     }
 
-    fn for_each_one_shot<H>(
-        &mut self,
-        get_hook: impl Fn(&Effect) -> Option<&H>,
-        mut f: impl FnMut(&H),
-    ) {
-        for instance in self.effects.values() {
-            if let Some(hook) = get_hook(instance.effect()) {
-                if self.marked_for_removal.contains(&instance.instance_id) {
-                    continue;
-                }
-                f(hook);
-                if instance.one_shot {
-                    self.marked_for_removal.insert(instance.instance_id);
-                }
-            }
-        }
-    }
-
     fn for_each_with_instance<H>(
         &self,
         get_hook: impl Fn(&Effect) -> Option<&H>,
@@ -106,24 +88,6 @@ impl EffectManager {
         for instance in self.effects.values() {
             if let Some(hook) = get_hook(instance.effect()) {
                 f(hook, instance);
-            }
-        }
-    }
-
-    fn for_each_one_shot_with_instance<H>(
-        &mut self,
-        get_hook: impl Fn(&Effect) -> Option<&H>,
-        mut f: impl FnMut(&H, &EffectInstance),
-    ) {
-        for instance in self.effects.values() {
-            if let Some(hook) = get_hook(instance.effect()) {
-                if self.marked_for_removal.contains(&instance.instance_id) {
-                    continue;
-                }
-                f(hook, instance);
-                if instance.one_shot {
-                    self.marked_for_removal.insert(instance.instance_id);
-                }
             }
         }
     }
@@ -137,29 +101,6 @@ impl EffectManager {
             .values()
             .filter_map(|inst| get_hook(inst.effect()).cloned())
             .collect()
-    }
-
-    /// Like `collect_hooks`, but for one-shot hooks that also need the `EffectInstance`
-    /// (e.g. `on_attacked`). Returns `(hook, instance)` pairs. One-shot instances are
-    /// marked for removal immediately as part of collection — consuming them is the act
-    /// of collecting them.
-    pub fn collect_one_shot_hooks_with_instance<H: Clone>(
-        &mut self,
-        get_hook: impl Fn(&Effect) -> Option<&H>,
-    ) -> Vec<(H, EffectInstance)> {
-        let mut result = Vec::new();
-        for inst in self.effects.values() {
-            if self.marked_for_removal.contains(&inst.instance_id) {
-                continue;
-            }
-            if let Some(hook) = get_hook(inst.effect()).cloned() {
-                if inst.one_shot {
-                    self.marked_for_removal.insert(inst.instance_id);
-                }
-                result.push((hook, inst.clone()));
-            }
-        }
-        result
     }
 
     pub fn apply(&self, state: &mut GameState, entity: Entity, ctx: Option<&ActionContext>) {
@@ -308,10 +249,19 @@ impl EffectManager {
         );
     }
 
-    // Similar to `attacked`, but doesn't consume one-shot effects, allowing it to
-    // be used for previews (e.g. showing the player that they would have advantage
-    // on an attack before they commit to it).
-    // TODO: Consider a more robust solution for this
+    pub fn on_attacked(
+        &self,
+        world: &World,
+        victim: Entity,
+        attacker: Entity,
+        check: &mut D20Check,
+    ) {
+        self.for_each_with_instance(
+            |effect| effect.on_attacked.as_ref(),
+            |hook, inst| hook(world, inst, victim, attacker, check),
+        );
+    }
+
     pub fn attacked_preview(
         &self,
         world: &World,

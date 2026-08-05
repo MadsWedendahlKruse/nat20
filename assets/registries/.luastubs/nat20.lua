@@ -345,12 +345,11 @@ function GameState:apply_effect(applier, target, effect_id, source_effect, conte
 ---@param target ScriptEntity
 ---@param effect_id string
 ---@param turns integer
----@param one_shot boolean
 ---@param source_effect string
 ---@param context ActionContext?
 ---@param resolution ActionConditionResolution?
 function GameState:apply_effect_for_turns(
-    applier, target, effect_id, turns, one_shot, source_effect, context, resolution
+    applier, target, effect_id, turns, source_effect, context, resolution
 )
 end
 

@@ -153,7 +153,6 @@ pub fn add_permanent_effect(
             effect_id,
             lifetime: EffectLifetimeTemplate::Permanent,
             end_condition: None,
-            one_shot: false,
         },
         context,
         ActionConditionResolution::Unconditional,

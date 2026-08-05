@@ -94,11 +94,12 @@ pub fn check_attack(
     source: AttackSource,
     mut check: D20Check,
 ) -> Event {
-    let attacked_hooks = systems::effects::effects_mut(&mut game_state.world, target)
-        .collect_one_shot_hooks_with_instance(|effect| effect.on_attacked.as_ref());
-    for (hook, instance) in &attacked_hooks {
-        hook(&game_state.world, instance, target, attacker, &mut check);
-    }
+    systems::effects::effects(&game_state.world, target).on_attacked(
+        &game_state.world,
+        target,
+        attacker,
+        &mut check,
+    );
 
     let result = check.roll_hooks(game_state, attacker);
 

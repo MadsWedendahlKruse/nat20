@@ -9,7 +9,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        d20::{D20Check, D20CheckDC, D20CheckKey, D20CheckMap},
+        d20::{D20Check, D20CheckDC, D20CheckKey, D20CheckKindTag, D20CheckMap},
         damage::{
             AttackSource, DamageMitigationEffect, DamageMitigationResult, DamageResistances,
             DamageRoll, DamageRollResult,
@@ -1429,8 +1429,6 @@ pub struct EffectInstanceDefinition {
     pub lifetime: EffectLifetimeTemplate,
     #[serde(default)]
     pub end_condition: Option<EffectEndConditionDefinition>,
-    #[serde(default)]
-    pub one_shot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1439,6 +1437,16 @@ pub enum EffectEventFilterDefinition {
     TurnBoundary {
         entity: EffectEntiyReference,
         boundary: TurnBoundary,
+    },
+    D20Check {
+        kind: D20CheckKindTag,
+        /// Who makes the roll. Omit to match any roller.
+        #[serde(default)]
+        roller: Option<EffectEntiyReference>,
+        /// Who the roll is made against. Only attack rolls have a target, so a
+        /// filter with `against` never matches saving throws or skill checks.
+        #[serde(default)]
+        against: Option<EffectEntiyReference>,
     },
     Script {
         /// Event kinds this filter can match
@@ -1453,6 +1461,15 @@ impl From<EffectEventFilterDefinition> for EffectEventFilter {
             EffectEventFilterDefinition::TurnBoundary { entity, boundary } => {
                 EffectEventFilter::TurnBoundary { entity, boundary }
             }
+            EffectEventFilterDefinition::D20Check {
+                kind,
+                roller,
+                against,
+            } => EffectEventFilter::D20Check {
+                kind,
+                roller,
+                against,
+            },
             EffectEventFilterDefinition::Script { events, script } => {
                 EffectEventFilter::Script { events, script }
             }
@@ -1563,14 +1580,12 @@ impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
             effect_id,
             lifetime,
             end_condition,
-            one_shot,
         } = def;
 
         EffectInstanceTemplate {
             effect_id,
             lifetime,
             end_condition: end_condition.map(Into::into),
-            one_shot,
         }
     }
 }

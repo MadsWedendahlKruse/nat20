@@ -243,7 +243,7 @@ fn warlock_hex_reapply_on_kill() {
         .assert_has_action("action.hex_reapply");
 
     // Start a new turn to recharge the bonus action for Hex reapplication
-    scenario.probe("warlock").start_turn();
+    scenario.probe("warlock").end_turn();
 
     // Spawn a new goblin to reapply Hex to
     scenario

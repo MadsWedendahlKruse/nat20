@@ -17,7 +17,6 @@ local function death_hook(game_state, victim, killer, applier)
             applier,
             "nat20_core::effect.spell.hex_reapply",
             600, -- TODO: Not realy sure about the duration here? 1 hour for now
-            false,
             "nat20_core::effect.hex",
             nil,
             nil

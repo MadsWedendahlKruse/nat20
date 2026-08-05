@@ -44,7 +44,7 @@ fn fighter_action_surge() {
         .assert_resource("resource.action", Operator::Equal(2))
         .assert_on_cooldown("action.fighter.action_surge")
         // Simulate the start of the turn to remove the Action Surge effect
-        .start_turn()
+        .end_turn()
         // Check that the Action Surge effect is removed after the turn starts
         .assert_no_effect("effect.fighter.action_surge")
         .assert_resource("resource.action", Operator::Equal(1))
@@ -308,4 +308,65 @@ fn fighter_studied_attacks() {
         .probe("goblin")
         .assert_hp(Operator::Greater(0))
         .assert_no_effect("effect.fighter.studied_attacks_advantage");
+}
+
+/// The advantage is spent by *the fighter's* next attack, so an attack from
+/// anyone else must leave it alone.
+#[test]
+fn fighter_studied_attacks_not_consumed_by_another_attacker() {
+    let mut scenario = Scenario::new();
+
+    scenario
+        .spawn("fighter", "hero.fighter")
+        .level(13)
+        .position([0.0, 0.0, 0.0], false)
+        .spawn();
+    scenario
+        .spawn("goblin", "monster.goblin_warrior")
+        .level(5)
+        .position([1.0, 0.0, 0.0], false)
+        .spawn();
+    // Level 1, so this one has no Studied Attacks of its own to apply
+    scenario
+        .spawn("ally", "hero.fighter")
+        .level(1)
+        .position([2.0, 0.0, 0.0], false)
+        .spawn();
+
+    scenario
+        .encounter()
+        .initiative_order(vec!["fighter", "ally", "goblin"])
+        .build();
+
+    scenario.probe("fighter").d20_force_outcome(
+        D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+        D20CheckOutcome::CriticalFailure,
+    );
+
+    scenario
+        .act("fighter", "action.melee_attack")
+        .target_entity("goblin")
+        .perform();
+
+    scenario
+        .probe("goblin")
+        .assert_effect("effect.fighter.studied_attacks_advantage");
+
+    scenario.probe("fighter").end_turn();
+
+    // Miss, so the goblin survives to still be carrying the effect
+    scenario.probe("ally").d20_force_outcome(
+        D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
+        D20CheckOutcome::Failure,
+    );
+
+    scenario
+        .act("ally", "action.melee_attack")
+        .target_entity("goblin")
+        .perform();
+
+    scenario
+        .probe("goblin")
+        .assert_hp(Operator::Greater(0))
+        .assert_effect("effect.fighter.studied_attacks_advantage");
 }

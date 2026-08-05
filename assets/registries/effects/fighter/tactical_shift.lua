@@ -6,7 +6,6 @@ local function action_result_hook(game_state, action, result)
             action.actor,
             "nat20_core::effect.fighter.tactical_shift_disengage",
             1,
-            false,
             "nat20_core::effect.fighter.tactical_shift",
             action.action_context,
             result:resolution()

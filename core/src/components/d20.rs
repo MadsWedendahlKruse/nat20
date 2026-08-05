@@ -2,8 +2,9 @@ use std::{cmp::max, collections::HashMap, hash::Hash};
 
 use hecs::Entity;
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use strum::{Display, IntoEnumIterator};
+use strum::{Display, EnumDiscriminants, IntoEnumIterator};
 
 use crate::{
     components::{
@@ -118,7 +119,12 @@ impl D20CheckOutcome {
 }
 
 // TODO: Why do we call it SavingTHROW and AttackROLL, but not SkillCHECK?
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants)]
+#[strum_discriminants(
+    name(D20CheckKindTag),
+    derive(Hash, Serialize, Deserialize, JsonSchema),
+    serde(rename_all = "snake_case")
+)]
 pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
     Skill(Skill),

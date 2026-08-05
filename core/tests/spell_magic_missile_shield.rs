@@ -90,7 +90,7 @@ fn shield_blocks_magic_missile() {
         .assert_hp(Operator::Equal(defender_hp));
 
     // Shield lasts until the start of the defender's next turn
-    scenario.probe("defender").start_turn();
+    scenario.probe("defender").end_turn();
     scenario
         .probe("defender")
         .assert_no_effect("effect.spell.shield");
