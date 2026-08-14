@@ -218,35 +218,40 @@ pub fn damage(
             target
         );
 
-        let saving_throw_event = systems::d20::check(
-            game_state,
-            target,
-            &D20CheckDC::SavingThrow {
-                saving_throw: SavingThrowKind::Concentration,
-                dc: ModifierMap::from(
-                    ModifierSource::Base,
-                    max(
-                        CONCENTRATION_SAVING_THROW_DC_DEFAULT,
-                        damage_taken as i32 / 2,
-                    ),
-                )
-                .evaluate(),
-            },
-        );
-        let callback = EventCallback::new({
-            move |game_state, event, _| {
-                match &event.kind {
-                    EventKind::D20CheckResolved { result, dc, .. } => {
-                        if !result.is_success(dc) {
-                            systems::spells::break_concentration(game_state, target);
+        if killed_by_damage {
+            debug!("Entity {:?} is dead; breaking concentration", target);
+            systems::spells::break_concentration(game_state, target);
+        } else {
+            let saving_throw_event = systems::d20::check(
+                game_state,
+                target,
+                &D20CheckDC::SavingThrow {
+                    saving_throw: SavingThrowKind::Concentration,
+                    dc: ModifierMap::from(
+                        ModifierSource::Base,
+                        max(
+                            CONCENTRATION_SAVING_THROW_DC_DEFAULT,
+                            damage_taken as i32 / 2,
+                        ),
+                    )
+                    .evaluate(),
+                },
+            );
+            let callback = EventCallback::new({
+                move |game_state, event, _| {
+                    match &event.kind {
+                        EventKind::D20CheckResolved { result, dc, .. } => {
+                            if !result.is_success(dc) {
+                                systems::spells::break_concentration(game_state, target);
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
+                    CallbackResult::None
                 }
-                CallbackResult::None
-            }
-        });
-        game_state.process_event_with_response_callback(saving_throw_event, callback);
+            });
+            game_state.process_event_with_response_callback(saving_throw_event, callback);
+        }
     }
 
     (Some(mitigation_result), new_life_state)
