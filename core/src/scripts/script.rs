@@ -124,7 +124,9 @@ pub enum ScriptFunction {
     ActionHook,
     ActionResultHook,
     ActionUsability,
+    ActionUsabilityHook,
     ArmorClassHook,
+    AttackedHook,
     D20AbilityHook,
     D20CheckHook,
     D20CheckResultHook,
@@ -138,6 +140,7 @@ pub enum ScriptFunction {
     ReactionTrigger,
     ResourceCostHook,
     SpeedHook,
+    TargetUsability,
     TurnStartHook,
 }
 
@@ -147,7 +150,9 @@ impl ScriptFunction {
             ScriptFunction::ActionHook => "action_hook",
             ScriptFunction::ActionResultHook => "action_result_hook",
             ScriptFunction::ActionUsability => "action_usability",
+            ScriptFunction::ActionUsabilityHook => "action_usability_hook",
             ScriptFunction::ArmorClassHook => "armor_class_hook",
+            ScriptFunction::AttackedHook => "attacked_hook",
             ScriptFunction::D20AbilityHook => "d20_ability_hook",
             ScriptFunction::D20CheckHook => "d20_check_hook",
             ScriptFunction::D20CheckResultHook => "d20_result_hook",
@@ -161,6 +166,7 @@ impl ScriptFunction {
             ScriptFunction::ReactionTrigger => "reaction_trigger",
             ScriptFunction::ResourceCostHook => "resource_cost_hook",
             ScriptFunction::SpeedHook => "speed_hook",
+            ScriptFunction::TargetUsability => "target_usability",
             ScriptFunction::TurnStartHook => "turn_start_hook",
         }
     }
@@ -168,6 +174,6 @@ impl ScriptFunction {
     pub fn defined_in_script(&self, script: &Script) -> bool {
         script
             .content
-            .contains(&format!("function {}", self.fn_name()))
+            .contains(&format!("function {}(", self.fn_name()))
     }
 }

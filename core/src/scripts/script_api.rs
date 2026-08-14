@@ -13,12 +13,12 @@ use crate::{
         actions::{
             action::{
                 ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
-                ActionResult, ActionResultComponent, DamageResult, EffectResult, EffectResultKind,
-                HealingResult,
+                ActionResult, ActionResultComponent, AttackRollProvider, DamageResult,
+                EffectResult, EffectResultKind, HealingResult,
             },
             targeting::TargetInstance,
         },
-        d20::{AdvantageAware, D20Check, D20CheckDC, D20CheckKind, D20CheckResult},
+        d20::{AdvantageAware, D20Check, D20CheckDC, D20CheckKind, D20CheckResult, RollMode},
         damage::{
             AttackSource, DamageComponent, DamageComponentResult, DamageMitigationEffect,
             DamageMitigationResult, DamageModifiable, DamageRoll, DamageRollResult,
@@ -132,13 +132,19 @@ where
 /// `FromLua` — when a script-facing function takes a `UserData` type as an
 /// argument, we need an explicit `FromLua` impl. This macro generates one
 /// that borrows the userdata and clones it out.
+///
+/// `borrow_scoped` rather than `borrow`, because most values handed *to* a script
+/// are scoped refs created inside `Lua::scope` (see the `evaluate_*` functions in
+/// `script_engine.rs`), and `borrow` rejects those with a type mismatch. Scripts
+/// routinely pass such a value straight back into another API call — e.g. the
+/// `ActionContext` a usability script receives going into `preview_attack_roll`.
 macro_rules! impl_from_lua_userdata {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl FromLua for $ty {
                 fn from_lua(value: Value, _: &Lua) -> LuaResult<Self> {
                     match value {
-                        Value::UserData(ud) => Ok(ud.borrow::<Self>()?.clone()),
+                        Value::UserData(ud) => ud.borrow_scoped::<Self, Self>(|v| v.clone()),
                         other => Err(LuaError::FromLuaConversionError {
                             from: other.type_name(),
                             to: stringify!($ty).to_string(),
@@ -325,7 +331,7 @@ impl UserData for D20CheckKind {
     }
 }
 
-fn add_advantage_method<T, M>(methods: &mut M)
+fn add_advantage_methods<T, M>(methods: &mut M)
 where
     T: AdvantageAware + UserData,
     M: UserDataMethods<T>,
@@ -341,6 +347,17 @@ where
             Ok(())
         },
     );
+
+    methods.add_method_mut("remove_advantage", |_, this, source: String| {
+        this.remove_advantage(&parse_source(&source)?);
+        Ok(())
+    });
+
+    methods.add_method("get_advantage", |_, this, source: String| {
+        Ok(this
+            .get_advantage(&parse_source(&source)?)
+            .map(|advantage| advantage.to_string().to_lowercase()))
+    });
 }
 
 impl UserData for D20Check {
@@ -352,6 +369,16 @@ impl UserData for D20Check {
                 .map(|ability| ability.to_string().to_lowercase()))
         });
         fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
+        fields.add_field_method_get("roll_mode", |_, this| {
+            Ok(match this.roll_mode() {
+                RollMode::Normal => "normal",
+                RollMode::Advantage => "advantage",
+                RollMode::Disadvantage => "disadvantage",
+            })
+        });
+        fields.add_field_method_get("action_id", |_, this| {
+            Ok(this.action().map(|action| action.to_string()))
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
@@ -376,7 +403,12 @@ impl UserData for D20Check {
             },
         );
 
-        add_advantage_method(methods);
+        methods.add_method_mut("forgo_advantage", |_, this, source: String| {
+            this.forgo_advantage(parse_source(&source)?);
+            Ok(())
+        });
+
+        add_advantage_methods(methods);
     }
 }
 
@@ -385,6 +417,9 @@ impl UserData for D20CheckResult {
         fields.add_field_method_get("kind", |_, this| Ok(this.check.kind().clone()));
         fields.add_field_method_get("total", |_, this| Ok(this.total()));
         fields.add_field_method_get("modifiers", |_, this| Ok(this.modifiers().clone()));
+        fields.add_field_method_get("action_id", |_, this| {
+            Ok(this.check.action().map(|action| action.to_string()))
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
@@ -414,7 +449,7 @@ impl UserData for D20CheckResult {
             },
         );
 
-        add_advantage_method(methods);
+        add_advantage_methods(methods);
     }
 }
 
@@ -870,6 +905,34 @@ impl UserData for GameState {
                 None => "None".to_string(),
             })
         });
+        methods.add_method(
+            "preview_attack_roll",
+            |_,
+             this,
+             (entity, target, context, action_id): (
+                ScriptEntity,
+                ScriptEntity,
+                ActionContext,
+                Option<String>,
+            )| {
+                let (entity, target) = (entity.into(), target.into());
+
+                let (_, mut check) = systems::loadout::loadout(&this.world, entity).attack_roll(
+                    &this.world,
+                    entity,
+                    target,
+                    &context,
+                );
+
+                if let Some(action_id) = action_id {
+                    check.set_action(parse_id(&action_id)?);
+                }
+
+                systems::d20::preview_attack_roll(this, entity, target, &mut check);
+
+                Ok(check)
+            },
+        );
         methods.add_method(
             "wielding_with_both_hands",
             |_, this, (entity, weapon_kind): (ScriptEntity, String)| {

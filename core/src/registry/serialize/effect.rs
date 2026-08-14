@@ -21,9 +21,10 @@ use crate::{
                 EffectLifetimeTemplate, EffectStackingPolicy,
             },
             hooks::{
-                ActionHook, ActionResultHook, ArmorClassHook, AttackedHook, D20CheckHooks,
-                DamageRollHook, DamageRollResultHook, DeathHook, PostDamageMitigationHook,
-                PreDamageMitigationHook, ResourceCostHook, SpeedHook, TurnStartHook,
+                ActionHook, ActionResultHook, ActionUsabilityHook, ArmorClassHook, AttackedHook,
+                D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
+                PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, SpeedHook,
+                TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -139,6 +140,8 @@ pub struct EffectDefinition {
     pub on_action_result: Vec<ActionResultHookDefinition>,
     #[serde(default)]
     pub on_resource_cost: Vec<ResourceCostHookDefinition>,
+    #[serde(default)]
+    pub on_action_usability: Vec<ActionUsabilityHookDefinition>,
     #[serde(default)]
     pub on_death: Vec<DeathHookDefinition>,
     #[serde(default)]
@@ -301,6 +304,15 @@ impl From<EffectDefinition> for Effect {
             if !definition.on_resource_cost.is_empty() {
                 let hooks = collect_effect_hooks(&definition.on_resource_cost, &effect_id);
                 effect.on_resource_cost = Some(ResourceCostHookDefinition::combine_hooks(hooks));
+            }
+        }
+
+        // Build action usability hooks
+        {
+            if !definition.on_action_usability.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_action_usability, &effect_id);
+                effect.on_action_usability =
+                    Some(ActionUsabilityHookDefinition::combine_hooks(hooks));
             }
         }
 
@@ -884,10 +896,14 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum AttackedHookDefinition {
+    Script {
+        script: ScriptId,
+    },
     Modifier {
         modifier: D20Modifier,
         #[serde(default)]
         attacked_by: Option<EffectEntiyReference>,
+        #[serde(default)]
         distance: Option<LengthExpressionDefinition>,
     },
 }
@@ -895,6 +911,21 @@ pub enum AttackedHookDefinition {
 impl HookEffect<AttackedHook> for AttackedHookDefinition {
     fn build_hook(&self, effect: &EffectId) -> AttackedHook {
         match self {
+            AttackedHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &GameState,
+                          effect: &EffectInstance,
+                          victim: Entity,
+                          attacker: Entity,
+                          check: &mut D20Check| {
+                        systems::scripts::evaluate_attacked_hook(
+                            &script_id, game_state, effect, victim, attacker, check,
+                        );
+                    },
+                )
+            }
+
             AttackedHookDefinition::Modifier {
                 modifier,
                 attacked_by,
@@ -906,14 +937,16 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                     let attacked_by = attacked_by.clone();
                     let distance = distance.clone();
 
-                    move |world: &World,
+                    move |game_state: &GameState,
                           effect: &EffectInstance,
                           victim: Entity,
                           attacker: Entity,
                           check: &mut D20Check| {
                         if let Some(distance_expression) = &distance {
                             let distance_between = systems::geometry::distance_between_entities(
-                                world, victim, attacker,
+                                &game_state.world,
+                                victim,
+                                attacker,
                             )
                             .unwrap();
 
@@ -1213,6 +1246,46 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
                 for hook in &hooks {
                     hook(game_state, entity, action, context, resource_costs);
                 }
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ActionUsabilityHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<ActionUsabilityHook> for ActionUsabilityHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> ActionUsabilityHook {
+        match self {
+            ActionUsabilityHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &GameState,
+                          entity: Entity,
+                          action: &ActionId,
+                          context: &ActionContext| {
+                        systems::scripts::evaluate_action_usability_hook(
+                            &script_id, game_state, entity, action, context,
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    /// The first hook to object wins
+    fn combine_hooks(hooks: Vec<ActionUsabilityHook>) -> ActionUsabilityHook {
+        Arc::new(
+            move |game_state: &GameState,
+                  entity: Entity,
+                  action: &ActionId,
+                  context: &ActionContext| {
+                hooks
+                    .iter()
+                    .find_map(|hook| hook(game_state, entity, action, context))
             },
         )
     }

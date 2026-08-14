@@ -52,7 +52,11 @@ pub type DisplacementFunction =
 pub type AreaShapeFunction = dyn Fn(&World, Entity, &ActionContext) -> AreaShape + Send + Sync;
 /// Return an optional string describing why the action is not usable, or None if the action is usable.
 pub type ActionUsabilityFunction =
-    dyn Fn(&GameState, Entity, &ActionContext) -> Option<String> + Send + Sync;
+    dyn Fn(&GameState, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync;
+/// Same, but for conditions that depend on who is being targeted, e.g. Brutal Strike
+/// needs Advantage on the attack roll against *this* target.
+pub type TargetUsabilityFunction =
+    dyn Fn(&GameState, Entity, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -80,6 +84,8 @@ pub struct Action {
     /// can be used to provide that logic, e.g. Rage can only be used if the character
     /// is not wearing heavy armor
     pub usability: Option<Arc<ActionUsabilityFunction>>,
+    /// Like `usability`, but checked per entity target once one has been chosen
+    pub target_usability: Option<Arc<TargetUsabilityFunction>>,
 }
 
 impl Action {

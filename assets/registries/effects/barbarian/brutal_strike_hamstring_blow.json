@@ -1,0 +1,11 @@
+{
+    "id": "nat20_core::effect.barbarian.brutal_strike.hamstring_blow",
+    "kind": "debuff",
+    "description": "Your Speed is reduced by 15 feet. A target can be affected by only one Hamstring Blow at a time - the most recent one.",
+    "stacking_policy": "refresh_duration",
+    "modifiers": [
+        {
+            "speed": "-15 feet"
+        }
+    ]
+}

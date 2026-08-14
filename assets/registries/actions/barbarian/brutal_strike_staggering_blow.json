@@ -1,10 +1,11 @@
 {
-    "id": "nat20_core::action.barbarian.reckless_attack",
-    "description": "You can throw aside all concern for defense to attack with increased ferocity. Doing so gives you Advantage on attack rolls using Strength until the start of your next turn, but attack rolls against you have Advantage during that time.",
+    "id": "nat20_core::action.barbarian.brutal_strike.staggering_blow",
+    "description": "The target has Disadvantage on the next saving throw it makes, and it can't make Opportunity Attacks until the start of your next turn.",
     "kind": {
         "standard": {
             "phases": [
                 {
+                    "targets": "actor",
                     "payload": {
                         "components": [
                             {
@@ -23,8 +24,7 @@
                             }
                         ],
                         "delivery": "immediate"
-                    },
-                    "targets": "actor"
+                    }
                 },
                 {
                     "condition": {
@@ -34,6 +34,28 @@
                         "components": [
                             {
                                 "damage": "attack_context"
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                },
+                {
+                    "requires": "success",
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.barbarian.brutal_strike.staggering_blow",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "boundary": "start",
+                                            "entity": "applier",
+                                            "duration": {
+                                                "turns": 1
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         ],
                         "delivery": "immediate"
@@ -62,9 +84,12 @@
             }
         }
     ],
-    "cooldown": "turn",
     "resource_cost": {
-        "nat20_core::resource.action": 1
+        "nat20_core::resource.action": 1,
+        "nat20_core::resource.barbarian.brutal_strike": 1
+    },
+    "target_usability": {
+        "script": "nat20_core::script.action.barbarian.brutal_strike"
     },
     "timeline": {
         "perform_time": 0.5,

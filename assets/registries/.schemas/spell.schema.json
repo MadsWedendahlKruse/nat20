@@ -66,6 +66,17 @@
         "school": {
             "$ref": "#/definitions/MagicSchool"
         },
+        "target_usability": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/TargetUsabilityDefinition"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
         "targeting": {
             "$ref": "#/definitions/TargetingDefinition"
         },
@@ -1475,6 +1486,22 @@
             "description": "Registry id `[namespace::]subclass.<name>`, e.g. `nat20_core::subclass.example`. The namespace defaults to `nat20_core`.",
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?subclass[A-Za-z0-9_.]*$"
+        },
+        "TargetUsabilityDefinition": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
         },
         "TargetingContextDefinition": {
             "type": "object",

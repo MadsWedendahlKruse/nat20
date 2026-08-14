@@ -10,6 +10,7 @@ use crate::{
             Action, ActionCondition, ActionContext, ActionKind, ActionPayload,
             ActionPayloadComponent, ActionPhaseSpec, ActionTimeline, ActionUsabilityFunction,
             DamageOnFailure, PayloadDelivery, PhaseRequirement, PhaseTargets,
+            TargetUsabilityFunction,
         },
         id::{ActionId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
@@ -54,6 +55,10 @@ pub struct ActionDefinition {
     pub timeline: ActionTimeline,
     #[serde(default)]
     pub usability: Option<ActionUsabilityDefinition>,
+    /// Checked once a target has been chosen, for conditions that depend on who is
+    /// being targeted (e.g. Brutal Strike needs Advantage against *this* target)
+    #[serde(default)]
+    pub target_usability: Option<TargetUsabilityDefinition>,
 }
 
 impl RegistryReferenceCollector for ActionDefinition {
@@ -76,6 +81,14 @@ impl RegistryReferenceCollector for ActionDefinition {
             collector.add(RegistryReference::Script(
                 script_id.clone(),
                 ScriptFunction::ActionUsability,
+            ));
+        }
+        if let Some(target_usability) = &self.target_usability
+            && let TargetUsabilityDefinition::Script(script_id) = target_usability
+        {
+            collector.add(RegistryReference::Script(
+                script_id.clone(),
+                ScriptFunction::TargetUsability,
             ));
         }
     }
@@ -142,6 +155,9 @@ impl From<ActionDefinition> for Action {
             reaction_trigger: value.reaction_trigger.map(Into::into),
             timeline: value.timeline,
             usability: value.usability.map(|usability| usability.function()),
+            target_usability: value
+                .target_usability
+                .map(|target_usability| target_usability.function()),
         }
     }
 }
@@ -460,11 +476,38 @@ impl ActionUsabilityDefinition {
         match self {
             ActionUsabilityDefinition::Script(script_id) => Arc::new({
                 let script_id = script_id.clone();
-                move |game_state, entity, action_context| {
+                move |game_state, entity, action_id, action_context| {
                     systems::scripts::evaluate_action_usability(
                         &script_id,
                         game_state,
                         entity,
+                        action_id,
+                        action_context,
+                    )
+                }
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetUsabilityDefinition {
+    Script(ScriptId),
+}
+
+impl TargetUsabilityDefinition {
+    pub fn function(&self) -> Arc<TargetUsabilityFunction> {
+        match self {
+            TargetUsabilityDefinition::Script(script_id) => Arc::new({
+                let script_id = script_id.clone();
+                move |game_state, entity, target, action_id, action_context| {
+                    systems::scripts::evaluate_target_usability(
+                        &script_id,
+                        game_state,
+                        entity,
+                        target,
+                        action_id,
                         action_context,
                     )
                 }

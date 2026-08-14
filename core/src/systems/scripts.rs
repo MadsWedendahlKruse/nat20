@@ -15,7 +15,7 @@ use crate::{
     },
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::ScriptsRegistry,
-    scripts::script_engine::SCRIPT_ENGINE,
+    scripts::{script::ScriptError, script_engine::SCRIPT_ENGINE},
 };
 
 // TODO: Since we only have single languauge support, do we still need all these
@@ -422,6 +422,7 @@ pub fn evaluate_action_usability(
     action_usability: &ScriptId,
     game_state: &GameState,
     entity: Entity,
+    action_id: &ActionId,
     action_context: &ActionContext,
 ) -> Option<String> {
     let script = ScriptsRegistry::get(action_usability).expect(
@@ -431,14 +432,101 @@ pub fn evaluate_action_usability(
         )
         .as_str(),
     );
-    match SCRIPT_ENGINE.evaluate_action_usability(script, game_state, entity, action_context) {
+    match SCRIPT_ENGINE.evaluate_action_usability(
+        script,
+        game_state,
+        entity,
+        action_id,
+        action_context,
+    ) {
         Ok(result) => result,
-        Err(err) => {
-            error!(
-                "Error evaluating action usability script {:?} for entity {:?}: {:?}",
-                action_usability, entity, err
-            );
-            None
-        }
+        Err(err) => Some(usability_script_error(action_usability, entity, err)),
+    }
+}
+
+pub fn evaluate_action_usability_hook(
+    action_usability_hook: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    action_id: &ActionId,
+    action_context: &ActionContext,
+) -> Option<String> {
+    let script = ScriptsRegistry::get(action_usability_hook).expect(
+        format!(
+            "Action usability hook script not found in registry: {:?}",
+            action_usability_hook
+        )
+        .as_str(),
+    );
+    match SCRIPT_ENGINE.evaluate_action_usability_hook(
+        script,
+        game_state,
+        entity,
+        action_id,
+        action_context,
+    ) {
+        Ok(result) => result,
+        Err(err) => Some(usability_script_error(action_usability_hook, entity, err)),
+    }
+}
+
+pub fn evaluate_target_usability(
+    target_usability: &ScriptId,
+    game_state: &GameState,
+    entity: Entity,
+    target: Entity,
+    action_id: &ActionId,
+    action_context: &ActionContext,
+) -> Option<String> {
+    let script = ScriptsRegistry::get(target_usability).expect(
+        format!(
+            "Target usability script not found in registry: {:?}",
+            target_usability
+        )
+        .as_str(),
+    );
+    match SCRIPT_ENGINE.evaluate_target_usability(
+        script,
+        game_state,
+        entity,
+        target,
+        action_id,
+        action_context,
+    ) {
+        Ok(result) => result,
+        Err(err) => Some(usability_script_error(target_usability, entity, err)),
+    }
+}
+
+fn usability_script_error(script: &ScriptId, entity: Entity, err: ScriptError) -> String {
+    error!(
+        "Error evaluating usability script {:?} for entity {:?}: {:?}",
+        script, entity, err
+    );
+    format!("Script error in {}: {:?}", script, err)
+}
+
+pub fn evaluate_attacked_hook(
+    attacked_hook: &ScriptId,
+    game_state: &GameState,
+    effect: &EffectInstance,
+    victim: Entity,
+    attacker: Entity,
+    check: &mut D20Check,
+) {
+    let script = ScriptsRegistry::get(attacked_hook).expect(
+        format!(
+            "Attacked hook script not found in registry: {:?}",
+            attacked_hook
+        )
+        .as_str(),
+    );
+    if let Err(err) =
+        SCRIPT_ENGINE.evaluate_attacked_hook(script, game_state, effect, victim, attacker, check)
+    {
+        error!(
+            "Error evaluating attacked hook script {:?} for victim {:?}: {:?}",
+            attacked_hook, victim, err
+        );
     }
 }

@@ -29,6 +29,7 @@ local function rage_damage(game_state, entity)
     return rage_damage_table[barbarian_level] or "4"
 end
 
+--- Can Rage be used
 ---@type ActionUsabilityFn
 local function action_usability(game_state, entity, context)
     if game_state:armor_type(entity) == "Heavy" then
@@ -44,6 +45,14 @@ local function action_usability(game_state, entity, context)
     end
 
     return nil
+end
+
+--- Can an action be used while Rage is active
+---@type ActionUsabilityHookFn
+local function action_usability_hook(game_state, entity, action_id, context)
+    if context:is_spell() then
+        return "Cannot cast spells while Raging"
+    end
 end
 
 ---@type DamageRollHookFn
@@ -115,6 +124,7 @@ end
 
 return {
     action_usability = action_usability,
+    action_usability_hook = action_usability_hook,
     damage_roll_hook = damage_roll_hook,
     event_filter = event_filter,
     action_hook = action_hook,

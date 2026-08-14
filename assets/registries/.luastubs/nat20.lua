@@ -182,10 +182,24 @@ function D20CheckKind:attack_roll() end
 ---@field kind D20CheckKind
 ---@field ability string?
 ---@field modifiers ModifierMap
+---@field roll_mode string -- normal/advantage/disadvantage
+---@field action_id string?
 local D20Check = {}
 ---@param advantage string -- advantage/disadvantage
 ---@param source string
 function D20Check:add_advantage(advantage, source) end
+
+---@param source string
+function D20Check:remove_advantage(source) end
+
+---@param source string
+---@return string? -- advantage/disadvantage
+function D20Check:get_advantage(source) end
+
+--- Give up any Advantage on this roll. The entries stay in the breakdown, but stop
+--- counting towards the roll mode
+---@param source string
+function D20Check:forgo_advantage(source) end
 
 ---@param modifier string
 ---@param source string
@@ -202,6 +216,7 @@ function D20Check:replace_modifier(new_modifier, source) end
 ---@field kind D20CheckKind
 ---@field total integer
 ---@field modifiers ModifierResult
+---@field action_id string?
 local D20CheckResult = {}
 
 ---@param dc D20CheckDC
@@ -334,6 +349,14 @@ function GameState:armor_type(entity) end
 ---@return boolean
 function GameState:wielding_with_both_hands(entity, weapon_kind) end
 
+--- Apply Attack Roll hooks, but without making the actual roll
+---@param entity ScriptEntity
+---@param target ScriptEntity
+---@param context ActionContext
+---@param action_id string?
+---@return D20Check
+function GameState:preview_attack_roll(entity, target, context, action_id) end
+
 ---@param applier ScriptEntity
 ---@param target ScriptEntity
 ---@param effect_id string
@@ -394,7 +417,9 @@ local TimeDuration = {}
 ---@alias ActionHookFn fun(game_state: GameState, action: ActionData)
 ---@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
 ---@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
+---@alias ActionUsabilityHookFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
 ---@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
+---@alias AttackedHookFn fun(game_state: GameState, effect: EffectInstance, victim: ScriptEntity, attacker: ScriptEntity, check: D20Check)
 ---@alias D20AbilityHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check): string|nil
 ---@alias D20CheckHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check)
 ---@alias D20CheckResultHookFn fun(game_state: GameState, entity: ScriptEntity, result: D20CheckResult)
@@ -408,4 +433,5 @@ local TimeDuration = {}
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
 ---@alias SpeedHookFn fun(game_state: GameState, entity: ScriptEntity, speed: Speed)
+---@alias TargetUsabilityFn fun(game_state: GameState, entity: ScriptEntity, target: ScriptEntity, action_id: string, context: ActionContext): string?
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)

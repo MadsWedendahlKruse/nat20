@@ -1,6 +1,7 @@
 use std::{cmp::max, collections::HashMap, hash::Hash};
 
 use hecs::Entity;
+use indexmap::IndexMap;
 use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ use crate::{
     components::{
         ability::Ability,
         damage::AttackSource,
-        id::EntityIdentifier,
+        id::{ActionId, EntityIdentifier},
         items::equipment::armor::ArmorClass,
         modifier::{
             FlatModifiable, FlatModifierMap, KeyedModifiable, Modifiable, ModifierKind,
@@ -36,6 +37,8 @@ use crate::{
 pub trait AdvantageAware {
     fn add_advantage(&mut self, kind: AdvantageType, source: ModifierSource);
     fn remove_advantage(&mut self, source: &ModifierSource);
+    fn get_advantage(&self, source: &ModifierSource) -> Option<&AdvantageType>;
+    fn roll_mode(&self) -> RollMode;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,35 +55,47 @@ pub enum AdvantageType {
     Disadvantage,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AdvantageSource {
-    pub kind: AdvantageType,
-    pub source: ModifierSource,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AdvantageTracker {
-    sources: Vec<AdvantageSource>,
+    sources: IndexMap<ModifierSource, AdvantageType>,
+    /// Set when the roll deliberately gives up Advantage (e.g. Brutal Strike).
+    /// The entries stay in the list so the breakdown can still show what was given up.
+    /// TODO: Think of a nicer way to do this
+    forgone: Option<ModifierSource>,
 }
 
 impl AdvantageTracker {
     pub fn new() -> Self {
         Self {
-            sources: Vec::new(),
+            sources: IndexMap::new(),
+            forgone: None,
         }
     }
 
     pub fn add(&mut self, kind: AdvantageType, source: ModifierSource) {
-        self.sources.push(AdvantageSource { kind, source });
+        self.sources.insert(source, kind);
     }
 
     pub fn remove(&mut self, source: &ModifierSource) {
-        self.sources.retain(|s| &s.source != source);
+        self.sources.shift_remove(source);
+    }
+
+    /// Give up any Advantage on this roll (e.g. "Brutal Strike: you can forgo any
+    /// Advantage on one attack roll"). Entries are kept rather than removed to
+    /// make it independent of the order the hooks are run in
+    pub fn forgo_advantage(&mut self, source: ModifierSource) {
+        self.forgone = Some(source);
+    }
+
+    pub fn forgone(&self) -> Option<&ModifierSource> {
+        self.forgone.as_ref()
     }
 
     pub fn roll_mode(&self) -> RollMode {
-        match self.sources.iter().fold(0, |acc, s| {
-            acc + match s.kind {
+        let forgone = self.forgone.is_some();
+        match self.sources.iter().fold(0, |acc, (_, advantage)| {
+            acc + match *advantage {
+                AdvantageType::Advantage if forgone => 0,
                 AdvantageType::Advantage => 1,
                 AdvantageType::Disadvantage => -1,
             }
@@ -91,8 +106,8 @@ impl AdvantageTracker {
         }
     }
 
-    pub fn summary(&self) -> Vec<(&ModifierSource, AdvantageType)> {
-        self.sources.iter().map(|s| (&s.source, s.kind)).collect()
+    pub fn summary(&self) -> &IndexMap<ModifierSource, AdvantageType> {
+        &self.sources
     }
 }
 
@@ -144,6 +159,7 @@ impl D20CheckKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct D20Check {
     kind: D20CheckKind,
+    action: Option<ActionId>,
     ability: Option<Ability>,
     modifiers: ModifierMap,
     proficiency: Proficiency,
@@ -157,6 +173,7 @@ impl D20Check {
         let ability = kind.ability();
         Self {
             kind,
+            action: None,
             ability,
             modifiers: ModifierMap::default(),
             proficiency,
@@ -168,6 +185,14 @@ impl D20Check {
 
     pub fn kind(&self) -> &D20CheckKind {
         &self.kind
+    }
+
+    pub fn action(&self) -> Option<&ActionId> {
+        self.action.as_ref()
+    }
+
+    pub fn set_action(&mut self, action: ActionId) {
+        self.action = Some(action);
     }
 
     pub fn ability(&self) -> Option<Ability> {
@@ -208,6 +233,10 @@ impl D20Check {
 
     pub fn advantage_tracker_mut(&mut self) -> &mut AdvantageTracker {
         &mut self.advantage_tracker
+    }
+
+    pub fn forgo_advantage(&mut self, source: ModifierSource) {
+        self.advantage_tracker.forgo_advantage(source);
     }
 
     pub fn set_forced_outcome(&mut self, source: ModifierSource, outcome: D20CheckOutcome) {
@@ -272,20 +301,23 @@ impl D20Check {
         }
     }
 
-    pub fn roll_hooks(&self, game_state: &GameState, entity: Entity) -> D20CheckResult {
-        let mut check = self.clone();
-
+    pub fn apply_pre_roll_hooks(&mut self, game_state: &GameState, entity: Entity) {
         let proficiency_bonus = systems::helpers::level(&game_state.world, entity)
             .unwrap()
             .proficiency_bonus();
 
-        check.replace_modifier(
-            ModifierSource::Proficiency(check.proficiency.level().clone()),
-            check.proficiency.bonus(proficiency_bonus) as i32,
+        self.replace_modifier(
+            ModifierSource::Proficiency(self.proficiency.level().clone()),
+            self.proficiency.bonus(proficiency_bonus) as i32,
         );
 
         systems::effects::effects(&game_state.world, entity)
-            .pre_d20_check(game_state, entity, &mut check);
+            .pre_d20_check(game_state, entity, self);
+    }
+
+    pub fn roll_hooks(&self, game_state: &GameState, entity: Entity) -> D20CheckResult {
+        let mut check = self.clone();
+        check.apply_pre_roll_hooks(game_state, entity);
 
         let mut result = check.roll();
 
@@ -341,7 +373,7 @@ impl D20Check {
         self.modifiers.add_modifier_map(&other.modifiers);
 
         for (source, advantage) in other.advantage_tracker.summary() {
-            self.advantage_tracker.add(advantage, source.clone());
+            self.advantage_tracker.add(*advantage, source.clone());
         }
 
         self.crit_threshold_reduction
@@ -352,7 +384,9 @@ impl D20Check {
         }
     }
 
-    pub fn success_probability(&self, target_dc: u32, proficiency_bonus: u8) -> Range<f32> {
+    /// Expects a check that has been through `apply_pre_roll_hooks`, which is where
+    /// the proficiency bonus enters the modifier map
+    pub fn success_probability(&self, target_dc: u32) -> Range<f32> {
         if let Some(forced_outcome) = &self.forced_outcome {
             return match forced_outcome.1 {
                 D20CheckOutcome::Success | D20CheckOutcome::CriticalSuccess => Range::single(1.0),
@@ -361,7 +395,6 @@ impl D20Check {
         }
 
         let total_modifier = self.modifiers.range();
-        let total_modifier = total_modifier.add(self.proficiency.bonus(proficiency_bonus) as i32);
 
         let roll_mode = self.advantage_tracker.roll_mode();
 
@@ -391,6 +424,14 @@ impl AdvantageAware for D20Check {
 
     fn remove_advantage(&mut self, source: &ModifierSource) {
         self.advantage_tracker.remove(source);
+    }
+
+    fn get_advantage(&self, source: &ModifierSource) -> Option<&AdvantageType> {
+        self.advantage_tracker.sources.get(source)
+    }
+
+    fn roll_mode(&self) -> RollMode {
+        self.advantage_tracker.roll_mode()
     }
 }
 
@@ -518,6 +559,14 @@ impl AdvantageAware for D20CheckResult {
         let new_roll_mode = self.check.advantage_tracker().roll_mode();
 
         self.update_roll_based_on_mode(original_roll_mode, new_roll_mode);
+    }
+
+    fn get_advantage(&self, source: &ModifierSource) -> Option<&AdvantageType> {
+        self.check.advantage_tracker().sources.get(source)
+    }
+
+    fn roll_mode(&self) -> RollMode {
+        self.check.advantage_tracker().roll_mode()
     }
 }
 
@@ -812,7 +861,14 @@ mod tests {
         let proficiency_bonus = 2;
         let target_dc = 15;
 
-        let success_probability = check.success_probability(target_dc, proficiency_bonus);
+        // Proficiency reaches the modifier map in `apply_pre_roll_hooks`, which needs
+        // a GameState, so add it here manually for the test
+        check.modifiers.add_modifier(
+            ModifierSource::Proficiency(check.proficiency.level().clone()),
+            check.proficiency.bonus(proficiency_bonus) as i32,
+        );
+
+        let success_probability = check.success_probability(target_dc);
         println!(
             "Success probability against DC {}: {:.2}%",
             target_dc,

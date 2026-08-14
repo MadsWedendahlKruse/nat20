@@ -1,0 +1,26 @@
+{
+    "id": "nat20_core::effect.barbarian.brutal_strike.staggering_blow",
+    "kind": "debuff",
+    "description": "You have Disadvantage on the next saving throw you make, and you can't make Opportunity Attacks until the start of the attacker's next turn.",
+    "on_saving_throw": [
+        {
+            "script": "nat20_core::script.effect.barbarian.brutal_strike_staggering_blow"
+        }
+    ],
+    "on_action_usability": [
+        {
+            "script": "nat20_core::script.effect.barbarian.brutal_strike_staggering_blow"
+        }
+    ],
+    "end_conditions": [
+        {
+            "event": {
+                "d20_check": {
+                    "kind": "saving_throw",
+                    "roller": "target"
+                }
+            },
+            "on_trigger": "remove"
+        }
+    ]
+}

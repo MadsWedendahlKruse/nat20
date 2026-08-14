@@ -4,7 +4,7 @@ use crate::{
     components::{
         d20::{D20Check, D20CheckDC, D20CheckKind, D20CheckResult},
         damage::AttackSource,
-        id::EntityIdentifier,
+        id::{ActionId, EntityIdentifier},
         items::equipment::loadout::Loadout,
         saving_throw::SavingThrowSet,
         skill::SkillSet,
@@ -66,24 +66,58 @@ pub fn get_mut(world: &mut World, entity: Entity, kind: D20CheckKind) -> &mut D2
     }
 }
 
-pub fn check_no_event(game_state: &GameState, entity: Entity, dc: &D20CheckDC) -> D20CheckResult {
+pub fn check_no_event(
+    game_state: &GameState,
+    entity: Entity,
+    dc: &D20CheckDC,
+    action: Option<&ActionId>,
+) -> D20CheckResult {
     // TODO: Figure out a way around this
     if let D20CheckDC::AttackRoll { .. } = dc {
         panic!("check_no_event cannot be used for attack rolls; use check_attack instead");
     }
 
-    get(&game_state.world, entity, dc.kind())
-        .roll_dc(game_state, entity, dc)
-        .unwrap()
+    let mut check = (*get(&game_state.world, entity, dc.kind())).clone();
+    if let Some(action) = action {
+        check.set_action(action.clone());
+    }
+
+    check.roll_dc(game_state, entity, dc).unwrap()
 }
 
 #[must_use]
 pub fn check(game_state: &mut GameState, entity: Entity, dc: &D20CheckDC) -> Event {
+    check_with_action(game_state, entity, dc, None)
+}
+
+#[must_use]
+pub fn check_with_action(
+    game_state: &mut GameState,
+    entity: Entity,
+    dc: &D20CheckDC,
+    action: Option<&ActionId>,
+) -> Event {
     Event::new(EventKind::D20CheckPerformed {
         actor: EntityIdentifier::from_world(&game_state.world, entity),
-        result: check_no_event(game_state, entity, dc),
+        result: check_no_event(game_state, entity, dc, action),
         dc: dc.clone(),
     })
+}
+
+pub fn preview_attack_roll(
+    game_state: &GameState,
+    attacker: Entity,
+    target: Entity,
+    check: &mut D20Check,
+) {
+    systems::effects::effects(&game_state.world, target).on_attacked(
+        &game_state,
+        target,
+        attacker,
+        check,
+    );
+
+    check.apply_pre_roll_hooks(game_state, attacker);
 }
 
 #[must_use]
@@ -94,14 +128,14 @@ pub fn check_attack(
     source: AttackSource,
     mut check: D20Check,
 ) -> Event {
-    systems::effects::effects(&game_state.world, target).on_attacked(
-        &game_state.world,
-        target,
-        attacker,
-        &mut check,
-    );
+    preview_attack_roll(game_state, attacker, target, &mut check);
 
-    let result = check.roll_hooks(game_state, attacker);
+    let mut result = check.roll();
+    systems::effects::effects(&game_state.world, attacker).post_d20_check(
+        game_state,
+        attacker,
+        &mut result,
+    );
 
     let armor_class = systems::loadout::armor_class(game_state, target);
 

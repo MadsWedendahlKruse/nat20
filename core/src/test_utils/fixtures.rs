@@ -149,6 +149,80 @@ pub mod creatures {
                         "nat20_core",
                         "class.barbarian",
                     ))),
+                    // Level 8
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Constitution,
+                        2,
+                    )])),
+                    // Level 9
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 10
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 11
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 12
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Constitution,
+                        2,
+                    )])),
+                    // Level 13
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 14
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 15
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    // Level 16
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
+                    LevelUpDecision::single_choice(ChoiceItem::Feat(FeatId::new(
+                        "nat20_core",
+                        "feat.ability_score_improvement",
+                    ))),
+                    LevelUpDecision::AbilityScoreImprovement(HashMap::from([(
+                        Ability::Dexterity,
+                        2,
+                    )])),
+                    // Level 17
+                    LevelUpDecision::single_choice(ChoiceItem::Class(ClassId::new(
+                        "nat20_core",
+                        "class.barbarian",
+                    ))),
                 ],
             );
 

@@ -1,0 +1,24 @@
+{
+    "id": "nat20_core::effect.barbarian.brutal_strike.sundering_blow",
+    "kind": "debuff",
+    "description": "The next attack roll made against you gains a +5 bonus to the roll.",
+    "stacking_policy": "refresh_duration",
+    "on_attacked": [
+        {
+            "script": "nat20_core::script.effect.barbarian.brutal_strike_sundering_blow"
+        }
+    ],
+    "end_conditions": [
+        {
+            "event": {
+                "script": {
+                    "events": [
+                        "d20_check_performed"
+                    ],
+                    "script": "nat20_core::script.effect.barbarian.brutal_strike_sundering_blow"
+                }
+            },
+            "on_trigger": "remove"
+        }
+    ]
+}

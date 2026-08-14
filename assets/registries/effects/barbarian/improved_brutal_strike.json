@@ -1,0 +1,21 @@
+{
+    "id": "nat20_core::effect.barbarian.improved_brutal_strike",
+    "kind": "buff",
+    "description": "If you use Reckless Attack, you can forgo any Advantage on one Strength-based attack roll of your choice on your turn. The chosen attack roll mustn't have Disadvantage. If the chosen attack roll hits, the target takes an extra 1d10 damage of the same type dealt by the weapon or Unarmed Strike, and you can cause one Brutal Strike effect of your choice. You have the following effect options:\n\tForceful Blow. The target is pushed 15 feet straight away from you. You can then move up to half your Speed straight toward the target without provoking Opportunity Attacks.\n\tHamstring Blow. The target's Speed is reduced by 15 feet until the start of your next turn. A target can be affected by only one Hamstring Blow at a time - the most recent one.\n\tStaggering Blow. The target has Disadvantage on the next saving throw it makes, and it can't make Opportunity Attacks until the start of your next turn.\n\tSundering Blow. Before the start of your next turn, the next attack roll made by another creature against the target gains a +5 bonus to the roll. An attack roll can gain only one Sundering Blow bonus.",
+    "replaces": "nat20_core::effect.barbarian.brutal_strike",
+    "actions": [
+        {
+            "id": "nat20_core::action.barbarian.improved_brutal_strike"
+        }
+    ],
+    "pre_damage_roll": [
+        {
+            "script": "nat20_core::script.effect.barbarian.brutal_strike"
+        }
+    ],
+    "on_attack_roll": [
+        {
+            "script": "nat20_core::script.effect.barbarian.brutal_strike"
+        }
+    ]
+}

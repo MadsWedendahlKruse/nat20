@@ -45,6 +45,11 @@
             "script": "nat20_core::script.action.barbarian.rage"
         }
     ],
+    "on_action_usability": [
+        {
+            "script": "nat20_core::script.action.barbarian.rage"
+        }
+    ],
     "actions": [
         {
             "id": "nat20_core::action.barbarian.extend_rage"

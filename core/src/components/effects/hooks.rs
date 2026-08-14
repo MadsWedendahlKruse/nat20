@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use hecs::{Entity, World};
+use hecs::Entity;
 
 use crate::{
     components::{
@@ -23,7 +23,7 @@ pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 /// Hook for when an entity is attacked. Parameters are: world, effect instance,
 /// victim, attacker, the attacker's (not yet rolled) check.
 pub type AttackedHook =
-    Arc<dyn Fn(&World, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
+    Arc<dyn Fn(&GameState, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
 pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
 pub type SpeedHook = Arc<dyn Fn(&GameState, Entity, &mut Speed) + Send + Sync>;
 pub type D20AbilityHook =
@@ -45,6 +45,9 @@ pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &ActionResul
 pub type ResourceCostHook = Arc<
     dyn Fn(&GameState, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync,
 >;
+/// Hook for effects which block certain actions, returns block reason if any
+pub type ActionUsabilityHook =
+    Arc<dyn Fn(&GameState, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync>;
 pub type PreDamageMitigationHook = Arc<
     dyn Fn(
             &GameState,

@@ -200,8 +200,17 @@ pub fn action_usable(
     }
 
     if let Some(usability_fn) = &action.usability
-        && let Some(reason) = usability_fn(game_state, entity, action_context)
+        && let Some(reason) = usability_fn(game_state, entity, action_id, action_context)
     {
+        return Err(ActionUsabilityError::UsabilityFunctionError(reason));
+    }
+
+    if let Some(reason) = systems::effects::effects(&game_state.world, entity).action_usability(
+        game_state,
+        entity,
+        action_id,
+        action_context,
+    ) {
         return Err(ActionUsabilityError::UsabilityFunctionError(reason));
     }
 
@@ -225,6 +234,21 @@ pub fn action_usable_on_targets(
         resource_cost,
         skip_checks,
     )?;
+
+    if let Some(action) = get_action(action_id)
+        && let Some(target_usability) = &action.target_usability
+    {
+        for target in targets {
+            let TargetInstance::Entity { entity, .. } = target else {
+                continue;
+            };
+            if let Some(reason) =
+                target_usability(game_state, actor, entity.id(), action_id, context)
+            {
+                return Err(ActionUsabilityError::UsabilityFunctionError(reason));
+            }
+        }
+    }
 
     let targeting_context = targeting_context(&game_state.world, actor, action_id, context);
 

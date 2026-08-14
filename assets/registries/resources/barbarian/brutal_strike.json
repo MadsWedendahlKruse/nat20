@@ -1,0 +1,5 @@
+{
+    "id": "nat20_core::resource.barbarian.brutal_strike",
+    "kind": "flat",
+    "recharge": "turn"
+}

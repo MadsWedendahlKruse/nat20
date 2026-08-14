@@ -11,7 +11,7 @@ use crate::{
         actions::{
             action::{
                 Action, ActionContext, ActionKind, ActionTimeline, ActionUsabilityFunction,
-                TargetingFunction,
+                TargetUsabilityFunction, TargetingFunction,
             },
             reaction::ReactionTrigger,
         },
@@ -70,6 +70,7 @@ impl Spell {
         reaction_trigger: Option<ReactionTrigger>,
         timeline: ActionTimeline,
         usability: Option<Arc<ActionUsabilityFunction>>,
+        target_usability: Option<Arc<TargetUsabilityFunction>>,
     ) -> Self {
         let action_id = id.clone().into();
 
@@ -89,6 +90,7 @@ impl Spell {
                 reaction_trigger,
                 timeline,
                 usability,
+                target_usability,
             },
         }
     }

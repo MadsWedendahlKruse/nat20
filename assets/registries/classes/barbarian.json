@@ -50,7 +50,8 @@
             "nat20_core::effect.barbarian.unarmored_defense"
         ],
         "2": [
-            "nat20_core::effect.barbarian.danger_sense"
+            "nat20_core::effect.barbarian.danger_sense",
+            "nat20_core::effect.barbarian.reckless_attack"
         ],
         "3": [
             "nat20_core::effect.barbarian.primal_knowledge"
@@ -62,6 +63,12 @@
         "7": [
             "nat20_core::effect.barbarian.feral_instinct",
             "nat20_core::effect.barbarian.instinctive_pounce"
+        ],
+        "9": [
+            "nat20_core::effect.barbarian.brutal_strike"
+        ],
+        "13": [
+            "nat20_core::effect.barbarian.improved_brutal_strike"
         ]
     },
     "resources_by_level": {
@@ -81,6 +88,12 @@
             {
                 "id": "nat20_core::resource.barbarian.rage",
                 "budget": "4"
+            }
+        ],
+        "9": [
+            {
+                "id": "nat20_core::resource.barbarian.brutal_strike",
+                "budget": "1"
             }
         ],
         "12": [
@@ -150,10 +163,6 @@
     "actions_by_level": {
         "1": [
             "nat20_core::action.barbarian.rage"
-        ],
-        "2": [
-            "nat20_core::action.barbarian.reckless_attack",
-            "nat20_core::action.barbarian.reckless_attack_reaction"
         ]
     }
 }

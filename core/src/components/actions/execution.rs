@@ -408,8 +408,9 @@ impl StepState {
             ActionCondition::None => unreachable!(),
 
             ActionCondition::AttackRoll(attack_roll) => {
-                let (source, check) =
+                let (source, mut check) =
                     attack_roll(&game_state.world, actor, self.target, &action.context);
+                check.set_action(action.action_id.clone());
 
                 systems::d20::check_attack(game_state, actor, self.target, source, check)
             }
@@ -422,7 +423,12 @@ impl StepState {
                     action.instance_id, saving_throw_dc
                 );
 
-                systems::d20::check(game_state, self.target, &saving_throw_dc)
+                systems::d20::check_with_action(
+                    game_state,
+                    self.target,
+                    &saving_throw_dc,
+                    Some(&action.action_id),
+                )
             }
         }
         .with_parent(

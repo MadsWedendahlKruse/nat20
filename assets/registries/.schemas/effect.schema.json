@@ -56,6 +56,13 @@
                 "$ref": "#/definitions/ActionResultHookDefinition"
             }
         },
+        "on_action_usability": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/ActionUsabilityHookDefinition"
+            }
+        },
         "on_armor_class": {
             "type": "array",
             "default": [],
@@ -210,6 +217,21 @@
                 }
             ]
         },
+        "ActionUsabilityHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
         "ArmorClassHookDefinition": {
             "anyOf": [
                 {
@@ -273,6 +295,17 @@
                 {
                     "type": "object",
                     "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "properties": {
                         "attacked_by": {
                             "anyOf": [
                                 {
@@ -289,7 +322,8 @@
                             "type": [
                                 "string",
                                 "null"
-                            ]
+                            ],
+                            "default": null
                         },
                         "modifier": {
                             "description": "A d20 roll modifier: `advantage`, `disadvantage`, a flat bonus/penalty (`+2`, `-1`), a forced outcome (`success`, `failure`, `critical_success`, `critical_failure`) or a lowered crit threshold (`crit(-N)`).",

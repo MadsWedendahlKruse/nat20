@@ -587,6 +587,7 @@ impl ScriptEngine {
         script: &Script,
         game_state: &GameState,
         entity: Entity,
+        action_id: &ActionId,
         context: &ActionContext,
     ) -> Result<Option<String>, ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionUsability)?;
@@ -600,11 +601,79 @@ impl ScriptEngine {
                 func.call::<Value>((
                     scope.create_userdata_ref(game_state)?,
                     ent,
+                    action_id.to_string(),
                     scope.create_userdata_ref(context)?,
                 ))
             })
             .map_err(Self::runtime_error)?;
 
+        Self::usability_reason(result, "Action usability")
+    }
+
+    pub fn evaluate_action_usability_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        action_id: &ActionId,
+        context: &ActionContext,
+    ) -> Result<Option<String>, ScriptError> {
+        let func = self.get_function(script, ScriptFunction::ActionUsabilityHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        let result = self
+            .lua
+            .scope(|scope| {
+                func.call::<Value>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    action_id.to_string(),
+                    scope.create_userdata_ref(context)?,
+                ))
+            })
+            .map_err(Self::runtime_error)?;
+
+        Self::usability_reason(result, "Action usability hook")
+    }
+
+    pub fn evaluate_target_usability(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        entity: Entity,
+        target: Entity,
+        action_id: &ActionId,
+        context: &ActionContext,
+    ) -> Result<Option<String>, ScriptError> {
+        let func = self.get_function(script, ScriptFunction::TargetUsability)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        let target = self
+            .lua
+            .create_userdata(ScriptEntity::from(target))
+            .map_err(Self::runtime_error)?;
+        let result = self
+            .lua
+            .scope(|scope| {
+                func.call::<Value>((
+                    scope.create_userdata_ref(game_state)?,
+                    ent,
+                    target,
+                    action_id.to_string(),
+                    scope.create_userdata_ref(context)?,
+                ))
+            })
+            .map_err(Self::runtime_error)?;
+
+        Self::usability_reason(result, "Target usability")
+    }
+
+    /// Usability scripts return either nil (usable) or a string explaining why not.
+    fn usability_reason(result: Value, kind: &str) -> Result<Option<String>, ScriptError> {
         match result {
             Value::Nil => Ok(None),
             Value::String(s) => Ok(Some(
@@ -615,9 +684,45 @@ impl ScriptEngine {
                     .to_string(),
             )),
             other => Err(ScriptError::RuntimeError(format!(
-                "Action usability script returned unexpected value: {}",
+                "{} script returned unexpected value: {}",
+                kind,
                 other.type_name()
             ))),
         }
+    }
+
+    pub fn evaluate_attacked_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        effect: &EffectInstance,
+        victim: Entity,
+        attacker: Entity,
+        check: &mut D20Check,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::AttackedHook)?;
+        let effect = self
+            .lua
+            .create_userdata(effect.clone())
+            .map_err(Self::runtime_error)?;
+        let victim = self
+            .lua
+            .create_userdata(ScriptEntity::from(victim))
+            .map_err(Self::runtime_error)?;
+        let attacker = self
+            .lua
+            .create_userdata(ScriptEntity::from(attacker))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    effect,
+                    victim,
+                    attacker,
+                    scope.create_userdata_ref_mut(check)?,
+                ))
+            })
+            .map_err(Self::runtime_error)
     }
 }

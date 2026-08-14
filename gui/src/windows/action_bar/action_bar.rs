@@ -33,12 +33,13 @@ use nat20_core::{
     registry::registry::EffectsRegistry,
     systems::{
         self,
+        actions::ActionUsabilityError,
         geometry::{Displacement, DisplacementTemplate, RaycastHitKind},
         movement::TargetPathFindingResult,
     },
 };
 use parry3d::shape::ShapeType;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 use uom::si::length::meter;
 
 use crate::{
@@ -563,14 +564,7 @@ impl ActionBarWindow {
             }
 
             TargetingKind::Single => {
-                self.handle_single_target(
-                    ui,
-                    gui_state,
-                    game_state,
-                    &targeting_context,
-                    submit,
-                    cursor_ray_result,
-                );
+                self.handle_single_target(ui, gui_state, game_state, submit, cursor_ray_result);
             }
 
             TargetingKind::Multiple { max_targets, .. } => {
@@ -596,11 +590,14 @@ impl ActionBarWindow {
                 };
 
                 let target = closest.target_instance(&game_state.world);
+
                 let action = match self.builder.state().ok().unwrap() {
                     ActionBuilderState::Targets { action, .. } => action.clone(),
                     _ => panic!("Invalid state for single target selection"),
                 };
-                render_target_chance_tooltips(ui, game_state, &action, &target);
+
+                let mut targets = action.targets.clone();
+                targets.push(target.clone());
 
                 // Calculate line of sight manually so we can render the raycast
                 let line_of_sight = systems::geometry::line_of_sight_entity_target(
@@ -612,31 +609,42 @@ impl ActionBarWindow {
                 );
                 line_of_sight.render(ui, gui_state);
 
-                let mut targets = action.targets.clone();
-                targets.push(target.clone());
-                let targeting_result =
-                    targeting_context.validate_targets(game_state, self.actor(), &targets, &[]);
+                let usable_on_target = systems::actions::action_usable_on_targets(
+                    game_state,
+                    self.actor(),
+                    &action.action_id,
+                    &action.context,
+                    &action.resource_cost,
+                    &[target.clone()],
+                    &[],
+                );
 
-                match targeting_result {
+                match usable_on_target {
                     Ok(()) => {}
-                    Err(err) => match err {
-                        // Allow removing the duplicate target
-                        TargetingError::DuplicateTargetNotAllowed { target } => {
-                            if ui.is_mouse_clicked(MouseButton::Left) {
-                                self.builder.remove_target(&target);
-                                gui_state.cursor_ray_result.take();
-                                return;
-                            }
-                        }
+                    Err(err) => {
+                        if let ActionUsabilityError::TargetingError(targeting_error) = err {
+                            match targeting_error {
+                                // We can recover from these two (hopefully) with path_to_target
+                                TargetingError::OutOfRange { .. }
+                                | TargetingError::NoLineOfSight { .. } => {}
 
-                        other => {
+                                other => {
+                                    ui.tooltip(|| {
+                                        other.render(ui);
+                                    });
+                                    return;
+                                }
+                            }
+                        } else {
                             ui.tooltip(|| {
-                                other.render(ui);
+                                err.render(ui);
                             });
                             return;
                         }
-                    },
+                    }
                 };
+
+                render_target_chance_tooltips(ui, game_state, &action, &target);
 
                 if ui.is_mouse_clicked(MouseButton::Left) {
                     self.builder.target(game_state, target);
@@ -728,14 +736,7 @@ impl ActionBarWindow {
                         *submit = true;
                     }
                 } else {
-                    self.handle_single_target(
-                        ui,
-                        gui_state,
-                        game_state,
-                        &targeting_context,
-                        submit,
-                        cursor_ray_result,
-                    );
+                    self.handle_single_target(ui, gui_state, game_state, submit, cursor_ray_result);
                 }
             }
         }
@@ -746,7 +747,6 @@ impl ActionBarWindow {
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
         game_state: &mut GameState,
-        targeting_context: &TargetingContext,
         submit: &mut bool,
         cursor_ray_result: &systems::geometry::RaycastResult,
     ) {
@@ -754,30 +754,61 @@ impl ActionBarWindow {
             return;
         };
 
-        let target = closest.target_instance(&game_state.world);
-        let targeting_result =
-            targeting_context.validate_targets(game_state, self.actor(), &[target.clone()], &[]);
-
-        match targeting_result {
-            Ok(()) => {}
-            Err(err) => match err {
-                // We can recover from these two (hopefully) with path_to_target
-                TargetingError::OutOfRange { .. } | TargetingError::NoLineOfSight { .. } => {}
-
-                other => {
-                    ui.tooltip(|| {
-                        other.render(ui);
-                    });
-                    return;
-                }
-            },
-        };
-
         let mut action = match self.builder.state().ok().unwrap() {
             ActionBuilderState::Targets { action, .. } => action.clone(),
             _ => panic!("Invalid state for single target selection"),
         };
+
+        let target = closest.target_instance(&game_state.world);
+
+        let usable_on_target = systems::actions::action_usable_on_targets(
+            game_state,
+            self.actor(),
+            &action.action_id,
+            &action.context,
+            &action.resource_cost,
+            &[target.clone()],
+            &[],
+        );
+
+        match usable_on_target {
+            Ok(()) => {}
+            Err(err) => {
+                if let ActionUsabilityError::TargetingError(targeting_error) = err {
+                    match targeting_error {
+                        // We can recover from these two (hopefully) with path_to_target
+                        TargetingError::OutOfRange { .. }
+                        | TargetingError::NoLineOfSight { .. } => {}
+
+                        other => {
+                            ui.tooltip(|| {
+                                other.render(ui);
+                            });
+                            return;
+                        }
+                    }
+                } else {
+                    ui.tooltip(|| {
+                        err.render(ui);
+                    });
+                    return;
+                }
+            }
+        };
+
         render_target_chance_tooltips(ui, game_state, &action, &target);
+
+        if let TargetInstance::Entity { entity, .. } = &target {
+            let displacement = get_displacement_component(game_state, &action);
+
+            if let Some(displacement) = &displacement
+                && let Some(displacement) =
+                    displacement.instantiate(game_state, &action, entity.id())
+            {
+                displacement.render(ui, gui_state);
+            }
+        }
+
         action.targets.push(target.clone());
 
         match systems::movement::path_to_target(game_state, &action) {
@@ -1020,31 +1051,14 @@ fn render_attack_hit_chance_tooltip(
         target,
         &action.context,
     );
+    attack_roll.set_action(action.action_id.clone());
 
-    // Attacker's pre-roll hooks
-    systems::effects::effects(&game_state.world, action.actor.id()).pre_d20_check(
-        game_state,
-        action.actor.id(),
-        &mut attack_roll,
-    );
-
-    // Effects on target
-    systems::effects::effects(&game_state.world, target).on_attacked(
-        &game_state.world,
-        target,
-        action.actor.id(),
-        &mut attack_roll,
-    );
+    systems::d20::preview_attack_roll(game_state, action.actor.id(), target, &mut attack_roll);
 
     let target_ac = systems::loadout::armor_class(&game_state, target);
 
     let hit_chance = attack_roll
-        .success_probability(
-            target_ac.total() as u32,
-            systems::helpers::level(&game_state.world, action.actor.id())
-                .unwrap()
-                .proficiency_bonus(),
-        )
+        .success_probability(target_ac.total() as u32)
         .scale(100.0);
 
     ui.tooltip(|| {
@@ -1100,14 +1114,16 @@ fn render_save_success_chance_tooltip(
 ) {
     let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor.id(), &action.context);
 
-    let result = systems::d20::check_no_event(game_state, target, &saving_throw_dc);
-
-    let save_chance = result.check.success_probability(
-        saving_throw_dc.total() as u32,
-        systems::helpers::level(&game_state.world, target)
-            .unwrap()
-            .proficiency_bonus(),
+    let result = systems::d20::check_no_event(
+        game_state,
+        target,
+        &saving_throw_dc,
+        Some(&action.action_id),
     );
+
+    let save_chance = result
+        .check
+        .success_probability(saving_throw_dc.total() as u32);
 
     let success_chance = Range {
         min: (1.0 - save_chance.min),
@@ -1197,23 +1213,45 @@ fn render_advantage(
     )
     .render(ui);
 
-    let mut advantage_text = Vec::new();
+    let forgone = d20_check.advantage_tracker().forgone();
+
+    let is_forgone = forgone.is_some();
+
+    if is_forgone {
+        TextSegment::new(
+            format!("Advantage forgone by {}", forgone.as_ref().unwrap()),
+            TextKind::Details,
+        )
+        .render(ui);
+    }
+
     for (source, advantage_type) in d20_check.advantage_tracker().summary() {
+        // Advantage that has been forgone is still listed, so you can see what was
+        // given up
         let advantage_text_kind = match advantage_type {
+            AdvantageType::Advantage if is_forgone => TextKind::Details,
             AdvantageType::Advantage => TextKind::Green,
             AdvantageType::Disadvantage => TextKind::Red,
         };
-        if reverse_text_color {
-            advantage_text.push((
-                advantage_type.to_string(),
-                reverse_text_kind(advantage_text_kind),
-            ));
+
+        let label = if is_forgone {
+            format!("{} (forgone)", advantage_type)
         } else {
-            advantage_text.push((advantage_type.to_string(), advantage_text_kind));
+            advantage_type.to_string()
+        };
+
+        let mut advantage_text = Vec::new();
+
+        if reverse_text_color && !is_forgone {
+            advantage_text.push((label, reverse_text_kind(advantage_text_kind)));
+        } else {
+            advantage_text.push((label, advantage_text_kind));
         }
-        advantage_text.push((source.to_string(), TextKind::Details))
+
+        advantage_text.push((source.to_string(), TextKind::Details));
+
+        TextSegments::new(advantage_text).render(ui);
     }
-    TextSegments::new(advantage_text).render(ui);
 }
 
 fn d20_roll_mode_text_kind(d20_check: &D20Check, reverse_text_color: bool) -> TextKind {
@@ -1298,7 +1336,7 @@ fn get_displacement_component(
         }
     }
 
-    return None;
+    None
 }
 
 impl Renderable for Displacement {

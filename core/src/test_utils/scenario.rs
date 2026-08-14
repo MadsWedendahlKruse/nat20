@@ -10,11 +10,11 @@ use crate::{
     components::{
         ability::Ability,
         actions::{
-            action::{ActionContext, ActionResultComponent},
+            action::{ActionContext, ActionResultComponent, AttackRollProvider},
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
-        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome},
+        d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome, RollMode},
         damage::{DamageComponent, DamageResistances, DamageType},
         health::hit_points::HitPoints,
         id::{ActionId, EffectId, EntityIdentifier, ItemId, ResourceId},
@@ -88,7 +88,7 @@ impl Scenario {
             .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
     }
 
-    fn entity(&self, handle: &str) -> Entity {
+    pub fn entity(&self, handle: &str) -> Entity {
         self.creature(handle).id()
     }
 
@@ -328,6 +328,14 @@ impl ScenarioActionBuilder<'_> {
             self.scenario.game_state.update(0.5);
         }
     }
+
+    /// For actions that are usable in general, but not on a specific target
+    #[track_caller]
+    pub fn assert_perform_fails(self) {
+        if self.builder.perform(&mut self.scenario.game_state).is_ok() {
+            panic!("Expected perform to fail, but it succeeded");
+        }
+    }
 }
 
 pub struct ScenarioReactionBuilder<'s> {
@@ -433,6 +441,18 @@ impl ScenarioProbe<'_> {
         self
     }
 
+    pub fn apply_effect(&mut self, effect: impl Into<EffectId>) -> &mut Self {
+        let entity = self.entity();
+        systems::effects::add_permanent_effect(
+            &mut self.scenario.game_state,
+            entity,
+            effect.into(),
+            &ModifierSource::Custom("Test effect".to_string()),
+            None,
+        );
+        self
+    }
+
     pub fn equip(&mut self, item: impl Into<ItemId>) -> &mut Self {
         let entity = self.entity();
         let creature = self.creature();
@@ -514,6 +534,26 @@ impl ScenarioProbe<'_> {
 
     pub fn movement_speed(&self) -> Length {
         systems::movement::speed(self.game_state(), self.entity()).total_speed()
+    }
+
+    pub fn preview_attack_roll(
+        &self,
+        target: impl Into<String>,
+        action: impl Into<ActionId>,
+        slot: EquipmentSlot,
+    ) -> D20Check {
+        let (entity, target) = (self.entity(), self.scenario.entity(&target.into()));
+        let context = ActionContext::melee_weapon(slot);
+
+        let (_, mut check) = systems::loadout::loadout(self.world(), entity).attack_roll(
+            self.world(),
+            entity,
+            target,
+            &context,
+        );
+        check.set_action(action.into());
+        systems::d20::preview_attack_roll(self.game_state(), entity, target, &mut check);
+        check
     }
 
     pub fn position(&self) -> Point3<f32> {
@@ -712,6 +752,11 @@ impl ScenarioProbe<'_> {
     }
 
     #[track_caller]
+    pub fn has_effect(&self, effect_id: impl Into<EffectId>) -> bool {
+        systems::effects::has_effect(self.game_state(), self.entity(), &effect_id.into())
+    }
+
+    #[track_caller]
     pub fn assert_effect(&mut self, effect_id: impl Into<EffectId>) -> &mut Self {
         let effect_id = effect_id.into();
         let effects = systems::effects::effects(self.world(), self.entity());
@@ -887,7 +932,9 @@ impl ScenarioProbe<'_> {
                 d20_check
                     .advantage_tracker()
                     .summary()
-                    .contains(&(&source, advantage_type)),
+                    .get(source)
+                    .map(|a| *a == advantage_type)
+                    .unwrap_or(false),
                 "Expected creature {:?} to have {:?} {:?} on {:?} check, but it was not found. Current advantages: {:#?}",
                 self.creature(),
                 advantage_type,
@@ -910,10 +957,12 @@ impl ScenarioProbe<'_> {
         {
             let d20_check = self.get_d20_check(kind);
             assert!(
-                !d20_check
+                d20_check
                     .advantage_tracker()
                     .summary()
-                    .contains(&(&source, advantage_type)),
+                    .get(source)
+                    .map(|a| *a != advantage_type)
+                    .unwrap_or(true),
                 "Expected creature {:?} to not have {:?} {:?} on {:?} check, but it was found. Current advantages: {:#?}",
                 self.creature(),
                 advantage_type,
@@ -1067,6 +1116,7 @@ impl ScenarioEventFilterBuilder<'_> {
             kind,
             modifier: Some((source, value.into())),
             advantage: None,
+            roll_mode: None,
         });
         self
     }
@@ -1081,6 +1131,17 @@ impl ScenarioEventFilterBuilder<'_> {
             kind,
             modifier: None,
             advantage: Some((source, advantage_type)),
+            roll_mode: None,
+        });
+        self
+    }
+
+    pub fn d20_roll_mode(mut self, kind: D20CheckKind, roll_mode: RollMode) -> Self {
+        self.kind = Some(EventFilterKind::D20Check {
+            kind,
+            modifier: None,
+            advantage: None,
+            roll_mode: Some(roll_mode),
         });
         self
     }
@@ -1184,6 +1245,7 @@ pub enum EventFilterKind {
         kind: D20CheckKind,
         modifier: Option<(ModifierSource, ModifierKind)>,
         advantage: Option<(ModifierSource, AdvantageType)>,
+        roll_mode: Option<RollMode>,
     },
     DamageRoll {
         damage: DamageComponent,
@@ -1202,6 +1264,7 @@ impl EventFilterKind {
                     kind,
                     modifier,
                     advantage,
+                    roll_mode,
                 },
                 EventKind::D20CheckResolved { result, dc, .. },
             ) => {
@@ -1223,7 +1286,15 @@ impl EventFilterKind {
                     && !result
                         .advantage_tracker()
                         .summary()
-                        .contains(&(advantage_source, *advantage_type))
+                        .get(advantage_source)
+                        .map(|a| *a == *advantage_type)
+                        .unwrap_or(false)
+                {
+                    return false;
+                }
+
+                if let Some(roll_mode) = roll_mode
+                    && result.advantage_tracker().roll_mode() != *roll_mode
                 {
                     return false;
                 }

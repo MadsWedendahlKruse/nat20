@@ -1,15 +1,18 @@
 {
     "id": "nat20_core::effect.barbarian.reckless_attack",
-    "description": "You have advantage on attack rolls, but enemies also have advantage on attack rolls against you.",
+    "description": "You can throw aside all concern for defense to attack with increased ferocity. Doing so gives you Advantage on attack rolls using Strength until the start of your next turn, but attack rolls against you have Advantage during that time.",
     "kind": "buff",
+    "actions": [
+        {
+            "id": "nat20_core::action.barbarian.reckless_attack"
+        },
+        {
+            "id": "nat20_core::action.barbarian.reckless_attack_reaction"
+        }
+    ],
     "on_attack_roll": [
         {
             "script": "nat20_core::script.effect.barbarian.reckless_attack"
-        }
-    ],
-    "on_attacked": [
-        {
-            "modifier": "advantage"
         }
     ]
 }

@@ -221,6 +221,19 @@ impl EffectManager {
         );
     }
 
+    pub fn action_usability(
+        &self,
+        game_state: &GameState,
+        entity: Entity,
+        id: &ActionId,
+        ctx: &ActionContext,
+    ) -> Option<String> {
+        self.effects
+            .values()
+            .filter_map(|instance| instance.effect().on_action_usability.as_ref())
+            .find_map(|hook| hook(game_state, entity, id, ctx))
+    }
+
     pub fn pre_damage_mitigation(
         &self,
         game_state: &GameState,
@@ -251,27 +264,14 @@ impl EffectManager {
 
     pub fn on_attacked(
         &self,
-        world: &World,
+        game_state: &GameState,
         victim: Entity,
         attacker: Entity,
         check: &mut D20Check,
     ) {
         self.for_each_with_instance(
             |effect| effect.on_attacked.as_ref(),
-            |hook, inst| hook(world, inst, victim, attacker, check),
-        );
-    }
-
-    pub fn attacked_preview(
-        &self,
-        world: &World,
-        victim: Entity,
-        attacker: Entity,
-        check: &mut D20Check,
-    ) {
-        self.for_each_with_instance(
-            |effect| effect.on_attacked.as_ref(),
-            |hook, inst| hook(world, inst, victim, attacker, check),
+            |hook, inst| hook(game_state, inst, victim, attacker, check),
         );
     }
 }
