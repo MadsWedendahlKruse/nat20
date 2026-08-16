@@ -23,6 +23,10 @@ const LINK_PREFIX: &str = "../assets/registries/";
 /// Integration tests plus the `#[cfg(test)]` modules in the engine itself.
 const TEST_ROOTS: [&str; 2] = ["core/tests", "core/src"];
 
+/// What the column holding the thing being implemented is called: the class
+/// tables say `Feature`, the spell table says `Name`.
+const FEATURE_COLUMNS: [&str; 2] = ["Feature", "Name"];
+
 struct RegistryFile {
     /// Path relative to the registry root, forward slashes, e.g. `actions/barbarian/rage.json`.
     relative: String,
@@ -460,7 +464,7 @@ fn parse_rows(markdown: &str) -> Vec<Row> {
         }
 
         let Some(header) = &columns else {
-            if cells.iter().any(|cell| cell == "Feature") {
+            if cells.iter().any(|cell| FEATURE_COLUMNS.contains(&cell.as_str())) {
                 columns = Some(cells);
             }
             continue;
@@ -475,7 +479,11 @@ fn parse_rows(markdown: &str) -> Vec<Row> {
                 .unwrap_or_default()
         };
 
-        let feature = cell("Feature");
+        let feature = FEATURE_COLUMNS
+            .iter()
+            .map(|column| cell(column))
+            .find(|value| !value.is_empty())
+            .unwrap_or_default();
         if feature.is_empty() {
             continue;
         }

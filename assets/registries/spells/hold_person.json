@@ -33,7 +33,7 @@
                                         "event": {
                                             "turn_boundary": {
                                                 "entity": "target",
-                                                "boundary": "start"
+                                                "boundary": "end"
                                             }
                                         },
                                         "on_trigger": "repeat_apply_condition"
