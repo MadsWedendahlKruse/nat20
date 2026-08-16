@@ -1,6 +1,6 @@
 # Progress
 
-The follow page provides an overview of the current progress of implementing the contents described in the [SRD 5.2.1](https://dnd.wizards.com/resources/systems-reference-document). Where possible (and where it makes sense), the page follows the same sections as in the SRD (in the future I expect some of the sections to become quite large, so they might be split into sub-pages of their own). 
+The following page provides an overview of the current progress of implementing the contents described in the [SRD 5.2.1](https://dnd.wizards.com/resources/systems-reference-document). Where possible (and where it makes sense), the page follows the same sections as in the SRD (in the future I expect some of the sections to become quite large, so they might be split into sub-pages of their own). 
 
 ## Classes
 
