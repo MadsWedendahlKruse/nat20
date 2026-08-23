@@ -688,7 +688,6 @@
             ]
         },
         "D20CheckKindTag": {
-            "description": "Auto-generated discriminant enum variants",
             "type": "string",
             "enum": [
                 "saving_throw",
@@ -1102,7 +1101,6 @@
             ]
         },
         "EventKindTag": {
-            "description": "Auto-generated discriminant enum variants",
             "oneOf": [
                 {
                     "type": "string",
