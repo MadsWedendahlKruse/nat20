@@ -9,7 +9,10 @@ use crate::{
         actions::action::ActionConditionResolution,
         d20::D20CheckDC,
         damage::{DamageMitigationResult, DamageResistances, DamageRollResult},
-        health::{hit_points::HitPoints, life_state::LifeState},
+        health::{
+            hit_points::HitPoints,
+            life_state::{DeathPolicy, LifeState},
+        },
         level::CharacterLevels,
         modifier::{ModifierMap, ModifierSource},
         saving_throw::SavingThrowKind,
@@ -20,7 +23,6 @@ use crate::{
         event::{CallbackResult, EventCallback, EventKind},
         game_state::GameState,
     },
-    entities::{character::CharacterTag, monster::MonsterTag},
     registry::registry::ClassesRegistry,
     systems::{self},
 };
@@ -143,13 +145,8 @@ pub fn damage(
         };
 
     if killed_by_damage {
-        // Monsters and Characters 'die' differently
-        if let Ok(_) = game_state.world.get::<&MonsterTag>(target) {
-            new_life_state = Some(LifeState::Dead);
-        }
-
-        if let Ok(_) = game_state.world.get::<&CharacterTag>(target) {
-            new_life_state = Some(LifeState::unconscious());
+        if let Ok(death_policy) = game_state.world.get::<&DeathPolicy>(target) {
+            new_life_state = Some(death_policy.state_when_killed());
         }
 
         // Trigger death hooks and remove effects that are not permanent

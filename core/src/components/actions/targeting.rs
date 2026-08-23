@@ -22,9 +22,8 @@ use crate::{
         items::equipment::weapon::MELEE_RANGE_REACH, species::CreatureType,
     },
     engine::{game_state::GameState, geometry::WorldGeometry},
-    entities::{character::CharacterTag, monster::MonsterTag},
     registry::serialize::schema::impl_string_schema,
-    systems::{self, geometry::EPSILON},
+    systems::{self, entities::EntityKind, geometry::EPSILON},
 };
 
 #[derive(Debug, Clone)]
@@ -510,8 +509,12 @@ impl EntityFilter {
     pub fn matches(&self, world: &World, entity: Entity, actor: Option<Entity>) -> bool {
         match self {
             EntityFilter::All => true,
-            EntityFilter::Characters => world.get::<&CharacterTag>(entity).is_ok(),
-            EntityFilter::Monsters => world.get::<&MonsterTag>(entity).is_ok(),
+            EntityFilter::Characters => world
+                .get::<&EntityKind>(entity)
+                .map_or(false, |kind| *kind == EntityKind::Character),
+            EntityFilter::Monsters => world
+                .get::<&EntityKind>(entity)
+                .map_or(false, |kind| *kind == EntityKind::Monster),
 
             EntityFilter::NotSelf => {
                 if let Some(actor) = actor {

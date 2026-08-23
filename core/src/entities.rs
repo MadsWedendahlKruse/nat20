@@ -1,4 +1,3 @@
-pub mod character;
-pub mod monster;
+pub mod creature;
 pub mod projectile;
 pub mod utils;

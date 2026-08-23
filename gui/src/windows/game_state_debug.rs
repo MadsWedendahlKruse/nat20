@@ -1,7 +1,8 @@
 use imgui::TreeNodeFlags;
 use nat20_core::{
-    components::activity::ActivityState, engine::game_state::GameState,
-    entities::character::CreatureTag, systems,
+    components::activity::ActivityState,
+    engine::game_state::GameState,
+    systems::{self, entities::EntityKind},
 };
 
 use crate::{
@@ -43,9 +44,15 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                 if ui.collapsing_header("Entities", TreeNodeFlags::empty()) {
                     let entities = game_state
                         .world
-                        .query::<&CreatureTag>()
+                        .query::<&EntityKind>()
                         .iter()
-                        .map(|(e, _)| e)
+                        .filter_map(|(entity, kind)| {
+                            if kind.is_creature() {
+                                Some(entity)
+                            } else {
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>();
 
                     for entity in entities {

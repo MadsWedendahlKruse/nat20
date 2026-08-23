@@ -9,9 +9,6 @@ macro_rules! from_world {
             )*
         }
     ) => {
-        use hecs::{World, Entity};
-        use crate::systems;
-
         $(#[$meta])*
         $vis struct $name {
             $(
@@ -21,10 +18,10 @@ macro_rules! from_world {
         }
 
         impl $name {
-            pub fn from_world(world: &World, entity: Entity) -> Self {
+            pub fn from_world(world: &hecs::World, entity: hecs::Entity) -> Self {
                 Self {
                     $(
-                        $field: systems::helpers::get_component_clone(world, entity),
+                        $field: crate::systems::helpers::get_component_clone(world, entity),
                     )*
                 }
             }

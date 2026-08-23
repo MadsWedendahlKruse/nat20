@@ -8,7 +8,7 @@ use nat20_core::{
         id::Name,
     },
     engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
-    entities::projectile::Projectile,
+    entities::projectile::ProjectileData,
     systems::{
         self,
         geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
@@ -598,7 +598,7 @@ impl MainMenuWindow {
         }
 
         // TODO: Can it just live here?
-        for (_, projectile) in game_state.world.query::<&Projectile>().iter() {
+        for (_, projectile) in game_state.world.query::<&ProjectileData>().iter() {
             let mesh = shapes::build_sphere_mesh(gui_state.ig_renderer.gl_context(), 8, 8, 0.15);
 
             mesh.draw(

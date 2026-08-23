@@ -1,4 +1,4 @@
-use hecs::Entity;
+use hecs::{Bundle, Entity};
 use parry3d::query::Ray;
 use tracing::{debug, warn};
 use uom::si::{f32::Velocity, velocity::meter_per_second};
@@ -8,17 +8,74 @@ use crate::{
         actions::targeting::{
             LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
         },
-        activity::{ActivityCommand, ActivityState},
+        activity::ActivityState,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
     systems::{
         self,
+        entities::EntityKind,
         geometry::{Pose, RaycastMode},
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Bundle, Debug, Clone)]
 pub struct Projectile {
+    entity_kind: EntityKind,
+    data: ProjectileData,
+}
+
+impl Projectile {
+    pub fn new(data: ProjectileData) -> Self {
+        Self {
+            entity_kind: EntityKind::Projectile,
+            data,
+        }
+    }
+}
+
+pub fn update(game_state: &mut GameState, delta_time: f32, entity: Entity) {
+    let owner = {
+        let Ok(mut projectile) = game_state.world.get::<&mut ProjectileData>(entity) else {
+            return;
+        };
+        // let projectile = &mut *projectile;
+
+        if projectile.paused {
+            return;
+        }
+
+        projectile.flight_time += delta_time;
+        projectile.pose.translation = projectile
+            .trajectory
+            .position_at_time(projectile.flight_time)
+            .into();
+        if let Some(orientation) = projectile
+            .trajectory
+            .orientation_at_time(projectile.flight_time)
+        {
+            projectile.pose.rotation = orientation;
+        }
+
+        if projectile.flight_time < projectile.time_of_impact {
+            return;
+        }
+
+        projectile.owner
+    };
+
+    debug!("Projectile {:?} has reached its target", entity);
+
+    game_state
+        .despawn(entity)
+        .expect("Failed to despawn projectile entity");
+
+    systems::actions::projectile_impact(game_state, owner);
+}
+
+// TODO: Not sure if it's the most ECS-idiomatic solution to just cram everything
+// into one component
+#[derive(Debug, Clone)]
+pub struct ProjectileData {
     pub pose: Pose,
     pub trajectory: RaycastMode,
     pub flight_time: f32,
@@ -28,36 +85,7 @@ pub struct Projectile {
     pub paused: bool,
 }
 
-impl Projectile {
-    pub fn update(&mut self, entity: Entity, delta_time: f32) -> Vec<ActivityCommand> {
-        if self.paused {
-            return vec![];
-        }
-
-        self.flight_time += delta_time;
-        self.pose.translation = self.trajectory.position_at_time(self.flight_time).into();
-        if let Some(orientation) = self.trajectory.orientation_at_time(self.flight_time) {
-            self.pose.rotation = orientation;
-        }
-
-        if self.flight_time >= self.time_of_impact {
-            debug!("Projectile {:?} has reached its target", entity);
-            let owner = self.owner;
-            vec![
-                ActivityCommand::new(move |game_state: &mut GameState| {
-                    game_state
-                        .despawn(entity)
-                        .expect("Failed to despawn projectile entity");
-                }),
-                ActivityCommand::new(move |game_state: &mut GameState| {
-                    systems::actions::projectile_impact(game_state, owner);
-                }),
-            ]
-        } else {
-            vec![]
-        }
-    }
-
+impl ProjectileData {
     pub fn pause(&mut self) {
         self.paused = true;
     }
@@ -66,9 +94,6 @@ impl Projectile {
         self.paused = false;
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct ProjectileTag;
 
 #[derive(Debug, Clone)]
 pub enum ProjectileError {
@@ -139,7 +164,7 @@ impl ProjectileTemplate {
             _ => { /* Don't think it's necesarry to do anything else */ }
         }
 
-        Ok(Projectile {
+        Ok(Projectile::new(ProjectileData {
             pose: raycast_result.mode.pose_at_time(0.0),
             trajectory: raycast_result.mode.clone(),
             flight_time: 0.0,
@@ -150,6 +175,6 @@ impl ProjectileTemplate {
                 action.actor.id(),
             )
             .is_paused(),
-        })
+        }))
     }
 }

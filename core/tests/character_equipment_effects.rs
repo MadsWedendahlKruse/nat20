@@ -22,7 +22,7 @@ mod tests {
             saving_throw::{SavingThrowKind, SavingThrowSet},
             skill::{Skill, SkillSet},
         },
-        entities::character::Character,
+        entities::creature::Character,
         registry::registry::ItemsRegistry,
         systems,
         test_utils::fixtures,

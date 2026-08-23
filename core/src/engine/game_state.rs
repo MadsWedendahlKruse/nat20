@@ -13,7 +13,7 @@ use crate::{
         },
         activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
         d20::D20CheckDC,
-        time::{TimeMode, TimeStep},
+        time::TimeMode,
     },
     engine::{
         action_prompt::{
@@ -27,10 +27,6 @@ use crate::{
         },
         geometry::WorldGeometry,
         interaction::{InteractionEngine, InteractionScopeId, InteractionSession, PendingEvent},
-    },
-    entities::{
-        character::CreatureTag,
-        projectile::{Projectile, ProjectileTag},
     },
     systems::{self, movement::MovementError, time::RestKind},
 };
@@ -767,71 +763,7 @@ impl GameState {
     }
 
     pub fn update(&mut self, delta_time: f32) {
-        let time_step = TimeStep::RealTime {
-            delta_seconds: delta_time,
-        };
-
-        // Projectile entities
-        let projectiles: Vec<Entity> = self
-            .world
-            .query::<&ProjectileTag>()
-            .iter()
-            .map(|(e, _)| e)
-            .collect();
-
-        for projectile in projectiles {
-            let commands =
-                systems::helpers::get_component_mut::<Projectile>(&mut self.world, projectile)
-                    .update(projectile, delta_time);
-            for command in commands {
-                command.execute(self);
-            }
-        }
-
-        // Creature entities
-        let entities = self
-            .world
-            .query::<&CreatureTag>()
-            .iter()
-            .map(|(e, _)| e)
-            .collect::<Vec<_>>();
-
-        for entity in entities {
-            systems::time::advance_time(self, entity, time_step);
-
-            let marked_effects =
-                systems::effects::effects_mut(&mut self.world, entity).take_marked_for_removal();
-            if !marked_effects.is_empty() {
-                systems::effects::remove_effects(
-                    self,
-                    entity,
-                    &marked_effects.into_iter().collect::<Vec<_>>(),
-                );
-            }
-
-            // TODO: No idea where to put this
-            if !systems::ai::is_player_controlled(&self.world, entity)
-                && systems::helpers::get_component::<ActivityState>(&self.world, entity).is_idle()
-                && let Some(prompt) = self.next_prompt_entity(entity).cloned()
-                && prompt.kind.actors().contains(&entity)
-            {
-                if let Some(activity) = systems::ai::decide_activity(self, &prompt, entity) {
-                    let result = self.submit_activity(activity);
-                    info!("AI submitted activity: {:?}", result);
-                } else {
-                    self.end_turn(entity);
-                }
-            }
-
-            // TODO: Not entirely sure where to place this
-            // TODO: Very hacky
-            let world = unsafe { &mut *(&mut self.world as *mut World) };
-            let commands = systems::helpers::get_component_mut::<ActivityState>(world, entity)
-                .update(self, entity, delta_time);
-            for command in commands {
-                command.execute(self);
-            }
-        }
+        systems::entities::update(self, delta_time);
     }
 
     pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {

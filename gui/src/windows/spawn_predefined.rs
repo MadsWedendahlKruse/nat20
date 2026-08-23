@@ -5,11 +5,8 @@ use imgui::MouseButton;
 use nat20_core::{
     components::id::{EntityIdentifier, Name},
     engine::{game_state::GameState, geometry::WorldGeometry},
-    entities::{
-        character::{Character, CharacterTag},
-        monster::{Monster, MonsterTag},
-    },
-    systems::{self, time::RestKind},
+    entities::creature::{Character, Monster},
+    systems::{self, entities::EntityKind, time::RestKind},
     test_utils::fixtures::{self},
 };
 use parry3d::na::Point3;
@@ -146,7 +143,10 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                             let mut updated_level = false;
 
                             // TODO: Level slider probably doesn't make sense for monsters?
-                            if let Ok(_) = self.game_state.world.get::<&CharacterTag>(entity) {
+                            if let Ok(entity_kind) =
+                                self.game_state.world.get::<&EntityKind>(entity)
+                                && *entity_kind == EntityKind::Character
+                            {
                                 ui.set_next_item_width(150.0);
                                 if ui.slider(
                                     format!("Level##{:?}", entity),
@@ -175,18 +175,25 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 
                 if let Some(entity) = self.entity_to_spawn {
                     if self.current_entity.is_none() {
-                        let spawned_entity =
-                            if let Ok(_) = self.game_state.world.get::<&CharacterTag>(entity) {
-                                game_state
+                        let spawned_entity = if let Ok(entity_kind) =
+                            self.game_state.world.get::<&EntityKind>(entity)
+                        {
+                            match *entity_kind {
+                                EntityKind::Projectile => {
+                                    panic!("Cannot spawn a projectile directly")
+                                }
+
+                                EntityKind::Character => game_state
                                     .world
-                                    .spawn(Character::from_world(&self.game_state.world, entity))
-                            } else if let Ok(_) = self.game_state.world.get::<&MonsterTag>(entity) {
-                                game_state
+                                    .spawn(Character::from_world(&self.game_state.world, entity)),
+
+                                EntityKind::Monster => game_state
                                     .world
-                                    .spawn(Monster::from_world(&self.game_state.world, entity))
-                            } else {
-                                panic!("Failed to take entity from spawner");
-                            };
+                                    .spawn(Monster::from_world(&self.game_state.world, entity)),
+                            }
+                        } else {
+                            panic!("Entity {:?} does not have an EntityKind component", entity);
+                        };
 
                         // Spawn it somewhere we can't see it, we'll move it later
                         systems::geometry::teleport_to(

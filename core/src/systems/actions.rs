@@ -30,7 +30,7 @@ use crate::{
         game_state::GameState,
         interaction::InteractionScopeId,
     },
-    entities::projectile::Projectile,
+    entities::projectile::ProjectileData,
     registry::registry::{ActionsRegistry, SpellsRegistry},
     systems::{self, geometry::RaycastFilter},
 };
@@ -662,7 +662,7 @@ pub fn available_reactions_to_event(
 fn set_projectiles_paused_for_entity(game_state: &mut GameState, entity: Entity, paused: bool) {
     let pairs: Vec<(Entity, Entity)> = game_state
         .world
-        .query::<&Projectile>()
+        .query::<&ProjectileData>()
         .iter()
         .map(|(entity, projectile)| (entity, projectile.owner))
         .collect();
@@ -672,7 +672,7 @@ fn set_projectiles_paused_for_entity(game_state: &mut GameState, entity: Entity,
     debug!("Found projectiles to set paused={}: {:?}", paused, pairs);
     for (proj_entity, actor) in pairs {
         if actor == entity
-            && let Ok(mut projectile) = game_state.world.get::<&mut Projectile>(proj_entity)
+            && let Ok(mut projectile) = game_state.world.get::<&mut ProjectileData>(proj_entity)
         {
             projectile.paused = paused;
         }

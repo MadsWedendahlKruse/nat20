@@ -15,7 +15,7 @@ use nat20_core::{
         skill::{Skill, SkillSet},
     },
     engine::game_state::GameState,
-    entities::character::Character,
+    entities::creature::Character,
     registry::registry::ClassesRegistry,
     systems::{
         self,

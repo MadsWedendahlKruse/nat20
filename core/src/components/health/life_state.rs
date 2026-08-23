@@ -19,9 +19,9 @@ impl LifeState {
     }
 }
 
-pub static DEATH_SAVING_THROW_DC: u8 = 10;
-pub static DEATH_SAVING_THROW_SUCCESS_THRESHOLD: u8 = 3;
-pub static DEATH_SAVING_THROW_FAILURE_THRESHOLD: u8 = 3;
+pub const DEATH_SAVING_THROW_DC: u8 = 10;
+pub const DEATH_SAVING_THROW_SUCCESS_THRESHOLD: u8 = 3;
+pub const DEATH_SAVING_THROW_FAILURE_THRESHOLD: u8 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +93,24 @@ impl DeathSavingThrows {
             LifeState::Stable
         } else {
             LifeState::Unconscious(*self)
+        }
+    }
+}
+
+/// Represents what happens when a creature reaches 0 HP.
+/// Typically for player characters they will fall unconscious and make death saving
+/// throws, while monsters die immediately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum DeathPolicy {
+    Die,
+    Unconscious,
+}
+
+impl DeathPolicy {
+    pub fn state_when_killed(&self) -> LifeState {
+        match self {
+            DeathPolicy::Die => LifeState::Dead,
+            DeathPolicy::Unconscious => LifeState::unconscious(),
         }
     }
 }

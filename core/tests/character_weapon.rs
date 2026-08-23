@@ -25,7 +25,7 @@ mod tests {
             resource::ResourceAmountMap,
         },
         engine::action_prompt::ActionData,
-        entities::character::Character,
+        entities::creature::Character,
         registry::registry::ItemsRegistry,
         systems::{self, helpers},
         test_utils::fixtures,

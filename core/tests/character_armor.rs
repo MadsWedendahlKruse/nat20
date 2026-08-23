@@ -8,7 +8,7 @@ mod tests {
             items::equipment::slots::EquipmentSlot,
             modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
         },
-        entities::character::Character,
+        entities::creature::Character,
         registry::registry::ItemsRegistry,
         systems,
         test_utils::fixtures,

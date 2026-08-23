@@ -28,7 +28,6 @@ use crate::{
         event::{CallbackResult, Event, EventCallback, EventKind},
         game_state::GameState,
     },
-    entities::projectile::ProjectileTag,
     registry::registry::SpellsRegistry,
     systems::{
         self,
@@ -225,7 +224,7 @@ impl PhaseState {
 
                 if let Ok(projectile) = projectile {
                     debug!("Instantiated projectile {:?}", projectile);
-                    game_state.world.spawn((projectile, ProjectileTag));
+                    game_state.world.spawn(projectile);
                     // The steps are applied when the projectile lands and the
                     // execution resumes this phase
                     self.delivery = PayloadDelivery::Immediate;

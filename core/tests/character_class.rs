@@ -17,7 +17,7 @@ mod tests {
             saving_throw::{SavingThrowKind, SavingThrowSet},
             skill::{Skill, SkillSet},
         },
-        entities::character::Character,
+        entities::creature::Character,
         registry::registry::ClassesRegistry,
         systems::{self, level_up::LevelUpDecision},
         test_utils::fixtures,

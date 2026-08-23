@@ -1,28 +1,18 @@
-use std::collections::HashSet;
+﻿use std::collections::HashSet;
 
 use hecs::Entity;
 use parry3d::na::Point3;
-use tracing::{debug, error, warn};
-use uom::si::{f32::Length, length::meter};
+use strum::EnumDiscriminants;
+use tracing::{debug, warn};
 
 use crate::{
-    components::actions::{
-        action::{Action, ActionTimeline},
-        execution::ExecutionStatus,
-    },
+    components::actions::action::{Action, ActionTimeline},
     engine::{
         action_prompt::{ActionDecision, ActionError},
-        game_state::GameState,
         geometry::WorldPath,
     },
-    systems::{
-        self,
-        geometry::Parabola,
-        movement::{MoveMode, MovementError},
-    },
+    systems::{geometry::Parabola, movement::MovementError},
 };
-
-const MOVEMENT_SPEED: f32 = 5.0; // [m/s]
 
 // TODO: Should these two enums live here?
 #[derive(Debug, Clone)]
@@ -65,19 +55,6 @@ pub struct ActivityState {
 }
 
 impl ActivityState {
-    pub fn update(
-        &mut self,
-        game_state: &mut GameState,
-        entity: Entity,
-        delta_time: f32,
-    ) -> Vec<ActivityCommand> {
-        if self.is_paused() {
-            return Vec::new();
-        }
-
-        self.state.update(game_state, entity, delta_time)
-    }
-
     pub fn pause(&mut self, reason: ActivityPauseReason) {
         debug!("Pausing activity due to reason {:?}", reason);
         self.pause_reasons.insert(reason);
@@ -147,7 +124,8 @@ impl ActivityState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumDiscriminants)]
+#[strum_discriminants(name(ActivityStateKindTag))]
 pub enum ActivityStateKind {
     Idle,
     Moving {
@@ -168,183 +146,6 @@ pub enum ActivityStateKind {
     },
 }
 
-/// In order to avoid a double borrow of the ActivityState it needs to return commands
-/// to be executed in the game state after the update at which point the borrow is dropped
-impl ActivityStateKind {
-    pub fn update(
-        &mut self,
-        game_state: &mut GameState,
-        entity: Entity,
-        delta_time: f32,
-    ) -> Vec<ActivityCommand> {
-        let mut commands = Vec::new();
-
-        match self {
-            Self::Idle => {
-                // Do nothing
-            }
-
-            Self::Moving {
-                path,
-                current_target,
-                action,
-            } => {
-                if *current_target >= path.points.len() {
-                    warn!(
-                        "Current target index {} is out of bounds for path with length {}. Target appears to have reached goal, but follow up state was not set correctly. Did the action submission fail? Setting state to idle",
-                        current_target,
-                        path.points.len()
-                    );
-                    *self = Self::Idle;
-                    return commands;
-                }
-
-                let target_point = path.points[*current_target];
-                let position =
-                    systems::geometry::get_foot_position(&game_state.world, entity).unwrap();
-                let direction = target_point - position;
-                let distance_to_target = direction.norm();
-
-                if distance_to_target != 0.0 {
-                    commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
-                        systems::movement::move_entity(
-                            game_state,
-                            entity,
-                            &(position + direction.normalize() * MOVEMENT_SPEED * delta_time),
-                            MoveMode::Voluntary,
-                        );
-                    }));
-                }
-
-                if distance_to_target < MOVEMENT_SPEED * delta_time {
-                    // Reached the target point
-                    *current_target += 1;
-
-                    if *current_target >= path.points.len() {
-                        // Reached the end of the path
-                        debug!("Entity {:?} reached destination {:?}", entity, target_point);
-
-                        if let Some(action_decision) = action.take() {
-                            debug!(
-                                "Entity {:?} has a follow-up action, setting to act after movement",
-                                entity
-                            );
-                            commands.push(ActivityCommand::new(
-                                move |game_state: &mut GameState| match game_state
-                                    .submit_decision(action_decision.clone())
-                                {
-                                    Ok(_) => {}
-                                    Err(error) => {
-                                        error!("Failed to submit action decision: {:?}", error)
-                                    }
-                                },
-                            ));
-                        } else {
-                            debug!(
-                                "Entity {:?} has no follow-up action, setting to idle",
-                                entity
-                            );
-                            *self = Self::Idle;
-                        }
-                    }
-                }
-            }
-
-            Self::Acting {
-                elapsed_time,
-                timeline:
-                    ActionTimeline {
-                        total_duration,
-                        perform_time,
-                        step_spacing,
-                    },
-                phase_cooldown,
-            } => {
-                *elapsed_time += delta_time;
-
-                let status = systems::actions::execution_status(game_state, entity);
-
-                if *elapsed_time >= *perform_time && status == Some(ExecutionStatus::Running) {
-                    *phase_cooldown += delta_time;
-
-                    if *phase_cooldown >= *step_spacing {
-                        debug!(
-                            "Action phase cooldown elapsed for entity {:?}, advancing execution",
-                            entity
-                        );
-                        *phase_cooldown = 0.0;
-                        commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
-                            systems::actions::advance_execution(game_state, entity);
-                        }));
-                    }
-                }
-
-                if *elapsed_time >= *total_duration
-                    && status.is_none_or(|status| status == ExecutionStatus::Done)
-                {
-                    debug!(
-                        "Entity {:?} finished action after {:?} seconds",
-                        entity, total_duration
-                    );
-                    *self = Self::Idle;
-
-                    commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
-                        
-                        let scope = game_state.scope_for_entity(entity);
-                        debug!(
-                            "Action completed for entity {:?}, clearing blockers and resuming pending events if ready",
-                            entity
-                        );
-                        
-                        game_state.action_executions.remove(&entity);
-                        game_state
-                            .interaction_engine
-                            .session_mut(scope)
-                            .clear_blocker(entity);
-                        game_state.resume_pending_events_if_ready(scope);
-                    }));
-                }
-            }
-
-            Self::Displaced {
-                trajectory,
-                elapsed_time,
-            } => {
-                *elapsed_time += delta_time;
-
-                let new_position =
-                    trajectory.position_at_time(elapsed_time.min(trajectory.max_time));
-                commands.push(ActivityCommand::new(move |game_state: &mut GameState| {
-                    systems::movement::move_entity(
-                        game_state,
-                        entity,
-                        &new_position,
-                        MoveMode::Displace,
-                    );
-                }));
-
-                if *elapsed_time >= trajectory.max_time {
-                    debug!(
-                        "Entity {:?} finished displacement after {:?} seconds",
-                        entity, trajectory.max_time
-                    );
-
-                    let final_position = trajectory.position_at_time(trajectory.max_time);
-                    systems::movement::apply_fall_damage(
-                        game_state,
-                        entity,
-                        Length::new::<meter>(trajectory.origin.y - final_position.y),
-                    );
-
-                    *self = Self::Idle;
-                }
-            }
-        }
-
-        return commands;
-    }
-}
-
 impl Default for ActivityStateKind {
     fn default() -> Self {
         Self::Idle
@@ -354,16 +155,4 @@ impl Default for ActivityStateKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActivityPauseReason {
     Reaction,
-}
-
-pub struct ActivityCommand(pub Box<dyn FnOnce(&mut GameState)>);
-
-impl ActivityCommand {
-    pub fn execute(self, game_state: &mut GameState) {
-        (self.0)(game_state);
-    }
-
-    pub fn new<F: FnOnce(&mut GameState) + 'static>(command: F) -> Self {
-        Self(Box::new(command))
-    }
 }

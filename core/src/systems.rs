@@ -5,6 +5,7 @@ pub mod class;
 pub mod d20;
 pub mod damage;
 pub mod effects;
+pub mod entities;
 pub mod factions;
 pub mod feats;
 pub mod geometry;

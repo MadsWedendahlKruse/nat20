@@ -35,7 +35,7 @@ pub mod creatures {
                 skill::SkillSet,
             },
             engine::game_state::GameState,
-            entities::character::Character,
+            entities::creature::Character,
             registry::registry::{ClassesRegistry, ItemsRegistry},
         };
 
@@ -779,7 +779,7 @@ pub mod creatures {
                 speed::Speed,
             },
             engine::game_state::GameState,
-            entities::monster::Monster,
+            entities::creature::Monster,
             registry::{self, registry::ItemsRegistry},
         };
 
