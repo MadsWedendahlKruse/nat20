@@ -218,9 +218,10 @@ impl MainMenuWindow {
 
                     if !reactions.is_active()
                         && let Some(prompt) = game_state.next_prompt_entity(entity)
-                        && let ActionPromptKind::Reactions { event, options } = &prompt.kind {
-                            reactions.activate(prompt.id, event, options);
-                        }
+                        && let ActionPromptKind::Reactions { event, options } = &prompt.kind
+                    {
+                        reactions.activate(prompt.id, event, options);
+                    }
                 } else {
                     *action_bar = None;
                 }

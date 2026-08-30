@@ -142,11 +142,9 @@ impl RenderableWithContext<&mut GameState> for MovementPreview {
                 gui_state
                     .line_renderer
                     .add_circle(reach_center, reach, [0.85, 0.85, 0.85]);
-                gui_state.line_renderer.add_line(
-                    position.into(),
-                    (*point).into(),
-                    [1.0, 0.0, 0.0],
-                );
+                gui_state
+                    .line_renderer
+                    .add_line(position.into(), (*point).into(), [1.0, 0.0, 0.0]);
             }
         }
 
