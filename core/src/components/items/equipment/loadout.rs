@@ -38,7 +38,7 @@ use crate::{
 };
 
 // TODO: Probably shouldn't hardcode these :)
-const ATTACK_ACTIONS: LazyLock<Vec<ActionId>> = LazyLock::new(|| {
+static ATTACK_ACTIONS: LazyLock<Vec<ActionId>> = LazyLock::new(|| {
     vec![
         ActionId::new("nat20_core", "action.melee_attack"),
         ActionId::new("nat20_core", "action.ranged_attack"),

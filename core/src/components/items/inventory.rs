@@ -61,9 +61,9 @@ impl ItemContainer for ItemInstance {
 macro_rules! impl_into_item_instance {
     ($($ty:ty => $variant:ident),* $(,)?) => {
         $(
-            impl Into<ItemInstance> for $ty {
-                fn into(self) -> ItemInstance {
-                    ItemInstance::$variant(self)
+            impl From<$ty> for ItemInstance {
+                fn from(value: $ty) -> Self {
+                    ItemInstance::$variant(value)
                 }
             }
         )*

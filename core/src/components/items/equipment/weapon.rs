@@ -341,12 +341,12 @@ impl Weapon {
             }
         });
 
-        if versatile_dice.is_some() && wielding_both_hands {
+        if let Some(versatile_dice) = versatile_dice
+            && wielding_both_hands
+        {
             // Override the base damage dice with the versatile damage dice
-            damage_roll.components[0].replace_modifier(
-                ModifierSource::Base,
-                ModifierKind::Dice(*versatile_dice.unwrap()),
-            );
+            damage_roll.components[0]
+                .replace_modifier(ModifierSource::Base, ModifierKind::Dice(*versatile_dice));
         }
 
         self.add_ability_modifier(ability_scores, damage_roll.components[0].modifiers_mut());

@@ -15,7 +15,7 @@ use crate::{
             ReactionTriggerFunction,
         },
         id::ScriptId,
-        resource::{RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION, ResourceAmountMap},
+        resource::{DEFAULT_RESOURCES, ResourceAmountMap},
     },
     engine::{
         action_prompt::ActionData,
@@ -57,27 +57,25 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                         .retain(|pending| pending.event.id != event.id);
 
                     // TODO: Bit of a hack to comply with Counterspell
-                    let resources_refunded = if let EventKind::ActionRequested { action } =
-                        &event.kind
-                    {
-                        debug!(
-                            "Refunding non-standard resources for cancelled action: {:?}",
-                            action
-                        );
-                        let mut resources_to_refund = action.resource_cost.clone();
-                        for resource in [RESOURCE_ACTION, RESOURCE_BONUS_ACTION, RESOURCE_REACTION]
-                        {
-                            resources_to_refund.map.remove(&resource);
-                        }
-                        let _ = systems::resources::restore(
-                            &mut game_state.world,
-                            action.actor.id(),
-                            &resources_to_refund,
-                        );
-                        resources_to_refund
-                    } else {
-                        ResourceAmountMap::new()
-                    };
+                    let resources_refunded =
+                        if let EventKind::ActionRequested { action } = &event.kind {
+                            debug!(
+                                "Refunding non-standard resources for cancelled action: {:?}",
+                                action
+                            );
+                            let mut resources_to_refund = action.resource_cost.clone();
+                            for resource in &*DEFAULT_RESOURCES {
+                                resources_to_refund.map.remove(&resource);
+                            }
+                            let _ = systems::resources::restore(
+                                &mut game_state.world,
+                                action.actor.id(),
+                                &resources_to_refund,
+                            );
+                            resources_to_refund
+                        } else {
+                            ResourceAmountMap::new()
+                        };
 
                     Some(ReactionResult::CancelEvent {
                         event: event.clone().into(),

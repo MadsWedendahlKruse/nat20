@@ -23,14 +23,14 @@ use crate::{
 // Technically this contradicts the idea of resources being defined in the registry,
 // but these three are so fundamental that everything would break without them, so
 // they're probably not going to be removed ;)
-pub const RESOURCE_ACTION: LazyLock<ResourceId> =
+pub static RESOURCE_ACTION: LazyLock<ResourceId> =
     LazyLock::new(|| ResourceId::new("nat20_core", "resource.action"));
-pub const RESOURCE_BONUS_ACTION: LazyLock<ResourceId> =
+pub static RESOURCE_BONUS_ACTION: LazyLock<ResourceId> =
     LazyLock::new(|| ResourceId::new("nat20_core", "resource.bonus_action"));
-pub const RESOURCE_REACTION: LazyLock<ResourceId> =
+pub static RESOURCE_REACTION: LazyLock<ResourceId> =
     LazyLock::new(|| ResourceId::new("nat20_core", "resource.reaction"));
 
-pub const DEFAULT_RESOURCES: LazyLock<Vec<ResourceId>> = LazyLock::new(|| {
+pub static DEFAULT_RESOURCES: LazyLock<Vec<ResourceId>> = LazyLock::new(|| {
     vec![
         RESOURCE_ACTION.clone(),
         RESOURCE_BONUS_ACTION.clone(),

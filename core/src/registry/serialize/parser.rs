@@ -537,7 +537,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::dice::DieSize;
+    use crate::{components::dice::DieSize, registry::serialize::variables::VariableMap};
 
     use super::*;
 
@@ -708,12 +708,8 @@ mod tests {
         assert!(result.is_err());
     }
 
-    fn variables()
-    -> HashMap<String, Arc<dyn Fn(&World, Entity, &ActionContext) -> i32 + Send + Sync>> {
-        let mut vars: HashMap<
-            String,
-            Arc<dyn Fn(&World, Entity, &ActionContext) -> i32 + Send + Sync>,
-        > = HashMap::new();
+    fn variables() -> VariableMap {
+        let mut vars = VariableMap::new();
         vars.insert("spell_level".to_string(), Arc::new(|_, _, _| 3));
         vars.insert("caster_level".to_string(), Arc::new(|_, _, _| 5));
         vars.insert("character_level".to_string(), Arc::new(|_, _, _| 7));
