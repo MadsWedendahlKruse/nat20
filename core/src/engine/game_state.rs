@@ -236,110 +236,102 @@ impl GameState {
         self.next_prompt(self.scope_for_entity(entity))
     }
 
-    pub(crate) fn submit_decision(
-        &mut self,
-        mut decision: ActionDecision,
-    ) -> Result<(), ActionError> {
-        let scope = self.scope_for_entity(decision.actor());
-
-        // Avoid double mutable borrow
-        let prompt_id = {
-            let session = self.interaction_engine.session_mut(scope);
-
-            // Ensure there is a prompt to respond to; lazily create one for Global.
-            if session
-                .pending_prompts()
-                .iter()
-                .all(|p| p.id != decision.response_to)
-            {
-                if matches!(scope, InteractionScopeId::Global) {
-                    // “Open world” behavior: allow ad-hoc Action prompts.
-                    session.queue_prompt(
-                        ActionPrompt::new(ActionPromptKind::Action {
-                            actor: decision.actor(),
-                        }),
-                        false,
-                    );
-                    decision.response_to = session.pending_prompts().back().unwrap().id;
-                } else {
-                    // In encounter scope, a missing prompt is a hard error.
-                    return Err(ActionError::MissingPrompt {
-                        decision: decision.clone(),
-                        prompts: session.pending_prompts().iter().cloned().collect(),
-                    });
-                }
+    pub(crate) fn submit_decision(&mut self, decision: ActionDecision) -> Result<(), ActionError> {
+        // Check if the action or reaction is even valid before proceeding
+        match &decision.kind {
+            ActionDecisionKind::Action { action } => {
+                self.validate_action(action, false)?;
             }
 
-            // Validate against the found prompt.
-            let prompt = session
-                .pending_prompts()
-                .iter()
-                .find(|p| p.id == decision.response_to)
-                .expect("Prompt must exist at this point");
-            prompt.is_valid_decision(&decision)?;
-            let id = prompt.id;
+            ActionDecisionKind::Reaction { choice, .. } => {
+                if let Some(choice) = choice {
+                    self.validate_action(choice, false)?;
+                }
+            }
+        }
 
-            session.record_decision(decision);
+        let scope = self.scope_for_entity(decision.actor());
 
-            id
-        };
+        let prompt_id = self.validate_against_prompt(decision, scope)?;
 
-        self.try_process_prompt(scope, prompt_id)
+        self.try_process_prompt_decisions(scope, prompt_id)
     }
 
-    fn try_process_prompt(
+    fn validate_against_prompt(
+        &mut self,
+        mut decision: ActionDecision,
+        scope: InteractionScopeId,
+    ) -> Result<ActionPromptId, ActionError> {
+        let session = self.interaction_engine.session_mut(scope);
+
+        // Ensure there is a prompt to respond to; lazily create one for Global.
+        if session
+            .pending_prompts()
+            .iter()
+            .all(|p| p.id != decision.response_to)
+        {
+            if matches!(scope, InteractionScopeId::Global) {
+                // "Open world" behavior, allow ad-hoc Action prompts.
+                session.queue_prompt(
+                    ActionPrompt::new(ActionPromptKind::Action {
+                        actor: decision.actor(),
+                    }),
+                    false,
+                );
+                decision.response_to = session.pending_prompts().back().unwrap().id;
+            } else {
+                // In encounter scope, a missing prompt is a hard error.
+                return Err(ActionError::MissingPrompt {
+                    decision: decision.clone(),
+                    prompts: session.pending_prompts().iter().cloned().collect(),
+                });
+            }
+        }
+
+        // Validate against the found prompt.
+        let prompt = session
+            .find_prompt(&decision.response_to)
+            .expect("Prompt must exist at this point");
+
+        prompt.is_valid_decision(&decision)?;
+
+        let id = prompt.id;
+
+        session.record_decision(decision);
+
+        Ok(id)
+    }
+
+    fn try_process_prompt_decisions(
         &mut self,
         scope: InteractionScopeId,
         prompt_id: ActionPromptId,
     ) -> Result<(), ActionError> {
-        let (all_decisions_ready, decisions, trigger_actor) = {
-            let session = self.interaction_engine.session(scope);
-            let prompt = session
-                .and_then(|s| s.pending_prompts().iter().find(|p| p.id == prompt_id))
-                .cloned()
-                .ok_or_else(|| panic!("Prompt disappeared"))
-                .unwrap();
+        let session = self.interaction_engine.session_mut(scope);
 
-            let decisions_map = self
-                .interaction_engine
-                .session(scope)
-                .unwrap()
-                .decisions_for_prompt(&prompt_id)
-                .cloned()
-                .unwrap_or_default();
-
-            let all_actors_submitted = prompt
-                .actors()
-                .iter()
-                .all(|a| decisions_map.contains_key(a));
-
-            let trigger_actor = match &prompt.kind {
-                ActionPromptKind::Reactions { event, .. } => event.actor(),
-                ActionPromptKind::Action { .. } => None,
-            };
-
-            (all_actors_submitted, decisions_map, trigger_actor)
-        };
-
-        if !all_decisions_ready {
+        if !session.all_actors_submitted(&prompt_id) {
             return Ok(());
         }
 
+        let decisions = session
+            .take_decisions_for_prompt(&prompt_id)
+            .ok_or_else(|| panic!("Decisions not found for prompt id {:?}", prompt_id))?;
+
         // Resume all the entities that were waiting for this prompt to resolve
-        let mut entities = decisions.keys().cloned().collect::<Vec<_>>();
-        if let Some(trigger) = trigger_actor {
-            entities.push(trigger);
+        let mut entities = decisions.keys().cloned().collect::<HashSet<_>>();
+        if let Some(prompt) = session.find_prompt(&prompt_id)
+            && let Some(trigger_actor) = prompt.trigger_actor()
+        {
+            entities.insert(trigger_actor);
         }
         for entity in entities {
             systems::actions::resume_action(self, entity, ActivityPauseReason::Reaction);
         }
 
-        // Convert decisions -> actions / reactions and validate/execute
+        // Convert decisions -> actions/reactions and execute
         for (entity, decision) in &decisions {
             match &decision.kind {
                 ActionDecisionKind::Action { action } => {
-                    // Normal action flow: validate + enqueue ActionRequested
-                    self.validate_action(action, false)?;
                     self.process_event_scoped(
                         scope,
                         Event::new(EventKind::ActionRequested {
@@ -368,7 +360,6 @@ impl GameState {
                         continue;
                     };
 
-                    self.validate_action(reaction_data, false)?;
                     self.process_event_scoped(
                         scope,
                         Event::new(EventKind::ActionRequested {

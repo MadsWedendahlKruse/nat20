@@ -9,7 +9,7 @@ use crate::{
         id::{ActionId, EntityIdentifier},
         resource::{ResourceAmountMap, ResourceError},
     },
-    engine::event::Event,
+    engine::{event::Event, game_state::GameState},
     systems::actions::ActionUsabilityError,
 };
 
@@ -55,6 +55,14 @@ impl ActionPrompt {
         Self {
             id: Uuid::new_v4(),
             kind,
+        }
+    }
+
+    pub fn trigger_actor(&self) -> Option<Entity> {
+        if let ActionPromptKind::Reactions { event, .. } = &self.kind {
+            event.actor()
+        } else {
+            None
         }
     }
 }

@@ -66,11 +66,32 @@ impl InteractionSession {
         }
     }
 
+    pub fn find_prompt(&self, prompt_id: &ActionPromptId) -> Option<&ActionPrompt> {
+        self.pending_prompts.iter().find(|p| &p.id == prompt_id)
+    }
+
     pub fn decisions_for_prompt(
         &self,
         prompt_id: &ActionPromptId,
     ) -> Option<&HashMap<Entity, ActionDecision>> {
         self.decisions_by_prompt.get(prompt_id)
+    }
+
+    #[must_use]
+    pub fn take_decisions_for_prompt(
+        &mut self,
+        prompt_id: &ActionPromptId,
+    ) -> Option<HashMap<Entity, ActionDecision>> {
+        self.decisions_by_prompt.remove(prompt_id)
+    }
+
+    pub fn all_actors_submitted(&self, prompt_id: &ActionPromptId) -> bool {
+        if let Some(prompt) = self.find_prompt(prompt_id)
+            && let Some(decisions) = self.decisions_by_prompt.get(prompt_id)
+        {
+            return prompt.actors().iter().all(|a| decisions.contains_key(a));
+        }
+        false
     }
 
     pub fn record_decision(&mut self, decision: ActionDecision) {
