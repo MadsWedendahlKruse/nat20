@@ -48,13 +48,22 @@ impl ActionBuilder {
         )
     }
 
-    fn new(game_state: &GameState, entity: Entity, actions: ActionMap) -> Self {
+    fn new(game_state: &GameState, entity: Entity, mut actions: ActionMap) -> Self {
         if !systems::health::is_alive(&game_state.world, entity) {
             return Self {
                 actor: EntityIdentifier::from_world(&game_state.world, entity),
                 state: Err(ActionBuilderError::DeadActor),
             };
         }
+
+        // Reactions should be built with the ReactionBuilder
+        actions.retain(|action_id, _| {
+            let Some(action) = systems::actions::get_action(action_id) else {
+                return false;
+            };
+
+            !action.is_reaction()
+        });
 
         Self {
             actor: EntityIdentifier::from_world(&game_state.world, entity),
@@ -339,10 +348,6 @@ impl ActionBuilder {
             return Err(ActionBuilderError::ActionNotFound(action_id.clone()));
         };
 
-        if action.is_reaction() {
-            return Err(ActionBuilderError::ActionIsReaction(action_id.clone()));
-        }
-
         let Some(contexts_and_costs) = actions.get_mut(action_id) else {
             return Err(ActionBuilderError::ActionNotAvailable {
                 action: action_id.clone(),
@@ -466,7 +471,6 @@ impl ActionBuilderState {
 pub enum ActionBuilderError {
     DeadActor,
     ActionNotFound(ActionId),
-    ActionIsReaction(ActionId),
     ActionNotAvailable {
         actor: EntityIdentifier,
         action: ActionId,
@@ -514,12 +518,10 @@ impl ReactionBuilder {
         };
 
         match &prompt.kind {
-            ActionPromptKind::Action { .. } => {
-                Self {
-                    actor,
-                    state: Err(ReactionBuilderError::NoReactionPrompt),
-                }
-            }
+            ActionPromptKind::Action { .. } => Self {
+                actor,
+                state: Err(ReactionBuilderError::NoReactionPrompt),
+            },
 
             ActionPromptKind::Reactions { event, options } => {
                 let Some(actor_options) = options.get(&actor.id()) else {

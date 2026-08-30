@@ -1,23 +1,27 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use hecs::Entity;
-use rand::seq::{IndexedRandom, IteratorRandom};
+use rand::{
+    Rng,
+    seq::{IndexedRandom, IteratorRandom},
+};
+use tracing::{debug, error};
 
 use crate::{
     components::{
-        actions::targeting::{TargetInstance, TargetingKind},
+        actions::{
+            action_builder::{ActionBuilder, ActionBuilderState, ReactionBuilder},
+            targeting::TargetingKind,
+        },
         activity::Activity,
         ai::AIController,
-        id::{AIControllerId, EntityIdentifier},
+        id::AIControllerId,
     },
     engine::{
-        action_prompt::{
-            ActionData, ActionDecision, ActionDecisionKind, ActionPrompt, ActionPromptKind,
-        },
+        action_prompt::{ActionPrompt, ActionPromptKind},
         game_state::GameState,
     },
-    registry::registry::ActionsRegistry,
-    systems::{self, movement::TargetPathFindingResult},
+    systems::{self},
 };
 
 pub static AI_CONTROLLER_REGISTRY: LazyLock<HashMap<AIControllerId, Box<dyn AIController>>> =
@@ -42,159 +46,118 @@ impl AIController for RandomController {
     ) -> Option<Activity> {
         let rng = &mut rand::rng();
 
-        // TODO: Validation that it's the actor's turn?
-
         match &prompt.kind {
             ActionPromptKind::Action { actor } => {
-                let mut actions = systems::actions::available_actions(game_state, *actor);
+                let mut action_builder = ActionBuilder::available(game_state, *actor);
 
-                // Pick a random action
-                if actions.is_empty() {
-                    // TODO: End turn?
-                    return None;
-                }
-
-                actions.retain(|action_id, _| {
-                    if let Some(action) = ActionsRegistry::get(action_id) {
-                        !action.kind().is_reaction()
-                    } else {
-                        false
-                    }
-                });
-
-                if let Some(action_id) = actions.keys().choose(rng)
-                    && let Some(contexts_and_costs) = actions.get(action_id)
-                    && let Some((context, resource_cost)) = contexts_and_costs.choose(rng)
-                    && let Some(action) = systems::actions::get_action(action_id)
-                {
-                    let targeting = systems::actions::targeting_context(
-                        &game_state.world,
-                        *actor,
-                        action_id,
-                        context,
-                    );
-                    let mut targets = Vec::new();
-
-                    let possible_targets = if let Some(encounter_id) =
-                        &game_state.in_combat.get(actor)
-                        && let Some(encounter) = game_state.encounters.get(encounter_id)
-                    {
-                        encounter
-                            .participants(&game_state.world, &targeting.allowed_entities)
-                            .into_iter()
-                            .filter(|target| {
-                                let target_attitude = systems::factions::mutual_attitude(
-                                    &game_state.world,
-                                    *actor,
-                                    *target,
-                                );
-                                target_attitude
-                                    == systems::ai::recommeneded_target_attitude(
-                                        &game_state.world,
-                                        *actor,
-                                        &action.kind,
-                                    )
-                            })
-                            .collect::<Vec<Entity>>()
-                    } else {
-                        return None;
-                    };
-
-                    match targeting.kind {
-                        TargetingKind::SelfTarget => targets.push(*actor),
-
-                        TargetingKind::Single => {
-                            if let Some(target) = possible_targets.iter().choose(rng) {
-                                targets.push(*target);
+                loop {
+                    match action_builder.state() {
+                        Ok(state) => match state {
+                            ActionBuilderState::Action { actions }
+                            | ActionBuilderState::Variant { variants: actions } => {
+                                action_builder
+                                    .action(game_state, &actions.keys().choose(rng).cloned()?);
                             }
-                        }
 
-                        TargetingKind::Multiple {
-                            max_targets,
-                            allow_duplicates,
-                        } => {
-                            let chosen_targets = if allow_duplicates {
-                                possible_targets.iter().choose_multiple(rng, max_targets)
-                            } else {
-                                let max_unique_targets = max_targets.min(possible_targets.len());
-                                possible_targets[0..max_unique_targets].iter().collect()
-                            };
-                            targets.extend(chosen_targets);
-                        }
-
-                        TargetingKind::Area {
-                            shape: _,
-                            fixed_on_actor: _,
-                            filters: _,
-                        } => todo!(),
-                    }
-
-                    let action = ActionData::new(
-                        EntityIdentifier::from_world(&game_state.world, *actor),
-                        action_id.clone(),
-                        context.clone(),
-                        resource_cost.clone(),
-                        targets
-                            .iter()
-                            .map(|entity| {
-                                TargetInstance::entity(EntityIdentifier::from_world(
+                            ActionBuilderState::Context {
+                                contexts_and_costs, ..
+                            } => {
+                                action_builder.context_index(
                                     &game_state.world,
-                                    *entity,
-                                ))
-                            })
-                            .collect(),
-                    );
+                                    rng.random_range(0..contexts_and_costs.len()),
+                                );
+                            }
 
-                    match systems::movement::path_to_target(game_state, &action) {
-                        Ok(result) => match result {
-                            TargetPathFindingResult::AlreadyInRange(_) => Some(Activity::Act {
-                                action: ActionDecision {
-                                    response_to: prompt.id,
-                                    kind: ActionDecisionKind::Action { action },
-                                },
-                            }),
+                            ActionBuilderState::Targets { action, .. } => {
+                                // This means it was populated on the previous iteration
+                                if !action.targets.is_empty() {
+                                    match action_builder.build(game_state) {
+                                        Ok(activity) => return Some(activity),
+                                        Err(error) => {
+                                            error!(
+                                                "AI actor {:?} failed to build action: {:?}",
+                                                actor, error
+                                            );
+                                            return None;
+                                        }
+                                    }
+                                }
 
-                            TargetPathFindingResult::PathFound(path_result) => {
-                                Some(Activity::MoveAndAct {
-                                    goal: *path_result.path_result.taken_path.end().unwrap(),
-                                    action: ActionDecision {
-                                        response_to: prompt.id,
-                                        kind: ActionDecisionKind::Action { action },
-                                    },
-                                })
+                                let possible_targets =
+                                    systems::ai::possible_targets(game_state, action);
+
+                                if possible_targets.is_empty() {
+                                    debug!(
+                                        "AI actor {:?} has no possible targets for action: {:?}",
+                                        actor, action.action_id
+                                    );
+                                    return None;
+                                }
+
+                                let targeting = systems::actions::targeting_context_data(
+                                    &game_state.world,
+                                    action,
+                                );
+
+                                match targeting.kind {
+                                    TargetingKind::SelfTarget => {
+                                        action_builder.target_entity(game_state, *actor);
+                                    }
+
+                                    TargetingKind::Single => {
+                                        action_builder.target_entity(
+                                            game_state,
+                                            *possible_targets.choose(rng)?,
+                                        );
+                                    }
+
+                                    TargetingKind::Multiple {
+                                        max_targets,
+                                        allow_duplicates,
+                                    } => {
+                                        let chosen_targets = if allow_duplicates {
+                                            possible_targets
+                                                .iter()
+                                                .choose_multiple(rng, max_targets)
+                                        } else {
+                                            let max_unique_targets =
+                                                max_targets.min(possible_targets.len());
+                                            possible_targets[0..max_unique_targets].iter().collect()
+                                        };
+
+                                        for target in chosen_targets {
+                                            action_builder.target_entity(game_state, *target);
+                                        }
+                                    }
+
+                                    TargetingKind::Area {
+                                        shape,
+                                        fixed_on_actor,
+                                        filters,
+                                    } => todo!(),
+                                }
                             }
                         },
-                        Err(_error) => {
-                            // TODO: Not sure what to do here for AI
-                            None
+
+                        Err(error) => {
+                            error!("Failed to build action: {:?}", error);
+                            return None;
                         }
                     }
-                } else {
-                    None
                 }
             }
 
-            ActionPromptKind::Reactions { event, options } => {
-                if let Some(options_for_actor) = options.get(&actor) {
-                    if options_for_actor.is_empty() {
-                        return None;
-                    }
+            ActionPromptKind::Reactions { options, .. } => {
+                let mut reaction_builder = ReactionBuilder::new(game_state, actor);
 
-                    options_for_actor
-                        .iter()
-                        .choose(rng)
-                        .map(|choice| Activity::Act {
-                            action: ActionDecision {
-                                response_to: prompt.id,
-                                kind: ActionDecisionKind::Reaction {
-                                    reactor: actor,
-                                    event: event.clone(),
-                                    choice: Some(choice.clone()),
-                                },
-                            },
-                        })
-                } else {
-                    None
+                reaction_builder.option_index(rng.random_range(0..options.get(&actor)?.len()));
+
+                match reaction_builder.build() {
+                    Ok(reaction) => Some(reaction),
+                    Err(error) => {
+                        error!("AI actor {:?} failed to build reaction: {:?}", actor, error);
+                        None
+                    }
                 }
             }
         }

@@ -9,7 +9,10 @@ use crate::{
         faction::Attitude,
         id::AIControllerId,
     },
-    engine::{action_prompt::ActionPrompt, game_state::GameState},
+    engine::{
+        action_prompt::{ActionData, ActionPrompt},
+        game_state::GameState,
+    },
     registry::{self},
     systems,
 };
@@ -67,5 +70,34 @@ pub fn recommeneded_target_attitude(
         ActionKind::Reaction { .. } => {
             todo!()
         }
+    }
+}
+
+pub fn possible_targets(game_state: &GameState, action_data: &ActionData) -> Vec<Entity> {
+    let targeting = systems::actions::targeting_context_data(&game_state.world, action_data);
+
+    if let Some(encounter_id) = &game_state.in_combat.get(&action_data.actor.id())
+        && let Some(encounter) = game_state.encounters.get(encounter_id)
+        && let Some(action) = systems::actions::get_action(&action_data.action_id)
+    {
+        encounter
+            .participants(&game_state.world, &targeting.allowed_entities)
+            .into_iter()
+            .filter(|target| {
+                let target_attitude = systems::factions::mutual_attitude(
+                    &game_state.world,
+                    action_data.actor.id(),
+                    *target,
+                );
+                target_attitude
+                    == recommeneded_target_attitude(
+                        &game_state.world,
+                        action_data.actor.id(),
+                        &action.kind,
+                    )
+            })
+            .collect::<Vec<Entity>>()
+    } else {
+        Vec::new()
     }
 }
