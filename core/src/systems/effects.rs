@@ -1,4 +1,4 @@
-use hecs::{Entity, Ref, RefMut, World};
+use hecs::{Entity, Ref, World};
 use tracing::debug;
 
 use crate::{
@@ -44,9 +44,9 @@ pub enum EffectApplicationResult {
     // Replaced(Vec<EffectInstance>),
 }
 
-impl Into<EffectResultKind> for EffectApplicationResult {
-    fn into(self) -> EffectResultKind {
-        match self {
+impl From<EffectApplicationResult> for EffectResultKind {
+    fn from(val: EffectApplicationResult) -> Self {
+        match val {
             EffectApplicationResult::Added(_) => EffectResultKind::Applied,
             EffectApplicationResult::RefreshedDuration(_) => EffectResultKind::RefreshedDuration,
         }
@@ -83,11 +83,8 @@ pub fn add_effect_template(
         parent_id, target, result
     );
 
-    match result {
-        EffectApplicationResult::Added(parent_id) => {
-            register_end_conditions(game_state, applier, target, &parent_id);
-        }
-        _ => {}
+    if let EffectApplicationResult::Added(parent_id) = result {
+        register_end_conditions(game_state, applier, target, &parent_id);
     }
 
     result
@@ -126,7 +123,7 @@ fn register_end_conditions(
                     end_condition.event_filter,
                     end_condition.callback,
                     ListenerSource::EffectInstance {
-                        id: parent_instance.instance_id.clone(),
+                        id: parent_instance.instance_id,
                         entity: target,
                     },
                     false,
@@ -215,7 +212,7 @@ fn add_effect_instance(
             add_effect_instance(
                 game_state,
                 entity,
-                child_instance.clone(),
+                *child_instance,
                 effect_instances,
                 context,
             );
@@ -284,63 +281,61 @@ pub fn remove_effect(
 
     let mut removed_effects = Vec::new();
 
-    if let Ok(effects) = game_state.world.query_one_mut::<&mut EffectManager>(entity) {
-        if let Some(effect_instance) = effects.remove(instance_id) {
-            let effect = effect_instance.effect();
-            if let Some(on_unapply) = &effect.on_unapply {
-                on_unapply(game_state, entity);
-            }
+    if let Ok(effects) = game_state.world.query_one_mut::<&mut EffectManager>(entity)
+        && let Some(effect_instance) = effects.remove(instance_id)
+    {
+        let effect = effect_instance.effect();
+        if let Some(on_unapply) = &effect.on_unapply {
+            on_unapply(game_state, entity);
+        }
 
-            for action in &effect.actions {
-                debug!(
-                    "Removing action granted by effect {:?} from entity {:?}: {:?}",
-                    effect.id, entity, action
-                );
-
-                match action {
-                    EffectGrantedAction::Action { id } => {
-                        systems::actions::remove_action(&mut game_state.world, entity, id);
-                    }
-                    EffectGrantedAction::Spell { id, level } => {
-                        let _ = systems::spells::remove_spell(
-                            game_state,
-                            entity,
-                            id,
-                            &SpellSource::Granted {
-                                source: GrantedSpellSource::Effect(effect.id.clone()),
-                                level: *level,
-                            },
-                        );
-                    }
-                }
-            }
-
-            game_state.event_dispatcher.remove_listeners_by_source(
-                &ListenerSource::EffectInstance {
-                    id: *instance_id,
-                    entity,
-                },
+        for action in &effect.actions {
+            debug!(
+                "Removing action granted by effect {:?} from entity {:?}: {:?}",
+                effect.id, entity, action
             );
 
-            if !effect_instance.is_permanent() && effect_instance.is_parent() {
-                game_state.process_event(Event::action_result_event(
-                    EntityIdentifier::from_world(&game_state.world, entity),
-                    ActionResultComponent::Effect(EffectResult {
-                        resolution: ActionConditionResolution::Unconditional,
-                        effects: systems::effects::effect_id_and_children(
-                            &effect_instance.effect_id,
-                        ),
-                        result: EffectResultKind::Removed,
-                    }),
-                ));
+            match action {
+                EffectGrantedAction::Action { id } => {
+                    systems::actions::remove_action(&mut game_state.world, entity, id);
+                }
+                EffectGrantedAction::Spell { id, level } => {
+                    let _ = systems::spells::remove_spell(
+                        game_state,
+                        entity,
+                        id,
+                        &SpellSource::Granted {
+                            source: GrantedSpellSource::Effect(effect.id.clone()),
+                            level: *level,
+                        },
+                    );
+                }
             }
-
-            for child_id in effect_instance.children.iter() {
-                removed_effects.extend(remove_effect(game_state, entity, child_id));
-            }
-
-            removed_effects.push(effect_instance);
         }
+
+        game_state
+            .event_dispatcher
+            .remove_listeners_by_source(&ListenerSource::EffectInstance {
+                id: *instance_id,
+                entity,
+            });
+
+        if !effect_instance.is_permanent() && effect_instance.is_parent() {
+            game_state.process_event(Event::action_result_event(
+                EntityIdentifier::from_world(&game_state.world, entity),
+                ActionResultComponent::Effect(EffectResult {
+                    resolution: ActionConditionResolution::Unconditional,
+                    effects: systems::effects::effect_id_and_children(&effect_instance.effect_id),
+                    result: EffectResultKind::Removed,
+                }),
+            ));
+        }
+
+        for child_id in effect_instance.children.iter() {
+            removed_effects.extend(remove_effect(game_state, entity, child_id));
+        }
+
+        removed_effects.push(effect_instance);
     }
 
     removed_effects
@@ -393,7 +388,7 @@ fn remove_effects_by_filter(
         .iter()
         .filter_map(|(id, effect_instance)| {
             if filter(effect_instance) {
-                Some(id.clone())
+                Some(*id)
             } else {
                 None
             }
@@ -443,7 +438,7 @@ fn instances_by_id(
         .iter()
         .filter_map(|(id, effect_instance)| {
             if effect_instance.effect_id == *effect_id {
-                Some(id.clone())
+                Some(*id)
             } else {
                 None
             }
@@ -459,8 +454,8 @@ fn children_by_parent_id(
     effects(&game_state.world, entity)
         .iter()
         .filter_map(|(id, effect_instance)| {
-            if effect_instance.parent == Some(parent_id.clone()) {
-                Some(id.clone())
+            if effect_instance.parent == Some(*parent_id) {
+                Some(*id)
             } else {
                 None
             }
@@ -492,7 +487,7 @@ pub fn extend_effect_duration(
 ) {
     let instance_ids = instances_and_children_by_id(game_state, entity, effect_id);
 
-    let mut effects = effects_mut(&mut game_state.world, entity);
+    let effects = effects_mut(&mut game_state.world, entity);
     for instance_id in instance_ids {
         if let Some(effect_instance) = effects.effects.get_mut(&instance_id) {
             effect_instance.extend_remaing_duration(duration);
@@ -503,7 +498,7 @@ pub fn extend_effect_duration(
 pub fn refresh_effect_duration(game_state: &mut GameState, entity: Entity, effect_id: &EffectId) {
     let instance_ids = instances_and_children_by_id(game_state, entity, effect_id);
 
-    let mut effects = effects_mut(&mut game_state.world, entity);
+    let effects = effects_mut(&mut game_state.world, entity);
     for instance_id in instance_ids {
         if let Some(effect_instance) = effects.effects.get_mut(&instance_id) {
             effect_instance.refresh_remaining_duration();
@@ -516,7 +511,7 @@ pub fn effect_id_and_children(effect_id: &EffectId) -> Vec<EffectId> {
     let mut ids = vec![effect_id.clone()];
 
     let effect = EffectsRegistry::get(effect_id)
-        .expect(format!("Effect definition not found for {}", effect_id).as_str());
+        .unwrap_or_else(|| panic!("Effect definition not found for {}", effect_id));
 
     for child in &effect.children {
         ids.extend(effect_id_and_children(child));

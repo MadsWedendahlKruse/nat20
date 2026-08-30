@@ -209,7 +209,7 @@ fn build_navmesh(
 
     debug!("Navmesh built in {:?}", build_start_time.elapsed());
 
-    let mut polyanya_mesh: polyanya::Mesh =
+    let polyanya_mesh: polyanya::Mesh =
         polyanya::RecastFullMesh::new(poly_navmesh.clone(), detail_navmesh.clone()).into();
     // Increase search steps to allow snapping points to navmesh from further away
     // polyanya_mesh.search_steps *= 10;
@@ -299,7 +299,7 @@ impl WorldPath {
             }
 
             let t = (point - segment_start).dot(&segment_vector) / segment_length.powi(2);
-            if t >= 0.0 && t <= 1.0 {
+            if (0.0..=1.0).contains(&t) {
                 let projection = segment_start + segment_vector * t;
                 if (point - projection).magnitude() <= EPSILON {
                     return Some(Length::new::<meter>(
@@ -422,7 +422,7 @@ impl WorldPath {
         }
 
         let t = point_vector.dot(&segment_vector) / segment_length.powi(2);
-        if t < 0.0 || t > 1.0 {
+        if !(0.0..=1.0).contains(&t) {
             return false;
         }
 

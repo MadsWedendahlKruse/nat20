@@ -249,7 +249,7 @@ impl EventLog {
     pub fn record_reaction(&mut self, event_id: EventId, reactor: Entity) {
         self.reactors
             .entry(event_id)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(reactor);
     }
 
@@ -263,7 +263,7 @@ impl EventLog {
     pub fn triggered_reactions(&self, event_id: &EventId) -> bool {
         self.reactors
             .get(event_id)
-            .map_or(false, |reactors| !reactors.is_empty())
+            .is_some_and(|reactors| !reactors.is_empty())
     }
 
     pub fn child_events(&self, event_id: &EventId) -> Vec<&Event> {
@@ -328,7 +328,7 @@ impl EventCallback {
     }
 
     pub fn run(&self, game_state: &mut GameState, event: &Event, source: &ListenerSource) {
-        let result = (self.0)(game_state, event, &source);
+        let result = (self.0)(game_state, event, source);
         match result {
             CallbackResult::Event(event) => {
                 game_state.process_event(event);
@@ -408,6 +408,12 @@ pub struct EventDispatcher {
     wildcard: HashSet<EventListenerId>,
 }
 
+impl Default for EventDispatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventDispatcher {
     pub fn new() -> Self {
         Self {
@@ -472,7 +478,7 @@ impl EventDispatcher {
         listeners.retain(|id| {
             self.listeners
                 .get(id)
-                .map_or(false, |listener| listener.filter.matches(event))
+                .is_some_and(|listener| listener.filter.matches(event))
         });
 
         listeners

@@ -30,7 +30,7 @@ pub fn spellcaster_levels(world: &World, entity: Entity) -> u8 {
     let mut spellcaster_levels = 0.0;
     if let Ok(class_levels) = world.get::<&CharacterLevels>(entity) {
         for (class_id, level_progression) in class_levels.all_classes() {
-            if let Some(class) = ClassesRegistry::get(&class_id)
+            if let Some(class) = ClassesRegistry::get(class_id)
                 && let Some(spellcasting_rules) =
                     class.spellcasting_rules(&level_progression.subclass().cloned())
             {
@@ -127,7 +127,7 @@ pub fn update_spellbook(
     let slots_per_level = SPELL_SLOTS_PER_LEVEL.get(&spellcaster_levels).unwrap();
 
     {
-        let mut resources = systems::helpers::get_component_mut::<ResourceMap>(world, entity);
+        let resources = systems::helpers::get_component_mut::<ResourceMap>(world, entity);
         for (level, &num_slots) in slots_per_level.iter().enumerate() {
             let spellslot_level = level as u8 + 1;
             resources.add(
@@ -147,7 +147,7 @@ pub fn update_spellbook(
                 .unwrap()
                 .spellcasting_rules(&class_and_subclass.subclass)
             {
-                let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(world, entity);
+                let spellbook = systems::helpers::get_component_mut::<Spellbook>(world, entity);
 
                 let max_cantrips = spellcasting_rules.cantrips_per_level.get(&level).unwrap();
                 let max_prepared_spells = spellcasting_rules
@@ -267,7 +267,7 @@ pub fn add_concentration_instance(
     );
 
     let current_action = {
-        let mut spellbook =
+        let spellbook =
             systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, caster);
         let tracker = spellbook.concentration_tracker_mut();
         tracker.action_instance().cloned()
@@ -284,7 +284,7 @@ pub fn add_concentration_instance(
     }
 
     {
-        let mut spellbook =
+        let spellbook =
             systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, caster);
         spellbook
             .concentration_tracker_mut()
@@ -294,7 +294,7 @@ pub fn add_concentration_instance(
 
 pub fn break_concentration(game_state: &mut GameState, target: Entity) {
     let instances_to_break: Vec<ConcentrationInstance> = {
-        let mut spellbook =
+        let spellbook =
             systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, target);
         spellbook.concentration_tracker_mut().take_instances()
     };
@@ -317,9 +317,9 @@ pub fn break_concentration(game_state: &mut GameState, target: Entity) {
 
 pub fn break_concentration_if_spell(game_state: &mut GameState, action: &ActionData) {
     let spell_id = action.action_id.clone().into();
-    if let Some(spell) = SpellsRegistry::get(&spell_id) {
-        if spell.has_flag(SpellFlag::Concentration) {
-            systems::spells::break_concentration(game_state, action.actor.id());
-        }
+    if let Some(spell) = SpellsRegistry::get(&spell_id)
+        && spell.has_flag(SpellFlag::Concentration)
+    {
+        systems::spells::break_concentration(game_state, action.actor.id());
     }
 }

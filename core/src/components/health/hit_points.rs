@@ -143,10 +143,10 @@ impl HitPoints {
     }
 
     pub fn clear_temp(&mut self, source: &ModifierSource) {
-        if let Some(temp) = &self.temp {
-            if &temp.source == source {
-                self.temp = None;
-            }
+        if let Some(temp) = &self.temp
+            && &temp.source == source
+        {
+            self.temp = None;
         }
     }
 }

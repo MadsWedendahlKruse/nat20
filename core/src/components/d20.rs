@@ -274,15 +274,15 @@ impl D20Check {
 
         let selected_roll = match roll_mode {
             RollMode::Normal => rolls[0],
-            RollMode::Advantage => rolls.iter().max().unwrap().clone(),
-            RollMode::Disadvantage => rolls.iter().min().unwrap().clone(),
+            RollMode::Advantage => *rolls.iter().max().unwrap(),
+            RollMode::Disadvantage => *rolls.iter().min().unwrap(),
         };
 
         let modifier_result = check.modifiers.evaluate();
         let crit_threshold = self.crit_threshold();
 
         let outcome = if let Some((_, forced_outcome)) = &self.forced_outcome {
-            Some(forced_outcome.clone())
+            Some(*forced_outcome)
         } else if selected_roll >= crit_threshold {
             Some(D20CheckOutcome::CriticalSuccess)
         } else if selected_roll == D20_CRITICAL_FAILURE {
@@ -307,7 +307,7 @@ impl D20Check {
             .proficiency_bonus();
 
         self.replace_modifier(
-            ModifierSource::Proficiency(self.proficiency.level().clone()),
+            ModifierSource::Proficiency(*self.proficiency.level()),
             self.proficiency.bonus(proficiency_bonus) as i32,
         );
 
@@ -594,7 +594,7 @@ where
     }
 
     pub fn get(&self, key: &K) -> &D20Check {
-        self.checks.get(&key).unwrap()
+        self.checks.get(key).unwrap()
     }
 
     pub fn get_mut(&mut self, key: &K) -> &mut D20Check {

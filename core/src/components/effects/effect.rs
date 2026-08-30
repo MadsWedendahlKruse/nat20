@@ -178,7 +178,7 @@ impl EffectInstance {
 
     pub fn effect(&self) -> &Effect {
         EffectsRegistry::get(&self.effect_id)
-            .expect(format!("Effect definition not found for ID `{}`", self.effect_id).as_str())
+            .unwrap_or_else(|| panic!("Effect definition not found for ID `{}`", self.effect_id))
     }
 
     pub fn advance_time(&mut self, time_step: TimeStep) {
@@ -326,7 +326,7 @@ impl EffectInstanceTemplate {
 
     pub fn effect(&self) -> &Effect {
         EffectsRegistry::get(&self.effect_id)
-            .expect(format!("Effect definition not found for ID `{}`", self.effect_id).as_str())
+            .unwrap_or_else(|| panic!("Effect definition not found for ID `{}`", self.effect_id))
     }
 }
 

@@ -11,10 +11,8 @@ use crate::{
 };
 
 pub fn get_faction(faction_id: &FactionId) -> &Faction {
-    FactionsRegistry::get(faction_id).expect(&format!(
-        "Faction with ID `{}` not found in the registry",
-        faction_id
-    ))
+    FactionsRegistry::get(faction_id)
+        .unwrap_or_else(|| panic!("Faction with ID `{}` not found in the registry", faction_id))
 }
 
 pub fn attitude_from_to(world: &World, source: Entity, destination: Entity) -> Attitude {
@@ -23,16 +21,16 @@ pub fn attitude_from_to(world: &World, source: Entity, destination: Entity) -> A
     }
 
     // 1) Source-side entity override wins outright
-    if let Ok(overrides) = world.get::<&AttitudeOverride>(source) {
-        if let Some(attitude) = overrides.entities.get(&destination) {
-            return *attitude;
-        }
+    if let Ok(overrides) = world.get::<&AttitudeOverride>(source)
+        && let Some(attitude) = overrides.entities.get(&destination)
+    {
+        return *attitude;
     }
 
     let source_factions = &world.get::<&FactionSet>(source).ok();
     let desination_factions = &world.get::<&FactionSet>(destination).ok();
 
-    // 2) If source has no factions, it has no opinion → Neutral (unless an override above)
+    // 2) If source has no factions, it has no opinion -> Neutral (unless an override above)
     if source_factions.is_none() && desination_factions.is_none() {
         return Attitude::Neutral;
     }
@@ -58,7 +56,7 @@ pub fn attitude_from_to(world: &World, source: Entity, destination: Entity) -> A
         }
     }
 
-    // 4) Fold across all (src_faction × dst_faction) with max-hostility semantics
+    // 4) Fold across all (src_faction x dst_faction) with max-hostility semantics
     //    If dst has no factions, use each src faction's default_cross_attitude.
     let mut best = Attitude::Friendly; // rely on enum order: Friendly < Neutral < Hostile
     match &desination_factions {
@@ -87,7 +85,7 @@ pub fn perceived_threat(world: &World, viewer: Entity, other: Entity) -> Attitud
     attitude_from_to(world, other, viewer) // note the flipped order
 }
 
-// Sometimes handy: a symmetric summary (“at war” if either side hostile)
+// Sometimes handy: a symmetric summary ("at war" if either side hostile)
 pub fn mutual_attitude(world: &World, a: Entity, b: Entity) -> Attitude {
     attitude_from_to(world, a, b).max(attitude_from_to(world, b, a))
 }

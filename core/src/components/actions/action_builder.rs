@@ -129,7 +129,7 @@ impl ActionBuilder {
                 .position(|(context, cost)| filter_fn(context, cost))
             {
                 Some(index) => {
-                    Self::pick_context_and_cost(&actor, world, &action, &contexts_and_costs, index)
+                    Self::pick_context_and_cost(&actor, world, action, contexts_and_costs, index)
                 }
                 None => Err(ActionBuilderError::NoMatchingContext {
                     options: contexts_and_costs.clone(),
@@ -169,7 +169,7 @@ impl ActionBuilder {
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Targets { action, .. }) => {
                 action.targets.push(target.clone());
-                match systems::movement::path_to_target(game_state, &action) {
+                match systems::movement::path_to_target(game_state, action) {
                     Err(reason) => Err(ActionBuilderError::InvalidTarget { target, reason }),
                     Ok(path_to_target) => Ok(ActionBuilderState::Targets {
                         action: action.clone(),
@@ -279,7 +279,7 @@ impl ActionBuilder {
                             Activity::Act { action: decision }
                         }
                         TargetPathFindingResult::PathFound(path_result) => {
-                            let goal = path_result.path_result.taken_path.end().unwrap().clone();
+                            let goal = *path_result.path_result.taken_path.end().unwrap();
                             if path_result.path_result.reaches_goal() {
                                 Activity::MoveAndAct {
                                     goal,
@@ -300,7 +300,7 @@ impl ActionBuilder {
                     Activity::Act { action: decision }
                 };
 
-                return Ok(activity);
+                Ok(activity)
             }
             Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Targets",
@@ -356,7 +356,7 @@ impl ActionBuilder {
             systems::effects::effects(&game_state.world, actor.id()).resource_cost(
                 game_state,
                 actor.id(),
-                &action_id,
+                action_id,
                 context,
                 cost,
             );
@@ -515,10 +515,10 @@ impl ReactionBuilder {
 
         match &prompt.kind {
             ActionPromptKind::Action { .. } => {
-                return Self {
+                Self {
                     actor,
                     state: Err(ReactionBuilderError::NoReactionPrompt),
-                };
+                }
             }
 
             ActionPromptKind::Reactions { event, options } => {

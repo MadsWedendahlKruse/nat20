@@ -44,7 +44,7 @@ impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
             .size([400.0, 0.0])
             .child_flags(imgui::ChildFlags::ALWAYS_AUTO_RESIZE | imgui::ChildFlags::AUTO_RESIZE_Y)
             .build(|| {
-                ui.separator_with_text(&action_id.to_string());
+                ui.separator_with_text(action_id.to_string());
 
                 if let Some(usability_error) = usability_error {
                     usability_error.render(ui);
@@ -81,7 +81,7 @@ impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
                             TextSegment::new("Attack Roll", TextKind::Details).render(ui);
                         }
                         ActionCondition::SavingThrow(saving_throw) => {
-                            let saving_throw = saving_throw(world, entity, &context);
+                            let saving_throw = saving_throw(world, entity, context);
                             let saving_throw_kind = match saving_throw {
                                 D20CheckDC::SavingThrow { saving_throw, .. } => saving_throw,
                                 _ => {
@@ -333,7 +333,7 @@ impl ImguiRenderable for ActionUsabilityError {
             }
 
             ActionUsabilityError::UsabilityFunctionError(error) => {
-                TextSegment::new(format!("{}", error), TextKind::Red)
+                TextSegment::new(error.to_string(), TextKind::Red)
                     .wrap_text(true)
                     .render(ui);
             }
@@ -358,10 +358,10 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                 ui.group(|| {
                     damage
                         .damage_taken
-                        .render_with_context(ui, (&target_name, no_damage_text, None));
+                        .render_with_context(ui, (target_name, no_damage_text, None));
                     damage.new_life_state.render_with_context(
                         ui,
-                        (&target_name, actor.as_ref().map(|p| p.name().as_str())),
+                        (target_name, actor.as_ref().map(|p| p.name().as_str())),
                     );
                 });
 
@@ -399,7 +399,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                     .render(ui);
                     healing.new_life_state.render_with_context(
                         ui,
-                        (&target_name, actor.as_ref().map(|p| p.name().as_str())),
+                        (target_name, actor.as_ref().map(|p| p.name().as_str())),
                     );
                 });
 
@@ -408,7 +408,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                         ui.text("Healing:");
                         ui.same_line();
                         TextSegment::new(
-                            &format!("{} HP", modifiers_to_string(&healing.healing)),
+                            format!("{} HP", modifiers_to_string(&healing.healing)),
                             TextKind::Healing,
                         )
                         .render(ui);
@@ -422,7 +422,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
                 };
 
                 match reaction {
-                    ReactionResult::ModifyEvent { before, after } => {
+                    ReactionResult::ModifyEvent { before, after: _ } => {
                         TextSegments::new(vec![
                             (
                                 format!("{}'s", actor.name().as_str()).as_str(),
@@ -446,7 +446,7 @@ impl ImguiRenderableWithContext<(&Option<&EntityIdentifier>, &str)> for ActionRe
 
                     ReactionResult::CancelEvent {
                         event,
-                        resources_refunded,
+                        resources_refunded: _,
                     } => {
                         TextSegments::new(vec![
                             (

@@ -161,6 +161,7 @@ impl ConcentrationInstance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ConcentrationTracker {
     instances: Vec<ConcentrationInstance>,
     action_instance: Option<ActionExecutionInstanceId>,
@@ -179,7 +180,7 @@ impl ConcentrationTracker {
     ) -> Result<(), ConcentrationError> {
         self.can_concentrate()?;
         self.instances.push(instance);
-        self.action_instance = Some(action_instance.clone());
+        self.action_instance = Some(*action_instance);
         Ok(())
     }
 
@@ -231,15 +232,6 @@ impl ConcentrationTracker {
     }
 }
 
-impl Default for ConcentrationTracker {
-    fn default() -> Self {
-        Self {
-            instances: Vec::new(),
-            action_instance: None,
-            concentration_blockers: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConcentrationError {

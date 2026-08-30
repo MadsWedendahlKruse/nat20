@@ -89,7 +89,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                         ui.text("No reactions available.");
                     }
 
-                    event.render_with_context(ui, &(&game_state, &LogLevel::Debug));
+                    event.render_with_context(ui, &(game_state, &LogLevel::Debug));
 
                     ui.text("Choose how to react:");
 
@@ -150,7 +150,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                             }
                         }
 
-                        if options.len() > 0 {
+                        if !options.is_empty() {
                             ui.separator();
                             if ui.button(format!("Don't react##{:?}", reactor)) {
                                 (button_clicked, entity, choice) = (true, Some(reactor), None);

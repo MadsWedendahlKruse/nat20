@@ -71,7 +71,7 @@ impl AIController for RandomController {
                         &game_state.world,
                         *actor,
                         action_id,
-                        &context,
+                        context,
                     );
                     let mut targets = Vec::new();
 
@@ -123,9 +123,9 @@ impl AIController for RandomController {
                         }
 
                         TargetingKind::Area {
-                            shape,
-                            fixed_on_actor,
-                            filters,
+                            shape: _,
+                            fixed_on_actor: _,
+                            filters: _,
                         } => todo!(),
                     }
 
@@ -147,30 +147,28 @@ impl AIController for RandomController {
 
                     match systems::movement::path_to_target(game_state, &action) {
                         Ok(result) => match result {
-                            TargetPathFindingResult::AlreadyInRange(_) => {
-                                return Some(Activity::Act {
-                                    action: ActionDecision {
-                                        response_to: prompt.id,
-                                        kind: ActionDecisionKind::Action { action },
-                                    },
-                                });
-                            }
+                            TargetPathFindingResult::AlreadyInRange(_) => Some(Activity::Act {
+                                action: ActionDecision {
+                                    response_to: prompt.id,
+                                    kind: ActionDecisionKind::Action { action },
+                                },
+                            }),
 
                             TargetPathFindingResult::PathFound(path_result) => {
-                                return Some(Activity::MoveAndAct {
-                                    goal: path_result.path_result.taken_path.end().unwrap().clone(),
+                                Some(Activity::MoveAndAct {
+                                    goal: *path_result.path_result.taken_path.end().unwrap(),
                                     action: ActionDecision {
                                         response_to: prompt.id,
                                         kind: ActionDecisionKind::Action { action },
                                     },
-                                });
+                                })
                             }
                         },
-                        Err(error) => {
+                        Err(_error) => {
                             // TODO: Not sure what to do here for AI
-                            return None;
+                            None
                         }
-                    };
+                    }
                 } else {
                     None
                 }
@@ -182,8 +180,10 @@ impl AIController for RandomController {
                         return None;
                     }
 
-                    if let Some(choice) = options_for_actor.iter().choose(rng) {
-                        return Some(Activity::Act {
+                    options_for_actor
+                        .iter()
+                        .choose(rng)
+                        .map(|choice| Activity::Act {
                             action: ActionDecision {
                                 response_to: prompt.id,
                                 kind: ActionDecisionKind::Reaction {
@@ -192,12 +192,9 @@ impl AIController for RandomController {
                                     choice: Some(choice.clone()),
                                 },
                             },
-                        });
-                    } else {
-                        return None;
-                    }
+                        })
                 } else {
-                    return None;
+                    None
                 }
             }
         }

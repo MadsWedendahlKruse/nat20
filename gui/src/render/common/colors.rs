@@ -21,9 +21,9 @@ impl Color {
     }
 }
 
-impl Into<[f32; 4]> for Color {
-    fn into(self) -> [f32; 4] {
-        match self {
+impl From<Color> for [f32; 4] {
+    fn from(val: Color) -> Self {
+        match val {
             Color::Black => [0.0, 0.0, 0.0, 1.0],
             Color::Blue => [0.0, 0.0, 1.0, 1.0],
             Color::Cyan => [0.0, 1.0, 1.0, 1.0],
@@ -40,9 +40,9 @@ impl Into<[f32; 4]> for Color {
     }
 }
 
-impl Into<[f32; 3]> for Color {
-    fn into(self) -> [f32; 3] {
-        let [r, g, b, _a]: [f32; 4] = self.into();
+impl From<Color> for [f32; 3] {
+    fn from(val: Color) -> Self {
+        let [r, g, b, _a]: [f32; 4] = val.into();
         [r, g, b]
     }
 }

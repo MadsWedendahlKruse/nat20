@@ -71,24 +71,24 @@ impl GameState {
         encounter_id: EncounterId,
     ) -> EncounterId {
         for entity in &participants {
-            self.in_combat.insert(*entity, encounter_id.clone());
+            self.in_combat.insert(*entity, encounter_id);
             systems::time::set_time_mode(
                 &mut self.world,
                 *entity,
                 TimeMode::TurnBased {
-                    encounter_id: Some(encounter_id.clone()),
+                    encounter_id: Some(encounter_id),
                 },
             );
         }
 
         self.event_log
             .push(Event::encounter_event(EncounterEvent::EncounterStarted(
-                encounter_id.clone(),
+                encounter_id,
             )));
 
-        let encounter = Encounter::new(self, participants, encounter_id.clone());
+        let encounter = Encounter::new(self, participants, encounter_id);
 
-        self.encounters.insert(encounter_id.clone(), encounter);
+        self.encounters.insert(encounter_id, encounter);
         encounter_id
     }
 
@@ -116,7 +116,7 @@ impl GameState {
             }
             self.event_log
                 .push(Event::encounter_event(EncounterEvent::EncounterEnded(
-                    encounter_id.clone(),
+                    *encounter_id,
                     encounter.event_log_move(),
                 )));
         }
@@ -133,14 +133,14 @@ impl GameState {
             None
         };
 
-        if let Some(session) = self.session_for_entity(entity) {
-            if !session.pending_events().is_empty() {
-                warn!(
-                    "Ending turn for {:?} while there are pending events: {:#?}",
-                    entity,
-                    session.pending_events()
-                );
-            }
+        if let Some(session) = self.session_for_entity(entity)
+            && !session.pending_events().is_empty()
+        {
+            warn!(
+                "Ending turn for {:?} while there are pending events: {:#?}",
+                entity,
+                session.pending_events()
+            );
         }
 
         if let Some(encounter) = encounter {
@@ -334,7 +334,7 @@ impl GameState {
             systems::actions::resume_action(self, entity, ActivityPauseReason::Reaction);
         }
 
-        // Convert decisions → actions / reactions and validate/execute
+        // Convert decisions -> actions / reactions and validate/execute
         for (entity, decision) in &decisions {
             match &decision.kind {
                 ActionDecisionKind::Action { action } => {
@@ -368,7 +368,7 @@ impl GameState {
                         continue;
                     };
 
-                    self.validate_action(&reaction_data, false)?;
+                    self.validate_action(reaction_data, false)?;
                     self.process_event_scoped(
                         scope,
                         Event::new(EventKind::ActionRequested {
@@ -407,14 +407,14 @@ impl GameState {
 
         let triggerd_listeners = self.event_dispatcher.dispatch(&event);
         for listener_id in &triggerd_listeners {
-            if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
+            if let Some(listener) = self.event_dispatcher.get_listener(listener_id) {
                 let callback = listener.callback.clone();
                 callback.run(self, &event, &listener.source.clone());
             }
-            if let Some(listener) = self.event_dispatcher.get_listener(&listener_id) {
-                if listener.one_shot {
-                    self.event_dispatcher.remove_listener_by_id(&listener_id);
-                }
+            if let Some(listener) = self.event_dispatcher.get_listener(listener_id)
+                && listener.one_shot
+            {
+                self.event_dispatcher.remove_listener_by_id(listener_id);
             }
         }
 
@@ -447,7 +447,7 @@ impl GameState {
             return;
         }
 
-        // No reaction window → advance now
+        // No reaction window -> advance now
         self.advance_event(event, false);
     }
 
@@ -485,10 +485,10 @@ impl GameState {
                 session.pop_prompt();
             } else {
                 // Update the prompt with the new options.
-                if let Some(front) = session.next_prompt_mut() {
-                    if let ActionPromptKind::Reactions { options, .. } = &mut front.kind {
-                        *options = new_options;
-                    }
+                if let Some(front) = session.next_prompt_mut()
+                    && let ActionPromptKind::Reactions { options, .. } = &mut front.kind
+                {
+                    *options = new_options;
                 }
             }
         }
@@ -592,7 +592,7 @@ impl GameState {
                 &shape_pose,
             );
         }
-        return Vec::new();
+        Vec::new()
     }
 
     pub fn validate_action(
@@ -662,13 +662,13 @@ impl GameState {
                         let armor_class = systems::loadout::armor_class(self, target.id());
                         D20CheckDC::AttackRoll {
                             target: target.clone(),
-                            source: source.clone(),
+                            source: *source,
                             armor_class,
                         }
                     }
                 };
 
-                let _ = self.process_event_scoped(
+                self.process_event_scoped(
                     self.scope_for_entity(actor.id()),
                     Event::new(EventKind::D20CheckResolved {
                         actor: actor.clone(),
@@ -681,7 +681,7 @@ impl GameState {
             }
 
             EventKind::DamageRollPerformed { actor, result } => {
-                let _ = self.process_event_scoped(
+                self.process_event_scoped(
                     self.scope_for_entity(actor.id()),
                     Event::new(EventKind::DamageRollResolved {
                         actor: actor.clone(),
@@ -710,7 +710,7 @@ impl GameState {
         let event_log = match scope {
             InteractionScopeId::Global => &mut self.event_log,
             InteractionScopeId::Encounter(encounter_id) => {
-                if let Some(encounter) = self.encounters.get_mut(&encounter_id) {
+                if let Some(encounter) = self.encounters.get_mut(encounter_id) {
                     encounter.event_log_mut()
                 } else {
                     // In case the encounter is gone or doesn't exist yet, log globally

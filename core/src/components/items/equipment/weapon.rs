@@ -150,9 +150,9 @@ impl TryFrom<String> for WeaponProperties {
     }
 }
 
-impl Into<String> for WeaponProperties {
-    fn into(self) -> String {
-        self.to_string()
+impl From<WeaponProperties> for String {
+    fn from(val: WeaponProperties) -> Self {
+        val.to_string()
     }
 }
 
@@ -181,6 +181,12 @@ impl_string_schema!(
 #[derive(Debug, Clone)]
 pub struct WeaponProficiencyMap {
     map: HashMap<WeaponCategory, Proficiency>,
+}
+
+impl Default for WeaponProficiencyMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WeaponProficiencyMap {
@@ -259,7 +265,7 @@ impl Weapon {
                 .iter()
                 .map(|(dice, damage_type)| {
                     DamageComponent::new(
-                        ModifierMap::from(ModifierSource::Base, ModifierKind::Dice(dice.clone())),
+                        ModifierMap::from(ModifierSource::Base, ModifierKind::Dice(*dice)),
                         *damage_type,
                     )
                 })
@@ -339,7 +345,7 @@ impl Weapon {
             // Override the base damage dice with the versatile damage dice
             damage_roll.components[0].replace_modifier(
                 ModifierSource::Base,
-                ModifierKind::Dice(versatile_dice.unwrap().clone()),
+                ModifierKind::Dice(*versatile_dice.unwrap()),
             );
         }
 
@@ -409,7 +415,7 @@ impl Weapon {
                 _ => {}
             }
         }
-        return &MELEE_RANGE_DEFAULT;
+        &MELEE_RANGE_DEFAULT
     }
 
     pub fn effects(&self) -> &Vec<EffectId> {

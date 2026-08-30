@@ -158,31 +158,31 @@ id_newtypes!(
     ScriptId => "script"
 );
 
-impl Into<ActionId> for SpellId {
-    fn into(self) -> ActionId {
-        let id = self.id.replacen("spell", "action", 1);
-        ActionId::new(self.namespace, id)
+impl From<SpellId> for ActionId {
+    fn from(val: SpellId) -> Self {
+        let id = val.id.replacen("spell", "action", 1);
+        ActionId::new(val.namespace, id)
     }
 }
 
-impl Into<ActionId> for &SpellId {
-    fn into(self) -> ActionId {
-        let id = self.id.replacen("spell", "action", 1);
-        ActionId::new(self.namespace.clone(), id)
+impl From<&SpellId> for ActionId {
+    fn from(val: &SpellId) -> Self {
+        let id = val.id.replacen("spell", "action", 1);
+        ActionId::new(val.namespace.clone(), id)
     }
 }
 
-impl Into<SpellId> for ActionId {
-    fn into(self) -> SpellId {
-        let id = self.id.replacen("action", "spell", 1);
-        SpellId::new(self.namespace, id)
+impl From<ActionId> for SpellId {
+    fn from(val: ActionId) -> Self {
+        let id = val.id.replacen("action", "spell", 1);
+        SpellId::new(val.namespace, id)
     }
 }
 
-impl Into<SpellId> for &ActionId {
-    fn into(self) -> SpellId {
-        let id = self.id.replacen("action", "spell", 1);
-        SpellId::new(self.namespace.clone(), id)
+impl From<&ActionId> for SpellId {
+    fn from(val: &ActionId) -> Self {
+        let id = val.id.replacen("action", "spell", 1);
+        SpellId::new(val.namespace.clone(), id)
     }
 }
 

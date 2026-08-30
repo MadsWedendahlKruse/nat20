@@ -33,8 +33,8 @@ pub fn decide_activity(
 }
 
 pub fn recommeneded_target_attitude(
-    world: &World,
-    actor: Entity,
+    _world: &World,
+    _actor: Entity,
     action_kind: &ActionKind,
 ) -> Attitude {
     match action_kind {
@@ -57,10 +57,10 @@ pub fn recommeneded_target_attitude(
                     ActionPayloadComponent::Displacement(_) => todo!(),
                 }
             }
-            return Attitude::Neutral;
+            Attitude::Neutral
         }
 
-        ActionKind::Variant { variants } => {
+        ActionKind::Variant { variants: _ } => {
             todo!()
         }
 

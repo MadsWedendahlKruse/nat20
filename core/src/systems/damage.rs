@@ -18,7 +18,7 @@ pub fn damage_roll(
     let entity = action.actor.id();
 
     systems::effects::effects(&game_state.world, entity).pre_damage_roll(
-        &game_state,
+        game_state,
         entity,
         &mut damage_roll,
         action,

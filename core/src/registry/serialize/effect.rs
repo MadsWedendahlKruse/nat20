@@ -1,4 +1,4 @@
-use hecs::{Entity, World};
+use hecs::Entity;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, hash::Hash, sync::Arc};
@@ -546,7 +546,7 @@ impl EffectModifier {
         let source = ModifierSource::Effect(effect_id.clone());
         match self {
             EffectModifier::Ability { ability: modifier } => {
-                let mut abilities = systems::helpers::get_component_mut::<AbilityScoreMap>(
+                let abilities = systems::helpers::get_component_mut::<AbilityScoreMap>(
                     &mut game_state.world,
                     entity,
                 );
@@ -561,7 +561,7 @@ impl EffectModifier {
             }
 
             EffectModifier::Skill { skill: modifier } => {
-                let mut skills =
+                let skills =
                     systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
                 Self::apply_d20_check_modifier(&mut *skills, modifier, source, phase);
             }
@@ -569,7 +569,7 @@ impl EffectModifier {
             EffectModifier::SavingThrow {
                 saving_throw: modifier,
             } => {
-                let mut saves = systems::helpers::get_component_mut::<SavingThrowSet>(
+                let saves = systems::helpers::get_component_mut::<SavingThrowSet>(
                     &mut game_state.world,
                     entity,
                 );
@@ -590,7 +590,7 @@ impl EffectModifier {
                 for attack_source in sources {
                     match attack_source {
                         AttackSource::Weapon(weapon_kind) => {
-                            let mut loadout = systems::helpers::get_component_mut::<Loadout>(
+                            let loadout = systems::helpers::get_component_mut::<Loadout>(
                                 &mut game_state.world,
                                 entity,
                             );
@@ -603,7 +603,7 @@ impl EffectModifier {
                         }
 
                         AttackSource::Spell => {
-                            let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
+                            let spellbook = systems::helpers::get_component_mut::<Spellbook>(
                                 &mut game_state.world,
                                 entity,
                             );
@@ -621,7 +621,7 @@ impl EffectModifier {
             EffectModifier::DamageResistance {
                 resistance: modifier,
             } => {
-                let mut res = systems::helpers::get_component_mut::<DamageResistances>(
+                let res = systems::helpers::get_component_mut::<DamageResistances>(
                     &mut game_state.world,
                     entity,
                 );
@@ -644,7 +644,7 @@ impl EffectModifier {
                 amount,
                 disable,
             } => {
-                let mut resources = systems::helpers::get_component_mut::<ResourceMap>(
+                let resources = systems::helpers::get_component_mut::<ResourceMap>(
                     &mut game_state.world,
                     entity,
                 );
@@ -669,7 +669,7 @@ impl EffectModifier {
             }
 
             EffectModifier::Speed { speed: modifier } => {
-                let mut speed =
+                let speed =
                     systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
                 match phase {
                     EffectPhase::Apply => match &modifier.modifier {
@@ -695,7 +695,7 @@ impl EffectModifier {
             }
 
             EffectModifier::FreeMovement { free_movement } => {
-                let mut speed =
+                let speed =
                     systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
                 match phase {
                     EffectPhase::Apply => {
@@ -715,7 +715,7 @@ impl EffectModifier {
                         (temporary_hit_points.function)(&mut game_state.world, entity, context)
                             .evaluate()
                             .total() as u32;
-                    let mut hit_points = systems::helpers::get_component_mut::<HitPoints>(
+                    let hit_points = systems::helpers::get_component_mut::<HitPoints>(
                         &mut game_state.world,
                         entity,
                     );
@@ -739,7 +739,7 @@ impl EffectModifier {
                     systems::spells::break_concentration(game_state, entity);
                 }
                 if *block_concentration {
-                    let mut spellbook = systems::helpers::get_component_mut::<Spellbook>(
+                    let spellbook = systems::helpers::get_component_mut::<Spellbook>(
                         &mut game_state.world,
                         entity,
                     );
@@ -934,7 +934,7 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                 let modifier_source = ModifierSource::Effect(effect.clone());
                 Arc::new({
                     let modifier = modifier.clone();
-                    let attacked_by = attacked_by.clone();
+                    let attacked_by = *attacked_by;
                     let distance = distance.clone();
 
                     move |game_state: &GameState,
@@ -1609,13 +1609,13 @@ fn repeat_apply_condition_callback() -> EventCallback {
             .get(&id)
             .unwrap()
             .clone();
-        let instance_id = id.clone();
+        let instance_id = id;
 
         match &instance.action_resolution {
             ActionConditionResolution::Unconditional => { /* No check to repeat */ }
 
             ActionConditionResolution::Conditional {
-                dc: dc @ (D20CheckDC::AttackRoll { .. } | D20CheckDC::Skill { .. }),
+                dc: _dc @ (D20CheckDC::AttackRoll { .. } | D20CheckDC::Skill { .. }),
                 ..
             } => {
                 // TODO: Is this used anywhere?
@@ -1632,10 +1632,10 @@ fn repeat_apply_condition_callback() -> EventCallback {
                 game_state.process_event_with_response_callback(
                     event,
                     EventCallback::new(move |game_state, event, _| {
-                        if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind {
-                            if result.is_success(dc) {
-                                systems::effects::remove_effect(game_state, entity, &instance_id);
-                            }
+                        if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind
+                            && result.is_success(dc)
+                        {
+                            systems::effects::remove_effect(game_state, entity, &instance_id);
                         }
                         CallbackResult::None
                     }),

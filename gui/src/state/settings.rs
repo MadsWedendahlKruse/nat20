@@ -185,7 +185,7 @@ impl GuiSettings {
         self.settings
             .get(key)
             .and_then(T::as_ref)
-            .expect(format!("setting '{}' is not of expected type", key).as_str())
+            .unwrap_or_else(|| panic!("setting '{}' is not of expected type", key))
     }
 
     /// Mutably borrow as the requested type, if the variant matches.
@@ -196,7 +196,7 @@ impl GuiSettings {
         self.settings
             .get_mut(key)
             .and_then(T::as_mut)
-            .expect(format!("setting '{}' is not of expected type", key).as_str())
+            .unwrap_or_else(|| panic!("setting '{}' is not of expected type", key))
     }
 
     /// Set/overwrite the value with the appropriate enum variant.

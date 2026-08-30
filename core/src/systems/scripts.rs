@@ -27,13 +27,12 @@ pub fn evaluate_reaction_trigger(
     reactor: Entity,
     event: &Event,
 ) -> bool {
-    let script = ScriptsRegistry::get(reaction_trigger).expect(
-        format!(
+    let script = ScriptsRegistry::get(reaction_trigger).unwrap_or_else(|| {
+        panic!(
             "Reaction trigger script not found in registry: {:?}",
             reaction_trigger
         )
-        .as_str(),
-    );
+    });
     match SCRIPT_ENGINE.evaluate_reaction_trigger(script, game_state, reactor, event) {
         Ok(result) => result,
         Err(err) => {
@@ -52,13 +51,12 @@ pub fn evaluate_event_filter(
     applier: Entity,
     target: Entity,
 ) -> bool {
-    let script = ScriptsRegistry::get(event_filter).expect(
-        format!(
+    let script = ScriptsRegistry::get(event_filter).unwrap_or_else(|| {
+        panic!(
             "Event filter script not found in registry: {:?}",
             event_filter
         )
-        .as_str(),
-    );
+    });
     match SCRIPT_ENGINE.evaluate_event_filter(script, event, applier, target) {
         Ok(result) => result,
         Err(err) => {
@@ -78,7 +76,7 @@ pub fn evaluate_reaction_body(
     event: &mut Event,
 ) {
     let script = ScriptsRegistry::get(reaction_body)
-        .expect(format!("Reaction script not found in registry: {:?}", reaction_body).as_str());
+        .unwrap_or_else(|| panic!("Reaction script not found in registry: {:?}", reaction_body));
     if let Err(err) = SCRIPT_ENGINE.evaluate_reaction_body(script, game_state, reaction, event) {
         error!(
             "Error evaluating reaction body script {:?} for reactor {:?}: {:?}",
@@ -97,13 +95,12 @@ pub fn evaluate_resource_cost_hook(
     action_context: &ActionContext,
     resource_cost: &mut ResourceAmountMap,
 ) {
-    let script = ScriptsRegistry::get(resource_cost_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(resource_cost_hook).unwrap_or_else(|| {
+        panic!(
             "Resource cost hook script not found in registry: {:?}",
             resource_cost_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_resource_cost_hook(
         script,
         game_state,
@@ -124,13 +121,12 @@ pub fn evaluate_action_hook(
     game_state: &mut GameState,
     action: &ActionData,
 ) {
-    let script = ScriptsRegistry::get(action_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(action_hook).unwrap_or_else(|| {
+        panic!(
             "Action hook script not found in registry: {:?}",
             action_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_action_hook(script, game_state, action) {
         error!(
             "Error evaluating action hook script {:?}: {:?}",
@@ -145,13 +141,12 @@ pub fn evaluate_action_result_hook(
     action: &ActionData,
     results: &ActionResult,
 ) {
-    let script = ScriptsRegistry::get(action_result_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(action_result_hook).unwrap_or_else(|| {
+        panic!(
             "Action result hook script not found in registry: {:?}",
             action_result_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_action_result_hook(script, game_state, action, results)
     {
         error!(
@@ -167,13 +162,12 @@ pub fn evaluate_armor_class_hook(
     entity: Entity,
     armor_class: &mut ArmorClass,
 ) {
-    let script = ScriptsRegistry::get(armor_class_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(armor_class_hook).unwrap_or_else(|| {
+        panic!(
             "Armor class hook script not found in registry: {:?}",
             armor_class_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) =
         SCRIPT_ENGINE.evaluate_armor_class_hook(script, game_state, entity, armor_class)
     {
@@ -191,7 +185,7 @@ pub fn evaluate_speed_hook(
     speed: &mut Speed,
 ) {
     let script = ScriptsRegistry::get(speed_hook)
-        .expect(format!("Speed hook script not found in registry: {:?}", speed_hook).as_str());
+        .unwrap_or_else(|| panic!("Speed hook script not found in registry: {:?}", speed_hook));
     if let Err(err) = SCRIPT_ENGINE.evaluate_speed_hook(script, game_state, entity, speed) {
         error!(
             "Error evaluating speed hook script {:?} for entity {:?}: {:?}",
@@ -206,13 +200,12 @@ pub fn evaluate_d20_ability_hook(
     entity: Entity,
     check: &D20Check,
 ) -> Option<Ability> {
-    let script = ScriptsRegistry::get(ability_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(ability_hook).unwrap_or_else(|| {
+        panic!(
             "D20 ability hook script not found in registry: {:?}",
             ability_hook
         )
-        .as_str(),
-    );
+    });
     match SCRIPT_ENGINE.evaluate_d20_ability_hook(script, game_state, entity, check) {
         Ok(result) => result,
         Err(err) => {
@@ -231,13 +224,12 @@ pub fn evaluate_d20_check_hook(
     entity: Entity,
     check: &mut D20Check,
 ) {
-    let script = ScriptsRegistry::get(check_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(check_hook).unwrap_or_else(|| {
+        panic!(
             "D20 check hook script not found in registry: {:?}",
             check_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_d20_check_hook(script, game_state, entity, check) {
         error!(
             "Error evaluating d20 check hook script {:?} for entity {:?}: {:?}",
@@ -252,13 +244,12 @@ pub fn evaluate_d20_result_hook(
     entity: Entity,
     result: &mut D20CheckResult,
 ) {
-    let script = ScriptsRegistry::get(result_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(result_hook).unwrap_or_else(|| {
+        panic!(
             "D20 result hook script not found in registry: {:?}",
             result_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_d20_result_hook(script, game_state, entity, result) {
         error!(
             "Error evaluating d20 result hook script {:?} for entity {:?}: {:?}",
@@ -275,13 +266,12 @@ pub fn evaluate_damage_roll_hook(
     action: &ActionData,
     resolution: &ActionConditionResolution,
 ) {
-    let script = ScriptsRegistry::get(damage_roll_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(damage_roll_hook).unwrap_or_else(|| {
+        panic!(
             "Damage roll hook script not found in registry: {:?}",
             damage_roll_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_damage_roll_hook(
         script,
         game_state,
@@ -305,13 +295,12 @@ pub fn evaluate_damage_roll_result_hook(
     action: &ActionData,
     resolution: &ActionConditionResolution,
 ) {
-    let script = ScriptsRegistry::get(damage_roll_result_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(damage_roll_result_hook).unwrap_or_else(|| {
+        panic!(
             "Damage roll result hook script not found in registry: {:?}",
             damage_roll_result_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_damage_roll_result_hook(
         script,
         game_state,
@@ -336,13 +325,12 @@ pub fn evaluate_pre_damage_mitigation_hook(
     action: Option<&ActionData>,
     resolution: Option<&ActionConditionResolution>,
 ) {
-    let script = ScriptsRegistry::get(pre_damage_mitigation_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(pre_damage_mitigation_hook).unwrap_or_else(|| {
+        panic!(
             "Pre damage mitigation hook script not found in registry: {:?}",
             pre_damage_mitigation_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_pre_damage_mitigation_hook(
         script,
         game_state,
@@ -367,13 +355,12 @@ pub fn evaluate_post_damage_mitigation_hook(
     action: Option<&ActionData>,
     resolution: Option<&ActionConditionResolution>,
 ) {
-    let script = ScriptsRegistry::get(damage_mitigation_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(damage_mitigation_hook).unwrap_or_else(|| {
+        panic!(
             "Post damage mitigation hook script not found in registry: {:?}",
             damage_mitigation_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) = SCRIPT_ENGINE.evaluate_post_damage_mitigation_hook(
         script,
         game_state,
@@ -397,7 +384,7 @@ pub fn evaluate_death_hook(
     applier: Option<Entity>,
 ) {
     let script = ScriptsRegistry::get(death_hook)
-        .expect(format!("Death hook script not found in registry: {:?}", death_hook).as_str());
+        .unwrap_or_else(|| panic!("Death hook script not found in registry: {:?}", death_hook));
     if let Err(err) = SCRIPT_ENGINE.evaluate_death_hook(script, game_state, victim, killer, applier)
     {
         error!(
@@ -409,7 +396,7 @@ pub fn evaluate_death_hook(
 
 pub fn evaluate_turn_start_hook(script_id: &ScriptId, game_state: &mut GameState, entity: Entity) {
     let script = ScriptsRegistry::get(script_id)
-        .expect(format!("Turn start hook script not found: {:?}", script_id).as_str());
+        .unwrap_or_else(|| panic!("Turn start hook script not found: {:?}", script_id));
     if let Err(err) = SCRIPT_ENGINE.evaluate_turn_start_hook(script, game_state, entity) {
         error!(
             "Error evaluating turn start hook script {:?} for entity {:?}: {:?}",
@@ -425,13 +412,12 @@ pub fn evaluate_action_usability(
     action_id: &ActionId,
     action_context: &ActionContext,
 ) -> Option<String> {
-    let script = ScriptsRegistry::get(action_usability).expect(
-        format!(
+    let script = ScriptsRegistry::get(action_usability).unwrap_or_else(|| {
+        panic!(
             "Action usability script not found in registry: {:?}",
             action_usability
         )
-        .as_str(),
-    );
+    });
     match SCRIPT_ENGINE.evaluate_action_usability(
         script,
         game_state,
@@ -451,13 +437,12 @@ pub fn evaluate_action_usability_hook(
     action_id: &ActionId,
     action_context: &ActionContext,
 ) -> Option<String> {
-    let script = ScriptsRegistry::get(action_usability_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(action_usability_hook).unwrap_or_else(|| {
+        panic!(
             "Action usability hook script not found in registry: {:?}",
             action_usability_hook
         )
-        .as_str(),
-    );
+    });
     match SCRIPT_ENGINE.evaluate_action_usability_hook(
         script,
         game_state,
@@ -478,13 +463,12 @@ pub fn evaluate_target_usability(
     action_id: &ActionId,
     action_context: &ActionContext,
 ) -> Option<String> {
-    let script = ScriptsRegistry::get(target_usability).expect(
-        format!(
+    let script = ScriptsRegistry::get(target_usability).unwrap_or_else(|| {
+        panic!(
             "Target usability script not found in registry: {:?}",
             target_usability
         )
-        .as_str(),
-    );
+    });
     match SCRIPT_ENGINE.evaluate_target_usability(
         script,
         game_state,
@@ -514,13 +498,12 @@ pub fn evaluate_attacked_hook(
     attacker: Entity,
     check: &mut D20Check,
 ) {
-    let script = ScriptsRegistry::get(attacked_hook).expect(
-        format!(
+    let script = ScriptsRegistry::get(attacked_hook).unwrap_or_else(|| {
+        panic!(
             "Attacked hook script not found in registry: {:?}",
             attacked_hook
         )
-        .as_str(),
-    );
+    });
     if let Err(err) =
         SCRIPT_ENGINE.evaluate_attacked_hook(script, game_state, effect, victim, attacker, check)
     {

@@ -46,6 +46,12 @@ pub struct Scenario {
     _log_guard: DefaultGuard,
 }
 
+impl Default for Scenario {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scenario {
     pub fn from_game_state(game_state: GameState) -> Self {
         Self {
@@ -240,7 +246,7 @@ impl<'s> ScenarioEncounterBuilder<'s> {
             let initiative_bonus = (participants.len() - 1 - i) * 20;
             let creature = self.scenario.creatures.get(handle).unwrap();
             let entity = creature.id();
-            let mut skills = systems::helpers::get_component_mut::<SkillSet>(
+            let skills = systems::helpers::get_component_mut::<SkillSet>(
                 &mut self.scenario.game_state.world,
                 entity,
             );
@@ -265,7 +271,7 @@ pub struct ScenarioActionBuilder<'s> {
 impl ScenarioActionBuilder<'_> {
     pub fn variant(mut self, variant: impl Into<ActionId>) -> Self {
         self.builder
-            .action(&mut self.scenario.game_state, &variant.into());
+            .action(&self.scenario.game_state, &variant.into());
         self
     }
 
@@ -909,7 +915,7 @@ impl ScenarioProbe<'_> {
         let d20_check = self.get_d20_check(kind);
         assert_eq!(
             d20_check.ability(),
-            Some(ability.clone()),
+            Some(*ability),
             "Expected creature {:?} to have ability {:?} on {:?} check, but it was {:?}",
             self.creature(),
             ability,
@@ -984,7 +990,7 @@ impl ScenarioProbe<'_> {
     ) -> &mut Self {
         {
             let d20_check = self.get_d20_check(kind);
-            let reduction = d20_check.crit_threshold_reduction().get(&source);
+            let reduction = d20_check.crit_threshold_reduction().get(source);
             assert!(
                 reduction.map(|r| operator.evaluate(r)).unwrap_or(false),
                 "Expected creature {:?} to have critical threshold reduction from {:?} on {:?} check satisfying condition {:?}, but it was {:?}. Current reductions: {:#?}",
@@ -1176,7 +1182,7 @@ impl ScenarioEventFilterBuilder<'_> {
                 }
 
                 if let Some(kind) = &kind {
-                    return kind.matches(event);
+                    kind.matches(event)
                 } else {
                     true
                 }

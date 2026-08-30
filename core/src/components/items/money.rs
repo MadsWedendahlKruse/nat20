@@ -76,6 +76,12 @@ impl_string_schema!(
     "examples": ["10 GP", "1 PP, 5 SP"]
 );
 
+impl Default for MonetaryValue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MonetaryValue {
     pub fn new() -> Self {
         Self {
@@ -88,14 +94,14 @@ impl MonetaryValue {
     }
 
     pub fn remove(&mut self, currency: Currency, amount: u32) -> Result<(), MonetaryValueError> {
-        if let Some(current_amount) = self.values.get_mut(&currency) {
-            if *current_amount >= amount {
-                *current_amount -= amount;
-                if *current_amount == 0 {
-                    self.values.remove(&currency);
-                }
-                return Ok(());
+        if let Some(current_amount) = self.values.get_mut(&currency)
+            && *current_amount >= amount
+        {
+            *current_amount -= amount;
+            if *current_amount == 0 {
+                self.values.remove(&currency);
             }
+            return Ok(());
         }
         Err(MonetaryValueError::InsufficientFunds)
     }
@@ -118,10 +124,10 @@ impl fmt::Display for MonetaryValue {
             keys
         };
         for currency in sorted_keys {
-            if let Some(&amount) = self.values.get(currency) {
-                if amount > 0 {
-                    parts.push(format!("{} {}", amount, currency));
-                }
+            if let Some(&amount) = self.values.get(currency)
+                && amount > 0
+            {
+                parts.push(format!("{} {}", amount, currency));
             }
         }
         if parts.is_empty() {

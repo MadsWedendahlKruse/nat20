@@ -20,8 +20,8 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 // uses a `parking_lot::ReentrantMutex` internally, so:
 //
 // - Same-thread reentry works. Our hooks reliably do this:
-//   `apply_effect` → `process_event(GainedEffect)` →
-//   `available_reactions_to_event` → another script's `resource_cost_hook`.
+//   `apply_effect` -> `process_event(GainedEffect)` ->
+//   `available_reactions_to_event` -> another script's `resource_cost_hook`.
 //   An outer `std::sync::Mutex<ScriptEngine>` would deadlock the same thread
 //   here; mlua's reentrant lock handles it.
 // - Cross-thread access is *documented* to serialize via that same reentrant
@@ -70,6 +70,12 @@ pub static SCRIPT_ENGINE: LazyLock<ScriptEngine> = LazyLock::new(ScriptEngine::n
 pub struct ScriptEngine {
     lua: Lua,
     module_cache: Mutex<HashMap<ScriptId, RegistryKey>>,
+}
+
+impl Default for ScriptEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ScriptEngine {

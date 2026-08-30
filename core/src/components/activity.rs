@@ -126,7 +126,9 @@ impl ActivityState {
 
 #[derive(Debug, Clone, EnumDiscriminants)]
 #[strum_discriminants(name(ActivityStateKindTag))]
+#[derive(Default)]
 pub enum ActivityStateKind {
+    #[default]
     Idle,
     Moving {
         path: WorldPath,
@@ -146,11 +148,6 @@ pub enum ActivityStateKind {
     },
 }
 
-impl Default for ActivityStateKind {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ActivityPauseReason {

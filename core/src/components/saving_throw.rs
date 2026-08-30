@@ -6,7 +6,7 @@ use strum::IntoEnumIterator;
 use crate::{
     components::{
         ability::Ability,
-        d20::{D20CheckDC, D20CheckKind, D20CheckMap},
+        d20::{D20CheckKind, D20CheckMap},
     },
     registry::serialize::schema::impl_string_schema,
 };
@@ -68,10 +68,10 @@ impl FromStr for SavingThrowKind {
             return Ok(SavingThrowKind::Concentration);
         }
         for ability in Ability::iter() {
-            if let Ok(parsed_ability) = s.parse::<Ability>() {
-                if parsed_ability == ability {
-                    return Ok(SavingThrowKind::Ability(ability));
-                }
+            if let Ok(parsed_ability) = s.parse::<Ability>()
+                && parsed_ability == ability
+            {
+                return Ok(SavingThrowKind::Ability(ability));
             }
         }
         Err(format!("Unknown saving throw kind: {}", s))

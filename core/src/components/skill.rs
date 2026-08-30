@@ -2,7 +2,7 @@ use std::{fmt, hash::Hash};
 
 use crate::components::{
     ability::Ability,
-    d20::{D20CheckDC, D20CheckKind, D20CheckMap},
+    d20::{D20CheckKind, D20CheckMap},
 };
 
 use schemars::JsonSchema;
@@ -11,8 +11,10 @@ use strum::EnumIter;
 
 #[derive(EnumIter, Debug, Hash, Eq, PartialEq, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Skill {
     // --- Strength ---
+    #[default]
     Athletics,
     // --- Dexterity ---
     Acrobatics,
@@ -73,11 +75,6 @@ impl fmt::Display for Skill {
     }
 }
 
-impl Default for Skill {
-    fn default() -> Self {
-        Skill::Athletics
-    }
-}
 
 pub type SkillSet = D20CheckMap<Skill>;
 

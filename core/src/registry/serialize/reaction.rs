@@ -42,7 +42,7 @@ impl_string_schema!(
 );
 
 static REACTION_TRIGGER_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionTriggerFunction>>> =
-    LazyLock::new(|| HashMap::new());
+    LazyLock::new(HashMap::new);
 
 static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction>>> =
     LazyLock::new(|| {
@@ -215,8 +215,8 @@ impl From<ReactionBodyDefinition> for String {
     }
 }
 
-impl Into<ReactionBody> for ReactionBodyDefinition {
-    fn into(self) -> ReactionBody {
-        ReactionBody::new(self.function)
+impl From<ReactionBodyDefinition> for ReactionBody {
+    fn from(val: ReactionBodyDefinition) -> Self {
+        ReactionBody::new(val.function)
     }
 }

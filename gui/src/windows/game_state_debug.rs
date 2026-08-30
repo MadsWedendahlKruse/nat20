@@ -79,7 +79,7 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                         for (i, event) in game_state.event_log.events.iter().enumerate() {
                             ui.indent();
                             if ui.collapsing_header(
-                                &format!("Event {}: {:?}", i, event.id),
+                                format!("Event {}: {:?}", i, event.id),
                                 TreeNodeFlags::empty(),
                             ) {
                                 ui.text(format!("{:#?}", event));
@@ -94,7 +94,7 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                         for (event_id, reactors) in game_state.event_log.reactors.iter() {
                             ui.indent();
                             if ui.collapsing_header(
-                                &format!("Event {:?} Reactors", event_id),
+                                format!("Event {:?} Reactors", event_id),
                                 TreeNodeFlags::empty(),
                             ) {
                                 for reactor in reactors {
@@ -124,7 +124,7 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                     for (actor, execution) in game_state.action_executions.iter() {
                         ui.indent();
                         if ui.collapsing_header(
-                            &format!("Action Instance {:?}", actor),
+                            format!("Action Instance {:?}", actor),
                             TreeNodeFlags::empty(),
                         ) {
                             ui.text(format!("{:#?}", execution));
@@ -137,7 +137,7 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                     for (actor, mailbox) in game_state.execution_mailbox.iter() {
                         ui.indent();
                         if ui.collapsing_header(
-                            &format!("Mailbox for {:?}", actor),
+                            format!("Mailbox for {:?}", actor),
                             TreeNodeFlags::empty(),
                         ) {
                             ui.text(format!("{:#?}", mailbox));

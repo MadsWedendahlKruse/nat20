@@ -108,7 +108,7 @@ impl std::fmt::Display for ChoiceItem {
             ChoiceItem::Equipment { items, money } => {
                 let mut lines: Vec<String> = items
                     .iter()
-                    .map(|(count, id)| format!("{} x {}", count, id.to_string()))
+                    .map(|(count, id)| format!("{} x {}", count, id))
                     .collect();
                 if !money.is_empty() {
                     lines.push(money.to_string());
@@ -281,7 +281,7 @@ impl LevelUpPrompt {
                     }
                     let spell = SpellsRegistry::get(spell_id)?;
                     if spell.base_level() > max_spell_level {
-                        return None;
+                        None
                     } else if cantrips && spell.is_cantrip() {
                         Some(ChoiceItem::Spell(spell_id.clone(), source.clone()))
                     } else if !cantrips && !spell.is_cantrip() {

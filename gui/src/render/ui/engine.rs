@@ -41,7 +41,7 @@ impl From<usize> for LogLevel {
 
 pub fn event_log_level(event: &Event) -> LogLevel {
     match &event.kind {
-        EventKind::Encounter(encounter_event) => LogLevel::Info,
+        EventKind::Encounter(_encounter_event) => LogLevel::Info,
         EventKind::MovingOutOfReach { .. } => LogLevel::Debug,
         EventKind::ActionRequested { .. } => LogLevel::Info,
         EventKind::LifeStateChanged { .. } => LogLevel::Info,
@@ -79,10 +79,7 @@ pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
                 TextSegments::new(vec![
                     (format!("{}'s", actor.name().as_str()), TextKind::Actor),
                     ("action targeting".to_string(), TextKind::Normal),
-                    (
-                        format!("{}", result.target.name().as_str()),
-                        TextKind::Target,
-                    ),
+                    (result.target.name().as_str().to_string(), TextKind::Target),
                 ])
                 .render(ui);
             } else {
@@ -190,10 +187,10 @@ fn should_indent(event: &Event, prev_event: Option<&Event>) -> bool {
             return true;
         }
 
-        if let Some(prev_parent) = prev_event.parent {
-            if parent == prev_parent {
-                return true;
-            }
+        if let Some(prev_parent) = prev_event.parent
+            && parent == prev_parent
+        {
+            return true;
         }
     }
 
@@ -215,7 +212,7 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
         match &self.kind {
             EventKind::Encounter(encounter_event) => match encounter_event {
                 EncounterEvent::EncounterStarted(encounter_id) => {
-                    ui.separator_with_text(&format!("Encounter {}", encounter_id));
+                    ui.separator_with_text(format!("Encounter {}", encounter_id));
                 }
                 EncounterEvent::EncounterEnded(encounter_id, combat_log) => {
                     if ui.collapsing_header(format!("Log##{}", encounter_id), TreeNodeFlags::FRAMED)
@@ -224,7 +221,7 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
                     }
                     ui.separator();
                 }
-                EncounterEvent::NewRound(encounter_id, round) => {
+                EncounterEvent::NewRound(_encounter_id, round) => {
                     ui.separator_with_text(format!("Round {}", round));
                 }
             },

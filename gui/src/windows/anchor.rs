@@ -119,14 +119,14 @@ impl WindowManager {
         let window_label = window.label.clone();
         self.windos_by_anchor
             .entry(window.anchor)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(window_label);
         self.windows_by_label.insert(window.label.clone(), window);
     }
 
     fn add_if_missing(&mut self, label: &str, anchor: &WindowAnchor) {
         if !self.windows_by_label.contains_key(label) {
-            let window = AnchoredWindow::new(label.to_string(), anchor.clone());
+            let window = AnchoredWindow::new(label.to_string(), *anchor);
             self.add(window);
         }
     }

@@ -121,9 +121,9 @@ impl_into_equipment_instance! {
     EquipmentItem => Equipment,
 }
 
-impl Into<EquipmentInstance> for &LazyLock<ItemId> {
-    fn into(self) -> EquipmentInstance {
-        let item = ItemsRegistry::get(&self).expect("Invalid ItemId");
+impl From<&LazyLock<ItemId>> for EquipmentInstance {
+    fn from(val: &LazyLock<ItemId>) -> Self {
+        let item = ItemsRegistry::get(val).expect("Invalid ItemId");
         match item {
             ItemInstance::Armor(armor) => EquipmentInstance::Armor(armor.clone()),
             ItemInstance::Weapon(weapon) => EquipmentInstance::Weapon(weapon.clone()),
@@ -163,9 +163,7 @@ impl Loadout {
     }
 
     pub fn saving_throw_modifiers_mut(&mut self, weapon_kind: &WeaponKind) -> &mut ModifierMap {
-        self.saving_throw_modifiers
-            .entry(weapon_kind.clone())
-            .or_insert_with(ModifierMap::default)
+        self.saving_throw_modifiers.entry(*weapon_kind).or_default()
     }
 
     pub fn item_in_slot(&self, slot: &EquipmentSlot) -> Option<&EquipmentInstance> {
@@ -195,7 +193,7 @@ impl Loadout {
                 equipment,
             });
         }
-        let mut unequipped_items = self.unequip_slots(&equipment.required_slots());
+        let mut unequipped_items = self.unequip_slots(equipment.required_slots());
         if let Some(existing) = self.equipment.insert(*slot, equipment) {
             unequipped_items.push(existing);
         }
@@ -215,7 +213,7 @@ impl Loadout {
                 return false;
             }
         }
-        for (_, equipped) in &self.equipment {
+        for equipped in self.equipment.values() {
             if equipped
                 .required_slots()
                 .iter()
@@ -245,7 +243,7 @@ impl Loadout {
                     .iter()
                     .any(|s| valid_slots.contains(s))
                 {
-                    Some(slot.clone())
+                    Some(*slot)
                 } else {
                     None
                 }
@@ -260,7 +258,7 @@ impl Loadout {
 
         // If there's only one valid slot, use that
         if valid_slots.len() == 1 {
-            return (valid_slots[0].clone(), unequipped_items);
+            return (valid_slots[0], unequipped_items);
         }
         // If there are multiple valid slots, find an available one
         let mut avaible_slot = valid_slots
@@ -272,7 +270,7 @@ impl Loadout {
             avaible_slot = Some(&valid_slots[0]);
         }
 
-        (avaible_slot.unwrap().clone(), unequipped_items)
+        (*avaible_slot.unwrap(), unequipped_items)
     }
 
     pub fn equip<T>(&mut self, equipment: T) -> Result<Vec<EquipmentInstance>, TryEquipError>
@@ -448,7 +446,7 @@ impl AttackRollProvider for Loadout {
                 let mut attack_roll = weapon.attack_roll(
                     &systems::helpers::get_component::<AbilityScoreMap>(world, actor),
                     &systems::helpers::get_component::<WeaponProficiencyMap>(world, actor)
-                        .proficiency(&weapon.category()),
+                        .proficiency(weapon.category()),
                 );
 
                 let range = weapon.range();
@@ -512,10 +510,7 @@ impl SavingThrowProvider for Loadout {
                 let weapon = self
                     .weapon_in_hand(slot)
                     .expect("No weapon equipped in the specified slot");
-                (
-                    weapon.kind().clone(),
-                    weapon.determine_ability(&ability_scores),
-                )
+                (*weapon.kind(), weapon.determine_ability(&ability_scores))
             }
             ActionAttackKind::Unarmed => (WeaponKind::Unarmed, Ability::Strength),
         };
@@ -529,9 +524,9 @@ impl SavingThrowProvider for Loadout {
             (ModifierSource::Base, 8),
             (
                 ModifierSource::Proficiency(ProficiencyLevel::Proficient),
-                proficiency_bonus.into(),
+                proficiency_bonus,
             ),
-            (ModifierSource::Ability(ability), ability_modifier.into()),
+            (ModifierSource::Ability(ability), ability_modifier),
         ]);
 
         if let Some(modifiers) = self.saving_throw_modifiers.get(&weapon_kind) {

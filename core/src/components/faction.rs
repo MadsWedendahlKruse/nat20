@@ -103,6 +103,12 @@ impl IdProvider for Faction {
     }
 }
 
+impl Default for AttitudeOverride {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AttitudeOverride {
     pub fn new() -> Self {
         Self {

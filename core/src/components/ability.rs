@@ -121,7 +121,7 @@ impl AbilityScore {
         let mut ability_modifiers = self.modifiers.clone();
         let mut zero_sources = Vec::new();
         for (source, value) in ability_modifiers.iter_mut() {
-            *value = *value / 2;
+            *value /= 2;
             if *value == 0 {
                 zero_sources.push(source.clone());
             }
@@ -161,6 +161,12 @@ pub struct AbilityScoreMap {
     pub scores: HashMap<Ability, AbilityScore>,
 }
 
+impl Default for AbilityScoreMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AbilityScoreMap {
     pub fn new() -> Self {
         let mut scores = HashMap::new();
@@ -171,11 +177,11 @@ impl AbilityScoreMap {
     }
 
     pub fn get(&self, ability: &Ability) -> &AbilityScore {
-        self.scores.get(&ability).unwrap()
+        self.scores.get(ability).unwrap()
     }
 
     fn get_mut(&mut self, ability: &Ability) -> &mut AbilityScore {
-        self.scores.get_mut(&ability).unwrap()
+        self.scores.get_mut(ability).unwrap()
     }
 
     pub fn set(&mut self, ability: Ability, score: AbilityScore) {

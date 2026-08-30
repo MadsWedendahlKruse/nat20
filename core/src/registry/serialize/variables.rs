@@ -52,7 +52,7 @@ pub static PARSER_VARIABLES: LazyLock<VariableMap> = LazyLock::new(|| {
             variable_name,
             Arc::new(
                 move |world: &World, entity: Entity, _context: &ActionContext| {
-                    systems::class::class_level(world, entity, &class_id) as i32
+                    systems::class::class_level(world, entity, class_id) as i32
                 },
             ) as Arc<VariableFunction>,
         );

@@ -2,7 +2,7 @@ use hecs::{Entity, World};
 
 use crate::{
     components::{id::FeatId, level_up::LevelUpPrompt, modifier::ModifierSource},
-    engine::game_state::{self, GameState},
+    engine::game_state::GameState,
     registry::registry::FeatsRegistry,
     systems,
 };
@@ -37,7 +37,7 @@ pub fn can_acquire_feat(world: &World, entity: Entity, feat_id: &FeatId) -> Resu
         });
     }
 
-    if !feat.is_repeatable() && feats(&world, entity).contains(feat_id) {
+    if !feat.is_repeatable() && feats(world, entity).contains(feat_id) {
         return Err(FeatError::AlreadyHasUnrepeatableFeat {
             feat_id: feat.id().clone(),
             entity,

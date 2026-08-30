@@ -19,14 +19,14 @@ use crate::{
 };
 
 pub fn set_time_mode(world: &mut World, entity: Entity, mode: TimeMode) {
-    let mut clock = systems::helpers::get_component_mut::<EntityClock>(world, entity);
+    let clock = systems::helpers::get_component_mut::<EntityClock>(world, entity);
     clock.set_mode(mode);
 }
 
 pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeStep) {
     // TODO: Recharge resources on time advance?
     {
-        let mut clock =
+        let clock =
             systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, entity);
 
         match (clock.mode(), time_step) {

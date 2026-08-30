@@ -172,9 +172,9 @@ impl ActionPrompt {
                     decision
                 );
 
-                if let Some(options) = options.get(&reactor) {
+                if let Some(options) = options.get(reactor) {
                     if let Some(choice) = choice
-                        && !options.contains(&choice)
+                        && !options.contains(choice)
                     {
                         return Err(ActionError::FieldMismatch {
                             field: "choices",

@@ -96,8 +96,8 @@ impl OrbitCamera {
         let proj = self.last_proj.as_ref().unwrap();
 
         // NDC in OpenGL: x,y ∈ [-1,1], y-up (flip because pixels have y-down)
-        let x_ndc = (2.0 * mouse_px / viewport_w as f32) - 1.0;
-        let y_ndc = 1.0 - (2.0 * mouse_py / viewport_h as f32);
+        let x_ndc = (2.0 * mouse_px / viewport_w) - 1.0;
+        let y_ndc = 1.0 - (2.0 * mouse_py / viewport_h);
 
         // Camera-space ray dir (OpenGL RH: forward is -Z)
         let fovy = proj.fovy();
@@ -141,8 +141,8 @@ impl OrbitCamera {
         let ndc = cp.xyz() / cp.w; // normalized device coords
 
         // NDC to window coords
-        let x = (ndc.x + 1.0) * 0.5 * (viewport_w as f32);
-        let y = (1.0 - ndc.y) * 0.5 * (viewport_h as f32); // flip Y for pixels
+        let x = (ndc.x + 1.0) * 0.5 * viewport_w;
+        let y = (1.0 - ndc.y) * 0.5 * viewport_h; // flip Y for pixels
         Some((x, y))
     }
 
@@ -150,9 +150,8 @@ impl OrbitCamera {
         match event {
             WindowEvent::MouseInput { state, button, .. } => {
                 let down = *state == winit::event::ElementState::Pressed;
-                match button {
-                    MouseButton::Middle => self.mmb_down = down,
-                    _ => {}
+                if button == &MouseButton::Middle {
+                    self.mmb_down = down
                 }
             }
 

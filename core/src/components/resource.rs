@@ -70,9 +70,9 @@ impl TryFrom<String> for RechargeRule {
     }
 }
 
-impl Into<String> for RechargeRule {
-    fn into(self) -> String {
-        match self {
+impl From<RechargeRule> for String {
+    fn from(val: RechargeRule) -> Self {
+        match val {
             RechargeRule::Turn => "turn".to_string(),
             RechargeRule::Rest(RestKind::Short) => "short_rest".to_string(),
             RechargeRule::Rest(RestKind::Long) => "long_rest".to_string(),
@@ -98,11 +98,8 @@ impl RechargeRule {
         if self == &RechargeRule::Never {
             return false;
         }
-        match (self, other) {
-            (RechargeRule::Rest(self_rest), RechargeRule::Rest(other_rest)) => {
-                return other_rest >= self_rest;
-            }
-            _ => {}
+        if let (RechargeRule::Rest(self_rest), RechargeRule::Rest(other_rest)) = (self, other) {
+            return other_rest >= self_rest;
         }
         *other >= *self
     }
@@ -258,7 +255,7 @@ impl FromStr for ResourceBudget {
                 Err(e) => Err(format!("Error creating ResourceBudget: {:?}", e)),
             }
         } else {
-            return Err(format!("Invalid ResourceBudget format: {}", s));
+            Err(format!("Invalid ResourceBudget format: {}", s))
         }
     }
 }
@@ -624,6 +621,12 @@ pub struct ResourceAmountMap {
     pub map: HashMap<ResourceId, ResourceAmount>,
 }
 
+impl Default for ResourceAmountMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ResourceAmountMap {
     pub fn new() -> Self {
         Self {
@@ -637,9 +640,9 @@ impl ResourceAmountMap {
         to: &ResourceId,
         amount: &ResourceAmount,
     ) {
-        if let Some(from_amount) = self.map.get(&from) {
+        if let Some(from_amount) = self.map.get(from) {
             if amount >= from_amount {
-                self.map.remove(&from);
+                self.map.remove(from);
             } else {
                 self.map
                     .entry(from.clone())

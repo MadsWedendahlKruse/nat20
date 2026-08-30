@@ -511,10 +511,10 @@ impl EntityFilter {
             EntityFilter::All => true,
             EntityFilter::Characters => world
                 .get::<&EntityKind>(entity)
-                .map_or(false, |kind| *kind == EntityKind::Character),
+                .is_ok_and(|kind| *kind == EntityKind::Character),
             EntityFilter::Monsters => world
                 .get::<&EntityKind>(entity)
-                .map_or(false, |kind| *kind == EntityKind::Monster),
+                .is_ok_and(|kind| *kind == EntityKind::Monster),
 
             EntityFilter::NotSelf => {
                 if let Some(actor) = actor {
@@ -571,9 +571,9 @@ impl EntityFilter {
     }
 }
 
-impl Into<TargetFilter> for EntityFilter {
-    fn into(self) -> TargetFilter {
-        TargetFilter::Entity(self)
+impl From<EntityFilter> for TargetFilter {
+    fn from(val: EntityFilter) -> Self {
+        TargetFilter::Entity(val)
     }
 }
 
@@ -609,7 +609,7 @@ impl AreaFilter {
                     // trying to target some part of the geometry which is not a
                     // horizontal plane, so we can check if moving the shape up a
                     // bit would avoid the intersection
-                    let mut moved_shape_transform = shape.transform.clone();
+                    let mut moved_shape_transform = shape.transform;
                     moved_shape_transform.append_translation_mut(&Translation3::new(0.0, 0.1, 0.0));
 
                     let Result::Ok(intersection) = parry3d::query::intersection_test(
@@ -657,9 +657,9 @@ impl AreaFilter {
     }
 }
 
-impl Into<TargetFilter> for AreaFilter {
-    fn into(self) -> TargetFilter {
-        TargetFilter::Area(self)
+impl From<AreaFilter> for TargetFilter {
+    fn from(val: AreaFilter) -> Self {
+        TargetFilter::Area(val)
     }
 }
 
@@ -695,8 +695,7 @@ impl TargetInstance {
                 if let Some(point_on_entity) = point_on_entity {
                     Some(*point_on_entity)
                 } else {
-                    let (_, shape_pose) =
-                        systems::geometry::get_shape(&world, entity.id()).unwrap();
+                    let (_, shape_pose) = systems::geometry::get_shape(world, entity.id()).unwrap();
                     Some(shape_pose.translation.vector.into())
                 }
             }

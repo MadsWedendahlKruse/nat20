@@ -139,7 +139,7 @@ impl RenderableMutWithContext<&mut GameState> for NavigationDebugWindow {
                         .build();
                     ui.input_scalar("Search Steps", &mut polyanya_mesh.search_steps)
                         .build();
-                    for (i, layer) in game_state.geometry.polyanya_mesh.layers.iter().enumerate() {
+                    for (i, _layer) in game_state.geometry.polyanya_mesh.layers.iter().enumerate() {
                         ui.tree_node_config(format!("Layer {}", i)).build(|| {
                             // ui.text(format!("Polygons: {}", layer.polygons.len()));
                             // ui.text(format!("Nodes: {}", layer.nodes.len()));
@@ -190,10 +190,10 @@ impl ImguiRenderableMut for ConfigBuilder {
                 .allow_tab_input(true)
                 .auto_select_all(true)
                 .build();
-            if ui.is_item_hovered() {
-                if let Some(doc) = CONFIG_PARAMETERS_DOCUMENTATION.get(label) {
-                    ui.tooltip_text(doc);
-                }
+            if ui.is_item_hovered()
+                && let Some(doc) = CONFIG_PARAMETERS_DOCUMENTATION.get(label)
+            {
+                ui.tooltip_text(doc);
             }
         }
 
@@ -203,10 +203,10 @@ impl ImguiRenderableMut for ConfigBuilder {
                 .allow_tab_input(true)
                 .auto_select_all(true)
                 .build();
-            if ui.is_item_hovered() {
-                if let Some(doc) = CONFIG_PARAMETERS_DOCUMENTATION.get(label) {
-                    ui.tooltip_text(doc);
-                }
+            if ui.is_item_hovered()
+                && let Some(doc) = CONFIG_PARAMETERS_DOCUMENTATION.get(label)
+            {
+                ui.tooltip_text(doc);
             }
         }
 

@@ -205,7 +205,7 @@ fn render_effects_compact(ui: &imgui::Ui, world: &World, entity: Entity) {
                     continue;
                 }
                 ui.table_next_column();
-                render_effect(ui, effect, &effects);
+                render_effect(ui, effect, effects);
                 ui.table_next_column();
                 effect.lifetime.render_with_context(ui, &time_mode);
             }

@@ -79,7 +79,7 @@ impl TryFrom<DirEntry> for Script {
         let file_extension = full_file_path
             .extension()
             .and_then(|s| s.to_str())
-            .ok_or_else(|| ScriptError::MissingFileExtension)?;
+            .ok_or(ScriptError::MissingFileExtension)?;
 
         if file_extension != LUA_FILE_EXTENSION {
             return Err(ScriptError::InvalidFileExtension(

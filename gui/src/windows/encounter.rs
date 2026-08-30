@@ -147,7 +147,7 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
-        gui_state: &mut GuiState,
+        _gui_state: &mut GuiState,
         game_state: &mut GameState,
     ) {
         ui.separator_with_text("Participants");
@@ -157,7 +157,7 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
 
         if let Some(table) = table_with_columns!(ui, "Initiative Order", "", "Participant",) {
             for (entity, initiative) in initiative_order {
-                if let Ok(_) = &game_state.world.query_one_mut::<&Name>(*entity) {
+                if game_state.world.query_one_mut::<&Name>(*entity).is_ok() {
                     // Initiative column
                     ui.table_next_column();
                     ui.text(initiative.total().to_string());
@@ -174,7 +174,7 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
 
                     // Participant column
                     ui.table_next_column();
-                    entity.render_with_context(ui, (&game_state, &CreatureRenderMode::Compact));
+                    entity.render_with_context(ui, (game_state, &CreatureRenderMode::Compact));
                 }
             }
 

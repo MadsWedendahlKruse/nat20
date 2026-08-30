@@ -78,9 +78,9 @@ impl From<EntityIdentifier> for ScriptEntity {
     }
 }
 
-impl Into<Entity> for ScriptEntity {
-    fn into(self) -> Entity {
-        Entity::from_bits(self.id).unwrap()
+impl From<ScriptEntity> for Entity {
+    fn from(val: ScriptEntity) -> Self {
+        Entity::from_bits(val.id).unwrap()
     }
 }
 
@@ -654,7 +654,7 @@ impl UserData for ActionData {
                     Ok(phases.iter().map(|phase| phase.condition.clone()).collect())
                 }
                 // TODO: Could also check the variants recursively?
-                ActionKind::Variant { variants } => Ok(Vec::new()),
+                ActionKind::Variant { variants: _ } => Ok(Vec::new()),
                 ActionKind::Reaction { .. } => Ok(Vec::new()),
             }
         });
@@ -1036,12 +1036,13 @@ impl UserData for GameState {
             "extend_effect_duration",
             |_, this, (target, effect_id, turns): (ScriptEntity, String, i64)| {
                 let id = parse_id::<EffectId>(&effect_id)?;
-                Ok(systems::effects::extend_effect_duration(
+                systems::effects::extend_effect_duration(
                     this,
                     target.into(),
                     &id,
                     &TimeDuration::from_turns(turns as u32),
-                ))
+                );
+                Ok(())
             },
         );
 
@@ -1136,7 +1137,7 @@ fn apply_effect_impl(
     );
 
     match result {
-        EffectApplicationResult::Added(uuid) => {
+        EffectApplicationResult::Added(_uuid) => {
             game_state.process_event(Event::action_result_event(
                 EntityIdentifier::from_world(&game_state.world, target_entity),
                 ActionResultComponent::Effect(EffectResult {
@@ -1147,7 +1148,7 @@ fn apply_effect_impl(
             ))
         }
 
-        EffectApplicationResult::RefreshedDuration(uuid) => {}
+        EffectApplicationResult::RefreshedDuration(_uuid) => {}
     }
 }
 

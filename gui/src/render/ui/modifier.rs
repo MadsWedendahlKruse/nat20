@@ -81,25 +81,13 @@ fn composite_to_string<T>(modifiers: &Vec<T>, mapper: fn(&T) -> String) -> Strin
 
 impl ImguiRenderableWithContext<ModifierRenderMode> for ModifierMap {
     fn render_with_context(&self, ui: &imgui::Ui, mode: ModifierRenderMode) {
-        render_map(
-            ui,
-            &self,
-            mode,
-            |modifier| modifier_to_string(modifier),
-            self.range().to_string(),
-        );
+        render_map(ui, self, mode, modifier_to_string, self.range().to_string());
     }
 }
 
 impl ImguiRenderableWithContext<ModifierRenderMode> for FlatModifierMap {
     fn render_with_context(&self, ui: &imgui::Ui, mode: ModifierRenderMode) {
-        render_map(
-            ui,
-            &self,
-            mode,
-            |modifier| signed_value(modifier),
-            signed_value(&self.total()),
-        );
+        render_map(ui, self, mode, signed_value, signed_value(&self.total()));
     }
 }
 
@@ -107,9 +95,9 @@ impl ImguiRenderableWithContext<ModifierRenderMode> for ModifierResult {
     fn render_with_context(&self, ui: &imgui::Ui, mode: ModifierRenderMode) {
         render_map(
             ui,
-            &self,
+            self,
             mode,
-            |modifier| modifier_result_to_string(modifier),
+            modifier_result_to_string,
             self.total().to_string(),
         );
     }

@@ -10,7 +10,7 @@ pub struct GridRenderer {
 }
 
 impl GridRenderer {
-    /// extent: how far in +/− units (e.g., 10 → grid from −10..+10)
+    /// extent: how far in +/− units (e.g., 10 -> grid from −10..+10)
     /// step: spacing between lines (e.g., 1.0)
     /// major_every: draw slightly brighter lines every N steps (e.g., 10)
     pub fn new(
@@ -120,10 +120,10 @@ impl GridRenderer {
 
             // pos at loc 0
             gl.enable_vertex_attrib_array(0);
-            gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, (6 * 4) as i32, 0);
+            gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, 6 * 4, 0);
             // color at loc 1
             gl.enable_vertex_attrib_array(1);
-            gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, (6 * 4) as i32, (3 * 4) as i32);
+            gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, 6 * 4, 3 * 4);
 
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);

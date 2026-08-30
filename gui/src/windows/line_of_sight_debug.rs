@@ -106,7 +106,7 @@ impl LineOfSightDebugWindow {
                 if ui.combo(
                     format!("Entity##{}", label),
                     &mut current_entity,
-                    &all_entities,
+                    all_entities,
                     |(entity, name)| format!("{} ({:?})", name.to_string(), entity).into(),
                 ) {
                     *entity_option = Some(all_entities[current_entity].0);
@@ -182,17 +182,14 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                     };
                 }
 
-                match &mut self.mode {
-                    LineOfSightTrajectory::Parabola { launch_velocity } => {
-                        let mut velocity = launch_velocity.get::<meter_per_second>();
-                        if ui
-                            .input_float("Launch Velocity##Parabola", &mut velocity)
-                            .build()
-                        {
-                            *launch_velocity = Velocity::new::<meter_per_second>(velocity);
-                        }
+                if let LineOfSightTrajectory::Parabola { launch_velocity } = &mut self.mode {
+                    let mut velocity = launch_velocity.get::<meter_per_second>();
+                    if ui
+                        .input_float("Launch Velocity##Parabola", &mut velocity)
+                        .build()
+                    {
+                        *launch_velocity = Velocity::new::<meter_per_second>(velocity);
                     }
-                    _ => {}
                 }
 
                 if ui.button("Compute Line of Sight") {
@@ -220,13 +217,13 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                                     &game_state.world,
                                     &game_state.geometry,
                                     *entity,
-                                    &to_point.clone().into(),
+                                    &(*to_point).into(),
                                     &self.mode,
                                 ));
                             }
                         }
 
-                        (LineOfSightTarget::Point(_), LineOfSightTarget::Entity(entity)) => todo!(),
+                        (LineOfSightTarget::Point(_), LineOfSightTarget::Entity(_entity)) => todo!(),
 
                         (
                             LineOfSightTarget::Point(from_point),
@@ -235,8 +232,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                             self.result = Some(systems::geometry::line_of_sight_point_point(
                                 &game_state.world,
                                 &game_state.geometry,
-                                &from_point.clone().into(),
-                                &to_point.clone().into(),
+                                &(*from_point).into(),
+                                &(*to_point).into(),
                                 &self.mode,
                                 &systems::geometry::RaycastFilter::All,
                             ));
@@ -259,7 +256,7 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
 }
 
 impl Renderable for LineOfSightResult {
-    fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
+    fn render(&self, _ui: &imgui::Ui, gui_state: &mut GuiState) {
         let Some(raycast_result) = &self.raycast_result else {
             return;
         };

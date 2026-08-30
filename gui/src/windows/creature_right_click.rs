@@ -36,7 +36,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureRightClickWindow 
     fn render_mut_with_context(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
         match &mut self.state {
             CreatureRightClickState::MainMenu => {
-                if let Some(index) = render_uniform_buttons(ui, &["Inspect", "Debug"]) {
+                if let Some(index) = render_uniform_buttons(ui, ["Inspect", "Debug"]) {
                     match index {
                         0 => {
                             self.state = CreatureRightClickState::InspectCreature(
@@ -68,7 +68,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureRightClickWindow 
                 ui.separator();
 
                 self.entity
-                    .render_with_context(ui, (&game_state, &render_mode));
+                    .render_with_context(ui, (game_state, render_mode));
             }
             CreatureRightClickState::DebugCreature(debug_gui) => {
                 debug_gui.render_mut_with_context(ui, game_state);

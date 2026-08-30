@@ -111,7 +111,7 @@ pub fn preview_attack_roll(
     check: &mut D20Check,
 ) {
     systems::effects::effects(&game_state.world, target).on_attacked(
-        &game_state,
+        game_state,
         target,
         attacker,
         check,

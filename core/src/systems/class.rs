@@ -37,10 +37,10 @@ impl ClassIdentifier {
 }
 
 pub fn class_level(world: &World, entity: Entity, class_id: &ClassId) -> u8 {
-    if let Ok(character_levels) = world.get::<&CharacterLevels>(entity) {
-        if let Some(class_level) = character_levels.class_level(class_id) {
-            return class_level.level();
-        }
+    if let Ok(character_levels) = world.get::<&CharacterLevels>(entity)
+        && let Some(class_level) = character_levels.class_level(class_id)
+    {
+        return class_level.level();
     }
     0
 }
@@ -50,17 +50,15 @@ pub fn increment_class_level(
     entity: Entity,
     class_id: &ClassId,
 ) -> Vec<LevelUpPrompt> {
-    let class = ClassesRegistry::get(class_id).expect(&format!(
-        "Class with name `{}` not found in the registry",
-        class_id
-    ));
+    let class = ClassesRegistry::get(class_id)
+        .unwrap_or_else(|| panic!("Class with name `{}` not found in the registry", class_id));
 
     let (new_level, subclass) = {
-        let mut character_levels =
+        let character_levels =
             systems::helpers::get_component_mut::<CharacterLevels>(&mut game_state.world, entity);
         let new_level = character_levels.level_up(class_id.clone());
-        let subclass = if let Some(subclass_id) = character_levels.subclass(&class_id) {
-            class.subclass(&subclass_id)
+        let subclass = if let Some(subclass_id) = character_levels.subclass(class_id) {
+            class.subclass(subclass_id)
         } else {
             None
         };
@@ -128,18 +126,16 @@ pub fn set_subclass(
     let class_name = subclass_id.id.split(".").collect::<Vec<_>>()[1];
     let class_id = &ClassId::new("nat20_core", format!("class.{}", class_name));
 
-    let class = ClassesRegistry::get(class_id).expect(&format!(
-        "Class with name `{}` not found in the registry",
-        class_id
-    ));
+    let class = ClassesRegistry::get(class_id)
+        .unwrap_or_else(|| panic!("Class with name `{}` not found in the registry", class_id));
 
     let (subclass, level) = {
-        let mut character_levels =
+        let character_levels =
             systems::helpers::get_component_mut::<CharacterLevels>(&mut game_state.world, entity);
-        character_levels.set_subclass(class_id, &subclass_id);
+        character_levels.set_subclass(class_id, subclass_id);
 
         let subclass = class
-            .subclass(&subclass_id)
+            .subclass(subclass_id)
             .expect("Subclass should exist in the class registry");
         let level = character_levels.class_level(class_id).unwrap().level();
 
@@ -175,14 +171,14 @@ fn apply_class_base(
 
     // Resources
     {
-        let mut resources =
+        let resources =
             systems::helpers::get_component_mut::<ResourceMap>(&mut game_state.world, entity);
         if let Some(resources_for_level) = class_base.resources_by_level.get(&level) {
             for (resource, amount, override_existing) in resources_for_level {
                 if *override_existing {
                     resources.remove(resource);
                 }
-                resources.add(resource.clone(), amount.clone().into(), false);
+                resources.add(resource.clone(), amount.clone(), false);
             }
         }
     }
@@ -198,7 +194,7 @@ fn apply_class_base(
 
     // Weapons proficiencies
     {
-        let mut weapon_proficiencies = systems::helpers::get_component_mut::<WeaponProficiencyMap>(
+        let weapon_proficiencies = systems::helpers::get_component_mut::<WeaponProficiencyMap>(
             &mut game_state.world,
             entity,
         );
@@ -212,7 +208,7 @@ fn apply_class_base(
 
     // Armor training
     {
-        let mut armor_training =
+        let armor_training =
             systems::helpers::get_component_mut::<ArmorTrainingSet>(&mut game_state.world, entity);
         for armor_type in class_base.armor_proficiencies.iter() {
             armor_training.insert(armor_type.clone());
@@ -220,11 +216,10 @@ fn apply_class_base(
     }
 
     // Return any additional prompts that should be presented to the player
-    let mut new_prompts = class_base
+
+    class_base
         .prompts_by_level
         .get(&level)
         .cloned()
-        .unwrap_or_default();
-
-    new_prompts
+        .unwrap_or_default()
 }

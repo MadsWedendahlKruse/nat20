@@ -221,8 +221,8 @@ impl<D: QuantityDimension> Evaluable for QuantityExpressionDefinition<D> {
             .expression
             .evaluate(world, entity, action_context, variables)? as f32;
 
-        let quantity = D::make_quantity(scalar, &self.unit_name)
-            .map_err(|message| EvaluationError::UnknownVariable(message))?; // or add a new error kind
+        let quantity =
+            D::make_quantity(scalar, &self.unit_name).map_err(EvaluationError::UnknownVariable)?; // or add a new error kind
 
         Ok(quantity)
     }
@@ -232,8 +232,8 @@ impl<D: QuantityDimension> QuantityExpressionDefinition<D> {
     pub fn evaluate_without_variables(&self) -> Result<D::Quantity, EvaluationError> {
         let scalar = self.expression.evaluate_without_variables()? as f32;
 
-        let quantity = D::make_quantity(scalar, &self.unit_name)
-            .map_err(|message| EvaluationError::UnknownVariable(message))?; // or add a new error kind
+        let quantity =
+            D::make_quantity(scalar, &self.unit_name).map_err(EvaluationError::UnknownVariable)?; // or add a new error kind
 
         Ok(quantity)
     }

@@ -487,8 +487,7 @@ impl FromStr for SpeedModifier {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let normalized = normalize_spec_string(input);
 
-        if normalized.starts_with('x') {
-            let multiplier_str = &normalized[1..];
+        if let Some(multiplier_str) = normalized.strip_prefix('x') {
             let multiplier: f32 = multiplier_str
                 .parse()
                 .map_err(|_| format!("Invalid speed multiplier in '{}'", input))?;

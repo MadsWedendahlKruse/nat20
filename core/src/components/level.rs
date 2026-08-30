@@ -76,7 +76,7 @@ impl ChallengeRating {
 
 impl Level for ChallengeRating {
     fn total_level(&self) -> u8 {
-        self.0 as u8
+        self.0
     }
 }
 
@@ -142,6 +142,12 @@ pub struct CharacterLevels {
     /// default class for level up decisions
     latest_class: Option<ClassId>,
     experience: u32,
+}
+
+impl Default for CharacterLevels {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CharacterLevels {

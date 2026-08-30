@@ -49,7 +49,7 @@ impl Encounter {
         encounter
             .event_log
             .push(Event::encounter_event(EncounterEvent::NewRound(
-                encounter.id.clone(),
+                encounter.id,
                 encounter.round(),
             )));
         encounter
@@ -62,14 +62,13 @@ impl Encounter {
             .map(|entity| {
                 let roll = systems::helpers::get_component::<SkillSet>(&game_state.world, *entity)
                     .check(&Skill::Initiative, game_state, *entity);
-                (entity.clone(), roll)
+                (*entity, roll)
             })
             .collect();
 
-        indexed_rolls.sort_by_key(|(_, roll)| -(roll.total() as i32));
+        indexed_rolls.sort_by_key(|(_, roll)| -roll.total());
         self.initiative_order = indexed_rolls
             .into_iter()
-            .map(|(i, roll)| (i, roll))
             .collect();
     }
 
@@ -147,7 +146,7 @@ impl Encounter {
             self.round += 1;
             self.event_log
                 .push(Event::encounter_event(EncounterEvent::NewRound(
-                    self.id.clone(),
+                    self.id,
                     self.round(),
                 )));
         }
@@ -181,9 +180,9 @@ impl Encounter {
             game_state.process_event_with_response_callback(
                 death_saving_throw_event,
                 EventCallback::new({
-                    move |game_state, event, source| match &event.kind {
-                        EventKind::D20CheckResolved { actor, result, dc } => {
-                            let mut life_state = systems::helpers::get_component_mut::<LifeState>(
+                    move |game_state, event, _source| match &event.kind {
+                        EventKind::D20CheckResolved { actor, result, dc: _ } => {
+                            let life_state = systems::helpers::get_component_mut::<LifeState>(
                                 &mut game_state.world,
                                 actor.id(),
                             );
@@ -195,20 +194,20 @@ impl Encounter {
                                 let next_state = death_saving_throws.next_state();
 
                                 if next_state != *life_state {
-                                    *life_state = next_state.clone();
+                                    *life_state = next_state;
 
-                                    return CallbackResult::Event(Event::new(
+                                    CallbackResult::Event(Event::new(
                                         EventKind::LifeStateChanged {
                                             entity: actor.clone(),
                                             new_state: next_state,
                                             actor: None,
                                         },
-                                    ));
+                                    ))
                                 } else {
-                                    return CallbackResult::None;
+                                    CallbackResult::None
                                 }
                             } else {
-                                return CallbackResult::None;
+                                CallbackResult::None
                             }
                         }
                         _ => panic!("Expected D20CheckResolved event"),
@@ -227,7 +226,7 @@ impl Encounter {
         }
 
         // Normal / other states => decide if they can act
-        return true;
+        true
     }
 
     pub fn round(&self) -> usize {

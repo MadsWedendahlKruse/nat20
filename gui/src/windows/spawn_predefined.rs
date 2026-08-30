@@ -117,8 +117,8 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
             &mut opened,
             || {
                 for spawner in &mut self.spawners {
-                    if let Some(entity) = spawner.spawned_entity {
-                        if ui.collapsing_header(
+                    if let Some(entity) = spawner.spawned_entity
+                        && ui.collapsing_header(
                             format!(
                                 "{}##{:?}",
                                 systems::helpers::get_component::<Name>(
@@ -129,46 +129,43 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                                 entity
                             ),
                             imgui::TreeNodeFlags::FRAMED,
-                        ) {
-                            if ui.button(format!("Spawn##{:?}", entity)) {
-                                self.entity_to_spawn = Some(entity);
-                                if let Some(entity) = self.current_entity {
-                                    game_state.world.despawn(entity).unwrap();
-                                    self.current_entity = None;
-                                }
+                        )
+                    {
+                        if ui.button(format!("Spawn##{:?}", entity)) {
+                            self.entity_to_spawn = Some(entity);
+                            if let Some(entity) = self.current_entity {
+                                game_state.world.despawn(entity).unwrap();
+                                self.current_entity = None;
+                            }
+                        }
+
+                        ui.separator();
+
+                        let mut updated_level = false;
+
+                        // TODO: Level slider probably doesn't make sense for monsters?
+                        if let Ok(entity_kind) = self.game_state.world.get::<&EntityKind>(entity)
+                            && *entity_kind == EntityKind::Character
+                        {
+                            ui.set_next_item_width(150.0);
+                            if ui.slider(
+                                format!("Level##{:?}", entity),
+                                1,
+                                spawner.max_level,
+                                &mut spawner.current_level,
+                            ) {
+                                updated_level = true;
                             }
 
                             ui.separator();
+                        }
 
-                            let mut updated_level = false;
+                        entity
+                            .render_with_context(ui, (&self.game_state, &CreatureRenderMode::Full));
 
-                            // TODO: Level slider probably doesn't make sense for monsters?
-                            if let Ok(entity_kind) =
-                                self.game_state.world.get::<&EntityKind>(entity)
-                                && *entity_kind == EntityKind::Character
-                            {
-                                ui.set_next_item_width(150.0);
-                                if ui.slider(
-                                    format!("Level##{:?}", entity),
-                                    1,
-                                    spawner.max_level,
-                                    &mut spawner.current_level,
-                                ) {
-                                    updated_level = true;
-                                }
-
-                                ui.separator();
-                            }
-
-                            entity.render_with_context(
-                                ui,
-                                (&self.game_state, &CreatureRenderMode::Full),
-                            );
-
-                            if updated_level {
-                                self.game_state.world.despawn(entity).unwrap();
-                                spawner.spawn(&mut self.game_state, Some(entity));
-                            }
+                        if updated_level {
+                            self.game_state.world.despawn(entity).unwrap();
+                            spawner.spawn(&mut self.game_state, Some(entity));
                         }
                     }
                 }

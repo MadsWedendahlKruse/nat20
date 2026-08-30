@@ -77,7 +77,7 @@ fn main() {
                             if !prev_show_settings {
                                 ui.set_keyboard_focus_here();
                             }
-                            gui_state.settings.render_mut(&ui);
+                            gui_state.settings.render_mut(ui);
                         });
                 }
 
@@ -150,7 +150,7 @@ fn main() {
                 ..
             } => {
                 let wants_mouse = imgui_context.io().want_capture_mouse;
-                gui_state.camera.handle_event(&window_event, wants_mouse);
+                gui_state.camera.handle_event(window_event, wants_mouse);
                 winit_platform.handle_event(imgui_context.io_mut(), &window, &event);
             }
 

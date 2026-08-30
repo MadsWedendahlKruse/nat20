@@ -218,14 +218,9 @@ impl MainMenuWindow {
 
                     if !reactions.is_active()
                         && let Some(prompt) = game_state.next_prompt_entity(entity)
-                    {
-                        match &prompt.kind {
-                            ActionPromptKind::Reactions { event, options } => {
-                                reactions.activate(prompt.id, &event, &options);
-                            }
-                            _ => {}
+                        && let ActionPromptKind::Reactions { event, options } = &prompt.kind {
+                            reactions.activate(prompt.id, event, options);
                         }
-                    }
                 } else {
                     *action_bar = None;
                 }
@@ -244,7 +239,7 @@ impl MainMenuWindow {
                 for encounter in &mut *encounters {
                     encounter.render_mut_with_context(ui, gui_state, game_state);
                     if encounter.finished() {
-                        encounter_finished = Some(encounter.id().clone());
+                        encounter_finished = Some(*encounter.id());
                     }
                 }
                 if let Some(id) = encounter_finished {
@@ -463,7 +458,7 @@ impl MainMenuWindow {
                     let id = encounters.get(*log_source - 1).map(|e| e.id()).unwrap();
                     game_state
                         .encounters
-                        .get(&id)
+                        .get(id)
                         .map(|e| e.event_log())
                         .unwrap_or(&game_state.event_log)
                 };
@@ -622,7 +617,7 @@ impl MainMenuWindow {
 
     fn render_creature_labels(ui: &imgui::Ui, game_state: &GameState, camera: &OrbitCamera) {
         for (entity, name) in game_state.world.query::<&Name>().iter() {
-            if let Some(pose) = game_state.world.get::<&Pose>(entity).ok() {
+            if let Ok(pose) = game_state.world.get::<&Pose>(entity) {
                 let translation = pose.translation.vector;
                 let pos = camera.world_to_screen(&Point3::new(
                     translation.x,

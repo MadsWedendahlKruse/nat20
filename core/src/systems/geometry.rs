@@ -84,10 +84,10 @@ pub fn get_eye_position_at_point(
 
 pub fn get_entity_at_point(world: &World, point: Point3<f32>) -> Option<Entity> {
     for (entity, _) in world.query::<&Pose>().iter() {
-        if let Some((shape, shape_pose)) = get_shape(world, entity) {
-            if shape.contains_point(&shape_pose, &point) {
-                return Some(entity);
-            }
+        if let Some((shape, shape_pose)) = get_shape(world, entity)
+            && shape.contains_point(&shape_pose, &point)
+        {
+            return Some(entity);
         }
     }
     None
@@ -163,7 +163,7 @@ impl Parabola {
         let height_diff = to_target.y;
 
         let g = gravity.y.abs();
-        let v = launch_speed.get::<meter_per_second>() as f32;
+        let v = launch_speed.get::<meter_per_second>();
 
         // Solve for the angle using the projectile motion formula
         let under_sqrt = v * v * v * v - g * (g * distance * distance + 2.0 * height_diff * v * v);
@@ -411,7 +411,7 @@ pub fn raycast_with_toi(
         .min_by(|(_, a), (_, b)| a.toi.partial_cmp(&b.toi).unwrap())
         .map(|(i, _)| i);
     Some(RaycastResult {
-        mode: RaycastMode::Ray(ray.clone()),
+        mode: RaycastMode::Ray(*ray),
         hits: outcomes,
         closest_index,
         filter: filter.clone(),
@@ -608,7 +608,7 @@ pub fn line_of_sight_point_shape(
     filter: &RaycastFilter,
 ) -> LineOfSightResult {
     // Point is inside the shape, so line of sight is clear
-    let proj = shape.project_point(shape_pose, &from, true);
+    let proj = shape.project_point(shape_pose, from, true);
     if proj.is_inside {
         return LineOfSightResult {
             has_line_of_sight: true,
@@ -858,7 +858,7 @@ pub fn distance_entity_point(world: &World, entity: Entity, point: Point3<f32>) 
 
 pub fn teleport_to(world: &mut World, entity: Entity, new_position: &Point3<f32>) {
     if let Ok(mut pose) = world.get::<&mut Pose>(entity) {
-        pose.translation = new_position.clone().into();
+        pose.translation = (*new_position).into();
     }
 }
 
@@ -871,7 +871,7 @@ pub fn teleport_to_ground(
     // TODO: Can't seem to find an easy way to check for intersection between
     // the creature and the world geometry?
 
-    let mut target = new_position.clone();
+    let mut target = *new_position;
 
     let ground_position = ground_position(world_geometry, new_position);
     if let Some(ground_pos) = ground_position {

@@ -83,7 +83,7 @@ impl MovementPreview {
                     self.prev_goal = Some(goal);
                     self.path_result = Some(path_result.clone());
                     self.opportunity_attacks = potential_opportunity_attacks(
-                        &game_state,
+                        game_state,
                         &path_result.taken_path,
                         self.entity,
                         &game_state.get_potential_reactors(self.entity),
@@ -129,7 +129,7 @@ fn potential_opportunity_attacks(
 impl RenderableWithContext<&mut GameState> for MovementPreview {
     fn render_with_context(
         &self,
-        ui: &imgui::Ui,
+        _ui: &imgui::Ui,
         gui_state: &mut GuiState,
         game_state: &mut GameState,
     ) {
@@ -144,7 +144,7 @@ impl RenderableWithContext<&mut GameState> for MovementPreview {
                     .add_circle(reach_center, reach, [0.85, 0.85, 0.85]);
                 gui_state.line_renderer.add_line(
                     position.into(),
-                    point.clone().into(),
+                    (*point).into(),
                     [1.0, 0.0, 0.0],
                 );
             }
@@ -153,7 +153,7 @@ impl RenderableWithContext<&mut GameState> for MovementPreview {
         if let Some(path) = &self.path_result {
             gui_state
                 .line_renderer
-                .add_path_result(&path, Color::White, Color::Red);
+                .add_path_result(path, Color::White, Color::Red);
         }
     }
 }

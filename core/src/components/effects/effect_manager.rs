@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use hecs::{Entity, World};
+use hecs::Entity;
 
 use crate::{
     components::{
@@ -137,10 +137,10 @@ impl EffectManager {
         let kind = check.kind().clone();
 
         for instance in self.effects.values() {
-            if let Some(hook) = Self::get_d20_hooks(&kind)(instance.effect()) {
-                if let Some(ability) = (hook.ability_hook)(game_state, entity, check) {
-                    check.set_ability(Some(ability));
-                }
+            if let Some(hook) = Self::get_d20_hooks(&kind)(instance.effect())
+                && let Some(ability) = (hook.ability_hook)(game_state, entity, check)
+            {
+                check.set_ability(Some(ability));
             }
         }
 

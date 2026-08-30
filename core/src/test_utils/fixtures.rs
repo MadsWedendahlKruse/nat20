@@ -452,7 +452,7 @@ pub mod creatures {
                     .unwrap()
                     .clone(),
             );
-            let _ = systems::inventory::add_item(
+            systems::inventory::add_item(
                 &mut game_state.world,
                 entity,
                 ItemsRegistry::get(&ItemId::new("nat20_core", "item.admin_dagger"))

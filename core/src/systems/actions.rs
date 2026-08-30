@@ -51,9 +51,9 @@ pub fn get_action(action_id: &ActionId) -> Option<&Action> {
 
 pub fn add_action(world: &mut World, entity: Entity, action_id: &ActionId) {
     if let Some(action) = systems::actions::get_action(action_id) {
-        let mut action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
+        let action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
         for context in &action.contexts {
-            add_action_to_map(&mut action_map, action_id, context, &action.resource_cost);
+            add_action_to_map(action_map, action_id, context, &action.resource_cost);
         }
     } else {
         panic!("Action {} not found in registry", action_id);
@@ -76,12 +76,12 @@ pub fn add_action_to_map(
 }
 
 pub fn remove_action(world: &mut World, entity: Entity, action_id: &ActionId) {
-    let mut action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
+    let action_map = systems::helpers::get_component_mut::<ActionMap>(world, entity);
     action_map.remove(action_id);
 }
 
 pub fn on_cooldown(world: &World, entity: Entity, action_id: &ActionId) -> Option<RechargeRule> {
-    if let Some(cooldowns) = world.get::<&ActionCooldownMap>(entity).ok() {
+    if let Ok(cooldowns) = world.get::<&ActionCooldownMap>(entity) {
         cooldowns.get(action_id).cloned()
     } else {
         None
@@ -94,7 +94,7 @@ pub fn set_cooldown(
     action_id: &ActionId,
     cooldown: RechargeRule,
 ) {
-    let mut cooldowns = systems::helpers::get_component_mut::<ActionCooldownMap>(world, entity);
+    let cooldowns = systems::helpers::get_component_mut::<ActionCooldownMap>(world, entity);
     cooldowns.insert(action_id.clone(), cooldown);
 }
 
@@ -288,7 +288,7 @@ pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
                 game_state,
                 entity,
                 action_id,
-                &action_context,
+                action_context,
                 resource_cost,
                 &[],
             )
@@ -547,25 +547,19 @@ fn entities_in_area(
             )
             .has_line_of_sight
         });
-    } else {
-        match shape {
-            AreaShape::Sphere { .. } => {
-                entities_in_shape.retain(|entity| {
-                    systems::geometry::line_of_sight_entity_point_filter(
-                        &game_state.world,
-                        &game_state.geometry,
-                        *entity,
-                        point,
-                        &LineOfSightTrajectory::Ray,
-                        // TODO: Can't hide behind other entities?
-                        &RaycastFilter::WorldOnly,
-                    )
-                    .has_line_of_sight
-                });
-            }
-
-            _ => {}
-        }
+    } else if let AreaShape::Sphere { .. } = shape {
+        entities_in_shape.retain(|entity| {
+            systems::geometry::line_of_sight_entity_point_filter(
+                &game_state.world,
+                &game_state.geometry,
+                *entity,
+                point,
+                &LineOfSightTrajectory::Ray,
+                // TODO: Can't hide behind other entities?
+                &RaycastFilter::WorldOnly,
+            )
+            .has_line_of_sight
+        });
     }
 
     entities_in_shape
@@ -647,7 +641,7 @@ pub fn available_reactions_to_event(
                                 resource_cost.clone(),
                                 vec![target],
                             )
-                            .with_trigger_event(event.clone().into()),
+                            .with_trigger_event(event.clone()),
                         );
                     }
                 }

@@ -297,7 +297,7 @@ fn resolve_level_up_prompt(
                     ChoiceItem::Class(class_id) => {
                         // Special prompt when creating a new character
                         if systems::helpers::get_component::<CharacterLevels>(
-                            &mut game_state.world,
+                            &game_state.world,
                             entity,
                         )
                         .total_level()
@@ -358,7 +358,7 @@ fn resolve_level_up_prompt(
                                 .world
                                 .query_one_mut::<(&mut Spellbook, &ResourceMap)>(entity)
                         {
-                            match spellbook.add_spell(spell_id, source, &resources) {
+                            match spellbook.add_spell(spell_id, source, resources) {
                                 Ok(_) => {}
                                 Err(e) => {
                                     let error_message = format!(
@@ -401,7 +401,7 @@ fn resolve_level_up_prompt(
             }
 
             for skill in selected_skills {
-                if !skills.contains(&skill) {
+                if !skills.contains(skill) {
                     return Err(LevelUpError::InvalidDecision {
                         prompt,
                         decision,
@@ -443,13 +443,8 @@ fn resolve_level_up_prompt(
 
             let total_cost = distribution
                 .scores
-                .iter()
-                .map(|(_, score)| {
-                    score_point_cost
-                        .get(score)
-                        .expect("Invalid ability score")
-                        .clone()
-                })
+                .values()
+                .map(|score| *score_point_cost.get(score).expect("Invalid ability score"))
                 .sum::<u8>();
             if total_cost != *num_points {
                 return Err(LevelUpError::InvalidDecision {
@@ -459,7 +454,7 @@ fn resolve_level_up_prompt(
                 });
             }
 
-            let mut ability_score_set = systems::helpers::get_component_mut::<AbilityScoreMap>(
+            let ability_score_set = systems::helpers::get_component_mut::<AbilityScoreMap>(
                 &mut game_state.world,
                 entity,
             );
@@ -491,7 +486,7 @@ fn resolve_level_up_prompt(
                 });
             }
 
-            let mut ability_score_set = systems::helpers::get_component_mut::<AbilityScoreMap>(
+            let ability_score_set = systems::helpers::get_component_mut::<AbilityScoreMap>(
                 &mut game_state.world,
                 entity,
             );
@@ -586,7 +581,7 @@ fn resolve_level_up_prompt(
                             });
                         }
                     }
-                    match spellbook.add_spell(new_spell, source, &resources) {
+                    match spellbook.add_spell(new_spell, source, resources) {
                         Ok(_) => {}
                         Err(e) => {
                             return Err(LevelUpError::InvalidDecision {
@@ -717,17 +712,16 @@ pub fn level_up_gains(
 
     if let Some(subclass) =
         systems::helpers::get_component::<CharacterLevels>(world, entity).subclass(class_id)
+        && let Some(subclass) = class.subclass(subclass)
     {
-        if let Some(subclass) = class.subclass(&subclass) {
-            if let Some(subclass_effects) = subclass.base.effects_by_level.get(&level) {
-                effects.extend(subclass_effects.clone());
-            }
-            if let Some(subclass_resources) = subclass.base.resources_by_level.get(&level) {
-                resources.extend(subclass_resources.clone());
-            }
-            if let Some(subclass_actions) = subclass.base.actions_by_level.get(&level) {
-                actions.extend(subclass_actions.clone());
-            }
+        if let Some(subclass_effects) = subclass.base.effects_by_level.get(&level) {
+            effects.extend(subclass_effects.clone());
+        }
+        if let Some(subclass_resources) = subclass.base.resources_by_level.get(&level) {
+            resources.extend(subclass_resources.clone());
+        }
+        if let Some(subclass_actions) = subclass.base.actions_by_level.get(&level) {
+            actions.extend(subclass_actions.clone());
         }
     }
 

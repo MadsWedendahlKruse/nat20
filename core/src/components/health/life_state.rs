@@ -30,6 +30,12 @@ pub struct DeathSavingThrows {
     failures: u8,
 }
 
+impl Default for DeathSavingThrows {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DeathSavingThrows {
     pub fn new() -> Self {
         Self {
@@ -71,11 +77,9 @@ impl DeathSavingThrows {
         match check_result.outcome {
             Some(D20CheckOutcome::CriticalSuccess) => {
                 self.record_success(2);
-                return;
             }
             Some(D20CheckOutcome::CriticalFailure) => {
                 self.record_failure(2);
-                return;
             }
             Some(D20CheckOutcome::Success) => {
                 self.record_success(1);

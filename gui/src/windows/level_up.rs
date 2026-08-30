@@ -83,7 +83,7 @@ impl LevelUpDecisionProgress {
                 selected,
                 remaining_decisions,
                 ..
-            } => remaining_decisions == &0 && selected.len() > 0,
+            } => remaining_decisions == &0 && !selected.is_empty(),
             LevelUpDecisionProgress::AbilityScores {
                 assignments,
                 remaining_budget,
@@ -200,75 +200,75 @@ impl LevelUpDecisionProgress {
         world: &World,
         entity: Entity,
     ) -> Self {
-        if let Ok(levels) = world.get::<&CharacterLevels>(entity) {
-            if levels.total_level() > 0 {
-                match prompt {
-                    LevelUpPrompt::Choice(spec) => {
-                        if spec
-                            .options
-                            .iter()
-                            .any(|item| matches!(item, ChoiceItem::Class(_)))
-                        {
-                            // If the prompt is a class choice, we can default to the latest class
-                            return LevelUpDecisionProgress::Choice {
-                                id: spec.id.clone(),
-                                decisions: vec![ChoiceItem::Class(
-                                    levels.latest_class().unwrap().clone(),
-                                )],
-                                required: spec.picks,
-                            };
-                        }
-                    }
-
-                    LevelUpPrompt::AbilityScores(_, _) => {
-                        let mut assignments = HashMap::new();
-                        let mut plus_2_bonus = None;
-                        let mut plus_1_bonus = None;
-                        if let Some(class) = ClassesRegistry::get(levels.latest_class().unwrap()) {
-                            let default_abilities = &class.default_abilities;
-                            // Reset assignments to class defaults
-                            for (ability, score) in default_abilities.scores.iter() {
-                                assignments.insert(*ability, *score);
-                            }
-                            plus_2_bonus = Some(default_abilities.plus_2_bonus);
-                            plus_1_bonus = Some(default_abilities.plus_1_bonus);
-                        }
-                        return LevelUpDecisionProgress::AbilityScores {
-                            assignments,
-                            remaining_budget: 0,
-                            plus_2_bonus: plus_2_bonus,
-                            plus_1_bonus: plus_1_bonus,
+        if let Ok(levels) = world.get::<&CharacterLevels>(entity)
+            && levels.total_level() > 0
+        {
+            match prompt {
+                LevelUpPrompt::Choice(spec) => {
+                    if spec
+                        .options
+                        .iter()
+                        .any(|item| matches!(item, ChoiceItem::Class(_)))
+                    {
+                        // If the prompt is a class choice, we can default to the latest class
+                        return LevelUpDecisionProgress::Choice {
+                            id: spec.id.clone(),
+                            decisions: vec![ChoiceItem::Class(
+                                levels.latest_class().unwrap().clone(),
+                            )],
+                            required: spec.picks,
                         };
                     }
-
-                    LevelUpPrompt::AbilityScoreImprovement { budget, .. } => {
-                        let base_scores =
-                            systems::helpers::get_component::<AbilityScoreMap>(world, entity)
-                                .scores
-                                .iter()
-                                .map(|(ability, score)| (*ability, score.total() as u8))
-                                .collect();
-                        return LevelUpDecisionProgress::AbilityScoreImprovement {
-                            base_scores,
-                            assignments: HashMap::new(),
-                            remaining_points: *budget,
-                        };
-                    }
-
-                    LevelUpPrompt::SkillProficiency { choices, .. } => {
-                        let skill_set = systems::helpers::get_component::<SkillSet>(world, entity);
-                        let all_skills = Skill::iter()
-                            .map(|skill| (skill, skill_set.get(&skill).proficiency().clone()))
-                            .collect();
-                        return LevelUpDecisionProgress::SkillProficiency {
-                            selected: HashSet::new(),
-                            remaining_decisions: *choices,
-                            all_skills,
-                        };
-                    }
-
-                    _ => {}
                 }
+
+                LevelUpPrompt::AbilityScores(_, _) => {
+                    let mut assignments = HashMap::new();
+                    let mut plus_2_bonus = None;
+                    let mut plus_1_bonus = None;
+                    if let Some(class) = ClassesRegistry::get(levels.latest_class().unwrap()) {
+                        let default_abilities = &class.default_abilities;
+                        // Reset assignments to class defaults
+                        for (ability, score) in default_abilities.scores.iter() {
+                            assignments.insert(*ability, *score);
+                        }
+                        plus_2_bonus = Some(default_abilities.plus_2_bonus);
+                        plus_1_bonus = Some(default_abilities.plus_1_bonus);
+                    }
+                    return LevelUpDecisionProgress::AbilityScores {
+                        assignments,
+                        remaining_budget: 0,
+                        plus_2_bonus,
+                        plus_1_bonus,
+                    };
+                }
+
+                LevelUpPrompt::AbilityScoreImprovement { budget, .. } => {
+                    let base_scores =
+                        systems::helpers::get_component::<AbilityScoreMap>(world, entity)
+                            .scores
+                            .iter()
+                            .map(|(ability, score)| (*ability, score.total() as u8))
+                            .collect();
+                    return LevelUpDecisionProgress::AbilityScoreImprovement {
+                        base_scores,
+                        assignments: HashMap::new(),
+                        remaining_points: *budget,
+                    };
+                }
+
+                LevelUpPrompt::SkillProficiency { choices, .. } => {
+                    let skill_set = systems::helpers::get_component::<SkillSet>(world, entity);
+                    let all_skills = Skill::iter()
+                        .map(|skill| (skill, skill_set.get(&skill).proficiency().clone()))
+                        .collect();
+                    return LevelUpDecisionProgress::SkillProficiency {
+                        selected: HashSet::new(),
+                        remaining_decisions: *choices,
+                        all_skills,
+                    };
+                }
+
+                _ => {}
             }
         }
         Self::from_prompt(prompt)
@@ -287,7 +287,7 @@ impl LevelUpPromptWithProgress {
         let progress =
             LevelUpDecisionProgress::default_from_prompt_and_character(&prompt, world, entity);
         Self {
-            prompt: prompt,
+            prompt,
             progress: progress.clone(),
             initial_value: progress,
         }
@@ -311,11 +311,7 @@ pub struct LevelUpWindow {
 
 impl LevelUpWindow {
     pub fn new(world: &World, character: Option<Entity>) -> Self {
-        let initial_character = if let Some(entity) = character {
-            Some(Character::from_world(world, entity))
-        } else {
-            None
-        };
+        let initial_character = character.map(|entity| Character::from_world(world, entity));
 
         Self {
             character,
@@ -374,7 +370,7 @@ impl LevelUpWindow {
 
         // Keep all the decisions in progress which are still valid for the new level-up session
         for promp_progress in pending_decisions {
-            if pending_prompts.iter().any(|p| *p == promp_progress.prompt)
+            if pending_prompts.contains(&promp_progress.prompt)
                 && !promp_progress.progress.is_empty()
             {
                 valid_decisions.push(promp_progress.clone());
@@ -415,7 +411,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
             }
 
             {
-                let mut name = systems::helpers::get_component_mut::<Name>(
+                let name = systems::helpers::get_component_mut::<Name>(
                     &mut game_state.world,
                     self.character.unwrap(),
                 );
@@ -436,24 +432,24 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
 
                 // If a class has been chosen, show what will be gained at this level
                 // TODO: Include species and subspecies gains
-                if let Some(level_up_session) = &self.level_up_session {
-                    if let Some(class) = level_up_session.chosen_class() {
-                        systems::level_up::level_up_gains(
-                            &game_state.world,
-                            self.character.unwrap(),
-                            &class,
-                            levels.class_level(&class).unwrap().level(),
-                        )
-                        .render(ui);
-                    }
+                if let Some(level_up_session) = &self.level_up_session
+                    && let Some(class) = level_up_session.chosen_class()
+                {
+                    systems::level_up::level_up_gains(
+                        &game_state.world,
+                        self.character.unwrap(),
+                        &class,
+                        levels.class_level(&class).unwrap().level(),
+                    )
+                    .render(ui);
                 }
                 ui.separator();
             }
 
             let mut decision_updated = None;
             for (i, pending_decision) in self.pending_decisions.iter_mut().enumerate() {
-                if let Some(tab_bar) = ui.tab_bar(format!("CharacterTabs")) {
-                    let style_tokens = if pending_decision.progress.is_complete() {
+                if let Some(tab_bar) = ui.tab_bar("CharacterTabs") {
+                    let _style_tokens = if pending_decision.progress.is_complete() {
                         Some(
                             [
                                 (imgui::StyleColor::Tab, [0.0, 0.6, 0.0, 1.0]),
@@ -499,12 +495,12 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
             // from what class is chosen, so if the class decision is
             // updated, we can reset the subsequent decisions
             // (little bit of a hack)
-            if let Some((index, decision)) = decision_updated.as_ref() {
-                if let LevelUpPrompt::Choice(item) = &decision.prompt {
-                    // TODO: first().unwrap() is a bit hacky
-                    if matches!(&item.options.first().unwrap(), ChoiceItem::Class(_)) {
-                        self.pending_decisions.truncate(*index + 1);
-                    }
+            if let Some((index, decision)) = decision_updated.as_ref()
+                && let LevelUpPrompt::Choice(item) = &decision.prompt
+            {
+                // TODO: first().unwrap() is a bit hacky
+                if matches!(&item.options.first().unwrap(), ChoiceItem::Class(_)) {
+                    self.pending_decisions.truncate(*index + 1);
                 }
             }
 
@@ -580,12 +576,10 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                             if required == &1 {
                                 decisions.clear();
                                 decisions.push(option.clone());
-                            } else {
-                                if selected {
-                                    decisions.retain(|item| item != option);
-                                } else if decisions.len() < *required as usize {
-                                    decisions.push(option.clone());
-                                }
+                            } else if selected {
+                                decisions.retain(|item| item != option);
+                            } else if decisions.len() < *required as usize {
+                                decisions.push(option.clone());
                             }
                         }
 
@@ -649,27 +643,26 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
 
                             // Button for decreasing ability score
                             ui.same_line();
-                            if ui.button_with_size(format!("-##{}", ability), [30.0, 0.0]) {
-                                if let Some(score) = assignments.get_mut(&ability) {
-                                    if *score > 8 {
-                                        *score -= 1;
-                                    }
-                                }
+                            if ui.button_with_size(format!("-##{}", ability), [30.0, 0.0])
+                                && let Some(score) = assignments.get_mut(&ability)
+                                && *score > 8
+                            {
+                                *score -= 1;
                             }
 
-                            let ability_score = assignments.get(&ability).unwrap().clone();
+                            let ability_score = *assignments.get(&ability).unwrap();
                             ui.same_line();
                             // Fixed width format: centered in a 2-character field (e.g., " 8", "10", "14")
                             let mut final_score = ability_score;
-                            if let Some(plus_2) = plus_2_bonus {
-                                if *plus_2 == ability {
-                                    final_score += 2;
-                                }
+                            if let Some(plus_2) = plus_2_bonus
+                                && *plus_2 == ability
+                            {
+                                final_score += 2;
                             }
-                            if let Some(plus_1) = plus_1_bonus {
-                                if *plus_1 == ability {
-                                    final_score += 1;
-                                }
+                            if let Some(plus_1) = plus_1_bonus
+                                && *plus_1 == ability
+                            {
+                                final_score += 1;
                             }
 
                             let formatted_score = format!("{:^2}", final_score);
@@ -677,16 +670,15 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
 
                             // Button for increasing ability score
                             ui.same_line();
-                            if ui.button_with_size(format!("+##{}", ability), [30.0, 0.0]) {
-                                if let Some(score) = assignments.get_mut(&ability) {
-                                    if *score < 15 {
-                                        let price_of_current = scores_cost.get(score).unwrap();
-                                        let price_of_next = scores_cost.get(&(*score + 1)).unwrap();
-                                        let price_of_increase = price_of_next - price_of_current;
-                                        if price_of_increase <= *remaining_budget {
-                                            *score += 1;
-                                        }
-                                    }
+                            if ui.button_with_size(format!("+##{}", ability), [30.0, 0.0])
+                                && let Some(score) = assignments.get_mut(&ability)
+                                && *score < 15
+                            {
+                                let price_of_current = scores_cost.get(score).unwrap();
+                                let price_of_next = scores_cost.get(&(*score + 1)).unwrap();
+                                let price_of_increase = price_of_next - price_of_current;
+                                if price_of_increase <= *remaining_budget {
+                                    *score += 1;
                                 }
                             }
 
@@ -710,12 +702,12 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
 
                             // +2 Bonus column
                             ui.table_next_column();
-                            let is_plus_2 = plus_2_bonus.map_or(false, |a| a == ability);
+                            let is_plus_2 = plus_2_bonus.is_some_and(|a| a == ability);
                             let mut checkbox_plus_2 = is_plus_2;
                             if ui.checkbox(format!("##plus2_{}", ability), &mut checkbox_plus_2) {
                                 if checkbox_plus_2 {
                                     // Deselect +1 if it was the same ability
-                                    if plus_1_bonus.map_or(false, |a| a == ability) {
+                                    if plus_1_bonus.is_some_and(|a| a == ability) {
                                         *plus_1_bonus = None;
                                     }
                                     *plus_2_bonus = Some(ability);
@@ -726,12 +718,12 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
 
                             // +1 Bonus column
                             ui.table_next_column();
-                            let is_plus_1 = plus_1_bonus.map_or(false, |a| a == ability);
+                            let is_plus_1 = plus_1_bonus.is_some_and(|a| a == ability);
                             let mut checkbox_plus_1 = is_plus_1;
                             if ui.checkbox(format!("##plus1_{}", ability), &mut checkbox_plus_1) {
                                 if checkbox_plus_1 {
                                     // Deselect +2 if it was the same ability
-                                    if plus_2_bonus.map_or(false, |a| a == ability) {
+                                    if plus_2_bonus.is_some_and(|a| a == ability) {
                                         *plus_2_bonus = None;
                                     }
                                     *plus_1_bonus = Some(ability);
@@ -755,7 +747,7 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
             LevelUpPrompt::SkillProficiency {
                 skills,
                 choices,
-                source,
+                source: _,
             } => {
                 if let LevelUpDecisionProgress::SkillProficiency {
                     ref mut selected,
@@ -872,13 +864,13 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                             ui.same_line();
                             let can_decrease = assignments.get(&ability).unwrap() > &0;
                             let disabled_token_decrease = ui.begin_disabled(!can_decrease);
-                            if ui.button_with_size(format!("-##{}", ability), [30.0, 0.0]) {
-                                if can_decrease {
-                                    assignments.get_mut(&ability).map(|score| {
-                                        *score -= 1;
-                                        *remaining_points += 1;
-                                    });
-                                }
+                            if ui.button_with_size(format!("-##{}", ability), [30.0, 0.0])
+                                && can_decrease
+                            {
+                                assignments.get_mut(&ability).map(|score| {
+                                    *score -= 1;
+                                    *remaining_points += 1;
+                                });
                             }
                             disabled_token_decrease.end();
 
@@ -891,13 +883,13 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                             ui.same_line();
                             let can_increase = total_score < *max_score && *remaining_points > 0;
                             let disabled_token_increase = ui.begin_disabled(!can_increase);
-                            if ui.button_with_size(format!("+##{}", ability), [30.0, 0.0]) {
-                                if can_increase {
-                                    assignments.get_mut(&ability).map(|score| {
-                                        *score += 1;
-                                        *remaining_points -= 1;
-                                    });
-                                }
+                            if ui.button_with_size(format!("+##{}", ability), [30.0, 0.0])
+                                && can_increase
+                            {
+                                assignments.get_mut(&ability).map(|score| {
+                                    *score += 1;
+                                    *remaining_points -= 1;
+                                });
                             }
                             disabled_token_increase.end();
                         }
@@ -909,12 +901,12 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
             }
 
             LevelUpPrompt::ReplaceSpells {
-                spells,
-                replacements,
+                spells: _,
+                replacements: _,
                 ..
             } => {
                 if let LevelUpDecisionProgress::ReplaceSpells {
-                    ref spells,
+                    spells: _,
                     ref number_of_replacements,
                     ref mut replacements,
                 } = self.progress
@@ -964,7 +956,7 @@ impl ImguiRenderable for LevelUpGains {
 
         if !self.resources.is_empty() {
             ui.separator();
-            for (resource, amount, override_existing) in &self.resources {
+            for (resource, _amount, _override_existing) in &self.resources {
                 ui.bullet_text(format!("Resource: {}", resource));
             }
         }

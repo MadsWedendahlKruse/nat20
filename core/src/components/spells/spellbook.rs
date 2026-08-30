@@ -198,6 +198,12 @@ pub struct GrantedSpellMap {
     pub spells: HashMap<SpellId, u8>,
 }
 
+impl Default for GrantedSpellMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GrantedSpellMap {
     pub fn new() -> Self {
         Self {
@@ -240,6 +246,12 @@ pub struct Spellbook {
 
     saving_throw: ModifierMap,
     attack_roll: D20Check,
+}
+
+impl Default for Spellbook {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Spellbook {
@@ -409,10 +421,9 @@ impl Spellbook {
 
         if let Some(class) = ClassesRegistry::get(&class_and_subclass.class)
             && let Some(spellcasting_rules) = class.spellcasting_rules(&class_and_subclass.subclass)
+            && !spellcasting_rules.spell_list.contains(spell_id)
         {
-            if !spellcasting_rules.spell_list.contains(spell_id) {
-                return Err(SpellbookError::SpellNotOnClassList);
-            }
+            return Err(SpellbookError::SpellNotOnClassList);
         }
 
         let spell = SpellsRegistry::get(spell_id)
@@ -570,7 +581,7 @@ impl Spellbook {
                 // TODO: Is this all we need here?
                 self.granted
                     .entry(source.clone())
-                    .or_insert_with(GrantedSpellMap::new)
+                    .or_default()
                     .spells
                     .insert(spell_id.clone(), *level);
             }
@@ -590,10 +601,9 @@ impl Spellbook {
             .ok_or(SpellbookError::ClassNotFound)?;
         if let Some(class) = ClassesRegistry::get(&class_and_subclass.class)
             && let Some(spellcasting_rules) = class.spellcasting_rules(&class_and_subclass.subclass)
+            && spellcasting_rules.readiness_model != CastingReadinessModel::Prepared
         {
-            if spellcasting_rules.readiness_model != CastingReadinessModel::Prepared {
-                return Err(SpellbookError::CannotPrepareForThisClass);
-            }
+            return Err(SpellbookError::CannotPrepareForThisClass);
         }
         if state.selections.always_prepared.contains(spell_id) {
             // Always-prepared isn't removed here
@@ -651,9 +661,9 @@ impl Spellbook {
                 Ok(())
             }
 
-            SpellSource::Granted { source, level } => {
+            SpellSource::Granted { source, level: _ } => {
                 if let Some(granted_set) = self.granted.get_mut(source) {
-                    if let Some(_) = granted_set.spells.remove(spell_id) {
+                    if granted_set.spells.remove(spell_id).is_some() {
                         return Ok(());
                     } else {
                         return Err(SpellbookError::NotFound);
@@ -684,7 +694,7 @@ impl Spellbook {
         }
 
         // Per-class castables
-        for (class_and_subclass, state) in self.class_states.iter() {
+        for (class_and_subclass, _state) in self.class_states.iter() {
             if let Ok(class_castable) =
                 self.castable_spells_for_class(class_and_subclass, resources)
             {

@@ -26,10 +26,12 @@ pub fn set_background(
     entity: Entity,
     background_id: &BackgroundId,
 ) -> Vec<LevelUpPrompt> {
-    let background = BackgroundsRegistry::get(background_id).expect(&format!(
-        "Background with ID `{}` not found in the registry",
-        background_id
-    ));
+    let background = BackgroundsRegistry::get(background_id).unwrap_or_else(|| {
+        panic!(
+            "Background with ID `{}` not found in the registry",
+            background_id
+        )
+    });
 
     *background_mut(&mut game_state.world, entity) = background_id.clone();
 
@@ -40,8 +42,7 @@ pub fn set_background(
     }
     let mut prompts = feat_result.unwrap();
 
-    let mut skill_set =
-        systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
+    let skill_set = systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
     for skill in background.skill_proficiencies {
         skill_set.set_proficiency(
             &skill,

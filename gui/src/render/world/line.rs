@@ -121,7 +121,7 @@ impl LineRenderer {
                 glow::FLOAT,
                 false,
                 std::mem::size_of::<LineVertex>() as i32,
-                (3 * 4) as i32,
+                3 * 4,
             );
 
             gl.bind_vertex_array(None);
@@ -258,7 +258,7 @@ impl LineRenderer {
                 let new_capacity = (required * 2).max(1024);
                 gl.buffer_data_size(
                     glow::ARRAY_BUFFER,
-                    new_capacity as i32 * std::mem::size_of::<LineVertex>() as i32,
+                    new_capacity * std::mem::size_of::<LineVertex>() as i32,
                     glow::DYNAMIC_DRAW,
                 );
                 self.capacity = new_capacity;

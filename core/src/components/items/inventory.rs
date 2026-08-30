@@ -88,9 +88,9 @@ impl From<ItemInstance> for EquipmentInstance {
     }
 }
 
-impl Into<ItemInstance> for EquipmentInstance {
-    fn into(self) -> ItemInstance {
-        match self {
+impl From<EquipmentInstance> for ItemInstance {
+    fn from(val: EquipmentInstance) -> Self {
+        match val {
             EquipmentInstance::Armor(armor) => ItemInstance::Armor(armor),
             EquipmentInstance::Weapon(weapon) => ItemInstance::Weapon(weapon),
             EquipmentInstance::Equipment(equipment) => ItemInstance::Equipment(equipment),
@@ -102,6 +102,12 @@ impl Into<ItemInstance> for EquipmentInstance {
 pub struct Inventory {
     items: Vec<ItemInstance>,
     money: MonetaryValue,
+}
+
+impl Default for Inventory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Inventory {

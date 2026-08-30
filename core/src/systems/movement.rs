@@ -137,7 +137,7 @@ pub fn path_in_range_of_target(
 
     let target_point = target
         .position(&game_state.world)
-        .expect(format!("Failed to get position of {target:?}").as_str());
+        .unwrap_or_else(|| panic!("Failed to get position of {target:?}"));
 
     let (shape, pose) = systems::geometry::get_shape(&game_state.world, entity)
         .expect("Failed to get shape of entity for path_in_range_of_target");
@@ -172,7 +172,7 @@ pub fn path_in_range_of_target(
         &line_of_sight.trajectory,
         range,
         &path_to_target.full_path,
-        &target,
+        target,
     ) {
         return Ok(PathInRangeOfTargetResult {
             path_result: path(

@@ -88,6 +88,12 @@ pub struct EntityClock {
     local_time_seconds: f32,
 }
 
+impl Default for EntityClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EntityClock {
     pub fn new() -> Self {
         Self {

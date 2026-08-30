@@ -61,7 +61,7 @@ impl DamageComponent {
     pub fn evaluate(&self) -> DamageComponentResult {
         DamageComponentResult {
             result: self.damage.evaluate(),
-            damage_type: self.damage_type.clone(),
+            damage_type: self.damage_type,
         }
     }
 }
@@ -113,7 +113,7 @@ impl DamageRoll {
             total += result.total();
             results.push(DamageComponentResult {
                 result,
-                damage_type: component.damage_type.clone(),
+                damage_type: component.damage_type,
             });
         }
 
@@ -138,7 +138,7 @@ impl DamageRoll {
                     .values()
                     .map(|modifier| modifier.max())
                     .sum();
-                (min, max, component.damage_type.clone())
+                (min, max, component.damage_type)
             })
             .collect()
     }
@@ -157,7 +157,7 @@ fn evaluate_modifier_dice_multiplier(
     match modifier {
         ModifierKind::Flat(value) => ModifierKindResult::Flat(*value),
         ModifierKind::Dice(dice_set) => {
-            let mut new_dice_set = dice_set.clone();
+            let mut new_dice_set = *dice_set;
             new_dice_set.num_dice *= multiplier;
             ModifierKindResult::Dice(new_dice_set.roll())
         }
@@ -188,10 +188,10 @@ impl DamageModifiable for DamageRollResult {
     fn add_damage_component(&mut self, component: DamageComponent) {
         let mut component = component;
         for (_, modifier) in component.damage.iter_mut() {
-            if let ModifierKind::Dice(dice_set) = modifier {
-                if self.crit {
-                    dice_set.num_dice *= CRIT_DICE_MULTIPLIER;
-                }
+            if let ModifierKind::Dice(dice_set) = modifier
+                && self.crit
+            {
+                dice_set.num_dice *= CRIT_DICE_MULTIPLIER;
             }
         }
         self.components.push(component.evaluate());
@@ -316,10 +316,7 @@ impl DamageResistances {
     }
 
     pub fn add_effect(&mut self, damage_type: DamageType, effect: DamageMitigationEffect) {
-        self.effects
-            .entry(damage_type)
-            .or_insert_with(Vec::new)
-            .push(effect);
+        self.effects.entry(damage_type).or_default().push(effect);
     }
 
     pub fn remove_effect(&mut self, damage_type: DamageType, effect: &DamageMitigationEffect) {
@@ -420,7 +417,7 @@ impl DamageComponentMitigation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DamageMitigationResult {
     pub components: Vec<DamageComponentMitigation>,
     pub total: i32,
@@ -438,15 +435,6 @@ impl DamageMitigationResult {
     pub fn add_component(&mut self, component: DamageComponentMitigation) {
         self.total += component.after_mods;
         self.components.push(component);
-    }
-}
-
-impl Default for DamageMitigationResult {
-    fn default() -> Self {
-        Self {
-            components: Vec::new(),
-            total: 0,
-        }
     }
 }
 

@@ -30,7 +30,9 @@ pub enum ArmorType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ArmorDexterityBonus {
+    #[default]
     Unlimited,   // No limit on Dexterity bonus
     Limited(u8), // Maximum Dexterity bonus allowed
 }
@@ -44,11 +46,6 @@ impl ArmorDexterityBonus {
     }
 }
 
-impl Default for ArmorDexterityBonus {
-    fn default() -> Self {
-        ArmorDexterityBonus::Unlimited
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArmorClass {

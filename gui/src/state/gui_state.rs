@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use glow::HasContext;
 use hecs::Entity;
 use imgui_glow_renderer::AutoRenderer;
-use nat20_core::systems::{geometry::RaycastResult, movement::PathResult};
+use nat20_core::systems::geometry::RaycastResult;
 use parry3d::na::Vector3;
 use winit::window::Window;
 

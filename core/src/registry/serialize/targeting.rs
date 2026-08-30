@@ -17,7 +17,7 @@ use uom::si::{
 use crate::{
     components::{
         actions::{
-            action::{ActionAttackKind, ActionContext, TargetingFunction},
+            action::{ActionContext, TargetingFunction},
             targeting::{
                 AreaFilter, AreaShape, EntityFilter, LineOfSight, LineOfSightExtentTemplate,
                 LineOfSightTrajectory, TargetingContext, TargetingKind, TargetingRange,

@@ -812,7 +812,7 @@ impl StepComponent {
                 }
             }
 
-            EffectApplicationResult::RefreshedDuration(uuid) => {
+            EffectApplicationResult::RefreshedDuration(_uuid) => {
                 // TODO
             }
         }

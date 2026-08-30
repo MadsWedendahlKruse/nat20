@@ -1,4 +1,4 @@
-use hecs::{Entity, World};
+use hecs::Entity;
 
 use crate::{
     components::{
@@ -34,10 +34,8 @@ pub fn set_species(
 ) -> Vec<LevelUpPrompt> {
     let mut prompts = Vec::new();
 
-    let species = SpeciesRegistry::get(&species).expect(&format!(
-        "Species with ID `{}` not found in the registry",
-        species
-    ));
+    let species = SpeciesRegistry::get(species)
+        .unwrap_or_else(|| panic!("Species with ID `{}` not found in the registry", species));
 
     systems::helpers::set_component::<SpeciesId>(&mut game_state.world, entity, species.id.clone());
 
@@ -72,15 +70,15 @@ pub fn set_species(
 pub fn set_subspecies(game_state: &mut GameState, entity: Entity, subspecies: &SubspeciesId) {
     let species_id = systems::helpers::get_component_clone::<SpeciesId>(&game_state.world, entity);
 
-    let species = SpeciesRegistry::get(&species_id).expect(&format!(
-        "Species with ID `{}` not found in the registry",
-        species_id
-    ));
+    let _species = SpeciesRegistry::get(&species_id)
+        .unwrap_or_else(|| panic!("Species with ID `{}` not found in the registry", species_id));
 
-    let subspecies = SubspeciesRegistry::get(&subspecies).expect(&format!(
-        "Subspecies with ID `{}` not found in the registry",
-        subspecies
-    ));
+    let subspecies = SubspeciesRegistry::get(subspecies).unwrap_or_else(|| {
+        panic!(
+            "Subspecies with ID `{}` not found in the registry",
+            subspecies
+        )
+    });
 
     systems::helpers::set_component::<Option<SubspeciesId>>(
         &mut game_state.world,

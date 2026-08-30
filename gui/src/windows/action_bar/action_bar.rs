@@ -39,7 +39,7 @@ use nat20_core::{
     },
 };
 use parry3d::shape::ShapeType;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
 use uom::si::length::meter;
 
 use crate::{
@@ -344,7 +344,7 @@ impl ActionBarWindow {
 
             let disabled_token = ui.begin_disabled(first_usable_context.is_none());
 
-            if ui.button(&action_id.to_string()) {
+            if ui.button(action_id.to_string()) {
                 selected_action = Some(action_id.clone());
             }
 
@@ -364,16 +364,14 @@ impl ActionBarWindow {
         }
 
         if let Some(action_id) = selected_action {
-            self.builder.action(&game_state, &action_id);
+            self.builder.action(game_state, &action_id);
         }
     }
 
     fn render_end_turn(&self, ui: &imgui::Ui, game_state: &mut GameState) {
         let entity = self.builder.actor().id();
-        if game_state.in_combat.contains_key(&entity) {
-            if ui.button("End Turn") {
-                game_state.end_turn(entity);
-            }
+        if game_state.in_combat.contains_key(&entity) && ui.button("End Turn") {
+            game_state.end_turn(entity);
         }
     }
 
@@ -900,13 +898,13 @@ impl ActionBarWindow {
 
         ui.separator();
 
-        return render_button_disabled_conditionally(
+        render_button_disabled_conditionally(
             ui,
             "Confirm Targets",
             [0.0, 0.0],
             action.targets.is_empty(),
             "Must select at least one target",
-        );
+        )
     }
 
     fn render_range_preview(
@@ -1045,7 +1043,7 @@ fn render_attack_hit_chance_tooltip(
     target: Entity,
     attack_roll_fn: &Arc<AttackRollFunction>,
 ) {
-    let (source, mut attack_roll) = attack_roll_fn(
+    let (_source, mut attack_roll) = attack_roll_fn(
         &game_state.world,
         action.actor.id(),
         target,
@@ -1055,7 +1053,7 @@ fn render_attack_hit_chance_tooltip(
 
     systems::d20::preview_attack_roll(game_state, action.actor.id(), target, &mut attack_roll);
 
-    let target_ac = systems::loadout::armor_class(&game_state, target);
+    let target_ac = systems::loadout::armor_class(game_state, target);
 
     let hit_chance = attack_roll
         .success_probability(target_ac.total() as u32)
@@ -1197,7 +1195,7 @@ fn render_forced_outcome_or_advantage(
     if let Some((source, outcome)) = d20_check.forced_outcome() {
         render_forced_outcome(ui, hit_chance, source, outcome, reverse_text_color);
     } else {
-        render_advantage(ui, &d20_check, hit_chance, reverse_text_color);
+        render_advantage(ui, d20_check, hit_chance, reverse_text_color);
     }
 }
 
@@ -1209,7 +1207,7 @@ fn render_advantage(
 ) {
     TextSegment::new(
         hit_chance_string(hit_chance),
-        d20_roll_mode_text_kind(&d20_check, reverse_text_color),
+        d20_roll_mode_text_kind(d20_check, reverse_text_color),
     )
     .render(ui);
 
@@ -1340,7 +1338,7 @@ fn get_displacement_component(
 }
 
 impl Renderable for Displacement {
-    fn render(&self, ui: &imgui::Ui, gui_state: &mut GuiState) {
+    fn render(&self, _ui: &imgui::Ui, gui_state: &mut GuiState) {
         match self {
             Displacement::Teleport => { /* Nothing to render */ }
             Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
