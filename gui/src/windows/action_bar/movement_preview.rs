@@ -76,10 +76,13 @@ impl MovementPreview {
 
             // If the goal moved
             if goal != prev_goal {
-                let in_combat = game_state.in_combat.contains_key(&self.entity);
-                if let Ok(path_result) =
-                    systems::movement::path(game_state, self.entity, &goal, true, in_combat)
-                {
+                if let Ok(path_result) = systems::movement::path(
+                    game_state,
+                    self.entity,
+                    &goal,
+                    true,
+                    systems::combat::is_in_combat(&game_state, self.entity),
+                ) {
                     self.prev_goal = Some(goal);
                     self.path_result = Some(path_result.clone());
                     self.opportunity_attacks = potential_opportunity_attacks(

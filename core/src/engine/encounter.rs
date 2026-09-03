@@ -67,9 +67,7 @@ impl Encounter {
             .collect();
 
         indexed_rolls.sort_by_key(|(_, roll)| -roll.total());
-        self.initiative_order = indexed_rolls
-            .into_iter()
-            .collect();
+        self.initiative_order = indexed_rolls.into_iter().collect();
     }
 
     pub fn id(&self) -> &EncounterId {
@@ -181,7 +179,11 @@ impl Encounter {
                 death_saving_throw_event,
                 EventCallback::new({
                     move |game_state, event, _source| match &event.kind {
-                        EventKind::D20CheckResolved { actor, result, dc: _ } => {
+                        EventKind::D20CheckResolved {
+                            actor,
+                            result,
+                            dc: _,
+                        } => {
                             let life_state = systems::helpers::get_component_mut::<LifeState>(
                                 &mut game_state.world,
                                 actor.id(),
@@ -196,13 +198,11 @@ impl Encounter {
                                 if next_state != *life_state {
                                     *life_state = next_state;
 
-                                    CallbackResult::Event(Event::new(
-                                        EventKind::LifeStateChanged {
-                                            entity: actor.clone(),
-                                            new_state: next_state,
-                                            actor: None,
-                                        },
-                                    ))
+                                    CallbackResult::Event(Event::new(EventKind::LifeStateChanged {
+                                        entity: actor.clone(),
+                                        new_state: next_state,
+                                        actor: None,
+                                    }))
                                 } else {
                                     CallbackResult::None
                                 }

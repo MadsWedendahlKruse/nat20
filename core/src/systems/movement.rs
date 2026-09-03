@@ -316,7 +316,8 @@ pub fn path_to_target(
                 &action.context,
             );
 
-            let in_combat = game_state.in_combat.contains_key(&action.actor.id());
+            let in_combat = systems::combat::is_in_combat(&game_state, action.actor.id());
+
             if let Ok(path_result) = systems::movement::path_in_range_of_target(
                 game_state,
                 action.actor.id(),
@@ -422,7 +423,7 @@ fn move_new_position(
 ) {
     systems::geometry::teleport_to(&mut game_state.world, entity, new_position);
 
-    if game_state.in_combat.contains_key(&entity) {
+    if systems::combat::is_in_combat(&game_state, entity) {
         let distance_moved = Length::new::<meter>((new_position - from_position).norm());
         systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity)
             .record_movement(distance_moved);

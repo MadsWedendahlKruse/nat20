@@ -28,7 +28,7 @@ use crate::{
         geometry::WorldGeometry,
         interaction::{InteractionEngine, InteractionScopeId, InteractionSession, PendingEvent},
     },
-    systems::{self, movement::MovementError, time::RestKind},
+    systems::{self, combat::CombatState, movement::MovementError, time::RestKind},
 };
 
 // TODO: WorldState instead?
@@ -37,7 +37,6 @@ pub struct GameState {
     pub geometry: WorldGeometry,
 
     pub encounters: HashMap<EncounterId, Encounter>,
-    pub in_combat: HashMap<Entity, EncounterId>,
     pub resting: HashMap<Entity, RestKind>,
     pub interaction_engine: InteractionEngine,
     pub event_log: EventLog,
@@ -55,7 +54,6 @@ impl GameState {
             world: World::new(),
             geometry,
             encounters: HashMap::new(),
-            in_combat: HashMap::new(),
             resting: HashMap::new(),
             interaction_engine: InteractionEngine::default(),
             event_log: EventLog::new(),
@@ -71,7 +69,8 @@ impl GameState {
         encounter_id: EncounterId,
     ) -> EncounterId {
         for entity in &participants {
-            self.in_combat.insert(*entity, encounter_id);
+            systems::helpers::get_component_mut::<CombatState>(&mut self.world, *entity)
+                .enter_combat(encounter_id);
             systems::time::set_time_mode(
                 &mut self.world,
                 *entity,
@@ -104,14 +103,18 @@ impl GameState {
         self.encounters.get_mut(encounter_id)
     }
 
-    pub fn encounter_for_entity(&self, entity: &Entity) -> Option<&EncounterId> {
-        self.in_combat.get(entity)
+    pub fn encounter_for_entity(&self, entity: Entity) -> Option<&Encounter> {
+        match &*systems::helpers::get_component::<CombatState>(&self.world, entity) {
+            CombatState::InCombat(encounter_id) => self.encounters.get(encounter_id),
+            _ => None,
+        }
     }
 
     pub fn end_encounter(&mut self, encounter_id: &EncounterId) {
         if let Some(mut encounter) = self.encounters.remove(encounter_id) {
             for entity in encounter.participants(&self.world, &[EntityFilter::All]) {
-                self.in_combat.remove(&entity);
+                systems::helpers::get_component_mut::<CombatState>(&mut self.world, entity)
+                    .leave_combat();
                 systems::time::set_time_mode(&mut self.world, entity, TimeMode::RealTime);
             }
             self.event_log
@@ -123,16 +126,6 @@ impl GameState {
     }
 
     pub fn end_turn(&mut self, entity: Entity) {
-        let encounter = if let Some(encounter_id) = self.in_combat.get(&entity) {
-            if let Some(encounter) = self.encounters.get_mut(encounter_id) {
-                unsafe { Some(&mut *(encounter as *mut Encounter)) }
-            } else {
-                panic!("Inconsistent state: entity is in combat but encounter not found");
-            }
-        } else {
-            None
-        };
-
         if let Some(session) = self.session_for_entity(entity)
             && !session.pending_events().is_empty()
         {
@@ -143,8 +136,13 @@ impl GameState {
             );
         }
 
-        if let Some(encounter) = encounter {
+        if let Some(encounter_id) = self
+            .encounter_for_entity(entity)
+            .map(|encounter| *encounter.id())
+            && let Some(mut encounter) = self.encounters.remove(&encounter_id)
+        {
             encounter.end_turn(self, entity);
+            self.encounters.insert(*encounter.id(), encounter);
         }
     }
 
@@ -173,14 +171,10 @@ impl GameState {
             return Err(MovementError::NotAlive);
         }
 
-        if let Some(encounter_id) = self.in_combat.get(&entity) {
-            if let Some(encounter) = self.encounters.get_mut(encounter_id) {
-                if encounter.current_entity() != entity {
-                    return Err(MovementError::NotYourTurn);
-                }
-            } else {
-                panic!("Inconsistent state: entity is in combat but encounter not found");
-            }
+        if let Some(encounter) = self.encounter_for_entity(entity)
+            && encounter.current_entity() != entity
+        {
+            return Err(MovementError::NotYourTurn);
         }
 
         info!("Submitting movement for {:?} to goal {:?}", entity, goal);
@@ -190,7 +184,7 @@ impl GameState {
             entity,
             &goal,
             true,
-            self.in_combat.contains_key(&entity),
+            systems::combat::is_in_combat(&self, entity),
         )?;
 
         if systems::movement::speed(self, entity).remaining_movement() <= Length::new::<meter>(0.0)
@@ -205,8 +199,8 @@ impl GameState {
     }
 
     pub(crate) fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
-        if let Some(id) = self.in_combat.get(&entity) {
-            InteractionScopeId::Encounter(*id)
+        if let Some(encounter) = self.encounter_for_entity(entity) {
+            InteractionScopeId::Encounter(*encounter.id())
         } else {
             InteractionScopeId::Global
         }
@@ -571,9 +565,7 @@ impl GameState {
     pub fn get_potential_reactors(&self, actor: Entity) -> Vec<Entity> {
         // If in combat, only consider participants. Otherwise, consider all entities
         // that are nearby
-        if let Some(encounter_id) = self.in_combat.get(&actor)
-            && let Some(encounter) = self.encounters.get(encounter_id)
-        {
+        if let Some(encounter) = self.encounter_for_entity(actor) {
             return encounter.participants(&self.world, &[EntityFilter::not_dead()]);
         } else if let Some((_, shape_pose)) = systems::geometry::get_shape(&self.world, actor) {
             return systems::geometry::entities_in_shape(
@@ -714,9 +706,7 @@ impl GameState {
     }
 
     pub fn event_log(&self, entity: Entity) -> &EventLog {
-        if let Some(encounter_id) = self.in_combat.get(&entity)
-            && let Some(encounter) = self.encounters.get(encounter_id)
-        {
+        if let Some(encounter) = self.encounter_for_entity(entity) {
             encounter.event_log()
         } else {
             &self.event_log
@@ -724,8 +714,12 @@ impl GameState {
     }
 
     pub fn event_log_mut(&mut self, entity: Entity) -> &mut EventLog {
-        if let Some(encounter_id) = self.in_combat.get(&entity)
-            && let Some(encounter) = self.encounters.get_mut(encounter_id)
+        let encounter_id = self
+            .encounter_for_entity(entity)
+            .map(|encounter| *encounter.id());
+
+        if let Some(encounter_id) = encounter_id
+            && let Some(encounter) = self.encounters.get_mut(&encounter_id)
         {
             encounter.event_log_mut()
         } else {
@@ -760,12 +754,24 @@ impl GameState {
     pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {
         info!("Despawning entity {:?}", entity);
         self.world.despawn(entity)?;
-        if let Some(encounter_id) = self.in_combat.remove(&entity)
-            && let Some(encounter) = self.encounters.get_mut(&encounter_id)
+
+        // Despawn is called for *all* entities, so can't guarantee their components
+        // e.g. projectiles don't have a CombatState component
+        let encounter_id = if let Ok(combat_state) = self.world.get::<&CombatState>(entity)
+            && let CombatState::InCombat(encounter_id) = *combat_state
         {
-            let encounter = unsafe { &mut *(encounter as *mut Encounter) };
+            Some(encounter_id)
+        } else {
+            None
+        };
+
+        if let Some(encounter_id) = encounter_id
+            && let Some(mut encounter) = self.encounters.remove(&encounter_id)
+        {
             encounter.remove_participant(self, entity);
+            self.encounters.remove(&encounter_id);
         }
+
         self.resting.remove(&entity);
         Ok(())
     }

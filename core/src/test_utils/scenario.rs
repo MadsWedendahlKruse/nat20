@@ -424,7 +424,7 @@ impl ScenarioProbe<'_> {
     /// `end_turn` that leads into it.
     pub fn end_turn(&mut self) -> &mut Self {
         let entity = self.entity();
-        if self.scenario.game_state.in_combat.contains_key(&entity) {
+        if systems::combat::is_in_combat(self.game_state(), entity) {
             // The encounter fires both boundaries and moves initiative on
             self.scenario.game_state.end_turn(entity);
             self.scenario.game_state.update(0.0);

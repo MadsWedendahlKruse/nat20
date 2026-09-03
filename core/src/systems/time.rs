@@ -181,7 +181,7 @@ fn entities_in_combat(game_state: &GameState, participants: &[Entity]) -> Vec<En
     participants
         .iter()
         .cloned()
-        .filter(|entity| game_state.in_combat.contains_key(entity))
+        .filter(|entity| systems::combat::is_in_combat(&game_state, *entity))
         .collect()
 }
 

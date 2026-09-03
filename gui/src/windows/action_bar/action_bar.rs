@@ -260,9 +260,7 @@ impl ActionBarWindow {
     }
 
     pub fn is_disabled(&self, game_state: &GameState) -> bool {
-        if let Some(encounter_id) = game_state.in_combat.get(&self.builder.actor().id())
-            && let Some(encounter) = game_state.encounters.get(encounter_id)
-        {
+        if let Some(encounter) = game_state.encounter_for_entity(self.builder.actor().id()) {
             if encounter.current_entity() != self.builder.actor().id() {
                 return true;
             }
@@ -370,7 +368,7 @@ impl ActionBarWindow {
 
     fn render_end_turn(&self, ui: &imgui::Ui, game_state: &mut GameState) {
         let entity = self.builder.actor().id();
-        if game_state.in_combat.contains_key(&entity) && ui.button("End Turn") {
+        if systems::combat::is_in_combat(&game_state, entity) && ui.button("End Turn") {
             game_state.end_turn(entity);
         }
     }

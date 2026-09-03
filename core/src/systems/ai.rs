@@ -76,8 +76,7 @@ pub fn recommeneded_target_attitude(
 pub fn possible_targets(game_state: &GameState, action_data: &ActionData) -> Vec<Entity> {
     let targeting = systems::actions::targeting_context_data(&game_state.world, action_data);
 
-    if let Some(encounter_id) = &game_state.in_combat.get(&action_data.actor.id())
-        && let Some(encounter) = game_state.encounters.get(encounter_id)
+    if let Some(encounter) = game_state.encounter_for_entity(action_data.actor.id())
         && let Some(action) = systems::actions::get_action(&action_data.action_id)
     {
         encounter

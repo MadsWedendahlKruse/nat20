@@ -2,6 +2,7 @@ pub mod actions;
 pub mod ai;
 pub mod backgrounds;
 pub mod class;
+pub mod combat;
 pub mod d20;
 pub mod damage;
 pub mod effects;
