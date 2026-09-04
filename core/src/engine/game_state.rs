@@ -769,7 +769,7 @@ impl GameState {
             && let Some(mut encounter) = self.encounters.remove(&encounter_id)
         {
             encounter.remove_participant(self, entity);
-            self.encounters.remove(&encounter_id);
+            self.encounters.insert(&encounter_id);
         }
 
         self.resting.remove(&entity);
