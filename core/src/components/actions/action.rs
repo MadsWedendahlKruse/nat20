@@ -217,10 +217,14 @@ impl ActionKind {
                 }));
 
                 let scope = game_state.scope_for_entity(action_data.actor.id());
-                game_state
-                    .interaction_engine
-                    .session_mut(scope)
-                    .clear_blocker(action_data.actor.id());
+
+                if let Some(trigger_event) = action_data.trigger_event.as_ref() {
+                    game_state
+                        .interaction_engine
+                        .session_mut(scope)
+                        .clear_blocker(&trigger_event.id, action_data.actor.id());
+                }
+
                 game_state.resume_pending_events_if_ready(scope);
             }
         }

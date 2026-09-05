@@ -14,7 +14,7 @@ use crate::{
             action::{ActionCooldownMap, ActionMap, ActionTimeline, default_actions},
             execution::{ActionExecution, ExecutionMailbox, ExecutionStatus},
         },
-        activity::{ActivityState, ActivityStateKind, ActivityStateKindTag},
+        activity::{ActivityState, ActivityStateTag},
         ai::PlayerControlledTag,
         damage::DamageResistances,
         effects::effect_manager::EffectManager,
@@ -226,6 +226,16 @@ impl Monster {
     }
 }
 
+pub fn should_update(game_state: &GameState, entity: Entity) -> bool {
+    if let Some(session) = game_state.session_for_entity(entity)
+        && let Some(pending_event) = session.pending_events().front()
+    {
+        pending_event.blocked_by.contains(&entity)
+    } else {
+        true
+    }
+}
+
 pub fn update(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     let time_step = TimeStep::RealTime {
         delta_seconds: delta_time,
@@ -268,32 +278,24 @@ fn handle_ai(game_state: &mut GameState, entity: Entity) {
 }
 
 fn update_activity(game_state: &mut GameState, delta_time: f32, entity: Entity) {
-    let kind = {
-        let activity = systems::helpers::get_component::<ActivityState>(&game_state.world, entity);
+    let tag = systems::helpers::get_component::<ActivityState>(&game_state.world, entity).tag();
 
-        if activity.is_paused() {
-            return;
-        }
-
-        ActivityStateKindTag::from(&activity.state)
-    };
-
-    match kind {
-        ActivityStateKindTag::Idle => { /* Do nothing */ }
-        ActivityStateKindTag::Moving => update_moving(game_state, delta_time, entity),
-        ActivityStateKindTag::Acting => update_acting(game_state, delta_time, entity),
-        ActivityStateKindTag::Displaced => update_displaced(game_state, delta_time, entity),
+    match tag {
+        ActivityStateTag::Idle => { /* Do nothing */ }
+        ActivityStateTag::Moving => update_moving(game_state, delta_time, entity),
+        ActivityStateTag::Acting => update_acting(game_state, delta_time, entity),
+        ActivityStateTag::Displaced => update_displaced(game_state, delta_time, entity),
     }
 }
 
 fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     let target_point = {
         let activity = systems::helpers::get_component::<ActivityState>(&game_state.world, entity);
-        let ActivityStateKind::Moving {
+        let ActivityState::Moving {
             path,
             current_target,
             ..
-        } = &activity.state
+        } = &*activity
         else {
             return;
         };
@@ -345,11 +347,11 @@ fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
         let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
             return;
         };
-        let ActivityStateKind::Moving {
+        let ActivityState::Moving {
             path,
             current_target,
             action,
-        } = &mut activity.state
+        } = &mut *activity
         else {
             return;
         };
@@ -396,7 +398,7 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
         let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
             return;
         };
-        let ActivityStateKind::Acting {
+        let ActivityState::Acting {
             timeline:
                 ActionTimeline {
                     total_duration,
@@ -405,7 +407,8 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
                 },
             elapsed_time,
             phase_cooldown,
-        } = &mut activity.state
+            blocking_event,
+        } = &mut *activity
         else {
             return;
         };
@@ -434,6 +437,15 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
                 "Entity {:?} finished action after {:?} seconds",
                 entity, total_duration
             );
+
+            let scope = game_state.scope_for_entity(entity);
+            if let Some(blocking_event) = blocking_event {
+                game_state
+                    .interaction_engine
+                    .session_mut(scope)
+                    .clear_blocker(blocking_event, entity);
+            }
+
             activity.set_idle();
         }
 
@@ -457,10 +469,6 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
         .take();
 
     let scope = game_state.scope_for_entity(entity);
-    game_state
-        .interaction_engine
-        .session_mut(scope)
-        .clear_blocker(entity);
     game_state.resume_pending_events_if_ready(scope);
 }
 
@@ -469,10 +477,10 @@ fn update_displaced(game_state: &mut GameState, delta_time: f32, entity: Entity)
         let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
             return;
         };
-        let ActivityStateKind::Displaced {
+        let ActivityState::Displaced {
             trajectory,
             elapsed_time,
-        } = &mut activity.state
+        } = &mut *activity
         else {
             return;
         };
@@ -507,7 +515,7 @@ fn update_displaced(game_state: &mut GameState, delta_time: f32, entity: Entity)
     let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
         return;
     };
-    if matches!(activity.state, ActivityStateKind::Displaced { .. }) {
+    if matches!(*activity, ActivityState::Displaced { .. }) {
         activity.set_idle();
     }
 }

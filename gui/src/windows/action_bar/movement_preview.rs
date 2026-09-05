@@ -1,6 +1,6 @@
 use hecs::Entity;
 use nat20_core::{
-    components::activity::{ActivityState, ActivityStateKind},
+    components::activity::ActivityState,
     engine::{game_state::GameState, geometry::WorldPath},
     systems::{self, movement::PathResult},
 };
@@ -64,13 +64,13 @@ impl MovementPreview {
             let activity_state =
                 systems::helpers::get_component::<ActivityState>(&game_state.world, self.entity);
 
-            match &activity_state.state {
-                ActivityStateKind::Moving { .. } => {
+            match &*activity_state {
+                ActivityState::Moving { .. } => {
                     if !ui.is_mouse_down(imgui::MouseButton::Left) {
                         return;
                     }
                 }
-                ActivityStateKind::Acting { .. } => return,
+                ActivityState::Acting { .. } => return,
                 _ => {}
             }
 

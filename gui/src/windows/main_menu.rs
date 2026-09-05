@@ -145,7 +145,14 @@ impl MainMenuWindow {
                 line_of_sight_debug,
                 game_state_debug,
             } => {
-                game_state.update(ui.io().delta_time);
+                game_state_debug.render_mut_with_context(ui, gui_state, game_state);
+
+                if *gui_state
+                    .settings
+                    .get::<bool>(state::parameters::UPDATE_GAME_STATE)
+                {
+                    game_state.update(ui.io().delta_time);
+                }
 
                 // In case the selected entity got despawned, deselect it before
                 // the render functions try to access it
@@ -155,7 +162,6 @@ impl MainMenuWindow {
                     gui_state.selected_entity.take();
                 }
 
-                game_state_debug.render_with_context(ui, gui_state, game_state);
                 navigation_debug.render_mut_with_context(ui, gui_state, game_state);
                 line_of_sight_debug.render_mut_with_context(ui, gui_state, game_state);
 

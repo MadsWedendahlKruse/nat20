@@ -5,7 +5,7 @@ use imgui::TreeNodeFlags;
 use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap},
-        activity::{ActivityState, ActivityStateKind},
+        activity::ActivityState,
         d20::{D20CheckDC, D20CheckOutcome, D20CheckResult, RollMode},
         damage::{
             DamageComponent, DamageComponentMitigation, DamageComponentResult,
@@ -1358,7 +1358,7 @@ impl ImguiRenderable for EffectiveSpeed {
 
 impl Renderable for ActivityState {
     fn render(&self, _ui: &imgui::Ui, gui_state: &mut GuiState) {
-        if let ActivityStateKind::Moving { path, .. } = &self.state {
+        if let ActivityState::Moving { path, .. } = &self {
             let points = path
                 .points
                 .iter()

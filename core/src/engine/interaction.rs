@@ -119,6 +119,16 @@ impl InteractionSession {
         }
     }
 
+    pub fn pop_front_if_ready(&mut self) -> Option<PendingEvent> {
+        if let Some(front) = self.pending_events.front()
+            && front.blocked_by.is_empty()
+        {
+            Some(self.pending_events.pop_front().unwrap())
+        } else {
+            None
+        }
+    }
+
     pub fn queue_pending_event(&mut self, pending: PendingEvent, front: bool) {
         if front {
             self.pending_events.push_front(pending);
@@ -152,19 +162,13 @@ impl InteractionSession {
         self.decisions_by_prompt.clear();
     }
 
-    /// Index of the first pending event whose blockers have all cleared, if any.
-    pub fn first_drainable_event(&self) -> Option<usize> {
-        self.pending_events
-            .iter()
-            .position(|pe| pe.blocked_by.is_empty())
-    }
-
-    /// Remove `reactor` from every pending event's `blocked_by` set. Called when
-    /// a reaction activity completes, or when a reactor's decision resolves
-    /// without spawning an activity.
-    pub fn clear_blocker(&mut self, reactor: Entity) {
-        for pe in self.pending_events.iter_mut() {
-            pe.blocked_by.remove(&reactor);
+    pub fn clear_blocker(&mut self, event_id: &EventId, reactor: Entity) {
+        if let Some(pending_event) = self
+            .pending_events
+            .iter_mut()
+            .find(|pending_event| &pending_event.event.id == event_id)
+        {
+            pending_event.blocked_by.remove(&reactor);
         }
     }
 }

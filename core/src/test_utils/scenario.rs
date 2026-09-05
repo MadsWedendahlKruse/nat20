@@ -1,6 +1,6 @@
 use std::{collections::HashSet, u32};
 
-use hecs::{Entity, Ref, World};
+use hecs::{Entity, World};
 use parry3d::{na::Point3, utils::hashmap::HashMap};
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::{EnvFilter, util::SubscriberInitExt};

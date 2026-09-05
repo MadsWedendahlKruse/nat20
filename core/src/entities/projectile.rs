@@ -4,13 +4,11 @@ use tracing::{debug, warn};
 use uom::si::{f32::Velocity, velocity::meter_per_second};
 
 use crate::{
-    components::{
-        actions::targeting::{
-            LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
-        },
-        activity::ActivityState,
+    components::actions::targeting::{
+        LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
+    entities,
     systems::{
         self,
         entities::EntityKind,
@@ -33,16 +31,19 @@ impl Projectile {
     }
 }
 
+pub fn should_update(game_state: &GameState, entity: Entity) -> bool {
+    if let Ok(projectile) = game_state.world.get::<&ProjectileData>(entity) {
+        entities::creature::should_update(game_state, projectile.owner)
+    } else {
+        false
+    }
+}
+
 pub fn update(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     let owner = {
         let Ok(mut projectile) = game_state.world.get::<&mut ProjectileData>(entity) else {
             return;
         };
-        // let projectile = &mut *projectile;
-
-        if projectile.paused {
-            return;
-        }
 
         projectile.flight_time += delta_time;
         projectile.pose.translation = projectile
@@ -82,17 +83,6 @@ pub struct ProjectileData {
     pub time_of_impact: f32,
     /// The entity whose action execution is waiting on this projectile
     pub owner: Entity,
-    pub paused: bool,
-}
-
-impl ProjectileData {
-    pub fn pause(&mut self) {
-        self.paused = true;
-    }
-
-    pub fn resume(&mut self) {
-        self.paused = false;
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -170,11 +160,6 @@ impl ProjectileTemplate {
             flight_time: 0.0,
             time_of_impact,
             owner: action.actor.id(),
-            paused: systems::helpers::get_component::<ActivityState>(
-                &game_state.world,
-                action.actor.id(),
-            )
-            .is_paused(),
         }))
     }
 }

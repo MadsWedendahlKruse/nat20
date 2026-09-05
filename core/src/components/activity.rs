@@ -1,6 +1,4 @@
-﻿use std::collections::HashSet;
-
-use hecs::Entity;
+﻿use hecs::Entity;
 use parry3d::na::Point3;
 use strum::EnumDiscriminants;
 use tracing::{debug, warn};
@@ -9,6 +7,7 @@ use crate::{
     components::actions::action::{Action, ActionTimeline},
     engine::{
         action_prompt::{ActionDecision, ActionError},
+        event::EventId,
         geometry::WorldPath,
     },
     systems::{geometry::Parabola, movement::MovementError},
@@ -48,86 +47,10 @@ impl From<ActionError> for ActivityError {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ActivityState {
-    pub state: ActivityStateKind,
-    pub pause_reasons: HashSet<ActivityPauseReason>,
-}
-
-impl ActivityState {
-    pub fn pause(&mut self, reason: ActivityPauseReason) {
-        debug!("Pausing activity due to reason {:?}", reason);
-        self.pause_reasons.insert(reason);
-    }
-
-    pub fn resume(&mut self, reason: ActivityPauseReason) {
-        debug!("Resuming activity for reason {:?}", reason);
-        self.pause_reasons.remove(&reason);
-    }
-
-    pub fn is_paused(&self) -> bool {
-        !self.pause_reasons.is_empty()
-    }
-
-    pub fn set_idle(&mut self) {
-        debug!("Setting entity to idle");
-        self.state = ActivityStateKind::Idle;
-    }
-
-    pub fn is_idle(&self) -> bool {
-        matches!(self.state, ActivityStateKind::Idle)
-    }
-
-    pub fn set_moving(&mut self, path: WorldPath, action: Option<ActionDecision>) {
-        debug!("Setting entity to move to goal {:?}", path.points.last());
-
-        self.state = ActivityStateKind::Moving {
-            path,
-            current_target: 0,
-            action,
-        };
-    }
-
-    pub fn is_moving(&self) -> bool {
-        matches!(self.state, ActivityStateKind::Moving { .. })
-    }
-
-    pub fn set_acting(&mut self, action: &Action) {
-        if matches!(self.state, ActivityStateKind::Acting { .. }) {
-            warn!(
-                "Overriding activity state for entity which is already acting, with action {:?}",
-                action
-            );
-        }
-        debug!("Setting entity to perform action {:?}", action);
-
-        self.state = ActivityStateKind::Acting {
-            timeline: action.timeline.clone(),
-            elapsed_time: 0.0,
-            phase_cooldown: action.timeline.step_spacing,
-        };
-    }
-
-    pub fn is_acting(&self) -> bool {
-        matches!(self.state, ActivityStateKind::Acting { .. })
-    }
-
-    pub fn set_displaced(&mut self, trajectory: Parabola) {
-        debug!(
-            "Setting entity to be displaced with trajectory {:?}",
-            trajectory
-        );
-        self.state = ActivityStateKind::Displaced {
-            trajectory,
-            elapsed_time: 0.0,
-        };
-    }
-}
-
 #[derive(Debug, Clone, EnumDiscriminants)]
-#[strum_discriminants(name(ActivityStateKindTag))]
+#[strum_discriminants(name(ActivityStateTag))]
 #[derive(Default)]
-pub enum ActivityStateKind {
+pub enum ActivityState {
     #[default]
     Idle,
     Moving {
@@ -141,6 +64,7 @@ pub enum ActivityStateKind {
         timeline: ActionTimeline,
         elapsed_time: f32,
         phase_cooldown: f32,
+        blocking_event: Option<EventId>,
     },
     Displaced {
         trajectory: Parabola,
@@ -148,8 +72,59 @@ pub enum ActivityStateKind {
     },
 }
 
+impl ActivityState {
+    pub fn tag(&self) -> ActivityStateTag {
+        ActivityStateTag::from(self)
+    }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ActivityPauseReason {
-    Reaction,
+    pub fn set_idle(&mut self) {
+        debug!("Setting entity to idle");
+        *self = ActivityState::Idle;
+    }
+
+    pub fn is_idle(&self) -> bool {
+        matches!(self, ActivityState::Idle)
+    }
+
+    pub fn set_moving(&mut self, path: WorldPath, action: Option<ActionDecision>) {
+        debug!("Setting entity to move to goal {:?}", path.points.last());
+
+        *self = ActivityState::Moving {
+            path,
+            current_target: 0,
+            action,
+        };
+    }
+
+    pub fn set_acting(&mut self, action: &Action, blocking_event: Option<EventId>) {
+        if matches!(self, ActivityState::Acting { .. }) {
+            warn!(
+                "Overriding activity state for entity which is already acting, with action {:?}",
+                action
+            );
+        }
+        debug!("Setting entity to perform action {:?}", action);
+
+        *self = ActivityState::Acting {
+            timeline: action.timeline.clone(),
+            elapsed_time: 0.0,
+            phase_cooldown: action.timeline.step_spacing,
+            blocking_event,
+        };
+    }
+
+    pub fn is_acting(&self) -> bool {
+        matches!(self, ActivityState::Acting { .. })
+    }
+
+    pub fn set_displaced(&mut self, trajectory: Parabola) {
+        debug!(
+            "Setting entity to be displaced with trajectory {:?}",
+            trajectory
+        );
+        *self = ActivityState::Displaced {
+            trajectory,
+            elapsed_time: 0.0,
+        };
+    }
 }

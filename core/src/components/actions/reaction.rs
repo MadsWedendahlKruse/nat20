@@ -90,7 +90,6 @@ impl ReactionBody {
 
         if should_reinsert {
             session.pending_events_mut().insert(index, pending);
-            session.clear_blocker(action.actor.id());
         }
 
         result

@@ -15,7 +15,7 @@ use crate::{
                 TargetingContext, TargetingError, TargetingKind,
             },
         },
-        activity::{ActivityPauseReason, ActivityState},
+        activity::ActivityState,
         id::{ActionId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap},
@@ -30,7 +30,6 @@ use crate::{
         game_state::GameState,
         interaction::InteractionScopeId,
     },
-    entities::projectile::ProjectileData,
     registry::registry::{ActionsRegistry, SpellsRegistry},
     systems::{self, geometry::RaycastFilter},
 };
@@ -337,8 +336,10 @@ pub fn start_execution(
     let actor = action_data.actor.id();
     systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, actor)
         .replace(ActionExecution::new(action_data.clone(), phases));
-    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, actor)
-        .set_acting(action);
+    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, actor).set_acting(
+        action,
+        action_data.trigger_event.as_deref().map(|event| event.id),
+    );
 }
 
 pub fn execution_status(game_state: &GameState, entity: Entity) -> Option<ExecutionStatus> {
@@ -660,39 +661,4 @@ pub fn available_reactions_to_event(
     }
 
     reactions
-}
-
-// TODO: Something about this seems a bit clunky
-fn set_projectiles_paused_for_entity(game_state: &mut GameState, entity: Entity, paused: bool) {
-    let pairs: Vec<(Entity, Entity)> = game_state
-        .world
-        .query::<&ProjectileData>()
-        .iter()
-        .map(|(entity, projectile)| (entity, projectile.owner))
-        .collect();
-    if pairs.is_empty() {
-        return;
-    }
-    debug!("Found projectiles to set paused={}: {:?}", paused, pairs);
-    for (proj_entity, actor) in pairs {
-        if actor == entity
-            && let Ok(mut projectile) = game_state.world.get::<&mut ProjectileData>(proj_entity)
-        {
-            projectile.paused = paused;
-        }
-    }
-}
-
-pub fn pause_action(game_state: &mut GameState, entity: Entity, reason: ActivityPauseReason) {
-    debug!("Pausing actions for entity {:?}: {:?}", entity, reason);
-    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
-        .pause(reason);
-    set_projectiles_paused_for_entity(game_state, entity, true);
-}
-
-pub fn resume_action(game_state: &mut GameState, entity: Entity, reason: ActivityPauseReason) {
-    debug!("Resuming actions for entity {:?}: {:?}", entity, reason);
-    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
-        .resume(reason);
-    set_projectiles_paused_for_entity(game_state, entity, false);
 }

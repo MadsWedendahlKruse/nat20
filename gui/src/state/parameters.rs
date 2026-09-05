@@ -8,3 +8,5 @@ pub static RENDER_IMGUI_USER_GUIDE: &str = "render.ui.imgui.show_user_guide";
 pub static RENDER_LINE_OF_SIGHT_DEBUG: &str = "render.ui.line_of_sight.debug_window";
 pub static RENDER_NAVIGATION_DEBUG: &str = "render.ui.navigation.debug_window";
 pub static RENDER_NAVIGATION_NAVMESH: &str = "render.ui.navigation.render_navmesh";
+
+pub static UPDATE_GAME_STATE: &str = "game_state.update";

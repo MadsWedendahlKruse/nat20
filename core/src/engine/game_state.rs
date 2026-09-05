@@ -8,7 +8,7 @@ use uom::si::{f32::Length, length::meter};
 use crate::{
     components::{
         actions::targeting::EntityFilter,
-        activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
+        activity::{Activity, ActivityError, ActivityState},
         d20::D20CheckDC,
         time::TimeMode,
     },
@@ -301,17 +301,6 @@ impl GameState {
             .take_decisions_for_prompt(&prompt_id)
             .ok_or_else(|| panic!("Decisions not found for prompt id {:?}", prompt_id))?;
 
-        // Resume all the entities that were waiting for this prompt to resolve
-        let mut entities = decisions.keys().cloned().collect::<HashSet<_>>();
-        if let Some(prompt) = session.find_prompt(&prompt_id)
-            && let Some(trigger_actor) = prompt.trigger_actor()
-        {
-            entities.insert(trigger_actor);
-        }
-        for entity in entities {
-            systems::actions::resume_action(self, entity, ActivityPauseReason::Reaction);
-        }
-
         // Convert decisions -> actions/reactions and execute
         for (entity, decision) in &decisions {
             match &decision.kind {
@@ -340,7 +329,7 @@ impl GameState {
                         );
                         self.interaction_engine
                             .session_mut(scope)
-                            .clear_blocker(*entity);
+                            .clear_blocker(&event.id, *entity);
                         continue;
                     };
 
@@ -397,13 +386,6 @@ impl GameState {
         if let Some(actor) = event.actor()
             && let Some(reaction_options) = self.collect_reactions(actor, &event)
         {
-            // Pause everyone involved in the reaction
-            let mut entities = reaction_options.keys().cloned().collect::<Vec<_>>();
-            entities.push(actor);
-            for entity in entities {
-                systems::actions::pause_action(self, entity, ActivityPauseReason::Reaction);
-            }
-
             // Announce and prompt. The set of potential reactors is exactly the
             // initial `blocked_by`: each reactor stays on the event until their
             // decision resolves (cleared if decline / instant) or their chosen
@@ -417,6 +399,7 @@ impl GameState {
                 }),
                 true,
             );
+
             session.queue_pending_event(PendingEvent::new(event, blocked_by), true);
 
             return;
@@ -490,26 +473,22 @@ impl GameState {
     }
 
     pub(crate) fn resume_pending_events_if_ready(&mut self, scope: InteractionScopeId) {
-        loop {
-            let event_opt = {
-                let session = self.interaction_engine.session_mut(scope);
-                let Some(idx) = session.first_drainable_event() else {
-                    return;
-                };
-                session.pending_events_mut().remove(idx).map(|pe| pe.event)
-            };
-            let Some(event) = event_opt else {
-                return;
-            };
+        let Some(pending_event) = self
+            .interaction_engine
+            .session_mut(scope)
+            .pop_front_if_ready()
+        else {
+            return;
+        };
+        let event = pending_event.event;
 
-            debug!("Resuming pending event: {:?}", event.id);
+        debug!("Resuming pending event: {:?}", event.id);
 
-            self.advance_event(event, true);
+        self.advance_event(event, true);
 
-            // The event advance may have delivered results the waiting
-            // executions were parked on; drive them forward
-            systems::actions::resume_waiting_executions(self, scope);
-        }
+        // The event advance may have delivered results the waiting
+        // executions were parked on; drive them forward
+        systems::actions::resume_waiting_executions(self, scope);
     }
 
     fn collect_reactions(

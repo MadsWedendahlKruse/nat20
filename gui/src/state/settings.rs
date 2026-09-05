@@ -290,6 +290,10 @@ impl Default for GuiSettings {
                 state::parameters::RENDER_GAME_STATE_DEBUG.to_string(),
                 Setting::Bool(false),
             ),
+            (
+                state::parameters::UPDATE_GAME_STATE.to_string(),
+                Setting::Bool(true),
+            ),
         ]))
     }
 }
