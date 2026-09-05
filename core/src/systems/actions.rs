@@ -335,17 +335,15 @@ pub fn start_execution(
     }
 
     let actor = action_data.actor.id();
-    game_state
-        .action_executions
-        .insert(actor, ActionExecution::new(action_data, phases));
+    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, actor)
+        .replace(ActionExecution::new(action_data.clone(), phases));
     systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, actor)
         .set_acting(action);
 }
 
 pub fn execution_status(game_state: &GameState, entity: Entity) -> Option<ExecutionStatus> {
-    game_state
-        .action_executions
-        .get(&entity)
+    systems::helpers::get_component::<Option<ActionExecution>>(&game_state.world, entity)
+        .as_ref()
         .map(ActionExecution::status)
 }
 
@@ -357,11 +355,18 @@ fn with_execution(
     entity: Entity,
     operation: impl FnOnce(&mut ActionExecution, &mut GameState),
 ) {
-    let Some(mut execution) = game_state.action_executions.remove(&entity) else {
+    let Some(mut execution) = systems::helpers::get_component_mut::<Option<ActionExecution>>(
+        &mut game_state.world,
+        entity,
+    )
+    .take() else {
         return;
     };
+
     operation(&mut execution, game_state);
-    game_state.action_executions.insert(entity, execution);
+
+    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, entity)
+        .replace(execution);
 }
 
 pub fn advance_execution(game_state: &mut GameState, entity: Entity) {
@@ -381,13 +386,18 @@ pub fn projectile_impact(game_state: &mut GameState, entity: Entity) {
 /// simply parks again.
 pub fn resume_waiting_executions(game_state: &mut GameState, scope: InteractionScopeId) {
     let waiting: Vec<Entity> = game_state
-        .action_executions
+        .world
+        .query::<&Option<ActionExecution>>()
         .iter()
         .filter(|(entity, execution)| {
+            let Some(execution) = execution else {
+                return false;
+            };
+
             execution.status() == ExecutionStatus::Waiting(WaitReason::EventResolution)
-                && game_state.scope_for_entity(**entity) == scope
+                && game_state.scope_for_entity(*entity) == scope
         })
-        .map(|(entity, _)| *entity)
+        .map(|(entity, _)| entity)
         .collect();
 
     debug!(

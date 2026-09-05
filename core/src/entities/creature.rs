@@ -12,7 +12,7 @@ use crate::{
         ability::AbilityScoreMap,
         actions::{
             action::{ActionCooldownMap, ActionMap, ActionTimeline, default_actions},
-            execution::ExecutionStatus,
+            execution::{ActionExecution, ExecutionMailbox, ExecutionStatus},
         },
         activity::{ActivityState, ActivityStateKind, ActivityStateKindTag},
         ai::PlayerControlledTag,
@@ -86,6 +86,8 @@ from_world!(
         pub effects: EffectManager,
         pub feats: Vec<FeatId>,
         pub actions: ActionMap,
+        pub action_execution: Option<ActionExecution>,
+        pub execution_mailbox: ExecutionMailbox,
         pub cooldowns: ActionCooldownMap,
         pub factions: FactionSet,
     }
@@ -126,6 +128,8 @@ impl Character {
             effects: EffectManager::new(),
             feats: Vec::new(),
             actions: default_actions(),
+            action_execution: None,
+            execution_mailbox: None,
             cooldowns: HashMap::new(),
             factions: FactionSet::from([FactionId::new("nat20_core", "faction.players")]),
         }
@@ -167,6 +171,8 @@ from_world!(
         pub resources: ResourceMap,
         pub effects: EffectManager,
         pub actions: ActionMap,
+        pub action_execution: Option<ActionExecution>,
+        pub execution_mailbox: ExecutionMailbox,
         pub cooldowns: ActionCooldownMap,
         pub weapon_proficiencies: WeaponProficiencyMap,
         pub armor_training: ArmorTrainingSet,
@@ -210,6 +216,8 @@ impl Monster {
             resources: ResourceMap::default(),
             effects: EffectManager::new(),
             actions: default_actions(),
+            action_execution: None,
+            execution_mailbox: None,
             cooldowns: ActionCooldownMap::default(),
             weapon_proficiencies: WeaponProficiencyMap::new(),
             armor_training: ArmorTrainingSet::default(),
@@ -444,8 +452,10 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
         entity
     );
 
+    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, entity)
+        .take();
+
     let scope = game_state.scope_for_entity(entity);
-    game_state.action_executions.remove(&entity);
     game_state
         .interaction_engine
         .session_mut(scope)

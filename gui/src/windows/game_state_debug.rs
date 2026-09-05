@@ -1,6 +1,9 @@
 use imgui::TreeNodeFlags;
 use nat20_core::{
-    components::activity::ActivityState,
+    components::{
+        actions::execution::{ActionExecution, ExecutionMailbox},
+        activity::ActivityState,
+    },
     engine::game_state::GameState,
     systems::{self, entities::EntityKind},
 };
@@ -120,8 +123,12 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                     ui.unindent();
                 }
 
+                // TODO: Since these are no longer stored on the GameState, should
+                // they live somewhere else?
                 if ui.collapsing_header("Action Executions", TreeNodeFlags::empty()) {
-                    for (actor, execution) in game_state.action_executions.iter() {
+                    for (actor, (execution,)) in
+                        game_state.world.query::<(&ActionExecution,)>().iter()
+                    {
                         ui.indent();
                         if ui.collapsing_header(
                             format!("Action Instance {:?}", actor),
@@ -134,7 +141,9 @@ impl RenderableWithContext<&mut GameState> for GameStateDebugWindow {
                 }
 
                 if ui.collapsing_header("Execution Mailbox", TreeNodeFlags::empty()) {
-                    for (actor, mailbox) in game_state.execution_mailbox.iter() {
+                    for (actor, (mailbox,)) in
+                        game_state.world.query::<(&ExecutionMailbox,)>().iter()
+                    {
                         ui.indent();
                         if ui.collapsing_header(
                             format!("Mailbox for {:?}", actor),

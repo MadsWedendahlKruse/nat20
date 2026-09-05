@@ -7,10 +7,7 @@ use uom::si::{f32::Length, length::meter};
 
 use crate::{
     components::{
-        actions::{
-            execution::{ActionExecution, ResumePayload},
-            targeting::EntityFilter,
-        },
+        actions::targeting::EntityFilter,
         activity::{Activity, ActivityError, ActivityPauseReason, ActivityState},
         d20::D20CheckDC,
         time::TimeMode,
@@ -41,11 +38,6 @@ pub struct GameState {
     pub interaction_engine: InteractionEngine,
     pub event_log: EventLog,
     pub event_dispatcher: EventDispatcher,
-    /// Action currently being executed (if any) for each entity
-    pub action_executions: HashMap<Entity, ActionExecution>,
-    /// Results delivered by event response callbacks, picked up by the
-    /// awaiting execution when it next runs
-    pub execution_mailbox: HashMap<Entity, ResumePayload>,
 }
 
 impl GameState {
@@ -58,8 +50,6 @@ impl GameState {
             interaction_engine: InteractionEngine::default(),
             event_log: EventLog::new(),
             event_dispatcher: EventDispatcher::new(),
-            action_executions: HashMap::new(),
-            execution_mailbox: HashMap::new(),
         }
     }
 

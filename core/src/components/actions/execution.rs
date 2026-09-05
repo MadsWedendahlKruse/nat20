@@ -37,7 +37,7 @@ use crate::{
 };
 
 /// The current state of an action being executed by an entity
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionExecution {
     pub action: ActionData,
     pending: VecDeque<PhaseState>,
@@ -300,13 +300,13 @@ impl<T> Awaitable<T> {
 }
 
 /// A result delivered to a waiting execution by an event response callback.
-/// Executions await at most one result at a time, so one slot per actor
-/// (`GameState::execution_mailbox`) suffices.
 #[derive(Debug, Clone)]
 pub enum ResumePayload {
     Condition(ActionConditionResolution),
     DamageRoll(DamageRollResult),
 }
+
+pub type ExecutionMailbox = Option<ResumePayload>;
 
 /// Why an execution is suspended. The single suspension primitive: whatever a
 /// phase is waiting on, the execution stays here with the phase held as
@@ -383,7 +383,12 @@ impl StepState {
 
         // The response callback delivers synchronously unless the event got
         // parked behind a reaction window
-        match game_state.execution_mailbox.remove(&action.actor.id()) {
+        match systems::helpers::get_component_mut::<ExecutionMailbox>(
+            &mut game_state.world,
+            action.actor.id(),
+        )
+        .take()
+        {
             Some(ResumePayload::Condition(resolution)) => {
                 self.resolution = Awaitable::Ready(resolution);
                 true
@@ -438,13 +443,16 @@ impl StepState {
 
         let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
             EventKind::D20CheckResolved { result, dc, .. } => {
-                game_state.execution_mailbox.insert(
+                systems::helpers::get_component_mut::<ExecutionMailbox>(
+                    &mut game_state.world,
                     actor,
-                    ResumePayload::Condition(ActionConditionResolution::Conditional {
+                )
+                .replace(ResumePayload::Condition(
+                    ActionConditionResolution::Conditional {
                         dc: dc.clone(),
                         result: result.clone(),
-                    }),
-                );
+                    },
+                ));
 
                 CallbackResult::None
             }
@@ -551,7 +559,12 @@ impl StepComponent {
         }
 
         if matches!(self.payload_result, Awaitable::Requested) {
-            return match game_state.execution_mailbox.remove(&action.actor.id()) {
+            return match systems::helpers::get_component_mut::<ExecutionMailbox>(
+                &mut game_state.world,
+                action.actor.id(),
+            )
+            .take()
+            {
                 Some(ResumePayload::DamageRoll(damage_result)) => {
                     self.payload_result =
                         Awaitable::Ready(PayloadResult::Damage(Some(damage_result)));
@@ -629,9 +642,12 @@ impl StepComponent {
                 let actor = action.actor.id();
                 let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
                     EventKind::DamageRollResolved { result, .. } => {
-                        game_state
-                            .execution_mailbox
-                            .insert(actor, ResumePayload::DamageRoll(result.clone()));
+                        systems::helpers::get_component_mut::<ExecutionMailbox>(
+                            &mut game_state.world,
+                            actor,
+                        )
+                        .replace(ResumePayload::DamageRoll(result.clone()));
+
                         CallbackResult::None
                     }
                     _ => panic!(
@@ -643,7 +659,12 @@ impl StepComponent {
                 self.payload_result = Awaitable::Requested;
                 game_state.process_event_with_response_callback(damage_event, callback);
 
-                match game_state.execution_mailbox.remove(&actor) {
+                match systems::helpers::get_component_mut::<ExecutionMailbox>(
+                    &mut game_state.world,
+                    actor,
+                )
+                .take()
+                {
                     Some(ResumePayload::DamageRoll(damage_result)) => {
                         self.payload_result =
                             Awaitable::Ready(PayloadResult::Damage(Some(damage_result)));
