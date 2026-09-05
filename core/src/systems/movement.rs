@@ -501,10 +501,8 @@ fn get_opportunity_attack_point(
             );
             return None;
         };
-        let attacker_radius = Length::new::<meter>(attacker_shape.radius);
         let attacker_loadout = systems::loadout::loadout(&game_state.world, attacker);
-        let attacker_reach = attacker_loadout.melee_range().max() + attacker_radius;
-        attacker_reach.get::<meter>()
+        attacker_loadout.melee_range().max().get::<meter>() + attacker_shape.radius
     };
     let attacker_reach_squared = attacker_reach.powi(2);
 

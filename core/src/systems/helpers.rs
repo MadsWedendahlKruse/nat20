@@ -1,34 +1,31 @@
 use std::{any::type_name, ops::Deref};
 
-use hecs::{Entity, Ref, World};
+use hecs::{Component, Entity, Ref, World};
 use tracing::error;
 
 use crate::components::level::{ChallengeRating, CharacterLevels, Level};
 
 #[track_caller]
-pub fn get_component<'a, T: hecs::Component + 'static>(
-    world: &'a World,
-    entity: Entity,
-) -> Ref<'a, T> {
+pub fn get_component<'a, T: Component + 'static>(world: &'a World, entity: Entity) -> Ref<'a, T> {
     world
         .get::<&T>(entity)
         .unwrap_or_else(|_| missing_component_panic::<T>(entity))
 }
 
 #[track_caller]
-pub fn get_component_mut<T: hecs::Component>(world: &mut World, entity: Entity) -> &mut T {
+pub fn get_component_mut<T: Component>(world: &mut World, entity: Entity) -> &mut T {
     world
         .query_one_mut::<&mut T>(entity)
         .unwrap_or_else(|_| missing_component_panic::<T>(entity))
 }
 
 #[track_caller]
-pub fn get_component_clone<T: hecs::Component + Clone>(world: &World, entity: Entity) -> T {
+pub fn get_component_clone<T: Component + Clone>(world: &World, entity: Entity) -> T {
     get_component::<T>(world, entity).deref().clone()
 }
 
 #[track_caller]
-pub fn set_component<T: hecs::Component + Clone>(world: &mut World, entity: Entity, value: T) {
+pub fn set_component<T: Component + Clone>(world: &mut World, entity: Entity, value: T) {
     world
         .insert_one(entity, value)
         .unwrap_or_else(|_| missing_component_panic::<T>(entity));

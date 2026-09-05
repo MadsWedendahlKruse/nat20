@@ -1,6 +1,6 @@
 use std::{collections::HashSet, u32};
 
-use hecs::{Entity, World};
+use hecs::{Entity, Ref, World};
 use parry3d::{na::Point3, utils::hashmap::HashMap};
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::{EnvFilter, util::SubscriberInitExt};
@@ -14,6 +14,7 @@ use crate::{
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
+        activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome, RollMode},
         damage::{DamageComponent, DamageResistances, DamageType},
         health::hit_points::HitPoints,
@@ -146,6 +147,24 @@ impl Scenario {
         ScenarioReactionBuilder {
             scenario: self,
             builder,
+        }
+    }
+
+    pub fn movement(&mut self, handle: impl Into<String>, position: impl Into<Point3<f32>>) {
+        let handle = handle.into();
+        let entity = self.entity(&handle);
+        let result = self.game_state.submit_activity(Activity::Move {
+            entity,
+            goal: position.into(),
+        });
+        match result {
+            Ok(_) => {
+                // TODO: More sophisticated movement resolution
+                for _ in 0..10 {
+                    self.game_state.update(0.5);
+                }
+            }
+            Err(err) => panic!("Failed to submit movement activity: {:?}", err),
         }
     }
 
@@ -375,6 +394,13 @@ impl ScenarioReactionBuilder<'_> {
         // TODO: Do this in a more elegant way
         for _ in 0..10 {
             self.scenario.game_state.update(0.5);
+        }
+    }
+
+    #[track_caller]
+    pub fn assert_perform_fails(self) {
+        if self.builder.perform(&mut self.scenario.game_state).is_ok() {
+            panic!("Expected perform to fail, but it succeeded");
         }
     }
 }

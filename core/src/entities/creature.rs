@@ -323,18 +323,19 @@ fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     let position = systems::geometry::get_foot_position(&game_state.world, entity).unwrap();
     let direction = target_point - position;
     let distance_to_target = direction.norm();
+    let movement_distance = (MOVEMENT_SPEED * delta_time).min(distance_to_target);
 
     if distance_to_target != 0.0 {
         systems::movement::move_entity(
             game_state,
             entity,
-            &(position + direction.normalize() * MOVEMENT_SPEED * delta_time),
+            &(position + direction.normalize() * movement_distance),
             MoveMode::Voluntary,
         );
     }
 
     // Haven't reached the target yet
-    if distance_to_target >= MOVEMENT_SPEED * delta_time {
+    if distance_to_target > movement_distance {
         return;
     }
 
