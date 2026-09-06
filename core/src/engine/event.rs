@@ -16,7 +16,7 @@ use crate::{
         damage::DamageRollResult,
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
-        id::{EntityIdentifier, ItemId},
+        id::{ActionId, EntityIdentifier, ItemId},
         spells::spell::ConcentrationInstance,
         time::TurnBoundary,
     },
@@ -103,6 +103,7 @@ impl Event {
                 components: vec![result],
             },
             actor: None,
+            action: None,
         })
     }
 }
@@ -128,6 +129,7 @@ pub enum EventKind {
     ActionResult {
         result: ActionResult,
         actor: Option<EntityIdentifier>,
+        action: Option<ActionId>,
     },
     Encounter(EncounterEvent),
 
@@ -247,10 +249,7 @@ impl EventLog {
     }
 
     pub fn record_reaction(&mut self, event_id: EventId, reactor: Entity) {
-        self.reactors
-            .entry(event_id)
-            .or_default()
-            .insert(reactor);
+        self.reactors.entry(event_id).or_default().insert(reactor);
     }
 
     pub fn has_reacted(&self, event_id: &EventId, reactor: &Entity) -> bool {

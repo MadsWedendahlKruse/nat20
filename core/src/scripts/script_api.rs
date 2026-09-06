@@ -791,12 +791,18 @@ impl UserData for Event {
             Ok(Some(action.clone()))
         });
         methods.add_method("as_action_result", |_, this, ()| {
-            let EventKind::ActionResult { result, actor } = &this.kind else {
-                return Ok((None, None));
+            let EventKind::ActionResult {
+                result,
+                actor,
+                action,
+            } = &this.kind
+            else {
+                return Ok((None, None, None));
             };
             Ok((
                 Some(result.clone()),
                 actor.as_ref().map(|p| ScriptEntity::from(p.id())),
+                action.as_ref().map(|a| a.to_string()),
             ))
         });
         methods.add_method("as_moving_out_of_reach", |_, this, ()| {

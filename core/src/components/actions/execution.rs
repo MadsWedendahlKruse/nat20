@@ -505,6 +505,7 @@ impl StepState {
         let event = Event::new(EventKind::ActionResult {
             result,
             actor: Some(action.actor.clone()),
+            action: Some(action.action_id.clone()),
         })
         .with_parent(
             game_state

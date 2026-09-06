@@ -42,17 +42,18 @@ impl ReactionBody {
             );
         };
 
-        let scope = game_state.scope_for_entity(action.actor.id());
-        let Some((mut pending, index)) = game_state
-            .interaction_engine
-            .session_mut(scope)
-            .take_pending_event(&trigger_event.id)
-        else {
-            panic!(
-                "Attempted to execute reaction to event which is not pending: {:#?}",
-                action
-            )
+        // Take out the pending event to prevent double mutable borrow
+        let session = game_state.session_for_entity_mut(action.actor.id());
+        let Some(mut pending) = session.pending_events_mut().pop_front() else {
+            panic!("No pending events found for action: {:#?}", action);
         };
+
+        if pending.event.id != trigger_event.id {
+            panic!(
+                "Front pending event does not match trigger event for action: {:#?}",
+                action
+            );
+        }
 
         let result = (self.function)(game_state, action, &mut pending.event);
 
@@ -68,15 +69,13 @@ impl ReactionBody {
             }
         });
 
-        let mut should_reinsert = true;
-
         if let ReactionResult::CancelEvent { event, .. } = &result {
             if event.id == pending.event.id {
                 debug!(
                     "Reaction cancelled event {:?}, removing from pending events",
                     event.id
                 );
-                should_reinsert = false;
+                pending.canceled = true;
             } else {
                 // TODO: Not sure if this ever actually happens?
                 warn!(
@@ -86,11 +85,9 @@ impl ReactionBody {
             }
         }
 
-        let session = game_state.interaction_engine.session_mut(scope);
-
-        if should_reinsert {
-            session.pending_events_mut().insert(index, pending);
-        }
+        // Put the event back in
+        let session = game_state.session_for_entity_mut(action.actor.id());
+        session.queue_pending_event(pending, true);
 
         result
     }

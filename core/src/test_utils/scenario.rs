@@ -1,6 +1,6 @@
 use std::{collections::HashSet, u32};
 
-use hecs::{Entity, World};
+use hecs::{Component, Entity, World};
 use parry3d::{na::Point3, utils::hashmap::HashMap};
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::{EnvFilter, util::SubscriberInitExt};
@@ -14,7 +14,7 @@ use crate::{
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
-        activity::Activity,
+        activity::{Activity, ActivityState, ActivityStateTag},
         d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome, RollMode},
         damage::{DamageComponent, DamageResistances, DamageType},
         health::hit_points::HitPoints,
@@ -551,6 +551,16 @@ impl ScenarioProbe<'_> {
     }
 
     // -- Value getters --
+
+    pub fn component<T>(&self, f: impl FnOnce(&T))
+    where
+        T: Component + 'static,
+    {
+        f(&*systems::helpers::get_component::<T>(
+            self.world(),
+            self.entity(),
+        ));
+    }
 
     pub fn hp(&self) -> u32 {
         systems::helpers::get_component::<HitPoints>(self.world(), self.entity()).current()
@@ -1095,6 +1105,22 @@ impl ScenarioProbe<'_> {
         );
         self
     }
+
+    #[track_caller]
+    pub fn assert_activity_state(&mut self, expected: ActivityStateTag) -> &mut Self {
+        let activity_state =
+            systems::helpers::get_component::<ActivityState>(self.world(), self.entity());
+        assert_eq!(
+            activity_state.tag(),
+            expected,
+            "Expected creature {:?} to have activity state {:?}, but it was {:?}",
+            self.creature(),
+            expected,
+            activity_state.tag()
+        );
+        drop(activity_state);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1137,6 +1163,13 @@ impl ScenarioEventFilterBuilder<'_> {
                 .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
                 .id(),
         );
+        self
+    }
+
+    pub fn action_performed(mut self, action_id: impl Into<ActionId>) -> Self {
+        self.kind = Some(EventFilterKind::ActionPerformed {
+            action_id: action_id.into(),
+        });
         self
     }
 
@@ -1273,6 +1306,9 @@ impl std::fmt::Debug for ScenarioEventFilterBuilder<'_> {
 
 #[derive(Debug, Clone)]
 pub enum EventFilterKind {
+    ActionPerformed {
+        action_id: ActionId,
+    },
     D20Check {
         kind: D20CheckKind,
         modifier: Option<(ModifierSource, ModifierKind)>,
@@ -1291,6 +1327,16 @@ pub enum EventFilterKind {
 impl EventFilterKind {
     pub fn matches(&self, event: &Event) -> bool {
         match (self, &event.kind) {
+            (
+                EventFilterKind::ActionPerformed { action_id },
+                EventKind::ActionResult { action, .. },
+            ) => {
+                if let Some(action) = action {
+                    return action == action_id;
+                }
+                false
+            }
+
             (
                 EventFilterKind::D20Check {
                     kind,

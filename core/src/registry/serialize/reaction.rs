@@ -51,10 +51,6 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
             Arc::new(
                 |game_state: &mut GameState, reaction_data: &ActionData, event: &mut Event| {
                     debug!("Cancelling event with ID {} due to reaction", event.id);
-                    game_state
-                        .session_for_entity_mut(reaction_data.actor.id())
-                        .pending_events_mut()
-                        .retain(|pending| pending.event.id != event.id);
 
                     // TODO: Bit of a hack to comply with Counterspell
                     let resources_refunded =

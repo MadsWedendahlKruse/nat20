@@ -1,6 +1,7 @@
 use nat20_core::{
     components::{
         ability::Ability,
+        activity::ActivityStateTag,
         d20::{D20CheckKind, D20CheckOutcome},
         damage::{DamageComponent, DamageType},
         dice::{DiceSet, DieSize},
@@ -9,8 +10,7 @@ use nat20_core::{
     },
     test_utils::scenario::{Operator, Scenario},
 };
-
-// TODO: Counterspelling a counterspell
+use rstest::rstest;
 
 /// Attacker is level 1 so it cannot counter the Counterspell in return;
 /// defender is level 5 so it knows Counterspell.
@@ -92,13 +92,13 @@ fn counterspell_cancels_spell_on_failed_save() {
             Operator::Equal(defender_slots_3 - 1),
         )
         // ...and the countered spell's slot is definitely not refunded to them
-        .assert_resource_tiered("resource.spell_slot", 1, Operator::Equal(defender_slots_1));
+        .assert_resource_tiered("resource.spell_slot", 1, Operator::Equal(defender_slots_1))
+        .assert_activity_state(ActivityStateTag::Idle);
     // The countered spell's slot is refunded to its caster
-    scenario.probe("attacker").assert_resource_tiered(
-        "resource.spell_slot",
-        1,
-        Operator::Equal(attacker_slots_1),
-    );
+    scenario
+        .probe("attacker")
+        .assert_resource_tiered("resource.spell_slot", 1, Operator::Equal(attacker_slots_1))
+        .assert_activity_state(ActivityStateTag::Idle);
 }
 
 #[test]
@@ -125,11 +125,107 @@ fn counterspell_no_effect_on_successful_save() {
             "resource.spell_slot",
             3,
             Operator::Equal(defender_slots_3 - 1),
-        );
+        )
+        .assert_activity_state(ActivityStateTag::Idle);
     // The caster's slot stays spent
-    scenario.probe("attacker").assert_resource_tiered(
-        "resource.spell_slot",
-        1,
-        Operator::Equal(attacker_slots_1 - 1),
-    );
+    scenario
+        .probe("attacker")
+        .assert_resource_tiered(
+            "resource.spell_slot",
+            1,
+            Operator::Equal(attacker_slots_1 - 1),
+        )
+        .assert_activity_state(ActivityStateTag::Idle);
+}
+
+fn multiple_wizards_scenario(con_saves: &[D20CheckOutcome]) -> Scenario {
+    let num_wizards = con_saves.len();
+
+    let mut scenario = Scenario::new();
+
+    for i in 0..num_wizards {
+        // Spawn them in a circle so they can see each other
+        let angle = i as f32 * (360.0 / num_wizards as f32);
+        let radius = 5.0;
+        let x = radius * angle.to_radians().cos();
+        let y = radius * angle.to_radians().sin();
+
+        scenario
+            .spawn(&format!("wizard{}", i + 1), "hero.wizard")
+            .level(5)
+            .position([x, y, 0.0], true)
+            .spawn();
+    }
+
+    for (i, con_save) in con_saves.iter().enumerate() {
+        scenario
+            .probe(&format!("wizard{}", i + 1))
+            .d20_force_outcome(
+                D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Constitution)),
+                *con_save,
+            );
+    }
+
+    scenario
+}
+
+#[rstest]
+#[case([D20CheckOutcome::Success, D20CheckOutcome::Success])]
+#[case([D20CheckOutcome::Failure, D20CheckOutcome::Success])]
+#[case([D20CheckOutcome::Failure, D20CheckOutcome::Failure])]
+#[case([D20CheckOutcome::Success, D20CheckOutcome::Failure])]
+fn double_counterspell(#[case] con_saves: [D20CheckOutcome; 2]) {
+    // Spawn two wizards that both know counterspell
+    let mut scenario = multiple_wizards_scenario(&con_saves);
+
+    // Wizard 1 casts fireball at Wizard 2
+    scenario
+        .act("wizard1", "action.fireball")
+        .target_entity("wizard2")
+        .perform();
+
+    // Wizard 2 reacts with counterspell
+    scenario
+        .react("wizard2")
+        .option_id("action.counterspell")
+        .perform();
+
+    // Wizard 1 counterspells Wizard 2's counterspell
+    scenario
+        .react("wizard1")
+        .option_id("action.counterspell")
+        .perform();
+
+    // Both wizards are now idle
+    scenario
+        .probe("wizard1")
+        .assert_activity_state(ActivityStateTag::Idle);
+    scenario
+        .probe("wizard2")
+        .assert_activity_state(ActivityStateTag::Idle);
+
+    // Wizard 1 always casts counterspell
+    scenario
+        .event_filter()
+        .actor("wizard1")
+        .action_performed("action.counterspell")
+        .assert_event_count(1);
+
+    // Wizard 2's counterspell only goes off if they succeed on their Constitution
+    // saving throw
+    let wizard2_casts_counterspell = con_saves[1].is_success();
+    scenario
+        .event_filter()
+        .actor("wizard2")
+        .action_performed("action.counterspell")
+        .assert_event_count(wizard2_casts_counterspell as usize);
+
+    // Wizard 1's fireball only goes off if they succeed on their Constitution saving
+    // or if Wizard 2's counterspell fails
+    let fireball_was_cast = con_saves[0].is_success() || !wizard2_casts_counterspell;
+    scenario
+        .event_filter()
+        .actor("wizard1")
+        .action_performed("action.fireball")
+        .assert_event_count(fireball_was_cast as usize);
 }

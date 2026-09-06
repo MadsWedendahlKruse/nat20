@@ -321,7 +321,7 @@ impl GameState {
                     self.event_log_mut(*reactor)
                         .record_reaction(event.id, *reactor);
 
-                    // Declined – reactor is no longer a blocker on any pending event.
+                    // Declined, reactor is no longer a blocker on the pending event
                     let Some(reaction_data) = choice else {
                         debug!(
                             "Clearing blocker for {:?} on prompt {:?} (reaction declined)",
@@ -480,6 +480,30 @@ impl GameState {
         else {
             return;
         };
+
+        if pending_event.canceled {
+            // If the pending event was canceled, and there's more pending events
+            // in the queue, the next event might have been waiting for the actor
+            // of the canceled event to unblock it, in which case we should remove
+            // the actor manually from the next pending event.
+            if let Some(next_pending) = self
+                .interaction_engine
+                .session_mut(scope)
+                .pending_events_mut()
+                .front_mut()
+                && let Some(actor) = pending_event.event.actor()
+            {
+                debug!(
+                    "Removing actor {:?} from blocked_by of next pending event {:?}",
+                    actor, next_pending.event.id
+                );
+                next_pending.blocked_by.remove(&actor);
+            }
+
+            self.resume_pending_events_if_ready(scope);
+            return;
+        }
+
         let event = pending_event.event;
 
         debug!("Resuming pending event: {:?}", event.id);

@@ -24,11 +24,16 @@ pub enum InteractionScopeId {
 pub struct PendingEvent {
     pub event: Event,
     pub blocked_by: HashSet<Entity>,
+    pub canceled: bool,
 }
 
 impl PendingEvent {
     pub fn new(event: Event, blocked_by: HashSet<Entity>) -> Self {
-        Self { event, blocked_by }
+        Self {
+            event,
+            blocked_by,
+            canceled: false,
+        }
     }
 }
 

@@ -256,7 +256,7 @@ function Event:with_d20_check(callback) end
 ---@return ActionData?
 function Event:as_action_requested() end
 
----@return ActionResult?, ScriptEntity?
+---@return ActionResult?, ScriptEntity?, string?
 function Event:as_action_result() end
 
 ---Returns the entity that is moving out of reach, and the entity whose reach this

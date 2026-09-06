@@ -214,6 +214,7 @@ impl ActionKind {
                         components: vec![ActionResultComponent::Reaction(result)],
                     },
                     actor: Some(action_data.actor.clone()),
+                    action: Some(action_data.action_id.clone()),
                 }));
 
                 let scope = game_state.scope_for_entity(action_data.actor.id());

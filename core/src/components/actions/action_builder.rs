@@ -667,6 +667,7 @@ impl ReactionBuilder {
     }
 
     /// See `ActionBuilder::perform_ok`
+    #[track_caller]
     pub fn perform_ok(&self, game_state: &mut GameState) {
         match self.perform(game_state) {
             Ok(()) => (),
