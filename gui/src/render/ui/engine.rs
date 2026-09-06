@@ -74,7 +74,7 @@ pub fn render_event_description(ui: &imgui::Ui, event: &Event) {
             .render(ui);
         }
 
-        EventKind::ActionResult { result, actor } => {
+        EventKind::ActionResult { result, actor, .. } => {
             if let Some(actor) = actor {
                 TextSegments::new(vec![
                     (format!("{}'s", actor.name().as_str()), TextKind::Actor),
@@ -400,7 +400,7 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
                 // }
             }
 
-            EventKind::ActionResult { result, actor } => {
+            EventKind::ActionResult { result, actor, .. } => {
                 for component in result.components.iter() {
                     component
                         .render_with_context(ui, (&actor.as_ref(), result.target.name().as_str()));
