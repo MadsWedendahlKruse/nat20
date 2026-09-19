@@ -1,0 +1,28 @@
+{
+    "id": "nat20_core::variant.brutal_strike.sundering_blow",
+    "description": "Before the start of your next turn, the next attack roll made by another creature against the target gains a +5 bonus to the roll. An attack roll can gain only one Sundering Blow bonus.",
+    "phases": [
+        {
+            "requires": "success",
+            "payload": {
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.barbarian.brutal_strike.sundering_blow",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "boundary": "start",
+                                    "entity": "applier",
+                                    "duration": {
+                                        "turns": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        }
+    ]
+}

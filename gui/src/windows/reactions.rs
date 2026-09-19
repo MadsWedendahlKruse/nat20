@@ -144,7 +144,12 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                                     (&option.action_id, &option.context, &option.resource_cost)
                                         .render_with_context(
                                             ui,
-                                            (&game_state.world, *reactor, None),
+                                            (
+                                                &game_state.world,
+                                                *reactor,
+                                                None,
+                                                option.variant.as_ref(),
+                                            ),
                                         );
                                 });
                             }

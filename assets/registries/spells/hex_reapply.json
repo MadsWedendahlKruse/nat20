@@ -9,14 +9,14 @@
         "concentration"
     ],
     "kind": {
-        "variants": {
+        "variant": {
             "variants": [
-                "nat20_core::action.hex.strength",
-                "nat20_core::action.hex.dexterity",
-                "nat20_core::action.hex.constitution",
-                "nat20_core::action.hex.intelligence",
-                "nat20_core::action.hex.wisdom",
-                "nat20_core::action.hex.charisma"
+                "nat20_core::variant.hex.strength",
+                "nat20_core::variant.hex.dexterity",
+                "nat20_core::variant.hex.constitution",
+                "nat20_core::variant.hex.intelligence",
+                "nat20_core::variant.hex.wisdom",
+                "nat20_core::variant.hex.charisma"
             ]
         }
     },

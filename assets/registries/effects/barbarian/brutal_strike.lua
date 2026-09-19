@@ -1,10 +1,7 @@
+-- The strikes are variants of these two, so the action id is always one of them
 local BRUTAL_STRIKE_ACTIONS = {
     ["nat20_core::action.barbarian.brutal_strike"] = true,
     ["nat20_core::action.barbarian.improved_brutal_strike"] = true,
-    ["nat20_core::action.barbarian.brutal_strike.forceful_blow"] = true,
-    ["nat20_core::action.barbarian.brutal_strike.hamstring_blow"] = true,
-    ["nat20_core::action.barbarian.brutal_strike.staggering_blow"] = true,
-    ["nat20_core::action.barbarian.brutal_strike.sundering_blow"] = true,
 }
 
 ---@type D20CheckHookFn

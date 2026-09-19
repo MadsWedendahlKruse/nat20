@@ -9,7 +9,7 @@ use nat20_core::{
     components::{
         actions::{
             action::{
-                ActionCondition, ActionPayloadComponent, ActionResultComponent,
+                ActionCondition, ActionContext, ActionPayloadComponent, ActionResultComponent,
                 ActionResultComponentKind, AttackRollFunction, EffectResultKind,
                 SavingThrowFunction,
             },
@@ -18,9 +18,10 @@ use nat20_core::{
         },
         activity::Activity,
         d20::{AdvantageType, D20Check, D20CheckDC, D20CheckOutcome, RollMode},
+        id::{ActionId, ActionVariantId},
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
-        resource::ResourceMap,
+        resource::{ResourceAmountMap, ResourceMap},
     },
     engine::{
         action_prompt::{ActionData, ActionPromptKind},
@@ -33,7 +34,7 @@ use nat20_core::{
     registry::registry::EffectsRegistry,
     systems::{
         self,
-        actions::ActionUsabilityError,
+        actions::{ActionUsabilityCheck, ActionUsabilityError},
         geometry::{Displacement, DisplacementTemplate, RaycastHitKind},
         movement::TargetPathFindingResult,
     },
@@ -124,7 +125,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
                         }
 
                         ActionBuilderState::Variant { .. } => {
-                            self.render_actions(ui, game_state);
+                            self.render_variants(ui, game_state);
                             ui.separator();
                             self.right_click_cancel(ui, gui_state, game_state);
                             self.movement_preview
@@ -299,46 +300,17 @@ impl ActionBarWindow {
     fn render_actions_list(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
         let actor = self.builder.actor().id();
 
-        let actions = match self.builder.state_mut().ok().unwrap() {
+        let actions = match self.builder.state().ok().unwrap() {
             ActionBuilderState::Action { actions } => actions,
-            ActionBuilderState::Variant { variants } => variants,
             _ => panic!("Invalid state for rendering actions list"),
         };
 
         let mut selected_action = None;
 
         for (action_id, contexts_and_costs) in actions {
-            // Don't render actions that either:
-            // 1. Can only be used as reactions
-            // 2. Cost a resource which never recharges and which is the entity
-            //    currently doesn't have any of. This probably means the action
-            //    is only usable under certain conditions which aren't currently
-            //    met.
-            if let Some(action) = systems::actions::get_action(action_id)
-                && action.is_reaction()
-            {
-                continue;
-            }
-
-            let mut contexts_usability = Vec::new();
-            let mut first_usable_context = None;
-            for (i, (context, cost)) in contexts_and_costs.iter_mut().enumerate() {
-                systems::effects::effects(&game_state.world, actor)
-                    .resource_cost(game_state, actor, action_id, context, cost);
-
-                let usability = systems::actions::action_usable(
-                    game_state,
-                    actor,
-                    action_id,
-                    context,
-                    cost,
-                    &[],
-                );
-                if usability.is_ok() && first_usable_context.is_none() {
-                    first_usable_context.replace(i);
-                }
-                contexts_usability.push(usability);
-            }
+            // The variant, if the action has any, is chosen in the next step
+            let (contexts_usability, first_usable_context) =
+                usable_contexts(game_state, actor, action_id, None, contexts_and_costs);
 
             let disabled_token = ui.begin_disabled(first_usable_context.is_none());
 
@@ -355,7 +327,7 @@ impl ActionBarWindow {
                     let usability = &contexts_usability[context_index];
                     (action_id, context, cost).render_with_context(
                         ui,
-                        (&game_state.world, actor, usability.as_ref().err()),
+                        (&game_state.world, actor, usability.as_ref().err(), None),
                     );
                 });
             }
@@ -363,6 +335,71 @@ impl ActionBarWindow {
 
         if let Some(action_id) = selected_action {
             self.builder.action(game_state, &action_id);
+        }
+    }
+
+    fn render_variants(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+        ui.child_window("Variants")
+            .child_flags(
+                ChildFlags::ALWAYS_AUTO_RESIZE
+                    | ChildFlags::AUTO_RESIZE_X
+                    | ChildFlags::AUTO_RESIZE_Y,
+            )
+            .build(|| {
+                ui.separator_with_text("Variants");
+
+                ui.child_window("VariantsList")
+                    .child_flags(
+                        ChildFlags::ALWAYS_AUTO_RESIZE
+                            | ChildFlags::AUTO_RESIZE_X
+                            | ChildFlags::BORDERS,
+                    )
+                    .size([0.0, ACTION_LIST_HEIGHT])
+                    .build(|| {
+                        self.render_variants_list(ui, game_state);
+                    });
+            });
+    }
+
+    fn render_variants_list(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+        let ActionBuilderState::Variant {
+            action,
+            variants,
+            contexts_and_costs,
+        } = self.builder.state().ok().unwrap()
+        else {
+            panic!("Invalid state for rendering variants list");
+        };
+
+        let mut selected_variant = None;
+        for variant_id in variants {
+            if ui.button(variant_id.to_string()) {
+                selected_variant = Some(variant_id.clone());
+            }
+
+            if ui.is_item_hovered_with_flags(HoveredFlags::ALLOW_WHEN_DISABLED) {
+                ui.tooltip(|| {
+                    let (contexts_usability, first_usable_context) =
+                        usable_contexts(game_state, self.actor(), action, None, contexts_and_costs);
+
+                    let context_index = first_usable_context.unwrap_or(0);
+                    let (context, cost) = &contexts_and_costs[context_index];
+                    let usability = &contexts_usability[context_index];
+                    (action, context, cost).render_with_context(
+                        ui,
+                        (
+                            &game_state.world,
+                            self.actor(),
+                            usability.as_ref().err(),
+                            Some(variant_id),
+                        ),
+                    );
+                });
+            }
+        }
+
+        if let Some(variant_id) = selected_variant {
+            self.builder.variant(&game_state.world, &variant_id);
         }
     }
 
@@ -400,11 +437,12 @@ impl ActionBarWindow {
     ) {
         let actor = self.builder.actor().id();
 
-        let (action, contexts_and_costs) = match self.builder.state().ok().unwrap() {
+        let (action, variant, contexts_and_costs) = match self.builder.state().ok().unwrap() {
             ActionBuilderState::Context {
                 action,
+                variant,
                 contexts_and_costs,
-            } => (action, contexts_and_costs),
+            } => (action, variant, contexts_and_costs),
             _ => panic!("Invalid state for rendering context selection"),
         };
 
@@ -422,8 +460,16 @@ impl ActionBarWindow {
             }
 
             let disabled_token = ui.begin_disabled(
-                systems::actions::action_usable(game_state, actor, action, context, cost, &[])
-                    .is_err(),
+                systems::actions::action_usable(
+                    game_state,
+                    actor,
+                    action,
+                    variant.as_ref(),
+                    context,
+                    cost,
+                    &[],
+                )
+                .is_err(),
             );
 
             let clicked = if let Some(spell) = &context.spell {
@@ -453,8 +499,10 @@ impl ActionBarWindow {
 
             if ui.is_item_hovered() {
                 ui.tooltip(|| {
-                    (action, context, cost)
-                        .render_with_context(ui, (&game_state.world, actor, None));
+                    (action, context, cost).render_with_context(
+                        ui,
+                        (&game_state.world, actor, None, variant.as_ref()),
+                    );
                 });
             }
         }
@@ -609,6 +657,7 @@ impl ActionBarWindow {
                     game_state,
                     self.actor(),
                     &action.action_id,
+                    action.variant.as_ref(),
                     &action.context,
                     &action.resource_cost,
                     &[target.clone()],
@@ -761,6 +810,7 @@ impl ActionBarWindow {
             game_state,
             self.actor(),
             &action.action_id,
+            action.variant.as_ref(),
             &action.context,
             &action.resource_cost,
             &[target.clone()],
@@ -940,6 +990,35 @@ impl ActionBarWindow {
     }
 }
 
+fn usable_contexts(
+    game_state: &GameState,
+    actor: Entity,
+    action_id: &ActionId,
+    variant_id: Option<&ActionVariantId>,
+    contexts_and_costs: &Vec<(ActionContext, ResourceAmountMap)>,
+) -> (Vec<Result<(), ActionUsabilityError>>, Option<usize>) {
+    let mut contexts_usability = Vec::new();
+    let mut first_usable_context = None;
+
+    for (i, (context, cost)) in contexts_and_costs.iter().enumerate() {
+        let usability = systems::actions::action_usable(
+            game_state,
+            actor,
+            action_id,
+            variant_id,
+            context,
+            cost,
+            &[ActionUsabilityCheck::Variant],
+        );
+        if usability.is_ok() && first_usable_context.is_none() {
+            first_usable_context.replace(i);
+        }
+        contexts_usability.push(usability);
+    }
+
+    (contexts_usability, first_usable_context)
+}
+
 impl ImguiRenderable for TargetingError {
     fn render(&self, ui: &imgui::Ui) {
         match self {
@@ -999,7 +1078,7 @@ impl ImguiRenderable for TargetingError {
     }
 }
 
-/// Renders “hit chance” or “success chance” tooltips depending on action condition.
+/// Renders "hit chance" or "success chance" tooltips depending on action condition.
 /// Only runs when the hovered potential target is an Entity.
 fn render_target_chance_tooltips(
     ui: &imgui::Ui,
@@ -1015,7 +1094,7 @@ fn render_target_chance_tooltips(
         return;
     };
 
-    for phase in action_def.kind().phases() {
+    for phase in action_def.kind().phases(action.variant.as_ref()) {
         match &phase.condition {
             ActionCondition::AttackRoll(attack_roll) => {
                 render_attack_hit_chance_tooltip(ui, game_state, action, entity.id(), attack_roll);
@@ -1320,7 +1399,7 @@ fn get_displacement_component(
     action_data: &ActionData,
 ) -> Option<DisplacementTemplate> {
     let action = systems::actions::get_action(&action_data.action_id)?;
-    for phase in action.kind().phases() {
+    for phase in action.kind().phases(action_data.variant.as_ref()) {
         for component in phase.payload.components() {
             if let ActionPayloadComponent::Displacement(displacement_fn) = component {
                 return Some(displacement_fn(

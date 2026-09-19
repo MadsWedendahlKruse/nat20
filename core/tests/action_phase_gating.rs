@@ -38,7 +38,7 @@ fn cast_gated_ray_of_frost(
 
     let action_id = "action.ray_of_frost".into();
     let action = systems::actions::get_action(&action_id).unwrap();
-    let base = action.kind().phases()[0].clone();
+    let base = action.kind().phases(None)[0].clone();
     let gated = ActionPhaseSpec {
         requires,
         condition: ActionCondition::None,

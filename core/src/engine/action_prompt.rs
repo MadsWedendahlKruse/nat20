@@ -6,16 +6,16 @@ use uuid::Uuid;
 use crate::{
     components::{
         actions::{action::ActionContext, targeting::TargetInstance},
-        id::{ActionId, EntityIdentifier},
+        id::{ActionId, ActionVariantId, EntityIdentifier},
         resource::{ResourceAmountMap, ResourceError},
     },
-    engine::{event::Event, game_state::GameState},
-    systems::actions::ActionUsabilityError,
+    engine::event::Event,
+    systems::{self, actions::ActionUsabilityError},
 };
 
 pub type ActionPromptId = Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ActionPromptKind {
     /// Prompt an entity to perform an action
     Action {
@@ -44,7 +44,7 @@ impl ActionPromptKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActionPrompt {
     pub id: ActionPromptId,
     pub kind: ActionPromptKind,
@@ -55,14 +55,6 @@ impl ActionPrompt {
         Self {
             id: Uuid::new_v4(),
             kind,
-        }
-    }
-
-    pub fn trigger_actor(&self) -> Option<Entity> {
-        if let ActionPromptKind::Reactions { event, .. } = &self.kind {
-            event.actor()
-        } else {
-            None
         }
     }
 }
@@ -81,13 +73,13 @@ pub enum ActionDecisionKind {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActionDecision {
     pub response_to: ActionPromptId,
     pub kind: ActionDecisionKind,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ActionError {
     PromptDecisionMismatch {
         prompt: ActionPrompt,
@@ -111,18 +103,26 @@ pub enum ActionError {
     Resource(Vec<ResourceError>),
 }
 
-macro_rules! ensure_equal {
-    ($a:expr, $b:expr, $label:literal, $err_variant:ident, $self:expr, $decision:expr) => {
-        if $a != $b {
-            return Err(ActionError::$err_variant {
-                field: $label,
-                expected: format!("{:?}", $a),
-                actual: format!("{:?}", $b),
-                prompt: $self.clone(),
-                decision: $decision.clone(),
-            });
-        }
-    };
+fn compare_fields<T>(
+    a: T,
+    b: T,
+    field: &'static str,
+    prompt: &ActionPrompt,
+    decision: &ActionDecision,
+) -> Result<(), ActionError>
+where
+    T: PartialEq + std::fmt::Debug,
+{
+    if a != b {
+        return Err(ActionError::FieldMismatch {
+            field,
+            expected: format!("{:?}", a),
+            actual: format!("{:?}", b),
+            prompt: prompt.clone(),
+            decision: decision.clone(),
+        });
+    }
+    Ok(())
 }
 
 impl ActionPrompt {
@@ -133,15 +133,32 @@ impl ActionPrompt {
         }
     }
 
+    pub fn is_reaction(&self) -> bool {
+        matches!(self.kind, ActionPromptKind::Reactions { .. })
+    }
+
     pub fn is_valid_decision(&self, decision: &ActionDecision) -> Result<(), ActionError> {
-        ensure_equal!(
-            self.id,
-            decision.response_to,
-            "response_to",
-            FieldMismatch,
+        compare_fields(
+            self.is_reaction(),
+            decision.kind.is_reaction(),
+            "decision.is_reaction",
             self,
-            decision
-        );
+            decision,
+        )?;
+
+        if let Some(action) = decision.action()
+            && let Some(action) = systems::actions::get_action(&action.action_id)
+        {
+            compare_fields(
+                self.is_reaction(),
+                action.is_reaction(),
+                "action.is_reaction",
+                self,
+                decision,
+            )?;
+        }
+
+        compare_fields(self.id, decision.response_to, "response_to", self, decision)?;
 
         match (&self.kind, &decision.kind) {
             (
@@ -150,14 +167,7 @@ impl ActionPrompt {
                 },
                 ActionDecisionKind::Action { action },
             ) => {
-                ensure_equal!(
-                    prompt_actor,
-                    &action.actor.id(),
-                    "actor",
-                    FieldMismatch,
-                    self,
-                    decision
-                );
+                compare_fields(prompt_actor, &action.actor.id(), "actor", self, decision)?;
             }
 
             (
@@ -171,14 +181,13 @@ impl ActionPrompt {
                     choice,
                 },
             ) => {
-                ensure_equal!(
+                compare_fields(
                     prompt_event.id,
                     decision_event.id,
                     "event_id",
-                    FieldMismatch,
                     self,
-                    decision
-                );
+                    decision,
+                )?;
 
                 if let Some(options) = options.get(reactor) {
                     if let Some(choice) = choice
@@ -239,6 +248,13 @@ impl ActionDecision {
         self.kind.actor()
     }
 
+    pub fn action(&self) -> Option<&ActionData> {
+        match &self.kind {
+            ActionDecisionKind::Action { action } => Some(action),
+            ActionDecisionKind::Reaction { choice, .. } => choice.as_ref(),
+        }
+    }
+
     pub fn action_id(&self) -> Option<ActionId> {
         match &self.kind {
             ActionDecisionKind::Action { action } => Some(action.action_id.clone()),
@@ -262,6 +278,8 @@ pub struct ActionData {
     pub targets: Vec<TargetInstance>,
     /// In the case of a reaction, this will be the event that triggered the reaction
     pub trigger_event: Option<Box<Event>>,
+    // In the case of a variant action, this will be set to the chosen variant's ID
+    pub variant: Option<ActionVariantId>,
 }
 
 impl ActionData {
@@ -280,11 +298,17 @@ impl ActionData {
             resource_cost,
             targets,
             trigger_event: None,
+            variant: None,
         }
     }
 
     pub fn with_trigger_event(mut self, event: Event) -> Self {
         self.trigger_event = Some(Box::new(event));
+        self
+    }
+
+    pub fn with_variant(mut self, variant: impl Into<ActionVariantId>) -> Self {
+        self.variant = Some(variant.into());
         self
     }
 

@@ -1,0 +1,28 @@
+{
+    "id": "nat20_core::variant.brutal_strike.hamstring_blow",
+    "description": "The target's Speed is reduced by 15 feet until the start of your next turn. A target can be affected by only one Hamstring Blow at a time - the most recent one.",
+    "phases": [
+        {
+            "requires": "success",
+            "payload": {
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.barbarian.brutal_strike.hamstring_blow",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "boundary": "start",
+                                    "entity": "applier",
+                                    "duration": {
+                                        "turns": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        }
+    ]
+}

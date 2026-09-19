@@ -13,15 +13,15 @@ use tracing::{error, info};
 
 use crate::{
     components::{
-        actions::action::Action,
+        actions::action::{Action, ActionVariant},
         background::Background,
         class::{Class, Subclass},
         effects::effect::Effect,
         faction::Faction,
         feat::Feat,
         id::{
-            ActionId, BackgroundId, ClassId, EffectId, FactionId, FeatId, IdProvider, ItemId,
-            ResourceId, ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
+            ActionId, ActionVariantId, BackgroundId, ClassId, EffectId, FactionId, FeatId,
+            IdProvider, ItemId, ResourceId, ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
         },
         items::inventory::ItemInstance,
         resource::Resource,
@@ -31,7 +31,7 @@ use crate::{
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
-            action::ActionDefinition,
+            action::{ActionDefinition, ActionVariantDefinition},
             class::ClassDefinition,
             effect::EffectDefinition,
             species::{SpeciesDefinition, SubspeciesDefinition},
@@ -317,6 +317,7 @@ where
 
 pub struct RegistrySet {
     pub actions: Registry<ActionId, Action, ActionDefinition>,
+    pub action_variants: Registry<ActionVariantId, ActionVariant, ActionVariantDefinition>,
     pub backgrounds: Registry<BackgroundId, Background, Background>,
     pub classes: Registry<ClassId, Class, ClassDefinition>,
     pub effects: Registry<EffectId, Effect, EffectDefinition>,
@@ -338,6 +339,7 @@ impl RegistrySet {
         let root_directory = root_directory.as_ref();
 
         let actions_directory = root_directory.join("actions");
+        let action_variants_directory = root_directory.join("action_variants");
         let backgrounds_directory = root_directory.join("backgrounds");
         let classes_directory = root_directory.join("classes");
         let effects_directory = root_directory.join("effects");
@@ -352,6 +354,7 @@ impl RegistrySet {
 
         let all_directories: Vec<&Path> = vec![
             actions_directory.as_path(),
+            action_variants_directory.as_path(),
             backgrounds_directory.as_path(),
             classes_directory.as_path(),
             effects_directory.as_path(),
@@ -371,6 +374,7 @@ impl RegistrySet {
         let scripts_map = Self::load_scripts_from_directories(&all_directories, &mut errors);
 
         let actions = Registry::load_registry(&actions_directory, &mut errors);
+        let action_variants = Registry::load_registry(&action_variants_directory, &mut errors);
         let backgrounds = Registry::load_registry(&backgrounds_directory, &mut errors);
         let classes = Registry::load_registry(&classes_directory, &mut errors);
         let effects = Registry::load_registry(&effects_directory, &mut errors);
@@ -390,6 +394,7 @@ impl RegistrySet {
 
         let set = Self {
             actions: actions.expect("validated"),
+            action_variants: action_variants.expect("validated"),
             backgrounds: backgrounds.expect("validated"),
             classes: classes.expect("validated"),
             effects: effects.expect("validated"),
@@ -408,6 +413,7 @@ impl RegistrySet {
 
         // Validate references now that all registries are loaded.
         Self::validate_registry_references(&mut errors, &set.actions, &set);
+        Self::validate_registry_references(&mut errors, &set.action_variants, &set);
         Self::validate_registry_references(&mut errors, &set.backgrounds, &set);
         Self::validate_registry_references(&mut errors, &set.classes, &set);
         Self::validate_registry_references(&mut errors, &set.effects, &set);
@@ -424,10 +430,26 @@ impl RegistrySet {
             return Err(RegistryError::Many(errors));
         }
 
+        for entry in set.actions.entries.values() {
+            let definition = &entry.definition;
+            definition.kind.validate_phase_requirements(
+                &definition.id,
+                &definition.targeting,
+                &set.action_variants,
+            );
+        }
+        for entry in set.spells.entries.values() {
+            let definition = &entry.definition;
+            definition.kind.validate_phase_requirements(
+                &definition.id,
+                &definition.targeting,
+                &set.action_variants,
+            );
+        }
+
         Ok(set)
     }
 
-    // assuming Script has: id: ScriptId, and Script::try_from(entry) -> Result<Script, ScriptError>
     fn load_scripts_from_directories(
         directories: &[&Path],
         errors: &mut Vec<RegistryError>,
@@ -546,6 +568,9 @@ impl RegistrySet {
             for reference in collector.into_references() {
                 let found = match &reference {
                     RegistryReference::Action(id) => registries.actions.entries.contains_key(id),
+                    RegistryReference::ActionVariant(id) => {
+                        registries.action_variants.entries.contains_key(id)
+                    }
                     RegistryReference::Background(id) => {
                         registries.backgrounds.entries.contains_key(id)
                     }
@@ -622,6 +647,10 @@ impl RegistrySet {
             RegistryReference::Action(id) => {
                 (id.to_string(), registries.actions.all_keys_strings())
             }
+            RegistryReference::ActionVariant(id) => (
+                id.to_string(),
+                registries.action_variants.all_keys_strings(),
+            ),
             RegistryReference::Background(id) => {
                 (id.to_string(), registries.backgrounds.all_keys_strings())
             }
@@ -694,6 +723,12 @@ macro_rules! define_registry {
 }
 
 define_registry!(ActionsRegistry, ActionId, Action, actions);
+define_registry!(
+    ActionVariantsRegistry,
+    ActionVariantId,
+    ActionVariant,
+    action_variants
+);
 define_registry!(BackgroundsRegistry, BackgroundId, Background, backgrounds);
 define_registry!(ClassesRegistry, ClassId, Class, classes);
 define_registry!(EffectsRegistry, EffectId, Effect, effects);

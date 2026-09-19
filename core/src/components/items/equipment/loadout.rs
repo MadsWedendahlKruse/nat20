@@ -8,8 +8,8 @@ use crate::{
         ability::{Ability, AbilityScoreMap},
         actions::{
             action::{
-                ActionAttackKind, ActionContext, ActionMap, ActionProvider, AttackRollProvider,
-                SavingThrowProvider,
+                ActionAttackContext, ActionAttackKind, ActionContext, ActionMap, ActionProvider,
+                AttackRollProvider, SavingThrowProvider,
             },
             targeting::TargetingRange,
         },
@@ -412,6 +412,19 @@ impl Loadout {
         }
         melee_range
     }
+
+    pub fn is_valid_context(&self, context: &ActionAttackContext) -> bool {
+        match context.kind {
+            ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => {
+                if let Some(slot) = context.slot.as_ref() {
+                    self.weapon_in_hand(slot).is_some()
+                } else {
+                    false
+                }
+            }
+            ActionAttackKind::Unarmed => true,
+        }
+    }
 }
 
 impl Default for Loadout {
@@ -550,7 +563,9 @@ impl ActionProvider for Loadout {
             };
 
             for context in &action.contexts {
-                if self.is_valid_context(world, entity, context) {
+                if let Some(attack_context) = &context.attack
+                    && self.is_valid_context(&attack_context)
+                {
                     systems::actions::add_action_to_map(
                         &mut action_map,
                         action_id,
@@ -562,25 +577,6 @@ impl ActionProvider for Loadout {
         }
 
         action_map
-    }
-
-    fn is_valid_context(&self, _world: &World, _entity: Entity, context: &ActionContext) -> bool {
-        let Some(context) = context.attack.as_ref() else {
-            // If it's not an attack context, the loadout can't determine if it's
-            // valid or not. This should be handled by another ActionProvider
-            return true;
-        };
-
-        match context.kind {
-            ActionAttackKind::MeleeWeapon | ActionAttackKind::RangedWeapon => {
-                if let Some(slot) = context.slot {
-                    self.has_weapon_in_hand(&slot)
-                } else {
-                    false
-                }
-            }
-            ActionAttackKind::Unarmed => true,
-        }
     }
 }
 

@@ -47,6 +47,10 @@
         {
             "fileMatch": ["/assets/registries/subspecies/**/*.json"],
             "url": "./assets/registries/.schemas/subspecies.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/action_variants/**/*.json"],
+            "url": "./assets/registries/.schemas/action_variant.schema.json"
         }
     ]
 }

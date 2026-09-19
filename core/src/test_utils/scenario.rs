@@ -1,4 +1,4 @@
-use std::{collections::HashSet, u32};
+use std::{collections::HashSet, fs, path::Path, u32};
 
 use hecs::{Component, Entity, World};
 use parry3d::{na::Point3, utils::hashmap::HashMap};
@@ -14,15 +14,17 @@ use crate::{
             action_builder::{ActionBuilder, ReactionBuilder},
             targeting::TargetInstance,
         },
-        activity::{Activity, ActivityState, ActivityStateTag},
+        activity::{Activity, ActivityError, ActivityState, ActivityStateTag},
         d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckOutcome, RollMode},
-        damage::{DamageComponent, DamageResistances, DamageType},
+        damage::{
+            DamageComponent, DamageComponentResult, DamageResistances, DamageRollResult, DamageType,
+        },
         health::hit_points::HitPoints,
-        id::{ActionId, EffectId, EntityIdentifier, ItemId, ResourceId},
+        id::{ActionId, ActionVariantId, EffectId, EntityIdentifier, ItemId, ResourceId},
         items::equipment::{loadout::Loadout, slots::EquipmentSlot},
         modifier::{
-            FlatModifiable, FlatModifierMap, Modifiable, ModifierKind, ModifierMap, ModifierResult,
-            ModifierSource,
+            FlatModifiable, FlatModifierMap, Modifiable, ModifierKind, ModifierKindResult,
+            ModifierMap, ModifierResult, ModifierSource,
         },
         resource::{ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         skill::{Skill, SkillSet},
@@ -30,7 +32,7 @@ use crate::{
         time::{TimeMode, TimeStep, TurnBoundary},
     },
     engine::{
-        action_prompt::ActionData,
+        action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
         encounter::EncounterId,
         event::{Event, EventCallback, EventFilter, EventKind},
         game_state::GameState,
@@ -87,8 +89,7 @@ impl Scenario {
         }
     }
 
-    /// The `EntityIdentifier` behind a handle (cloned for use in messages).
-    fn creature(&self, handle: &str) -> EntityIdentifier {
+    pub fn entity_identifier(&self, handle: &str) -> EntityIdentifier {
         self.creatures
             .get(handle)
             .cloned()
@@ -96,7 +97,7 @@ impl Scenario {
     }
 
     pub fn entity(&self, handle: &str) -> Entity {
-        self.creature(handle).id()
+        self.entity_identifier(handle).id()
     }
 
     pub fn spawn(
@@ -148,6 +149,31 @@ impl Scenario {
             scenario: self,
             builder,
         }
+    }
+
+    pub fn submit_action_decision(
+        &mut self,
+        decision: ActionDecisionKind,
+    ) -> Result<(), ActivityError> {
+        let decision = match self.game_state.next_prompt_entity(decision.actor()) {
+            Some(prompt) => ActionDecision {
+                response_to: prompt.id,
+                kind: decision,
+            },
+            None => ActionDecision::without_response_to(decision),
+        };
+
+        let result = self
+            .game_state
+            .submit_activity(Activity::Act { action: decision });
+
+        if result.is_ok() {
+            for _ in 0..10 {
+                self.game_state.update(0.5);
+            }
+        }
+
+        result
     }
 
     pub fn movement(&mut self, handle: impl Into<String>, position: impl Into<Point3<f32>>) {
@@ -288,9 +314,9 @@ pub struct ScenarioActionBuilder<'s> {
 }
 
 impl ScenarioActionBuilder<'_> {
-    pub fn variant(mut self, variant: impl Into<ActionId>) -> Self {
+    pub fn variant(mut self, variant: impl Into<ActionVariantId>) -> Self {
         self.builder
-            .action(&self.scenario.game_state, &variant.into());
+            .variant(&self.scenario.game_state.world, &variant.into());
         self
     }
 
@@ -416,7 +442,7 @@ pub struct ScenarioProbe<'s> {
 
 impl ScenarioProbe<'_> {
     fn creature(&self) -> EntityIdentifier {
-        self.scenario.creature(&self.handle)
+        self.scenario.entity_identifier(&self.handle)
     }
 
     fn entity(&self) -> Entity {
@@ -504,16 +530,34 @@ impl ScenarioProbe<'_> {
         self
     }
 
-    pub fn damage_raw(&mut self, amount: u32) -> &mut Self {
-        // TODO: This technically bypasses the normal damage pipeline, which is
-        // quite complex, but I guess it's fine for testing?
+    pub fn damage(&mut self, amount: u32, damage_type: DamageType) -> &mut Self {
+        let mut damage = DamageRollResult {
+            components: vec![DamageComponentResult {
+                result: ModifierResult::from_iter([(
+                    ModifierSource::Custom("Test damage".to_string()),
+                    ModifierKindResult::Flat(amount as i32),
+                )]),
+                damage_type,
+            }],
+            total: amount as i32,
+            crit: false,
+        };
+
         let entity = self.entity();
-        systems::helpers::get_component_mut::<HitPoints>(
-            &mut self.scenario.game_state.world,
+
+        let _ = systems::health::damage(
+            &mut self.scenario.game_state,
             entity,
-        )
-        .damage(amount);
+            &mut damage,
+            None,
+            None,
+        );
+
         self
+    }
+
+    pub fn kill(&mut self) -> &mut Self {
+        self.damage(1_000_000, DamageType::default())
     }
 
     pub fn d20_check(&mut self, dc: &D20CheckDC) -> &mut Self {
@@ -687,7 +731,7 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_has_action(&mut self, action: impl Into<ActionId>) -> &mut Self {
         let action: ActionId = action.into();
-        let actions = systems::actions::all_actions(self.world(), self.entity());
+        let actions = systems::actions::all_actions(self.game_state(), self.entity());
         assert!(
             actions.contains_key(&action),
             "Expected creature {:?} to have action {:?}, but it was not found. Available actions: {:#?}",
@@ -701,7 +745,7 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_no_action(&mut self, action: impl Into<ActionId>) -> &mut Self {
         let action: ActionId = action.into();
-        let actions = systems::actions::all_actions(self.world(), self.entity());
+        let actions = systems::actions::all_actions(self.game_state(), self.entity());
         assert!(
             !actions.contains_key(&action),
             "Expected creature {:?} to not have action {:?}, but it was found. Available actions: {:#?}",
@@ -1166,6 +1210,13 @@ impl ScenarioEventFilterBuilder<'_> {
         self
     }
 
+    pub fn action_requested(mut self, action_id: impl Into<ActionId>) -> Self {
+        self.kind = Some(EventFilterKind::ActionRequested {
+            action_id: action_id.into(),
+        });
+        self
+    }
+
     pub fn action_performed(mut self, action_id: impl Into<ActionId>) -> Self {
         self.kind = Some(EventFilterKind::ActionPerformed {
             action_id: action_id.into(),
@@ -1257,8 +1308,13 @@ impl ScenarioEventFilterBuilder<'_> {
     pub fn assert_event(&self) {
         assert!(
             !self.filter().is_empty(),
-            "Expected event matching filter, but no such event was found. Events: {:?}",
-            self.scenario.game_state.event_log.events
+            "Expected event matching filter, but no such event was found. \
+            \n--- \
+            \nFilter: {:?} \
+            \n--- \
+            \nEvent log: {}",
+            self,
+            self.dump_event_log()
         );
     }
 
@@ -1271,12 +1327,33 @@ impl ScenarioEventFilterBuilder<'_> {
             \n--- \
             \nFilter: {:?} \
             \n--- \
-            \nEvents: {:?}",
+            \nEvent log: {}",
             expected_count,
             events.len(),
             self,
-            self.event_log()
+            self.dump_event_log()
         );
+    }
+
+    /// The full log is far too big for a panic message, so it goes to
+    /// `target/event_logs/<test name>.log` and the message just links to it
+    fn dump_event_log(&self) -> String {
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unnamed")
+            .replace("::", "__");
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("target")
+            .join("event_logs");
+        let path = dir.join(format!("{test_name}.log"));
+
+        let contents = format!("{:#?}", self.event_log());
+        match fs::create_dir_all(&dir).and_then(|_| fs::write(&path, contents)) {
+            Ok(()) => path.display().to_string(),
+            Err(err) => format!("<failed to write {}: {err}>", path.display()),
+        }
     }
 
     fn event_log(&self) -> &Vec<Event> {
@@ -1306,6 +1383,9 @@ impl std::fmt::Debug for ScenarioEventFilterBuilder<'_> {
 
 #[derive(Debug, Clone)]
 pub enum EventFilterKind {
+    ActionRequested {
+        action_id: ActionId,
+    },
     ActionPerformed {
         action_id: ActionId,
     },
@@ -1328,13 +1408,20 @@ impl EventFilterKind {
     pub fn matches(&self, event: &Event) -> bool {
         match (self, &event.kind) {
             (
+                EventFilterKind::ActionRequested { action_id },
+                EventKind::ActionRequested { action },
+            ) => {
+                return action.action_id == *action_id;
+            }
+
+            (
                 EventFilterKind::ActionPerformed { action_id },
                 EventKind::ActionResult { action, .. },
             ) => {
-                if let Some(action) = action {
-                    return action == action_id;
-                }
-                false
+                let Some(result_action) = action else {
+                    return false;
+                };
+                return result_action == action_id;
             }
 
             (

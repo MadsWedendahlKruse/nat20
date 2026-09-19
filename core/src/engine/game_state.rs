@@ -25,7 +25,10 @@ use crate::{
         geometry::WorldGeometry,
         interaction::{InteractionEngine, InteractionScopeId, InteractionSession, PendingEvent},
     },
-    systems::{self, combat::CombatState, movement::MovementError, time::RestKind},
+    systems::{
+        self, actions::ActionUsabilityError, combat::CombatState, movement::MovementError,
+        time::RestKind,
+    },
 };
 
 // TODO: WorldState instead?
@@ -230,6 +233,12 @@ impl GameState {
             ActionDecisionKind::Reaction { choice, .. } => {
                 if let Some(choice) = choice {
                     self.validate_action(choice, false)?;
+                    systems::actions::reaction_usable(
+                        &self,
+                        decision.actor(),
+                        choice.trigger_event.as_ref().map(|event| event.as_ref()),
+                    )
+                    .map_err(|e| ActionError::Usability(ActionUsabilityError::ReactionError(e)))?;
                 }
             }
         }
@@ -277,6 +286,8 @@ impl GameState {
             .find_prompt(&decision.response_to)
             .expect("Prompt must exist at this point");
 
+        // TODO: If the prompt validation failed in global scope, and we've just
+        // added a prompt, should we remove it again?
         prompt.is_valid_decision(&decision)?;
 
         let id = prompt.id;
@@ -580,6 +591,7 @@ impl GameState {
             instance_id: _,
             actor,
             action_id,
+            variant,
             context: action_context,
             resource_cost,
             targets,
@@ -590,6 +602,7 @@ impl GameState {
             self,
             actor.id(),
             action_id,
+            variant.as_ref(),
             action_context,
             resource_cost,
             targets,

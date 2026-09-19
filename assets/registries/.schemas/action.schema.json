@@ -232,13 +232,21 @@
                 {
                     "type": "object",
                     "properties": {
-                        "variants": {
+                        "variant": {
                             "type": "object",
                             "properties": {
+                                "phases": {
+                                    "description": "The phases every variant shares, run before the chosen variant's own",
+                                    "type": "array",
+                                    "default": [],
+                                    "items": {
+                                        "$ref": "#/definitions/ActionPhaseDefinition"
+                                    }
+                                },
                                 "variants": {
                                     "type": "array",
                                     "items": {
-                                        "$ref": "#/definitions/ActionId"
+                                        "$ref": "#/definitions/ActionVariantId"
                                     }
                                 }
                             },
@@ -249,7 +257,7 @@
                     },
                     "additionalProperties": false,
                     "required": [
-                        "variants"
+                        "variant"
                     ]
                 },
                 {
@@ -497,6 +505,11 @@
                     ]
                 }
             ]
+        },
+        "ActionVariantId": {
+            "description": "Registry id `[namespace::]variant.<name>`, e.g. `nat20_core::variant.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?variant[A-Za-z0-9_.]*$"
         },
         "AreaFilterDefinition": {
             "type": "string",

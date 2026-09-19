@@ -53,10 +53,14 @@ impl AIController for RandomController {
                 loop {
                     match action_builder.state() {
                         Ok(state) => match state {
-                            ActionBuilderState::Action { actions }
-                            | ActionBuilderState::Variant { variants: actions } => {
+                            ActionBuilderState::Action { actions } => {
                                 action_builder
                                     .action(game_state, &actions.keys().choose(rng).cloned()?);
+                            }
+
+                            ActionBuilderState::Variant { variants, .. } => {
+                                let variant = variants.iter().choose(rng)?.clone();
+                                action_builder.variant(&game_state.world, &variant);
                             }
 
                             ActionBuilderState::Context {

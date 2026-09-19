@@ -10,7 +10,7 @@ use crate::{
             targeting::{TargetInstance, TargetingKind},
         },
         activity::{Activity, ActivityError},
-        id::{ActionId, EntityIdentifier},
+        id::{ActionId, ActionVariantId, EntityIdentifier},
         resource::ResourceAmountMap,
     },
     engine::{
@@ -36,7 +36,7 @@ impl ActionBuilder {
         Self::new(
             game_state,
             entity,
-            systems::actions::all_actions(&game_state.world, entity),
+            systems::actions::all_actions(game_state, entity),
         )
     }
 
@@ -89,11 +89,41 @@ impl ActionBuilder {
             Ok(ActionBuilderState::Action { actions }) => {
                 Self::pick_action(&actor, game_state, actions, action_id)
             }
-            Ok(ActionBuilderState::Variant { variants }) => {
-                Self::pick_action(&actor, game_state, variants, action_id)
+            Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
+                expected: "Action",
+                actual: other.kind_name(),
+            }),
+            Err(_) => return self,
+        };
+        self
+    }
+
+    pub fn variant(&mut self, world: &World, variant_id: &ActionVariantId) -> &mut Self {
+        let actor = self.actor.clone();
+        self.state = match &mut self.state {
+            Ok(ActionBuilderState::Variant {
+                action,
+                contexts_and_costs,
+                variants,
+            }) => {
+                if !variants.contains(variant_id) {
+                    Err(ActionBuilderError::VariantNotFound {
+                        action: action.clone(),
+                        variant: variant_id.clone(),
+                        available: variants.clone(),
+                    })
+                } else {
+                    Self::pick_contexts(
+                        &actor,
+                        world,
+                        action,
+                        Some(variant_id),
+                        contexts_and_costs.clone(),
+                    )
+                }
             }
             Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
-                expected: "Action or Variant",
+                expected: "Variant",
                 actual: other.kind_name(),
             }),
             Err(_) => return self,
@@ -106,11 +136,13 @@ impl ActionBuilder {
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Context {
                 action,
+                variant,
                 contexts_and_costs,
             }) => Self::pick_context_and_cost(
                 &actor,
                 world,
                 action,
+                variant.as_ref(),
                 contexts_and_costs,
                 context_index,
             ),
@@ -132,14 +164,20 @@ impl ActionBuilder {
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Context {
                 action,
+                variant,
                 contexts_and_costs,
             }) => match contexts_and_costs
                 .iter()
                 .position(|(context, cost)| filter_fn(context, cost))
             {
-                Some(index) => {
-                    Self::pick_context_and_cost(&actor, world, action, contexts_and_costs, index)
-                }
+                Some(index) => Self::pick_context_and_cost(
+                    &actor,
+                    world,
+                    action,
+                    variant.as_ref(),
+                    contexts_and_costs,
+                    index,
+                ),
                 None => Err(ActionBuilderError::NoMatchingContext {
                     options: contexts_and_costs.clone(),
                 }),
@@ -356,56 +394,52 @@ impl ActionBuilder {
             });
         };
 
-        // TODO: Could it ever cause problems to apply this twice?
-        for (context, cost) in contexts_and_costs.iter_mut() {
-            systems::effects::effects(&game_state.world, actor.id()).resource_cost(
-                game_state,
-                actor.id(),
+        match action.kind() {
+            ActionKind::Variant { variants, .. } => Ok(ActionBuilderState::Variant {
+                action: action_id.clone(),
+                contexts_and_costs: contexts_and_costs.clone(),
+                variants: variants.clone(),
+            }),
+            _ => Self::pick_contexts(
+                actor,
+                &game_state.world,
                 action_id,
-                context,
-                cost,
+                None,
+                contexts_and_costs.clone(),
+            ),
+        }
+    }
+
+    fn pick_contexts(
+        actor: &EntityIdentifier,
+        world: &World,
+        action_id: &ActionId,
+        variant_id: Option<&ActionVariantId>,
+        contexts_and_costs: Vec<(ActionContext, ResourceAmountMap)>,
+    ) -> Result<ActionBuilderState, ActionBuilderError> {
+        if contexts_and_costs.len() == 1 {
+            return Self::pick_context_and_cost(
+                actor,
+                world,
+                action_id,
+                variant_id,
+                &contexts_and_costs,
+                0,
             );
         }
 
-        match action.kind() {
-            ActionKind::Variant { variants } => {
-                if variants.len() == 1 {
-                    // If there's only one variant, skip the variant selection step and go straight to context selection
-                    return Self::pick_action(actor, game_state, actions, &variants[0]);
-                }
-
-                // Assume all variants have the same contexts and costs
-                let variants = variants
-                    .iter()
-                    .map(|variant_id| (variant_id.clone(), contexts_and_costs.clone()))
-                    .collect();
-
-                Ok(ActionBuilderState::Variant { variants })
-            }
-            _ => {
-                if contexts_and_costs.len() == 1 {
-                    // If there's only one context, skip the context selection step
-                    return Self::pick_context_and_cost(
-                        actor,
-                        &game_state.world,
-                        action_id,
-                        contexts_and_costs,
-                        0,
-                    );
-                }
-
-                Ok(ActionBuilderState::Context {
-                    action: action_id.clone(),
-                    contexts_and_costs: contexts_and_costs.clone(),
-                })
-            }
-        }
+        Ok(ActionBuilderState::Context {
+            action: action_id.clone(),
+            variant: variant_id.cloned(),
+            contexts_and_costs,
+        })
     }
 
     fn pick_context_and_cost(
         actor: &EntityIdentifier,
         world: &World,
         action_id: &ActionId,
+        variant_id: Option<&ActionVariantId>,
         contexts_and_costs: &Vec<(ActionContext, ResourceAmountMap)>,
         index: usize,
     ) -> Result<ActionBuilderState, ActionBuilderError> {
@@ -425,14 +459,17 @@ impl ActionBuilder {
             Vec::new()
         };
 
+        let mut action = ActionData::new(
+            actor.clone(),
+            action_id.clone(),
+            context.clone(),
+            resource_cost.clone(),
+            targets,
+        );
+        action.variant = variant_id.cloned();
+
         Ok(ActionBuilderState::Targets {
-            action: ActionData::new(
-                actor.clone(),
-                action_id.clone(),
-                context.clone(),
-                resource_cost.clone(),
-                targets,
-            ),
+            action,
             path_to_target: None,
         })
     }
@@ -444,10 +481,13 @@ pub enum ActionBuilderState {
         actions: ActionMap,
     },
     Variant {
-        variants: ActionMap,
+        action: ActionId,
+        contexts_and_costs: Vec<(ActionContext, ResourceAmountMap)>,
+        variants: Vec<ActionVariantId>,
     },
     Context {
         action: ActionId,
+        variant: Option<ActionVariantId>,
         contexts_and_costs: Vec<(ActionContext, ResourceAmountMap)>,
     },
     Targets {
@@ -475,6 +515,11 @@ pub enum ActionBuilderError {
         actor: EntityIdentifier,
         action: ActionId,
         available: Vec<ActionId>,
+    },
+    VariantNotFound {
+        action: ActionId,
+        variant: ActionVariantId,
+        available: Vec<ActionVariantId>,
     },
     InvalidContextIndex {
         index: usize,

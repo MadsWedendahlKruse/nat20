@@ -3,7 +3,7 @@ extern crate nat20_core;
 use nat20_core::{
     components::{
         d20::{AdvantageType, D20CheckKind, D20CheckOutcome},
-        damage::AttackSource,
+        damage::{AttackSource, DamageType},
         items::equipment::weapon::WeaponKind,
         modifier::ModifierSource,
         saving_throw::SavingThrowKind,
@@ -147,7 +147,7 @@ fn champion_survivor() {
     scenario
         .probe("fighter")
         .assert_effect("effect.fighter.champion.survivor.heroic_rally")
-        .damage_raw(hp / 2 + 1);
+        .damage(hp / 2 + 1, DamageType::default());
     let prev_hp = scenario.probe("fighter").hp();
     scenario
         .probe("fighter")

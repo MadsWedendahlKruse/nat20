@@ -4,7 +4,7 @@ use nat20_core::{
     components::{
         ability::Ability,
         d20::{AdvantageType, D20CheckDC, D20CheckKind, D20CheckOutcome},
-        damage::AttackSource,
+        damage::{AttackSource, DamageType},
         dice::{DiceSet, DieSize},
         items::equipment::weapon::WeaponKind,
         modifier::{ModifierMap, ModifierSource},
@@ -64,7 +64,7 @@ fn fighter_second_wind() {
     let max_hp = scenario.probe("fighter").max_hp();
     scenario
         .probe("fighter")
-        .damage_raw(max_hp / 2)
+        .damage(max_hp / 2, DamageType::default())
         .assert_hp(Operator::Less(max_hp));
 
     let prev_hp = scenario.probe("fighter").hp();

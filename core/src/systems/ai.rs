@@ -7,7 +7,7 @@ use crate::{
         ai::PlayerControlledTag,
         effects::effect::EffectKind,
         faction::Attitude,
-        id::AIControllerId,
+        id::{AIControllerId, ActionVariantId},
     },
     engine::{
         action_prompt::{ActionData, ActionPrompt},
@@ -39,10 +39,15 @@ pub fn recommeneded_target_attitude(
     _world: &World,
     _actor: Entity,
     action_kind: &ActionKind,
+    variant: Option<&ActionVariantId>,
 ) -> Attitude {
     match action_kind {
-        ActionKind::Standard { phases } => {
-            for component in phases.iter().flat_map(|phase| phase.payload.components()) {
+        ActionKind::Standard { .. } | ActionKind::Variant { .. } => {
+            for component in action_kind
+                .phases(variant)
+                .iter()
+                .flat_map(|phase| phase.payload.components())
+            {
                 match component {
                     ActionPayloadComponent::Damage { .. } => return Attitude::Hostile,
                     ActionPayloadComponent::Effect(effect_instance_template) => {
@@ -61,10 +66,6 @@ pub fn recommeneded_target_attitude(
                 }
             }
             Attitude::Neutral
-        }
-
-        ActionKind::Variant { variants: _ } => {
-            todo!()
         }
 
         ActionKind::Reaction { .. } => {
@@ -93,6 +94,7 @@ pub fn possible_targets(game_state: &GameState, action_data: &ActionData) -> Vec
                         &game_state.world,
                         action_data.actor.id(),
                         &action.kind,
+                        action_data.variant.as_ref(),
                     )
             })
             .collect::<Vec<Entity>>()

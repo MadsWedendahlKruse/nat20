@@ -1,0 +1,28 @@
+{
+    "id": "nat20_core::variant.brutal_strike.staggering_blow",
+    "description": "The target has Disadvantage on the next saving throw it makes, and it can't make Opportunity Attacks until the start of your next turn.",
+    "phases": [
+        {
+            "requires": "success",
+            "payload": {
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.barbarian.brutal_strike.staggering_blow",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "boundary": "start",
+                                    "entity": "applier",
+                                    "duration": {
+                                        "turns": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        }
+    ]
+}

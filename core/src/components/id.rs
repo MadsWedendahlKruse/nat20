@@ -148,6 +148,7 @@ id_newtypes!(
     EffectId => "effect",
     ResourceId => "resource",
     ActionId => "action",
+    ActionVariantId => "variant",
     SpellId => "spell",
     FeatId => "feat",
     BackgroundId => "background",

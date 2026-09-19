@@ -116,7 +116,9 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                                         format!("Decisions for prompt {:?}", prompt.id),
                                         TreeNodeFlags::empty(),
                                     ) {
-                                        for decisions in session.decisions_for_prompt(&prompt.id) {
+                                        while let Some(decisions) =
+                                            session.decisions_for_prompt(&prompt.id)
+                                        {
                                             ui.text(format!("{:#?}", decisions));
                                         }
                                     }

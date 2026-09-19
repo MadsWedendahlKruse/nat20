@@ -91,21 +91,21 @@ fn warlock_hellish_rebuke() {
 }
 
 #[rstest]
-#[case("action.hex.strength", "effect.spell.hex.strength", &[Skill::Athletics])]
+#[case("variant.hex.strength", "effect.spell.hex.strength", &[Skill::Athletics])]
 #[case(
-    "action.hex.dexterity",
+    "variant.hex.dexterity",
     "effect.spell.hex.dexterity",
     &[Skill::Acrobatics, Skill::SleightOfHand, Skill::Stealth,  Skill::Initiative]
 )]
 // TODO: What to do with constitution? It's not really associated with a skill
-#[case("action.hex.constitution", "effect.spell.hex.constitution", &[])]
+#[case("variant.hex.constitution", "effect.spell.hex.constitution", &[])]
 #[case(
-    "action.hex.intelligence",
+    "variant.hex.intelligence",
     "effect.spell.hex.intelligence",
     &[Skill::Arcana, Skill::History, Skill::Investigation, Skill::Nature, Skill::Religion]
 )]
-#[case("action.hex.wisdom", "effect.spell.hex.wisdom", &[Skill::AnimalHandling, Skill::Insight, Skill::Medicine, Skill::Perception, Skill::Survival])]
-#[case("action.hex.charisma", "effect.spell.hex.charisma", &[Skill::Deception, Skill::Intimidation, Skill::Performance, Skill::Persuasion])]
+#[case("variant.hex.wisdom", "effect.spell.hex.wisdom", &[Skill::AnimalHandling, Skill::Insight, Skill::Medicine, Skill::Perception, Skill::Survival])]
+#[case("variant.hex.charisma", "effect.spell.hex.charisma", &[Skill::Deception, Skill::Intimidation, Skill::Performance, Skill::Persuasion])]
 fn warlock_hex_disadvantage(
     #[case] hex_variant_id: &str,
     #[case] effect_id: &str,
@@ -158,7 +158,7 @@ fn warlock_hex_damage() {
     scenario
         .probe("warlock")
         .act("action.hex")
-        .variant("action.hex.strength")
+        .variant("variant.hex.strength")
         .target_entity("fighter")
         .perform();
 
@@ -211,13 +211,13 @@ fn warlock_hex_reapply_on_kill() {
         .spawn();
 
     // Force goblin to be killed by the Eldritch Blast so we can test the reapplication of Hex
-    scenario.probe("goblin").damage_raw(9);
+    scenario.probe("goblin").damage(9, DamageType::default());
 
     scenario
         .probe("warlock")
         .assert_no_concentration()
         .act("action.hex")
-        .variant("action.hex.strength")
+        .variant("variant.hex.strength")
         .target_entity("goblin")
         .perform();
 
@@ -256,7 +256,7 @@ fn warlock_hex_reapply_on_kill() {
         .probe("warlock")
         .assert_action_available("action.hex_reapply")
         .act("action.hex_reapply")
-        .variant("action.hex.strength")
+        .variant("variant.hex.strength")
         .target_entity("goblin2")
         .perform();
 

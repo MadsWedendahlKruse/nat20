@@ -650,7 +650,7 @@ fn brutal_strike(scenario: &mut Scenario, variant: &str) {
         .probe("barbarian")
         .assert_action_available(action)
         .act(action)
-        .variant(format!("action.barbarian.brutal_strike.{}", variant).as_str())
+        .variant(format!("variant.brutal_strike.{variant}").as_str())
         // Brutal Strike also works with an Unarmed Strike, so the greataxe has to
         // be picked explicitly
         .context_filter(|context, _cost| context.is_weapon_attack() && context.is_melee_attack())
@@ -710,7 +710,7 @@ fn brutal_strike_cant_have_disadvantage() {
     scenario
         .probe("barbarian")
         .act("action.barbarian.brutal_strike")
-        .variant("action.barbarian.brutal_strike.forceful_blow")
+        .variant("variant.brutal_strike.forceful_blow")
         .context_filter(|context, _cost| context.is_weapon_attack() && context.is_melee_attack())
         .target_entity("goblin")
         .assert_perform_fails();

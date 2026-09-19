@@ -46,7 +46,7 @@ pub const FALL_DAMAGE_DIE: DieSize = DieSize::D6;
 pub const FALL_DAMAGE_MAX_DICE: u32 = 20;
 pub const FALL_DAMAGE_THRESHOLD_FT: f32 = 10.0;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MovementError {
     InsufficientSpeed,
     NoPathFound,

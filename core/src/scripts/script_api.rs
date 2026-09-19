@@ -12,9 +12,9 @@ use crate::{
         ability::AbilityScoreMap,
         actions::{
             action::{
-                ActionCondition, ActionConditionResolution, ActionContext, ActionKind,
-                ActionResult, ActionResultComponent, AttackRollProvider, DamageResult,
-                EffectResult, EffectResultKind, HealingResult,
+                ActionCondition, ActionConditionResolution, ActionContext, ActionResult,
+                ActionResultComponent, AttackRollProvider, DamageResult, EffectResult,
+                EffectResultKind, HealingResult,
             },
             targeting::TargetInstance,
         },
@@ -649,14 +649,15 @@ impl UserData for ActionData {
                 ))
             })?;
 
-            match action.kind() {
-                ActionKind::Standard { phases } => {
-                    Ok(phases.iter().map(|phase| phase.condition.clone()).collect())
-                }
-                // TODO: Could also check the variants recursively?
-                ActionKind::Variant { variants: _ } => Ok(Vec::new()),
-                ActionKind::Reaction { .. } => Ok(Vec::new()),
-            }
+            Ok(action
+                .kind()
+                .phases(this.variant.as_ref())
+                .iter()
+                .map(|phase| phase.condition.clone())
+                .collect::<Vec<_>>())
+        });
+        fields.add_field_method_get("variant", |_, this| {
+            Ok(this.variant.as_ref().map(|variant| variant.to_string()))
         });
         fields.add_field_method_get("trigger_event", |_, this| {
             Ok(this.trigger_event.as_ref().map(|e| e.as_ref().clone()))

@@ -1,16 +1,16 @@
 //! spellbook.rs
 //!
 //! A class-agnostic Spellbook that supports:
-//! - Learned casters (e.g., Sorcerer/Bard/Warlock) with optional “prepared” step
-//! - Prepared casters that know “entire class list up to max level” (e.g., Cleric/Paladin)
+//! - Learned casters (e.g., Sorcerer/Bard/Warlock) with optional "prepared" step
+//! - Prepared casters that know "entire class list up to max level" (e.g., Cleric/Paladin)
 //! - Always-prepared/granted spells that do not count against preparation limits
-//! - Clean “known vs castable” queries
+//! - Clean "known vs castable" queries
 //! - ActionProvider implementation that generates spell actions with upcasting and slot costs
 //!
 //! Design principles:
 //! 1) Rules are per-class (ability, spell list, access model, readiness model).
 //! 2) Selections are per-class (chosen cantrips / learned / prepared / always-prepared).
-//! 3) “Known” is computed on demand for EntireClassList casters (not stored).
+//! 3) "Known" is computed on demand for EntireClassList casters (not stored).
 
 use std::{
     cmp::max,
@@ -942,68 +942,5 @@ impl ActionProvider for Spellbook {
         }
 
         actions
-    }
-
-    fn is_valid_context(&self, world: &World, entity: Entity, context: &ActionContext) -> bool {
-        if let Some(spell_context) = context.spell.as_ref() {
-            let spell = SpellsRegistry::get(&spell_context.id)
-                .unwrap_or_else(|| panic!("Missing spell in registry: {}", spell_context.id));
-
-            match &spell_context.source {
-                SpellSource::Class(class_and_subclass) => {
-                    if let Some(class_state) = self.class_states.get(class_and_subclass) {
-                        if let Some(class) = ClassesRegistry::get(&class_and_subclass.class)
-                            && let Some(spellcasting_rules) =
-                                class.spellcasting_rules(&class_and_subclass.subclass)
-                        {
-                            // Check if the spell is known for the class
-                            let known_spells = self
-                                .known_spells_for_class(
-                                    class_and_subclass,
-                                    &systems::helpers::get_component::<ResourceMap>(world, entity),
-                                )
-                                .unwrap_or_default();
-                            if !known_spells.contains(&spell_context.id) {
-                                return false;
-                            }
-
-                            // Cantrips don't need to be prepared
-                            if spell.is_cantrip() {
-                                return known_spells.contains(&spell_context.id);
-                            }
-
-                            // Check if the spell is prepared for the class (if applicable)
-                            if spellcasting_rules.readiness_model == CastingReadinessModel::Prepared
-                                && !class_state
-                                    .selections
-                                    .prepared_spells
-                                    .contains(&spell_context.id)
-                                && !class_state
-                                    .selections
-                                    .always_prepared
-                                    .contains(&spell_context.id)
-                            {
-                                return false;
-                            }
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                SpellSource::Granted { source, .. } => {
-                    if let Some(granted_set) = self.granted.get(source) {
-                        if !granted_set.spells.contains_key(&spell_context.id) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-            }
-
-            true
-        } else {
-            false
-        }
     }
 }

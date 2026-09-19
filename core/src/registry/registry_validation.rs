@@ -6,8 +6,8 @@ use crate::{
         faction::Faction,
         feat::Feat,
         id::{
-            ActionId, BackgroundId, ClassId, EffectId, FactionId, FeatId, ItemId, ResourceId,
-            ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
+            ActionId, ActionVariantId, BackgroundId, ClassId, EffectId, FactionId, FeatId, ItemId,
+            ResourceId, ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
         },
         resource::Resource,
     },
@@ -17,6 +17,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum RegistryReference {
     Action(ActionId),
+    ActionVariant(ActionVariantId),
     Background(BackgroundId),
     Class(ClassId),
     Effect(EffectId),
@@ -36,6 +37,7 @@ impl Display for RegistryReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RegistryReference::Action(id) => write!(f, "Action '{}'", id),
+            RegistryReference::ActionVariant(id) => write!(f, "Action variant '{}'", id),
             RegistryReference::Background(id) => write!(f, "Background '{}'", id),
             RegistryReference::Class(id) => write!(f, "Class '{}'", id),
             RegistryReference::Effect(id) => write!(f, "Effect '{}'", id),

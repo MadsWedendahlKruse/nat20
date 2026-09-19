@@ -148,12 +148,12 @@ fn multiple_wizards_scenario(con_saves: &[D20CheckOutcome]) -> Scenario {
         let angle = i as f32 * (360.0 / num_wizards as f32);
         let radius = 5.0;
         let x = radius * angle.to_radians().cos();
-        let y = radius * angle.to_radians().sin();
+        let z = radius * angle.to_radians().sin();
 
         scenario
             .spawn(&format!("wizard{}", i + 1), "hero.wizard")
             .level(5)
-            .position([x, y, 0.0], true)
+            .position([x, 0.0, z], true)
             .spawn();
     }
 

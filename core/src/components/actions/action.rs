@@ -20,7 +20,7 @@ use crate::{
         damage::{AttackSource, DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::effect::EffectInstanceTemplate,
         health::life_state::LifeState,
-        id::{ActionId, EffectId, EntityIdentifier, IdProvider, ResourceId, SpellId},
+        id::{ActionId, ActionVariantId, EffectId, EntityIdentifier, IdProvider, SpellId},
         items::equipment::slots::EquipmentSlot,
         modifier::{ModifierMap, ModifierResult},
         resource::{RechargeRule, ResourceAmountMap},
@@ -33,7 +33,10 @@ use crate::{
         game_state::GameState,
     },
     entities::projectile::ProjectileTemplate,
-    registry::{registry::ActionsRegistry, serialize::action::ActionDefinition},
+    registry::{
+        registry::{ActionVariantsRegistry, ActionsRegistry},
+        serialize::action::ActionDefinition,
+    },
     systems::{
         self,
         geometry::{Displacement, DisplacementTemplate},
@@ -117,16 +120,10 @@ impl Action {
         &self.resource_cost
     }
 
-    pub fn resource_cost_mut(&mut self) -> &mut ResourceAmountMap {
-        &mut self.resource_cost
-    }
-
     pub fn is_reaction(&self) -> bool {
-        self.kind.is_reaction()
-            || self
-                .resource_cost
-                .map
-                .contains_key(&ResourceId::new("nat20_core", "resource.reaction"))
+        // I can't think of any reactions that don't have a reaction trigger, so
+        // this is probably a sufficient check?
+        self.reaction_trigger.is_some()
     }
 }
 
@@ -158,9 +155,17 @@ impl PartialEq for Action {
 
 #[derive(Clone)]
 pub enum ActionKind {
-    Standard { phases: Vec<ActionPhaseSpec> },
-    Variant { variants: Vec<ActionId> },
-    Reaction { body: ReactionBody },
+    Standard {
+        phases: Vec<ActionPhaseSpec>,
+    },
+    Variant {
+        /// Phase(s) that all the variants share
+        phases: Vec<ActionPhaseSpec>,
+        variants: Vec<ActionVariantId>,
+    },
+    Reaction {
+        body: ReactionBody,
+    },
 }
 
 impl ActionKind {
@@ -168,7 +173,8 @@ impl ActionKind {
         let mut phases = Vec::new();
 
         match self {
-            ActionKind::Standard { phases: specs } => {
+            ActionKind::Standard { .. } | ActionKind::Variant { .. } => {
+                let specs = self.phases(action_data.variant.as_ref());
                 let outcomes = Arc::new(PhaseOutcomes::default());
                 for (phase_index, spec) in specs.iter().enumerate() {
                     for (target_index, target) in action_data.targets.iter().enumerate() {
@@ -182,12 +188,6 @@ impl ActionKind {
                         ));
                     }
                 }
-            }
-
-            ActionKind::Variant { .. } => {
-                panic!(
-                    "ActionKind::Variants should be resolved to a specific variant before performing"
-                );
             }
 
             ActionKind::Reaction { body } => {
@@ -233,25 +233,35 @@ impl ActionKind {
         phases
     }
 
-    pub fn is_reaction(&self) -> bool {
-        if let ActionKind::Reaction { .. } = self {
-            return true;
-        }
+    pub fn phases(&self, variant: Option<&ActionVariantId>) -> Vec<&ActionPhaseSpec> {
+        match self {
+            ActionKind::Standard { phases } | ActionKind::Variant { phases, .. } => {
+                let variant_phases = variant
+                    .and_then(|variant_id| self.variant(variant_id))
+                    .map(|variant| variant.phases.as_slice())
+                    .unwrap_or_default();
 
-        self.phases().iter().any(|phase| {
-            !phase
-                .payload
-                .component(ActionPayloadComponentKind::Reaction)
-                .is_empty()
-        })
+                phases.iter().chain(variant_phases).collect()
+            }
+            ActionKind::Reaction { .. } => Vec::new(),
+        }
     }
 
-    pub fn phases(&self) -> &[ActionPhaseSpec] {
+    pub fn variant(&self, variant_id: &ActionVariantId) -> Option<&'static ActionVariant> {
         match self {
-            ActionKind::Standard { phases } => phases,
-            ActionKind::Variant { .. } => &[],
-            ActionKind::Reaction { .. } => &[],
+            ActionKind::Variant { variants, .. } if variants.contains(variant_id) => {
+                ActionVariantsRegistry::get(variant_id)
+            }
+            _ => None,
         }
+    }
+}
+
+impl Debug for ActionVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ActionVariant")
+            .field("id", &self.id)
+            .finish()
     }
 }
 
@@ -259,9 +269,25 @@ impl Debug for ActionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ActionKind::Standard { .. } => write!(f, "Standard"),
-            ActionKind::Variant { variants } => write!(f, "Variants({:?})", variants),
+            ActionKind::Variant { variants, .. } => write!(f, "Variants({:?})", variants),
             ActionKind::Reaction { .. } => write!(f, "Reaction"),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ActionVariant {
+    pub id: ActionVariantId,
+    pub description: String,
+    /// Phases in addition to the parent's
+    pub phases: Vec<ActionPhaseSpec>,
+}
+
+impl IdProvider for ActionVariant {
+    type Id = ActionVariantId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
     }
 }
 
@@ -713,19 +739,12 @@ impl ActionResult {
 /// Represents a provider of actions, which can be used to retrieve available actions
 /// from a character or other entity that can perform actions.
 pub trait ActionProvider {
-    // TODO: Should probably find a way to avoid rebuilding the action collection every time.
-
     /// Returns a collection of ALL possible actions for the character, including
     /// actions that are not currently available (e.g. on cooldown, out of resources, etc.).
     /// Each action is paired with its context, which provides additional information
     /// about how the action can be performed (e.g. weapon type, spell level, etc.)
     /// as well as the resource cost of the action.
     fn actions(&self, world: &World, entity: Entity) -> ActionMap;
-
-    /// Checks if the given action context is valid for the character, e.g. if the
-    /// character has a weapon equipped in the specified slot for a weapon attack
-    /// or if the character knows the specified spell for a spell action.
-    fn is_valid_context(&self, world: &World, entity: Entity, context: &ActionContext) -> bool;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

@@ -6,7 +6,7 @@ use crate::{
     components::{
         actions::{
             action::{
-                Action, ActionContext, ActionCooldownMap, ActionMap, ActionProvider,
+                Action, ActionContext, ActionCooldownMap, ActionKind, ActionMap, ActionProvider,
                 AreaShapeFunction,
             },
             execution::{ActionExecution, ExecutionStatus, PhaseState, WaitReason},
@@ -16,7 +16,7 @@ use crate::{
             },
         },
         activity::ActivityState,
-        id::{ActionId, EntityIdentifier, ResourceId},
+        id::{ActionId, ActionVariantId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap},
         spells::{
@@ -97,16 +97,37 @@ pub fn set_cooldown(
     cooldowns.insert(action_id.clone(), cooldown);
 }
 
-pub fn all_actions(world: &World, entity: Entity) -> ActionMap {
-    let mut actions = systems::helpers::get_component_clone::<ActionMap>(world, entity);
+pub fn all_actions(game_state: &GameState, entity: Entity) -> ActionMap {
+    let mut actions = systems::helpers::get_component_clone::<ActionMap>(&game_state.world, entity);
+
     merge_action_maps(
         &mut actions,
-        systems::helpers::get_component::<Spellbook>(world, entity).actions(world, entity),
+        systems::helpers::get_component::<Spellbook>(&game_state.world, entity)
+            .actions(&game_state.world, entity),
     );
     merge_action_maps(
         &mut actions,
-        systems::helpers::get_component::<Loadout>(world, entity).actions(world, entity),
+        systems::helpers::get_component::<Loadout>(&game_state.world, entity)
+            .actions(&game_state.world, entity),
     );
+
+    // Make sure we have the correct resource costs
+    actions
+        .iter_mut()
+        .for_each(|(action_id, contexts_and_costs)| {
+            contexts_and_costs
+                .iter_mut()
+                .for_each(|(action_context, resource_cost)| {
+                    systems::effects::effects(&game_state.world, entity).resource_cost(
+                        game_state,
+                        entity,
+                        action_id,
+                        action_context,
+                        resource_cost,
+                    );
+                })
+        });
+
     actions
 }
 
@@ -122,7 +143,7 @@ fn merge_action_maps(destination: &mut ActionMap, source: ActionMap) {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionUsabilityError {
     ActionDoesNotExist(ActionId),
-    EntityNotAlive(Entity),
+    ActorNotAlive(Entity),
     OnCooldown(RechargeRule),
     NotEnoughResources(Vec<ResourceId>),
     ResourceNotFound(ResourceId),
@@ -130,6 +151,13 @@ pub enum ActionUsabilityError {
     TargetingError(TargetingError),
     ConcentrationError(ConcentrationError),
     UsabilityFunctionError(String),
+    ActionNotKnown {
+        action_id: Option<ActionId>,
+        context: Option<ActionContext>,
+        resource_cost: Option<ResourceAmountMap>,
+    },
+    VariantError(VariantUsabilityError),
+    ReactionError(ReactionUsabilityError),
 }
 
 // TODO: Not sure if this is the best way to handle skipping checks. All the call
@@ -140,12 +168,15 @@ pub enum ActionUsabilityCheck {
     Cooldown,
     Resources,
     Targeting(Vec<TargetingCheck>),
+    ActionKnown,
+    Variant,
 }
 
 pub fn action_usable(
     game_state: &GameState,
-    entity: Entity,
+    actor: Entity,
     action_id: &ActionId,
+    variant_id: Option<&ActionVariantId>,
     action_context: &ActionContext,
     resource_cost: &ResourceAmountMap,
     skip_checks: &[ActionUsabilityCheck],
@@ -155,20 +186,45 @@ pub fn action_usable(
     };
 
     if !skip_checks.contains(&ActionUsabilityCheck::Alive)
-        && !systems::health::is_alive(&game_state.world, entity)
+        && !systems::health::is_alive(&game_state.world, actor)
     {
-        return Err(ActionUsabilityError::EntityNotAlive(entity));
+        return Err(ActionUsabilityError::ActorNotAlive(actor));
+    }
+
+    if !skip_checks.contains(&ActionUsabilityCheck::ActionKnown) {
+        let all_actions = all_actions(game_state, actor);
+
+        let Some(context_and_cost) = all_actions.get(action_id) else {
+            return Err(ActionUsabilityError::ActionNotKnown {
+                action_id: Some(action_id.clone()),
+                context: None,
+                resource_cost: None,
+            });
+        };
+
+        context_and_cost
+            .iter()
+            .find(|(context, cost)| context == action_context && cost == resource_cost)
+            .ok_or(ActionUsabilityError::ActionNotKnown {
+                action_id: Some(action_id.clone()),
+                context: Some(action_context.clone()),
+                resource_cost: Some(resource_cost.clone()),
+            })?;
+    }
+
+    if !skip_checks.contains(&ActionUsabilityCheck::Variant) {
+        variant_usable(action, variant_id).map_err(ActionUsabilityError::VariantError)?;
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::Cooldown)
-        && let Some(cooldown) = on_cooldown(&game_state.world, entity, action_id)
+        && let Some(cooldown) = on_cooldown(&game_state.world, actor, action_id)
     {
         return Err(ActionUsabilityError::OnCooldown(cooldown));
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::Resources)
         && let Err(missing_resources) =
-            systems::resources::can_afford(&game_state.world, entity, resource_cost)
+            systems::resources::can_afford(&game_state.world, actor, resource_cost)
     {
         return Err(ActionUsabilityError::NotEnoughResources(missing_resources));
     }
@@ -177,36 +233,33 @@ pub fn action_usable(
         return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
     }
 
-    let loadout = systems::helpers::get_component::<Loadout>(&game_state.world, entity);
-    if !loadout.is_valid_context(&game_state.world, entity, action_context) {
-        return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
+    if let Some(attack_context) = &action_context.attack {
+        let loadout = systems::helpers::get_component::<Loadout>(&game_state.world, actor);
+        if !loadout.is_valid_context(attack_context) {
+            return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
+        }
     }
 
     if let Some(spell) = SpellsRegistry::get(&action_id.into()) {
         if spell.has_flag(SpellFlag::Concentration)
             && let Err(concentration_error) =
-                systems::spells::can_concentrate(&game_state.world, entity)
+                systems::spells::can_concentrate(&game_state.world, actor)
         {
             return Err(ActionUsabilityError::ConcentrationError(
                 concentration_error,
             ));
         }
-
-        let spellbook = systems::helpers::get_component::<Spellbook>(&game_state.world, entity);
-        if !spellbook.is_valid_context(&game_state.world, entity, action_context) {
-            return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
-        }
     }
 
     if let Some(usability_fn) = &action.usability
-        && let Some(reason) = usability_fn(game_state, entity, action_id, action_context)
+        && let Some(reason) = usability_fn(game_state, actor, action_id, action_context)
     {
         return Err(ActionUsabilityError::UsabilityFunctionError(reason));
     }
 
-    if let Some(reason) = systems::effects::effects(&game_state.world, entity).action_usability(
+    if let Some(reason) = systems::effects::effects(&game_state.world, actor).action_usability(
         game_state,
-        entity,
+        actor,
         action_id,
         action_context,
     ) {
@@ -216,10 +269,85 @@ pub fn action_usable(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReactionUsabilityError {
+    NoTriggerEvent,
+    NoPendingEvent,
+}
+
+pub fn reaction_usable(
+    game_state: &GameState,
+    actor: Entity,
+    trigger_event: Option<&Event>,
+) -> Result<(), ReactionUsabilityError> {
+    if trigger_event.is_none() {
+        return Err(ReactionUsabilityError::NoTriggerEvent);
+    }
+
+    if let Some(session) = game_state.session_for_entity(actor)
+        && session.pending_events().is_empty()
+    {
+        return Err(ReactionUsabilityError::NoPendingEvent);
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum VariantUsabilityError {
+    VariantRequired {
+        action_id: ActionId,
+        variants: Vec<ActionVariantId>,
+    },
+    UnknownVariant {
+        action_id: ActionId,
+        options: Vec<ActionVariantId>,
+        choice: ActionVariantId,
+    },
+    UnexpectedVariant {
+        action_id: ActionId,
+        variant: ActionVariantId,
+    },
+}
+
+fn variant_usable(
+    action: &Action,
+    variant_id: Option<&ActionVariantId>,
+) -> Result<(), VariantUsabilityError> {
+    match (action.kind(), variant_id) {
+        (ActionKind::Variant { variants, .. }, None) => {
+            Err(VariantUsabilityError::VariantRequired {
+                action_id: action.id.clone(),
+                variants: variants.clone(),
+            })
+        }
+
+        (ActionKind::Variant { variants, .. }, Some(variant_id)) => {
+            if action.kind().variant(variant_id).is_some() {
+                Ok(())
+            } else {
+                Err(VariantUsabilityError::UnknownVariant {
+                    action_id: action.id.clone(),
+                    options: variants.clone(),
+                    choice: variant_id.clone(),
+                })
+            }
+        }
+
+        (_, Some(variant_id)) => Err(VariantUsabilityError::UnexpectedVariant {
+            action_id: action.id.clone(),
+            variant: variant_id.clone(),
+        }),
+
+        (_, None) => Ok(()),
+    }
+}
+
 pub fn action_usable_on_targets(
     game_state: &GameState,
     actor: Entity,
     action_id: &ActionId,
+    variant_id: Option<&ActionVariantId>,
     context: &ActionContext,
     resource_cost: &ResourceAmountMap,
     targets: &[TargetInstance],
@@ -229,6 +357,7 @@ pub fn action_usable_on_targets(
         game_state,
         actor,
         action_id,
+        variant_id,
         context,
         resource_cost,
         skip_checks,
@@ -272,29 +401,31 @@ pub fn action_usable_on_targets(
 }
 
 pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
-    let mut actions = all_actions(&game_state.world, entity);
+    let mut actions = all_actions(game_state, entity);
 
     actions.retain(|action_id, action_data| {
         action_data.retain_mut(|(action_context, resource_cost)| {
-            systems::effects::effects(&game_state.world, entity).resource_cost(
-                game_state,
-                entity,
-                action_id,
-                action_context,
-                resource_cost,
-            );
             action_usable(
                 game_state,
                 entity,
                 action_id,
+                None,
                 action_context,
                 resource_cost,
-                &[],
+                &[
+                    // We're looping over all the entity's actions, so checking
+                    // if it's known is redundant
+                    ActionUsabilityCheck::ActionKnown,
+                    // We've not yet decided on a variant (if relevant), so don't
+                    // check it yet
+                    ActionUsabilityCheck::Variant,
+                ],
             )
             .is_ok()
         });
 
-        !action_data.is_empty() // Keep the action if there's at least one usable context
+        // Keep the action if there's at least one usable context
+        !action_data.is_empty()
     });
 
     actions
@@ -637,6 +768,8 @@ pub fn available_reactions_to_event(
                         game_state,
                         reactor,
                         &reaction_id,
+                        // TODO: For now assume that no reaction has variants
+                        None,
                         context,
                         resource_cost,
                         &[target.clone()],

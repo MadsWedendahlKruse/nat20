@@ -1,11 +1,48 @@
 {
     "id": "nat20_core::action.barbarian.brutal_strike",
-    "description": "If you use Reckless Attack, you can forgo any Advantage on one Strength-based attack roll of your choice on your turn. The chosen attack roll mustn't have Disadvantage. If the chosen attack roll hits, the target takes an extra 1d10 damage of the same type dealt by the weapon or Unarmed Strike, and you can cause one Brutal Strike effect of your choice. You have the following effect options:\n\tForceful Blow. The target is pushed 15 feet straight away from you. You can then move up to half your Speed straight toward the target without provoking Opportunity Attacks\n\tHamstring Blow. The target's Speed is reduced by 15 feet until the start of your next turn. A target can be affected by only one Hamstring Blow at a time - the most recent one.",
+    "description": "If you use Reckless Attack, you can forgo any Advantage on one Strength-based attack roll of your choice on your turn. The chosen attack roll mustn't have Disadvantage. If the chosen attack roll hits, the target takes an extra 1d10 damage of the same type dealt by the weapon or Unarmed Strike, and you can cause one Brutal Strike effect of your choice.",
     "kind": {
-        "variants": {
+        "variant": {
+            "phases": [
+                {
+                    "targets": "actor",
+                    "payload": {
+                        "components": [
+                            {
+                                "effect": {
+                                    "effect_id": "nat20_core::effect.barbarian.reckless_attack_advantage",
+                                    "lifetime": {
+                                        "turn_boundary": {
+                                            "boundary": "start",
+                                            "entity": "applier",
+                                            "duration": {
+                                                "turns": 1
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                },
+                {
+                    "condition": {
+                        "attack_roll": "attack_context"
+                    },
+                    "payload": {
+                        "components": [
+                            {
+                                "damage": "attack_context"
+                            }
+                        ],
+                        "delivery": "immediate"
+                    }
+                }
+            ],
             "variants": [
-                "nat20_core::action.barbarian.brutal_strike.forceful_blow",
-                "nat20_core::action.barbarian.brutal_strike.hamstring_blow"
+                "nat20_core::variant.brutal_strike.forceful_blow",
+                "nat20_core::variant.brutal_strike.hamstring_blow"
             ]
         }
     },

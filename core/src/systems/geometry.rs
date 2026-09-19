@@ -729,10 +729,12 @@ pub fn line_of_sight_entity_entity(
         .raycast_result
         && let Some(closest) = result.closest()
     {
-        LineOfSightResult {
+        let mut result = LineOfSightResult {
             has_line_of_sight: closest.kind == RaycastHitKind::Creature(to_entity),
             raycast_result: Some(result),
-        }
+        };
+        result.check_entity_hit(to_entity);
+        result
     } else {
         LineOfSightResult {
             has_line_of_sight: false,

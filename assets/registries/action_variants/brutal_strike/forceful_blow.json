@@ -1,0 +1,44 @@
+{
+    "id": "nat20_core::variant.brutal_strike.forceful_blow",
+    "description": "The target is pushed 15 feet straight away from you. You can then move up to half your Speed without provoking Opportunity Attacks.",
+    "phases": [
+        {
+            "requires": "success",
+            "payload": {
+                "components": [
+                    {
+                        "displacement": {
+                            "push": {
+                                "distance": "15 feet"
+                            }
+                        }
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        },
+        {
+            "requires": "success",
+            "targets": "actor",
+            "payload": {
+                "components": [
+                    {
+                        "effect": {
+                            "effect_id": "nat20_core::effect.barbarian.brutal_strike.forceful_blow_disengage",
+                            "lifetime": {
+                                "turn_boundary": {
+                                    "boundary": "end",
+                                    "entity": "applier",
+                                    "duration": {
+                                        "turns": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+                "delivery": "immediate"
+            }
+        }
+    ]
+}

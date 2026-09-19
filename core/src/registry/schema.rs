@@ -14,7 +14,7 @@ use crate::{
         resource::Resource,
     },
     registry::serialize::{
-        action::ActionDefinition,
+        action::{ActionDefinition, ActionVariantDefinition},
         class::ClassDefinition,
         effect::EffectDefinition,
         feat::FeatDefinition,
@@ -64,6 +64,7 @@ pub fn registry_schemas() -> Vec<RegistrySchema> {
         schema_for::<SpellDefinition>("spells"),
         schema_for::<Subclass>("subclasses"),
         schema_for::<SubspeciesDefinition>("subspecies"),
+        schema_for::<ActionVariantDefinition>("action_variants"),
     ]
 }
 

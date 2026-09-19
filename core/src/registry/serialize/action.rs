@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
 use hecs::{Entity, World};
 use schemars::JsonSchema;
@@ -9,14 +9,15 @@ use crate::{
         actions::action::{
             Action, ActionCondition, ActionContext, ActionKind, ActionPayload,
             ActionPayloadComponent, ActionPhaseSpec, ActionTimeline, ActionUsabilityFunction,
-            DamageOnFailure, PayloadDelivery, PhaseRequirement, PhaseTargets,
+            ActionVariant, DamageOnFailure, PayloadDelivery, PhaseRequirement, PhaseTargets,
             TargetUsabilityFunction,
         },
-        id::{ActionId, ScriptId},
+        id::{ActionId, ActionVariantId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
     },
     entities::projectile::ProjectileTemplate,
     registry::{
+        registry::Registry,
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
@@ -94,28 +95,75 @@ impl RegistryReferenceCollector for ActionDefinition {
     }
 }
 
-impl ActionDefinition {
+impl ActionKindDefinition {
     /// A phase gate reads the previous phase's single outcome, which is
     /// ambiguous when that phase hit multiple entities from one chosen target.
     /// Per-entity riders belong in that phase's payload components instead,
     /// where they share its per-entity condition resolution.
-    fn validate_phase_requirements(&self) {
-        let ActionKindDefinition::Standard { phases } = &self.kind else {
-            return;
-        };
-        for (index, phase) in phases.iter().enumerate() {
-            if phase.requires == PhaseRequirement::None {
-                continue;
+    ///
+    /// Runs once every registry is loaded, since a variant's phases live in the
+    /// variant registry but only make sense appended to the parent's.
+    pub fn validate_phase_requirements(
+        &self,
+        id: &dyn Display,
+        targeting: &TargetingDefinition,
+        variants: &Registry<ActionVariantId, ActionVariant, ActionVariantDefinition>,
+    ) {
+        match self {
+            ActionKindDefinition::Standard { phases } => {
+                validate_phase_sequence(id, targeting, phases.iter())
             }
-            assert!(
-                index > 0,
-                "{}: the first phase cannot have `requires` if there is no previous phase",
-                self.id
-            );
-            let previous_is_area = match &phases[index - 1].targets {
+
+            ActionKindDefinition::Variant {
+                phases,
+                variants: variant_ids,
+            } => {
+                assert!(
+                    !variant_ids.is_empty(),
+                    "{}: a variant action must offer at least one variant",
+                    id
+                );
+
+                for (index, variant_id) in variant_ids.iter().enumerate() {
+                    assert!(
+                        !variant_ids[..index].contains(variant_id),
+                        "{}: duplicate variant `{}`",
+                        id,
+                        variant_id
+                    );
+
+                    let variant = &variants
+                        .entries
+                        .get(variant_id)
+                        .expect("variant references are validated before phase requirements")
+                        .definition;
+                    validate_phase_sequence(id, targeting, phases.iter().chain(&variant.phases));
+                }
+            }
+
+            ActionKindDefinition::Reaction { .. } => {}
+        }
+    }
+}
+
+fn validate_phase_sequence<'a>(
+    id: &dyn Display,
+    targeting: &TargetingDefinition,
+    phases: impl Iterator<Item = &'a ActionPhaseDefinition>,
+) {
+    let mut previous: Option<&ActionPhaseDefinition> = None;
+    for (index, phase) in phases.enumerate() {
+        if phase.requires != PhaseRequirement::None {
+            let Some(previous) = previous else {
+                panic!(
+                    "{}: the first phase cannot have `requires` if there is no previous phase",
+                    id
+                );
+            };
+            let previous_is_area = match &previous.targets {
                 PhaseTargetsDefinition::Shape { .. } => true,
                 PhaseTargetsDefinition::Inherited => matches!(
-                    &self.targeting,
+                    targeting,
                     TargetingDefinition::Custom(custom)
                         if matches!(custom.kind, TargetingKindDefinition::Area { .. })
                 ),
@@ -126,18 +174,17 @@ impl ActionDefinition {
                 "{}: phase {} has `requires` but phase {} targets an area; gate outcomes \
                  are per chosen target, not per entity. Put per-entity riders in the \
                  previous phase's payload components",
-                self.id,
+                id,
                 index,
                 index - 1
             );
         }
+        previous = Some(phase);
     }
 }
 
 impl From<ActionDefinition> for Action {
     fn from(value: ActionDefinition) -> Self {
-        value.validate_phase_requirements();
-
         let contexts = if value.contexts.is_empty() {
             vec![ActionContext::default()]
         } else {
@@ -403,11 +450,44 @@ impl From<ActionPhaseDefinition> for ActionPhaseSpec {
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ActionVariantDefinition {
+    pub id: ActionVariantId,
+    pub description: String,
+    /// Appended to the parent's shared `phases`
+    pub phases: Vec<ActionPhaseDefinition>,
+}
+
+impl RegistryReferenceCollector for ActionVariantDefinition {
+    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
+        collect_phase_references(&self.phases, collector);
+    }
+}
+
+impl From<ActionVariantDefinition> for ActionVariant {
+    fn from(value: ActionVariantDefinition) -> Self {
+        Self {
+            id: value.id,
+            description: value.description,
+            phases: value.phases.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionKindDefinition {
-    Standard { phases: Vec<ActionPhaseDefinition> },
-    Variants { variants: Vec<ActionId> },
-    Reaction { body: ReactionBodyDefinition },
+    Standard {
+        phases: Vec<ActionPhaseDefinition>,
+    },
+    Variant {
+        /// The phases every variant shares, run before the chosen variant's own
+        #[serde(default)]
+        phases: Vec<ActionPhaseDefinition>,
+        variants: Vec<ActionVariantId>,
+    },
+    Reaction {
+        body: ReactionBodyDefinition,
+    },
 }
 
 impl From<ActionKindDefinition> for ActionKind {
@@ -417,9 +497,31 @@ impl From<ActionKindDefinition> for ActionKind {
                 phases: phases.into_iter().map(Into::into).collect(),
             },
 
-            ActionKindDefinition::Variants { variants } => ActionKind::Variant { variants },
+            ActionKindDefinition::Variant { phases, variants } => ActionKind::Variant {
+                phases: phases.into_iter().map(Into::into).collect(),
+                variants,
+            },
 
             ActionKindDefinition::Reaction { body } => ActionKind::Reaction { body: body.into() },
+        }
+    }
+}
+
+fn collect_phase_references(phases: &[ActionPhaseDefinition], collector: &mut ReferenceCollector) {
+    for component in phases.iter().flat_map(|phase| &phase.payload.components) {
+        match component {
+            ActionPayloadComponentDefinition::Effect { effect } => {
+                collector.add(RegistryReference::Effect(effect.effect_id.clone()));
+            }
+            ActionPayloadComponentDefinition::Reaction { reaction } => {
+                if let Some(script_id) = &reaction.script {
+                    collector.add(RegistryReference::Script(
+                        script_id.clone(),
+                        ScriptFunction::ReactionBody,
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -428,29 +530,14 @@ impl RegistryReferenceCollector for ActionKindDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         match self {
             ActionKindDefinition::Standard { phases } => {
-                for component in phases.iter().flat_map(|phase| &phase.payload.components) {
-                    match component {
-                        ActionPayloadComponentDefinition::Effect { effect } => {
-                            collector.add(RegistryReference::Effect(effect.effect_id.clone()));
-                        }
-                        ActionPayloadComponentDefinition::Reaction { reaction } => {
-                            if let Some(script_id) = &reaction.script {
-                                collector.add(RegistryReference::Script(
-                                    script_id.clone(),
-                                    ScriptFunction::ReactionBody,
-                                ));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
+                collect_phase_references(phases, collector);
             }
 
-            ActionKindDefinition::Variants { .. } => {
-                // TODO: Although the variant references an ActionId, that might
-                // refer to the action associated with a spell, so the action ID
-                // would not be present in the action registry directly. So how do
-                // we validate that?
+            ActionKindDefinition::Variant { phases, variants } => {
+                collect_phase_references(phases, collector);
+                for variant in variants {
+                    collector.add(RegistryReference::ActionVariant(variant.clone()));
+                }
             }
 
             ActionKindDefinition::Reaction { body } => {

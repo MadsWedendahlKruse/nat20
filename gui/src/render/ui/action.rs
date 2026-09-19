@@ -10,13 +10,13 @@ use nat20_core::{
             targeting::{AreaShape, TargetingKind, TargetingRange},
         },
         d20::D20CheckDC,
-        id::{ActionId, EntityIdentifier, SpellId},
+        id::{ActionId, ActionVariantId, EntityIdentifier, SpellId},
         items::equipment::weapon::MELEE_RANGE_DEFAULT,
         modifier::FlatModifiable,
         resource::{RechargeRule, ResourceAmountMap},
         spells::spell::ConcentrationError,
     },
-    registry::registry::SpellsRegistry,
+    registry::registry::{ActionVariantsRegistry, SpellsRegistry},
     systems::{self, actions::ActionUsabilityError, geometry::Displacement, time::RestKind},
 };
 use uom::si::{angle::degree, length::meter};
@@ -29,13 +29,23 @@ use crate::render::ui::{
 };
 
 // TODO: Pretty janky 'type' here
-impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
-    for (&ActionId, &ActionContext, &ResourceAmountMap)
+impl
+    ImguiRenderableWithContext<(
+        &World,
+        Entity,
+        Option<&ActionUsabilityError>,
+        Option<&ActionVariantId>,
+    )> for (&ActionId, &ActionContext, &ResourceAmountMap)
 {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (world, entity, usability_error): (&World, Entity, Option<&ActionUsabilityError>),
+        (world, entity, usability_error, variant): (
+            &World,
+            Entity,
+            Option<&ActionUsabilityError>,
+            Option<&ActionVariantId>,
+        ),
     ) {
         let (action_id, context, cost) = self;
         let action = systems::actions::get_action(action_id).unwrap();
@@ -67,7 +77,7 @@ impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
 
                 action
                     .kind
-                    .render_with_context(ui, (world, entity, context));
+                    .render_with_context(ui, (world, entity, context, variant));
 
                 ui.separator();
 
@@ -75,7 +85,7 @@ impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
                 targeting.range.render(ui);
                 targeting.kind.render(ui);
 
-                for phase in action.kind().phases() {
+                for phase in action.kind().phases(variant) {
                     match &phase.condition {
                         ActionCondition::AttackRoll(_) => {
                             TextSegment::new("Attack Roll", TextKind::Details).render(ui);
@@ -114,17 +124,52 @@ impl ImguiRenderableWithContext<(&World, Entity, Option<&ActionUsabilityError>)>
                 TextSegment::new(action.description.as_str(), TextKind::Details)
                     .wrap_text(true)
                     .render(ui);
+
+                if let ActionKind::Variant { variants, .. } = action.kind() {
+                    let variants = if let Some(chosen_variant) = variant {
+                        &vec![chosen_variant.clone()]
+                    } else {
+                        variants
+                    };
+
+                    let variants = variants
+                        .iter()
+                        .filter_map(|variant| ActionVariantsRegistry::get(variant))
+                        .collect::<Vec<_>>();
+
+                    if variant.is_none() && !variants.is_empty() {
+                        ui.separator_with_text("Variants");
+                    }
+
+                    for (i, variant) in variants.iter().enumerate() {
+                        TextSegment::new(variant.id.to_string(), TextKind::Normal).render(ui);
+                        TextSegment::new(variant.description.to_string(), TextKind::Details)
+                            .wrap_text(true)
+                            .render(ui);
+
+                        if i < variants.len() - 1 {
+                            ui.separator();
+                        }
+                    }
+                }
             });
     }
 }
 
-impl ImguiRenderableWithContext<(&World, Entity, &ActionContext)> for ActionKind {
+impl ImguiRenderableWithContext<(&World, Entity, &ActionContext, Option<&ActionVariantId>)>
+    for ActionKind
+{
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (world, entity, action_context): (&World, Entity, &ActionContext),
+        (world, entity, action_context, variant): (
+            &World,
+            Entity,
+            &ActionContext,
+            Option<&ActionVariantId>,
+        ),
     ) {
-        for phase in self.phases() {
+        for phase in self.phases(variant) {
             for component in phase.payload.components() {
                 match component {
                     ActionPayloadComponent::Damage { damage, .. } => {
@@ -252,7 +297,7 @@ impl ImguiRenderable for ActionUsabilityError {
                 .render(ui);
             }
 
-            ActionUsabilityError::EntityNotAlive(_) => {
+            ActionUsabilityError::ActorNotAlive(_) => {
                 TextSegment::new("Must be alive to use", TextKind::Red).render(ui);
             }
 
@@ -334,6 +379,15 @@ impl ImguiRenderable for ActionUsabilityError {
 
             ActionUsabilityError::UsabilityFunctionError(error) => {
                 TextSegment::new(error.to_string(), TextKind::Red)
+                    .wrap_text(true)
+                    .render(ui);
+            }
+
+            // TODO: Not sure if you can realistically hit any of these errors in the UI
+            ActionUsabilityError::ActionNotKnown { .. }
+            | ActionUsabilityError::ReactionError(_)
+            | ActionUsabilityError::VariantError(_) => {
+                TextSegment::new(format!("{:#?}", self), TextKind::Red)
                     .wrap_text(true)
                     .render(ui);
             }
