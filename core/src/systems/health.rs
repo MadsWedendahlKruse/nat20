@@ -183,6 +183,16 @@ pub fn damage(
                     .remove_instances_by_entity(target);
             }
         }
+
+        // Unblock pending events waiting for the entity to act (if any)
+        // TODO: I can't think of a scenario where this would happen, but I've got
+        // a feeling that this might be necessary in some edge cases.
+        for pending_event in game_state
+            .session_for_entity_mut(target)
+            .pending_events_mut()
+        {
+            pending_event.blocked_by.remove(&target);
+        }
     }
 
     if let Some(new_life_state) = new_life_state
