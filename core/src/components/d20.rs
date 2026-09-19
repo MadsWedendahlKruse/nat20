@@ -281,15 +281,7 @@ impl D20Check {
         let modifier_result = check.modifiers.evaluate();
         let crit_threshold = self.crit_threshold();
 
-        let outcome = if let Some((_, forced_outcome)) = &self.forced_outcome {
-            Some(*forced_outcome)
-        } else if selected_roll >= crit_threshold {
-            Some(D20CheckOutcome::CriticalSuccess)
-        } else if selected_roll == D20_CRITICAL_FAILURE {
-            Some(D20CheckOutcome::CriticalFailure)
-        } else {
-            None
-        };
+        let outcome = self.determine_outcome(selected_roll, crit_threshold);
 
         D20CheckResult {
             check,
@@ -298,6 +290,18 @@ impl D20Check {
             outcome,
             crit_threshold,
             modifier_result,
+        }
+    }
+
+    fn determine_outcome(&self, selected_roll: u8, crit_threshold: u8) -> Option<D20CheckOutcome> {
+        if let Some((_, forced_outcome)) = &self.forced_outcome {
+            Some(*forced_outcome)
+        } else if selected_roll >= crit_threshold {
+            Some(D20CheckOutcome::CriticalSuccess)
+        } else if selected_roll == D20_CRITICAL_FAILURE {
+            Some(D20CheckOutcome::CriticalFailure)
+        } else {
+            None
         }
     }
 
@@ -537,6 +541,10 @@ impl D20CheckResult {
             }
             _ => {}
         }
+
+        self.outcome = self
+            .check
+            .determine_outcome(self.selected_roll, self.crit_threshold);
     }
 }
 

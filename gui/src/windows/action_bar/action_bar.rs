@@ -16,12 +16,13 @@ use nat20_core::{
             action_builder::{ActionBuilder, ActionBuilderState},
             targeting::{TargetInstance, TargetingContext, TargetingError, TargetingKind},
         },
-        activity::Activity,
+        activity::{Activity, ActivityState},
         d20::{AdvantageType, D20Check, D20CheckDC, D20CheckOutcome, RollMode},
         id::{ActionId, ActionVariantId},
         modifier::{FlatModifiable, Modifiable, ModifierSource},
         range::Range,
         resource::{ResourceAmountMap, ResourceMap},
+        time::TurnBoundary,
     },
     engine::{
         action_prompt::{ActionData, ActionPromptKind},
@@ -235,6 +236,14 @@ impl ActionBarWindow {
                     CallbackResult::None
                 }
 
+                EventKind::TurnBoundary {
+                    entity: event_entity,
+                    boundary,
+                } if event_entity.id() == entity && *boundary == TurnBoundary::Start => {
+                    flag.store(true, Ordering::Relaxed);
+                    CallbackResult::None
+                }
+
                 _ => CallbackResult::None,
             }),
             ListenerSource::Other,
@@ -271,6 +280,13 @@ impl ActionBarWindow {
                 return true;
             }
         }
+
+        if systems::helpers::get_component::<ActivityState>(&game_state.world, self.actor())
+            .is_acting()
+        {
+            return true;
+        }
+
         false
     }
 
