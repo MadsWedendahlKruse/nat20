@@ -89,13 +89,15 @@ impl Scenario {
         }
     }
 
+    #[track_caller]
     pub fn entity_identifier(&self, handle: &str) -> EntityIdentifier {
         self.creatures
             .get(handle)
             .cloned()
-            .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
+            .expect("No creature with handle {handle} in scenario")
     }
 
+    #[track_caller]
     pub fn entity(&self, handle: &str) -> Entity {
         self.entity_identifier(handle).id()
     }
@@ -112,11 +114,7 @@ impl Scenario {
         }
 
         let builder = CreatureBuilder::new(&template);
-        ScenarioCreatureBuilder {
-            scenario: self,
-            handle,
-            builder,
-        }
+        ScenarioCreatureBuilder::new(self, handle, builder)
     }
 
     pub fn encounter<'s>(&'s mut self) -> ScenarioEncounterBuilder<'s> {
@@ -230,9 +228,23 @@ pub struct ScenarioCreatureBuilder<'s> {
     scenario: &'s mut Scenario,
     handle: String,
     builder: CreatureBuilder,
+    spawned: bool,
 }
 
-impl ScenarioCreatureBuilder<'_> {
+impl<'s> ScenarioCreatureBuilder<'s> {
+    pub fn new(
+        scenario: &'s mut Scenario,
+        handle: impl Into<String>,
+        builder: CreatureBuilder,
+    ) -> Self {
+        Self {
+            scenario,
+            handle: handle.into(),
+            builder,
+            spawned: false,
+        }
+    }
+
     pub fn level(mut self, level: u8) -> Self {
         self.builder.level(level);
         self
@@ -250,7 +262,21 @@ impl ScenarioCreatureBuilder<'_> {
 
     pub fn spawn(mut self) {
         let creature = self.builder.spawn(&mut self.scenario.game_state);
-        self.scenario.creatures.insert(self.handle, creature);
+        self.scenario
+            .creatures
+            .insert(self.handle.clone(), creature);
+        self.spawned = true;
+    }
+}
+
+impl Drop for ScenarioCreatureBuilder<'_> {
+    fn drop(&mut self) {
+        if !self.spawned {
+            panic!(
+                "ScenarioCreatureBuilder for handle {} was dropped without calling spawn()",
+                self.handle
+            );
+        }
     }
 }
 
@@ -441,10 +467,12 @@ pub struct ScenarioProbe<'s> {
 }
 
 impl ScenarioProbe<'_> {
+    #[track_caller]
     fn creature(&self) -> EntityIdentifier {
         self.scenario.entity_identifier(&self.handle)
     }
 
+    #[track_caller]
     fn entity(&self) -> Entity {
         self.scenario.entity(&self.handle)
     }

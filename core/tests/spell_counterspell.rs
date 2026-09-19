@@ -174,7 +174,7 @@ fn multiple_wizards_scenario(con_saves: &[D20CheckOutcome]) -> Scenario {
 #[case([D20CheckOutcome::Failure, D20CheckOutcome::Success])]
 #[case([D20CheckOutcome::Failure, D20CheckOutcome::Failure])]
 #[case([D20CheckOutcome::Success, D20CheckOutcome::Failure])]
-fn double_counterspell(#[case] con_saves: [D20CheckOutcome; 2]) {
+fn counterspelling_counterspell(#[case] con_saves: [D20CheckOutcome; 2]) {
     // Spawn two wizards that both know counterspell
     let mut scenario = multiple_wizards_scenario(&con_saves);
 
@@ -228,4 +228,63 @@ fn double_counterspell(#[case] con_saves: [D20CheckOutcome; 2]) {
         .actor("wizard1")
         .action_performed("action.fireball")
         .assert_event_count(fireball_was_cast as usize);
+}
+
+#[rstest]
+#[case(D20CheckOutcome::Success)]
+#[case(D20CheckOutcome::Failure)]
+fn multiple_counterspell_same_target(#[case] target_con_save: D20CheckOutcome) {
+    let mut scenario = Scenario::new();
+    // Spawn two wizards that will attempt to counterspell the warlock's spell
+    scenario
+        .spawn("wizard1", "hero.wizard")
+        .level(5)
+        .position([1.0, 0.0, 0.0], true)
+        .spawn();
+    scenario
+        .spawn("wizard2", "hero.wizard")
+        .level(5)
+        .position([1.0, 0.0, 1.0], true)
+        .spawn();
+    scenario
+        .spawn("warlock", "hero.warlock")
+        .level(5)
+        .position([-1.0, 0.0, 0.0], true)
+        .spawn();
+
+    scenario.probe("warlock").d20_force_outcome(
+        D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Constitution)),
+        target_con_save,
+    );
+
+    // Warlock casts a spell at Wizard 1
+    scenario
+        .act("warlock", "action.eldritch_blast")
+        .target_entity("wizard1")
+        .perform();
+
+    // Both wizards react with counterspell
+    scenario
+        .react("wizard1")
+        .option_id("action.counterspell")
+        .perform();
+    scenario
+        .react("wizard2")
+        .option_id("action.counterspell")
+        .perform();
+
+    let warlock_spell_went_through = target_con_save.is_success();
+    scenario
+        .event_filter()
+        .actor("warlock")
+        .action_performed("action.eldritch_blast")
+        .assert_event_count(warlock_spell_went_through as usize);
+
+    for wizard in ["wizard1", "wizard2"] {
+        scenario
+            .event_filter()
+            .actor(wizard)
+            .action_performed("action.counterspell")
+            .assert_event_count(1);
+    }
 }
