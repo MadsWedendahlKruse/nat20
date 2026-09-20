@@ -46,7 +46,7 @@ impl Spawner {
         let entity = (self.spawn_fn)(game_state, self.current_level, id);
         self.spawned_entity = Some(entity.id());
         // Ensure all resources are fully recharged
-        systems::time::on_rest_end(&mut game_state.world, &[entity.id()], &RestKind::Long);
+        systems::time::on_rest_end(game_state, &[entity.id()], &RestKind::Long);
         entity
     }
 }

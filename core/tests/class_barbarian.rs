@@ -13,6 +13,7 @@ use nat20_core::{
         skill::Skill,
         time::TimeMode,
     },
+    systems::time::RestKind,
     test_utils::scenario::{Operator, Scenario},
 };
 use rstest::rstest;
@@ -937,4 +938,107 @@ fn brutal_strike_sundering_blow() {
             }
         );
     }
+}
+
+fn relentless_rage_scenario(level: u8, outcome: D20CheckOutcome) -> Scenario {
+    let mut scenario = barbarian_scenario(level);
+    scenario.probe("barbarian").d20_force_outcome(
+        D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Constitution)),
+        outcome,
+    );
+    scenario
+}
+
+fn assert_saves_at_dc(scenario: &Scenario, dc: i32, count: usize) {
+    scenario
+        .event_filter()
+        .actor("barbarian")
+        .d20_dc(
+            D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Constitution)),
+            dc,
+        )
+        .assert_event_count(count);
+}
+
+#[test]
+fn relentless_rage_successful_save() {
+    let mut scenario = relentless_rage_scenario(11, D20CheckOutcome::Success);
+    enter_rage(&mut scenario);
+
+    scenario.probe("barbarian").kill();
+
+    // Healed to twice the barbarian level
+    scenario
+        .probe("barbarian")
+        .assert_hp(Operator::Equal(22))
+        // Still raging
+        .assert_effect("effect.barbarian.rage");
+
+    assert!(scenario.probe("barbarian").is_alive());
+    assert_saves_at_dc(&scenario, 10, 1);
+}
+
+#[test]
+fn relentless_rage_failed_save() {
+    let mut scenario = relentless_rage_scenario(11, D20CheckOutcome::Failure);
+    enter_rage(&mut scenario);
+
+    scenario.probe("barbarian").kill();
+
+    scenario
+        .probe("barbarian")
+        .assert_hp(Operator::Equal(0))
+        // Dead, so no rage
+        .assert_no_effect("effect.barbarian.rage");
+
+    assert!(!scenario.probe("barbarian").is_alive());
+    assert_saves_at_dc(&scenario, 10, 1);
+}
+
+#[test]
+fn relentless_rage_no_rage() {
+    let mut scenario = relentless_rage_scenario(11, D20CheckOutcome::Success);
+
+    scenario.probe("barbarian").kill();
+
+    scenario.probe("barbarian").assert_hp(Operator::Equal(0));
+    assert!(!scenario.probe("barbarian").is_alive());
+
+    // No save is even offered without Rage
+    assert_saves_at_dc(&scenario, 10, 0);
+}
+
+#[test]
+fn relentless_rage_dc_increase() {
+    let mut scenario = relentless_rage_scenario(11, D20CheckOutcome::Success);
+    enter_rage(&mut scenario);
+
+    scenario.probe("barbarian").kill();
+    scenario.probe("barbarian").kill();
+
+    scenario
+        .probe("barbarian")
+        .assert_hp(Operator::Equal(22))
+        .assert_effect("effect.barbarian.rage");
+
+    // DC increases by 5 after each use
+    assert_saves_at_dc(&scenario, 10, 1);
+    assert_saves_at_dc(&scenario, 15, 1);
+}
+
+#[rstest]
+fn relentless_rage_dc_reset(#[values(RestKind::Short, RestKind::Long)] kind: RestKind) {
+    let mut scenario = relentless_rage_scenario(11, D20CheckOutcome::Success);
+    enter_rage(&mut scenario);
+
+    scenario.probe("barbarian").kill();
+    assert_saves_at_dc(&scenario, 10, 1);
+
+    scenario.probe("barbarian").rest(kind);
+
+    scenario.probe("barbarian").kill();
+
+    // Rest resets the DC to 10
+    assert_saves_at_dc(&scenario, 10, 2);
+    assert_saves_at_dc(&scenario, 15, 0);
 }

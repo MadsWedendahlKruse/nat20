@@ -16,6 +16,7 @@ use crate::{
     engine::{action_prompt::ActionData, event::Event, game_state::GameState},
     registry::registry::ScriptsRegistry,
     scripts::{script::ScriptError, script_engine::SCRIPT_ENGINE},
+    systems::time::RestKind,
 };
 
 // TODO: Since we only have single languauge support, do we still need all these
@@ -390,6 +391,41 @@ pub fn evaluate_death_hook(
         error!(
             "Error evaluating death hook script {:?} for entity {:?}: {:?}",
             death_hook, victim, err
+        );
+    }
+}
+
+pub fn evaluate_pre_death_hook(
+    script_id: &ScriptId,
+    game_state: &mut GameState,
+    victim: Entity,
+    killer: Option<Entity>,
+    applier: Option<Entity>,
+) {
+    let script = ScriptsRegistry::get(script_id)
+        .unwrap_or_else(|| panic!("Pre-death hook script not found in registry: {:?}", script_id));
+    if let Err(err) =
+        SCRIPT_ENGINE.evaluate_pre_death_hook(script, game_state, victim, killer, applier)
+    {
+        error!(
+            "Error evaluating pre-death hook script {:?} for entity {:?}: {:?}",
+            script_id, victim, err
+        );
+    }
+}
+
+pub fn evaluate_rest_hook(
+    script_id: &ScriptId,
+    game_state: &mut GameState,
+    entity: Entity,
+    kind: &RestKind,
+) {
+    let script = ScriptsRegistry::get(script_id)
+        .unwrap_or_else(|| panic!("Rest hook script not found in registry: {:?}", script_id));
+    if let Err(err) = SCRIPT_ENGINE.evaluate_rest_hook(script, game_state, entity, kind) {
+        error!(
+            "Error evaluating rest hook script {:?} for entity {:?}: {:?}",
+            script_id, entity, err
         );
     }
 }

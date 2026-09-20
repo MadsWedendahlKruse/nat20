@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, str::FromStr};
 
 use hecs::{Entity, World};
 use mlua::{
-    FromLua, Function, Lua, MetaMethod, Table, UserData, UserDataFields, UserDataMethods,
+    FromLua, Function, IntoLua, Lua, MetaMethod, Table, UserData, UserDataFields, UserDataMethods,
     Value::{self},
     prelude::{LuaError, LuaResult},
 };
@@ -36,6 +36,8 @@ use crate::{
             ModifierResult, ModifierSource,
         },
         resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
+        saving_throw::SavingThrowKind,
+        scratchpad::{ScratchValue, Scratchpad},
         speed::Speed,
         time::{TimeDuration, TurnBoundary},
     },
@@ -59,7 +61,7 @@ use crate::{
 
 /// `Entity` is owned by hecs, so to implement `UserData` for it we need to wrap
 /// it in a struct that we own
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptEntity {
     pub id: u64,
 }
@@ -513,6 +515,28 @@ impl EvaluableWithoutVariables for ModifierTable {
             map.add_modifier(source.clone(), value);
         }
         Ok(map)
+    }
+}
+
+fn parse_modifier_map(
+    table: Table,
+    entity: ScriptEntity,
+    with_variables: bool,
+) -> Result<ModifierMap, LuaError> {
+    let modifier_table = parse_modifier_table(table)?;
+    if with_variables {
+        modifier_table
+            .evaluate(
+                &World::default(),
+                entity.into(),
+                &ActionContext::default(),
+                &PARSER_VARIABLES,
+            )
+            .map_err(|e| LuaError::RuntimeError(format!("Failed to evaluate DC map: {e}")))
+    } else {
+        modifier_table
+            .evaluate_without_variables()
+            .map_err(|e| LuaError::RuntimeError(format!("Failed to evaluate DC map: {e}")))
     }
 }
 
@@ -1058,18 +1082,7 @@ impl UserData for GameState {
             |_, this, (target, amount): (ScriptEntity, Table)| {
                 let target: Entity = target.into();
 
-                let healing_table = parse_modifier_table(amount)?;
-
-                let healing_map = healing_table
-                    .evaluate(
-                        &this.world,
-                        target,
-                        &ActionContext::default(),
-                        &PARSER_VARIABLES,
-                    )
-                    .map_err(|e| {
-                        LuaError::RuntimeError(format!("Failed to evaluate healing amount: {e}"))
-                    })?;
+                let healing_map = parse_modifier_map(amount, target.into(), true)?;
 
                 let healing = healing_map.evaluate();
 
@@ -1086,6 +1099,88 @@ impl UserData for GameState {
 
                 this.process_event(event);
 
+                Ok(())
+            },
+        );
+
+        methods.add_method_mut(
+            "saving_throw",
+            |lua, this, (entity, kind, dc, callback): (ScriptEntity, String, Table, Function)| {
+                let saving_throw = SavingThrowKind::from_str(&kind).map_err(|e| {
+                    LuaError::RuntimeError(format!("Invalid saving throw kind '{kind}': {e}"))
+                })?;
+                let dc_map = parse_modifier_map(dc, entity.into(), true)?;
+
+                let dc = D20CheckDC::SavingThrow {
+                    saving_throw,
+                    dc: dc_map.evaluate(),
+                };
+
+                let event = systems::d20::check(this, entity.into(), &dc);
+                let EventKind::D20CheckPerformed { result, .. } = &event.kind else {
+                    unreachable!("systems::d20::check always produces a D20CheckPerformed");
+                };
+                let result = result.clone();
+                let success = result.is_success(&dc);
+
+                // Logged first so the event log reads save-then-consequences
+                this.process_event(event);
+
+                lua.scope(|scope| {
+                    let game_state = scope.create_userdata_ref_mut(this)?;
+                    callback.call::<()>((game_state, success, result.clone()))
+                })
+            },
+        );
+
+        // -- Scratchpad --
+        methods.add_method(
+            "scratchpad_get",
+            |lua, this, (entity, key): (ScriptEntity, String)| {
+                let scratchpad =
+                    systems::helpers::get_component::<Scratchpad>(&this.world, entity.into());
+                match scratchpad.get_scratch_value(&key) {
+                    Some(ScratchValue::Bool(value)) => value.into_lua(lua),
+                    Some(ScratchValue::I32(value)) => value.into_lua(lua),
+                    Some(ScratchValue::F32(value)) => value.into_lua(lua),
+                    Some(ScratchValue::String(value)) => value.clone().into_lua(lua),
+                    None => Ok(Value::Nil),
+                }
+            },
+        );
+
+        methods.add_method_mut(
+            "scratchpad_set",
+            |_, this, (entity, key, value): (ScriptEntity, String, Value)| {
+                let scratchpad = systems::helpers::get_component_mut::<Scratchpad>(
+                    &mut this.world,
+                    entity.into(),
+                );
+
+                match value {
+                    Value::Boolean(value) => scratchpad.insert::<bool>(key.clone(), value.into()),
+                    Value::Integer(value) => scratchpad.insert::<i32>(key.clone(), value as i32),
+                    Value::Number(value) => scratchpad.insert::<f32>(key.clone(), value as f32),
+                    Value::String(value) => {
+                        scratchpad.insert::<String>(key.clone(), value.to_str()?.to_string())
+                    }
+                    other => {
+                        return Err(LuaError::RuntimeError(format!(
+                            "Unsupported scratchpad value type: {}",
+                            other.type_name()
+                        )));
+                    }
+                }
+
+                Ok(())
+            },
+        );
+
+        methods.add_method_mut(
+            "scratchpad_clear",
+            |_, this, (entity, key): (ScriptEntity, String)| {
+                systems::helpers::get_component_mut::<Scratchpad>(&mut this.world, entity.into())
+                    .remove(&key);
                 Ok(())
             },
         );

@@ -23,8 +23,8 @@ use crate::{
             hooks::{
                 ActionHook, ActionResultHook, ActionUsabilityHook, ArmorClassHook, AttackedHook,
                 D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
-                PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, SpeedHook,
-                TurnStartHook,
+                PostDamageMitigationHook, PreDamageMitigationHook, PreDeathHook, ResourceCostHook,
+                RestHook, SpeedHook, TurnStartHook,
             },
         },
         health::hit_points::{HitPoints, TemporaryHitPoints},
@@ -58,7 +58,7 @@ use crate::{
         },
     },
     scripts::script::ScriptFunction,
-    systems::{self},
+    systems::{self, time::RestKind},
 };
 
 // TODO: Should this be it's own time module?
@@ -143,7 +143,11 @@ pub struct EffectDefinition {
     #[serde(default)]
     pub on_action_usability: Vec<ActionUsabilityHookDefinition>,
     #[serde(default)]
+    pub pre_death: Vec<PreDeathHookDefinition>,
+    #[serde(default)]
     pub on_death: Vec<DeathHookDefinition>,
+    #[serde(default)]
+    pub on_rest: Vec<RestHookDefinition>,
     #[serde(default)]
     pub on_turn_start: Vec<TurnStartHookDefinition>,
     #[serde(default)]
@@ -332,11 +336,27 @@ impl From<EffectDefinition> for Effect {
             }
         }
 
+        // Build pre_death hooks
+        {
+            if !definition.pre_death.is_empty() {
+                let hooks = collect_effect_hooks(&definition.pre_death, &effect_id);
+                effect.pre_death = Some(PreDeathHookDefinition::combine_hooks(hooks));
+            }
+        }
+
         // Build on_death hooks
         {
             if !definition.on_death.is_empty() {
                 let hooks = collect_effect_hooks(&definition.on_death, &effect_id);
                 effect.on_death = Some(DeathHookDefinition::combine_hooks(hooks));
+            }
+        }
+
+        // Build on_rest hooks
+        {
+            if !definition.on_rest.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_rest, &effect_id);
+                effect.on_rest = Some(RestHookDefinition::combine_hooks(hooks));
             }
         }
 
@@ -451,12 +471,32 @@ impl RegistryReferenceCollector for EffectDefinition {
                 }
             }
         }
+        for hook in &self.pre_death {
+            match hook {
+                PreDeathHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::PreDeathHook,
+                    ));
+                }
+            }
+        }
         for hook in &self.on_death {
             match hook {
                 DeathHookDefinition::Script { script } => {
                     collector.add(RegistryReference::Script(
                         script.clone(),
                         ScriptFunction::DeathHook,
+                    ));
+                }
+            }
+        }
+        for hook in &self.on_rest {
+            match hook {
+                RestHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::RestHook,
                     ));
                 }
             }
@@ -1432,6 +1472,76 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
                   applier: Option<Entity>| {
                 for hook in &hooks {
                     hook(game_state, victim, killer, applier);
+                }
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum PreDeathHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<PreDeathHook> for PreDeathHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> PreDeathHook {
+        match self {
+            PreDeathHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &mut GameState,
+                          victim: Entity,
+                          killer: Option<Entity>,
+                          applier: Option<Entity>| {
+                        systems::scripts::evaluate_pre_death_hook(
+                            &script_id, game_state, victim, killer, applier,
+                        );
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<PreDeathHook>) -> PreDeathHook {
+        Arc::new(
+            move |game_state: &mut GameState,
+                  victim: Entity,
+                  killer: Option<Entity>,
+                  applier: Option<Entity>| {
+                for hook in &hooks {
+                    hook(game_state, victim, killer, applier);
+                }
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum RestHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<RestHook> for RestHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> RestHook {
+        match self {
+            RestHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &mut GameState, entity: Entity, kind: &RestKind| {
+                        systems::scripts::evaluate_rest_hook(&script_id, game_state, entity, kind);
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<RestHook>) -> RestHook {
+        Arc::new(
+            move |game_state: &mut GameState, entity: Entity, kind: &RestKind| {
+                for hook in &hooks {
+                    hook(game_state, entity, kind);
                 }
             },
         )

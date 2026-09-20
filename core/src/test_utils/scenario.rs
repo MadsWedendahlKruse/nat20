@@ -38,7 +38,7 @@ use crate::{
         game_state::GameState,
     },
     registry::registry::ItemsRegistry,
-    systems::{self},
+    systems::{self, time::RestKind},
     test_utils::{creature_builder::CreatureBuilder, fixtures},
 };
 
@@ -586,6 +586,19 @@ impl ScenarioProbe<'_> {
 
     pub fn kill(&mut self) -> &mut Self {
         self.damage(1_000_000, DamageType::default())
+    }
+
+    #[track_caller]
+    pub fn rest(&mut self, kind: RestKind) -> &mut Self {
+        let entity = self.entity();
+        let participants = vec![entity];
+
+        systems::time::start_rest(&mut self.scenario.game_state, participants.clone(), &kind)
+            .unwrap_or_else(|err| panic!("Failed to start {kind:?} rest: {err:?}"));
+        systems::time::finish_rest(&mut self.scenario.game_state, participants)
+            .unwrap_or_else(|err| panic!("Failed to finish {kind:?} rest: {err:?}"));
+
+        self
     }
 
     pub fn d20_check(&mut self, dc: &D20CheckDC) -> &mut Self {
@@ -1261,6 +1274,7 @@ impl ScenarioEventFilterBuilder<'_> {
             modifier: Some((source, value.into())),
             advantage: None,
             roll_mode: None,
+            dc: None,
         });
         self
     }
@@ -1276,6 +1290,7 @@ impl ScenarioEventFilterBuilder<'_> {
             modifier: None,
             advantage: Some((source, advantage_type)),
             roll_mode: None,
+            dc: None,
         });
         self
     }
@@ -1286,6 +1301,18 @@ impl ScenarioEventFilterBuilder<'_> {
             modifier: None,
             advantage: None,
             roll_mode: Some(roll_mode),
+            dc: None,
+        });
+        self
+    }
+
+    pub fn d20_dc(mut self, kind: D20CheckKind, dc: i32) -> Self {
+        self.kind = Some(EventFilterKind::D20Check {
+            kind,
+            modifier: None,
+            advantage: None,
+            roll_mode: None,
+            dc: Some(dc),
         });
         self
     }
@@ -1422,6 +1449,7 @@ pub enum EventFilterKind {
         modifier: Option<(ModifierSource, ModifierKind)>,
         advantage: Option<(ModifierSource, AdvantageType)>,
         roll_mode: Option<RollMode>,
+        dc: Option<i32>,
     },
     DamageRoll {
         damage: DamageComponent,
@@ -1458,10 +1486,17 @@ impl EventFilterKind {
                     modifier,
                     advantage,
                     roll_mode,
+                    dc: expected_dc,
                 },
                 EventKind::D20CheckResolved { result, dc, .. },
             ) => {
                 if *kind != dc.kind() {
+                    return false;
+                }
+
+                if let Some(expected_dc) = expected_dc
+                    && dc.total() != *expected_dc
+                {
                     return false;
                 }
 

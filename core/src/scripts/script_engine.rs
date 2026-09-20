@@ -63,6 +63,7 @@ use crate::{
         script::{Script, ScriptError, ScriptFunction},
         script_api::ScriptEntity,
     },
+    systems::time::RestKind,
 };
 
 pub static SCRIPT_ENGINE: LazyLock<ScriptEngine> = LazyLock::new(ScriptEngine::new);
@@ -541,6 +542,54 @@ impl ScriptEngine {
                     victim,
                     killer.map(ScriptEntity::from),
                     applier.map(ScriptEntity::from),
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_pre_death_hook(
+        &self,
+        script: &Script,
+        game_state: &mut GameState,
+        victim: Entity,
+        killer: Option<Entity>,
+        applier: Option<Entity>,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::PreDeathHook)?;
+        let victim = self
+            .lua
+            .create_userdata(ScriptEntity::from(victim))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref_mut(game_state)?,
+                    victim,
+                    killer.map(ScriptEntity::from),
+                    applier.map(ScriptEntity::from),
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_rest_hook(
+        &self,
+        script: &Script,
+        game_state: &mut GameState,
+        entity: Entity,
+        kind: &RestKind,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::RestHook)?;
+        let ent = self
+            .lua
+            .create_userdata(ScriptEntity::from(entity))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref_mut(game_state)?,
+                    ent,
+                    kind.as_str(),
                 ))
             })
             .map_err(Self::runtime_error)

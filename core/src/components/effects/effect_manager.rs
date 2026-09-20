@@ -103,6 +103,20 @@ impl EffectManager {
             .collect()
     }
 
+    pub fn collect_hooks_with_applier<H: Clone>(
+        &self,
+        get_hook: impl Fn(&Effect) -> Option<&H>,
+    ) -> Vec<(H, Option<Entity>)> {
+        self.effects
+            .values()
+            .filter_map(|inst| {
+                get_hook(inst.effect())
+                    .cloned()
+                    .map(|hook| (hook, inst.applier))
+            })
+            .collect()
+    }
+
     pub fn apply(&self, state: &mut GameState, entity: Entity, ctx: Option<&ActionContext>) {
         self.for_each(
             |effect| effect.on_apply.as_ref(),

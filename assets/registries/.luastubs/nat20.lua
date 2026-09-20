@@ -327,6 +327,27 @@ function GameState:can_afford_resource(entity, resource_id, amount) end
 ---@param amount string|integer
 function GameState:add_resource(entity, resource_id, amount) end
 
+--- Note that the callback runs immediately and inline, before this function returns.
+---@param entity ScriptEntity
+---@param saving_throw string  -- "constitution" | "dexterity" | "death" | ...
+---@param dc table
+---@param callback fun(game_state: GameState, success: boolean, result: D20CheckResult)
+function GameState:saving_throw(entity, saving_throw, dc, callback) end
+
+---@param entity ScriptEntity
+---@param key string
+---@return boolean|integer|number|string|nil
+function GameState:scratchpad_get(entity, key) end
+
+---@param entity ScriptEntity
+---@param key string
+---@param value boolean|integer|number|string
+function GameState:scratchpad_set(entity, key, value) end
+
+---@param entity ScriptEntity
+---@param key string
+function GameState:scratchpad_clear(entity, key) end
+
 ---@param entity ScriptEntity
 ---@return integer
 function GameState:hp_current(entity) end
@@ -429,9 +450,11 @@ local TimeDuration = {}
 ---@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)
+---@alias PreDeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
 ---@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
 ---@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
 ---@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
+---@alias RestHookFn fun(game_state: GameState, entity: ScriptEntity, kind: "short"|"long")
 ---@alias SpeedHookFn fun(game_state: GameState, entity: ScriptEntity, speed: Speed)
 ---@alias TargetUsabilityFn fun(game_state: GameState, entity: ScriptEntity, target: ScriptEntity, action_id: string, context: ActionContext): string?
 ---@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)

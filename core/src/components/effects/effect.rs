@@ -19,8 +19,8 @@ use crate::{
         effects::hooks::{
             ActionHook, ActionResultHook, ActionUsabilityHook, ApplyEffectHook, ArmorClassHook,
             AttackedHook, D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
-            PostDamageMitigationHook, PreDamageMitigationHook, ResourceCostHook, SpeedHook,
-            TurnStartHook, UnapplyEffectHook,
+            PostDamageMitigationHook, PreDamageMitigationHook, PreDeathHook, ResourceCostHook,
+            RestHook, SpeedHook, TurnStartHook, UnapplyEffectHook,
         },
         id::{ActionId, EffectId, IdProvider, ScriptId, SpellId},
         modifier::ModifierSource,
@@ -78,7 +78,9 @@ pub struct Effect {
     pub on_action_usability: Option<ActionUsabilityHook>,
     pub pre_damage_mitigation: Option<PreDamageMitigationHook>,
     pub post_damage_mitigation: Option<PostDamageMitigationHook>,
+    pub pre_death: Option<PreDeathHook>,
     pub on_death: Option<DeathHook>,
+    pub on_rest: Option<RestHook>,
 }
 
 impl Effect {
@@ -111,7 +113,9 @@ impl Effect {
             on_action_usability: None,
             pre_damage_mitigation: None,
             post_damage_mitigation: None,
+            pre_death: None,
             on_death: None,
+            on_rest: None,
         }
     }
 

@@ -74,6 +74,15 @@ pub enum RestKind {
     Long,
 }
 
+impl RestKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RestKind::Short => "short",
+            RestKind::Long => "long",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum RestError {
     InCombat { entities: Vec<Entity> },
@@ -171,7 +180,7 @@ pub fn finish_rest(game_state: &mut GameState, participants: Vec<Entity>) -> Res
     });
     game_state.process_event(event);
 
-    on_rest_end(&mut game_state.world, &participants, first_kind);
+    on_rest_end(game_state, &participants, first_kind);
 
     Ok(())
 }
@@ -185,8 +194,9 @@ fn entities_in_combat(game_state: &GameState, participants: &[Entity]) -> Vec<En
         .collect()
 }
 
-pub fn on_rest_end(world: &mut World, participants: &[Entity], kind: &RestKind) {
+pub fn on_rest_end(game_state: &mut GameState, participants: &[Entity], kind: &RestKind) {
     for &entity in participants {
+        let world = &mut game_state.world;
         match kind {
             RestKind::Short => {
                 systems::resources::recharge(world, entity, &RechargeRule::Rest(RestKind::Short));
@@ -202,6 +212,13 @@ pub fn on_rest_end(world: &mut World, participants: &[Entity], kind: &RestKind) 
                 systems::health::heal_full(world, entity);
                 // TODO: Remove non-permanent effects?
             }
+        }
+
+        // Hooks run last so they see the recharged, healed-up creature
+        let rest_hooks = systems::effects::effects(&game_state.world, entity)
+            .collect_hooks(|effect| effect.on_rest.as_ref());
+        for hook in rest_hooks {
+            hook(game_state, entity, kind);
         }
     }
 }

@@ -99,6 +99,13 @@
                 "$ref": "#/definitions/ResourceCostHookDefinition"
             }
         },
+        "on_rest": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/RestHookDefinition"
+            }
+        },
         "on_saving_throw": {
             "type": "array",
             "default": [],
@@ -153,6 +160,13 @@
             "default": [],
             "items": {
                 "$ref": "#/definitions/DamageRollHookDefinition"
+            }
+        },
+        "pre_death": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/PreDeathHookDefinition"
             }
         },
         "replaces": {
@@ -850,6 +864,21 @@
                 }
             ]
         },
+        "PreDeathHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
+        },
         "ResourceCostHookDefinition": {
             "anyOf": [
                 {
@@ -869,6 +898,21 @@
             "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
+        },
+        "RestHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
+            ]
         },
         "SavingThrowHookDefinition": {
             "type": "object",

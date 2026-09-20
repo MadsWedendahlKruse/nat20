@@ -145,24 +145,27 @@ pub fn damage(
             return (None, None);
         };
 
+    let killer = action.map(|action| action.actor.id());
+
     if killed_by_damage {
+        let pre_death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
+            .collect_hooks_with_applier(|effect| effect.pre_death.as_ref());
+        for (hook, applier) in pre_death_hooks {
+            hook(game_state, target, killer, applier);
+        }
+    }
+
+    // Check if they actually died after applying pre-death hooks
+    let died = killed_by_damage && !is_alive(&game_state.world, target);
+
+    if died {
         if let Ok(death_policy) = game_state.world.get::<&DeathPolicy>(target) {
             new_life_state = Some(death_policy.state_when_killed());
         }
 
         // Trigger death hooks and remove effects that are not permanent
-        let killer = action.map(|action| action.actor.id());
-
         let death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
-            .values()
-            .filter_map(|instance| {
-                instance
-                    .effect()
-                    .on_death
-                    .clone()
-                    .map(|hook| (hook, instance.applier))
-            })
-            .collect();
+            .collect_hooks_with_applier(|effect| effect.on_death.as_ref());
         for (hook, applier) in death_hooks {
             hook(game_state, target, killer, applier);
         }
@@ -226,7 +229,7 @@ pub fn damage(
             target
         );
 
-        if killed_by_damage {
+        if died {
             debug!("Entity {:?} is dead; breaking concentration", target);
             systems::spells::break_concentration(game_state, target);
         } else {

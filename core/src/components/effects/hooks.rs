@@ -15,6 +15,7 @@ use crate::{
         speed::Speed,
     },
     engine::{action_prompt::ActionData, game_state::GameState},
+    systems::time::RestKind,
 };
 
 pub type ApplyEffectHook =
@@ -69,9 +70,14 @@ pub type PostDamageMitigationHook = Arc<
         ) + Send
         + Sync,
 >;
+/// Runs when an entity drops to 0 HP, but before they're actually declared dead.
+/// If anybody's got any objections, this is where to put them, e.g. Death Ward
+pub type PreDeathHook =
+    Arc<dyn Fn(&mut GameState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)
 pub type DeathHook =
     Arc<dyn Fn(&mut GameState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
+pub type RestHook = Arc<dyn Fn(&mut GameState, Entity, &RestKind) + Send + Sync>;
 pub type TurnStartHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 
 #[derive(Clone)]

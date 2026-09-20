@@ -31,6 +31,7 @@ use crate::{
         level::{ChallengeRating, CharacterLevels},
         resource::ResourceMap,
         saving_throw::SavingThrowSet,
+        scratchpad::Scratchpad,
         skill::SkillSet,
         species::{CreatureSize, CreatureType},
         speed::Speed,
@@ -90,6 +91,7 @@ from_world!(
         pub execution_mailbox: ExecutionMailbox,
         pub cooldowns: ActionCooldownMap,
         pub factions: FactionSet,
+        pub scratchpad: Scratchpad,
     }
 );
 
@@ -132,6 +134,7 @@ impl Character {
             execution_mailbox: None,
             cooldowns: HashMap::new(),
             factions: FactionSet::from([FactionId::new("nat20_core", "faction.players")]),
+            scratchpad: Scratchpad::default(),
         }
     }
 }
@@ -177,6 +180,7 @@ from_world!(
         pub weapon_proficiencies: WeaponProficiencyMap,
         pub armor_training: ArmorTrainingSet,
         pub factions: FactionSet,
+        pub scratchpad: Scratchpad,
     }
 );
 
@@ -222,6 +226,7 @@ impl Monster {
             weapon_proficiencies: WeaponProficiencyMap::new(),
             armor_training: ArmorTrainingSet::default(),
             factions,
+            scratchpad: Scratchpad::default(),
         }
     }
 }

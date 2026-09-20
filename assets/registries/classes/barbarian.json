@@ -67,6 +67,9 @@
         "9": [
             "nat20_core::effect.barbarian.brutal_strike"
         ],
+        "11": [
+            "nat20_core::effect.barbarian.relentless_rage"
+        ],
         "13": [
             "nat20_core::effect.barbarian.improved_brutal_strike"
         ]
