@@ -1,81 +1,30 @@
 use std::collections::BTreeMap;
 
 use imgui::{InputTextFlags, TreeNodeFlags};
+use nat20_core::components::scratchpad::{ScratchValue, Scratchable, Scratchpad};
 
 use crate::{
     render::ui::utils::{ImguiRenderableMut, ImguiRenderableMutWithContext},
     state::{self},
 };
 
-#[derive(Clone, Debug)]
-pub enum Setting {
-    Bool(bool),
-    I32(i32),
-    F32(f32),
-    U16(u16),
-    // add more as needed (String, Color, Keybind, etc.)
-}
-
-/// Sealed trait to map a Rust type `T` <-> a `Setting` variant.
-/// Implement once per supported type.
-pub trait SettingAccess: Sized {
-    fn as_ref(s: &Setting) -> Option<&Self>;
-    fn as_mut(s: &mut Setting) -> Option<&mut Self>;
-    fn into_setting(self) -> Setting;
-}
-
-// One-liner macro to implement the mapping.
-macro_rules! impl_setting_access {
-    ($t:ty, $variant:ident) => {
-        impl SettingAccess for $t {
-            #[inline]
-            fn as_ref(s: &Setting) -> Option<&Self> {
-                if let Setting::$variant(v) = s {
-                    Some(v)
-                } else {
-                    None
-                }
-            }
-            #[inline]
-            fn as_mut(s: &mut Setting) -> Option<&mut Self> {
-                if let Setting::$variant(v) = s {
-                    Some(v)
-                } else {
-                    None
-                }
-            }
-            #[inline]
-            fn into_setting(self) -> Setting {
-                Setting::$variant(self)
-            }
-        }
-    };
-}
-
-impl_setting_access!(bool, Bool);
-impl_setting_access!(i32, I32);
-impl_setting_access!(f32, F32);
-impl_setting_access!(u16, U16);
-
-impl ImguiRenderableMutWithContext<&str> for Setting {
+impl ImguiRenderableMutWithContext<&str> for ScratchValue {
     fn render_mut_with_context(&mut self, ui: &imgui::Ui, label: &str) {
         match self {
-            Setting::Bool(v) => ui.checkbox(label, v),
-            Setting::I32(v) => ui.input_scalar(label, v).build(),
-            Setting::F32(v) => ui.input_scalar(label, v).build(),
-            Setting::U16(v) => ui.input_scalar(label, v).build(),
+            ScratchValue::Bool(v) => ui.checkbox(label, v),
+            ScratchValue::I32(v) => ui.input_scalar(label, v).build(),
+            ScratchValue::F32(v) => ui.input_scalar(label, v).build(),
+            ScratchValue::String(v) => ui.input_text(label, v).build(),
         };
     }
 }
-
-type SettingKey = String;
 
 /// Pure view node for rendering; stores child folders + *full keys* of leaves.
 /// No references, so no borrow headaches.
 #[derive(Default)]
 struct ViewNode {
-    children: BTreeMap<SettingKey, ViewNode>,
-    leaves: Vec<SettingKey>, // keys that terminate here
+    children: BTreeMap<String, ViewNode>,
+    leaves: Vec<String>, // keys that terminate here
 }
 
 impl ViewNode {
@@ -115,7 +64,7 @@ impl ViewNode {
 fn render_view_tree(
     ui: &imgui::Ui,
     node: &ViewNode,
-    settings: &mut BTreeMap<SettingKey, Setting>,
+    settings: &mut Scratchpad,
     title: &str,
     root_path: &str,
     open_all: bool, // true when filtering
@@ -137,7 +86,7 @@ fn render_view_tree(
         }
         for key in &node.leaves {
             let _id = ui.push_id(key);
-            if let Some(s) = settings.get_mut(key) {
+            if let Some(s) = settings.get_scratch_value_mut(key) {
                 // Optional: highlight leaf label when search matches
                 let label = leaf_label(key);
                 s.render_mut_with_context(ui, label);
@@ -154,7 +103,7 @@ fn render_view_tree(
         }
         for key in &node.leaves {
             let _lid = ui.push_id(key);
-            if let Some(s) = settings.get_mut(key) {
+            if let Some(s) = settings.get_scratch_value_mut(key) {
                 s.render_mut_with_context(ui, leaf_label(key));
             }
         }
@@ -162,46 +111,46 @@ fn render_view_tree(
 }
 
 pub struct GuiSettings {
-    settings: BTreeMap<SettingKey, Setting>,
+    /// The underlying scratchpad storing all settings as key-value pairs.
+    /// Not the intended use of this component, but it works nicely here :)
+    settings: Scratchpad,
     view_tree: ViewNode,
     search: String,
 }
 
 impl GuiSettings {
-    pub fn new(settings: BTreeMap<SettingKey, Setting>) -> Self {
+    pub fn new(settings: BTreeMap<String, ScratchValue>) -> Self {
         let view_tree = ViewNode::new(settings.keys().map(String::as_str));
         Self {
-            settings,
+            settings: Scratchpad::new(settings),
             view_tree,
             search: String::new(),
         }
     }
 
     /// Borrow as the requested type, if the variant matches.
-    pub fn get<T: SettingAccess>(&self, key: &str) -> &T {
+    pub fn get<T: Scratchable>(&self, key: &str) -> &T {
         if !self.settings.contains_key(key) {
             panic!("setting '{}' does not exist", key);
         }
         self.settings
             .get(key)
-            .and_then(T::as_ref)
             .unwrap_or_else(|| panic!("setting '{}' is not of expected type", key))
     }
 
     /// Mutably borrow as the requested type, if the variant matches.
-    pub fn get_mut<T: SettingAccess>(&mut self, key: &str) -> &mut T {
+    pub fn get_mut<T: Scratchable>(&mut self, key: &str) -> &mut T {
         if !self.settings.contains_key(key) {
             panic!("setting '{}' does not exist", key);
         }
         self.settings
             .get_mut(key)
-            .and_then(T::as_mut)
             .unwrap_or_else(|| panic!("setting '{}' is not of expected type", key))
     }
 
     /// Set/overwrite the value with the appropriate enum variant.
-    pub fn set<T: SettingAccess>(&mut self, key: &str, value: T) {
-        self.settings.insert(key.to_string(), value.into_setting());
+    pub fn set<T: Scratchable>(&mut self, key: &str, value: T) {
+        self.settings.insert(key.to_string(), value);
         // (Optional) if you allow inserting new keys here, rebuild the tree:
         // self.view_tree = ViewNode::new(self.settings.keys().map(String::as_str));
     }
@@ -252,47 +201,47 @@ impl Default for GuiSettings {
         Self::new(BTreeMap::from([
             (
                 state::parameters::RENDER_IMGUI_ABOUT.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_IMGUI_METRICS.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_IMGUI_USER_GUIDE.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_IMGUI_DEMO.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_NAVIGATION_DEBUG.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_NAVIGATION_NAVMESH.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_CAMERA_DEBUG.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_GRID.to_string(),
-                Setting::Bool(true),
+                ScratchValue::Bool(true),
             ),
             (
                 state::parameters::RENDER_LINE_OF_SIGHT_DEBUG.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::RENDER_GAME_STATE_DEBUG.to_string(),
-                Setting::Bool(false),
+                ScratchValue::Bool(false),
             ),
             (
                 state::parameters::UPDATE_GAME_STATE.to_string(),
-                Setting::Bool(true),
+                ScratchValue::Bool(true),
             ),
         ]))
     }

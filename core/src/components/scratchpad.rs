@@ -12,6 +12,10 @@ pub struct Scratchpad {
 }
 
 impl Scratchpad {
+    pub fn new(values: BTreeMap<String, ScratchValue>) -> Self {
+        Self { values }
+    }
+
     pub fn get<T: Scratchable>(&self, key: &str) -> Option<&T> {
         self.values.get(key).and_then(T::as_ref)
     }
@@ -24,6 +28,10 @@ impl Scratchpad {
         self.values.get_mut(key).and_then(T::as_mut)
     }
 
+    pub fn get_scratch_value_mut(&mut self, key: &str) -> Option<&mut ScratchValue> {
+        self.values.get_mut(key)
+    }
+
     pub fn insert<T: Scratchable>(&mut self, key: String, value: T) {
         self.values.insert(key, value.into_value());
     }
@@ -34,6 +42,10 @@ impl Scratchpad {
 
     pub fn contains_key(&self, key: &str) -> bool {
         self.values.contains_key(key)
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.values.keys()
     }
 }
 
