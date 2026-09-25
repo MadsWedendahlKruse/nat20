@@ -17,7 +17,7 @@ use crate::{
         action_prompt::{ActionPrompt, ActionPromptKind},
         event::{CallbackResult, EncounterEvent, Event, EventCallback, EventKind, EventLog},
         game_state::GameState,
-        interaction::PromptScopeId,
+        prompt::PromptScopeId,
     },
     systems::{self},
 };

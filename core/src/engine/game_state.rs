@@ -23,7 +23,7 @@ use crate::{
             EventListener, EventLog, ListenerSource,
         },
         geometry::WorldGeometry,
-        interaction::{PendingEvent, PromptManager, PromptScope, PromptScopeId},
+        prompt::{PendingEvent, PromptManager, PromptScope, PromptScopeId},
     },
     systems::{
         self, actions::ActionUsabilityError, combat::CombatState, movement::MovementError,

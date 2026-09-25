@@ -25,7 +25,7 @@ use crate::{
         action_prompt::ActionData,
         event::{Event, EventKindTag},
         game_state::GameState,
-        interaction::PromptScopeId,
+        prompt::PromptScopeId,
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
     systems,
