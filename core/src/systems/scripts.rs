@@ -402,8 +402,12 @@ pub fn evaluate_pre_death_hook(
     killer: Option<Entity>,
     applier: Option<Entity>,
 ) {
-    let script = ScriptsRegistry::get(script_id)
-        .unwrap_or_else(|| panic!("Pre-death hook script not found in registry: {:?}", script_id));
+    let script = ScriptsRegistry::get(script_id).unwrap_or_else(|| {
+        panic!(
+            "Pre-death hook script not found in registry: {:?}",
+            script_id
+        )
+    });
     if let Err(err) =
         SCRIPT_ENGINE.evaluate_pre_death_hook(script, game_state, victim, killer, applier)
     {

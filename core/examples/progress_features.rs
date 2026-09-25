@@ -173,12 +173,18 @@ fn main() {
             up_to_date += 1;
             if show_all {
                 header(&mut printed);
-                println!("  implementation: up to date ({} files)", matched_files.len());
+                println!(
+                    "  implementation: up to date ({} files)",
+                    matched_files.len()
+                );
             }
         } else {
             incomplete += 1;
             header(&mut printed);
-            println!("  implementation: {} file(s) not linked:", missing_files.len());
+            println!(
+                "  implementation: {} file(s) not linked:",
+                missing_files.len()
+            );
             for file in &missing_files {
                 println!("    + {}", file.relative);
             }
@@ -464,7 +470,10 @@ fn parse_rows(markdown: &str) -> Vec<Row> {
         }
 
         let Some(header) = &columns else {
-            if cells.iter().any(|cell| FEATURE_COLUMNS.contains(&cell.as_str())) {
+            if cells
+                .iter()
+                .any(|cell| FEATURE_COLUMNS.contains(&cell.as_str()))
+            {
                 columns = Some(cells);
             }
             continue;

@@ -36,13 +36,16 @@ use crate::{
         proficiency::{Proficiency, ProficiencyLevel},
         resource::{ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         saving_throw::SavingThrowKind,
-        spells::spell::{ConcentrationTracker, SPELL_CASTING_ABILITIES},
+        spells::concentration::ConcentrationTracker,
     },
     registry::registry::{ClassesRegistry, SpellsRegistry},
     systems,
 };
 
 const BASE_SPELL_SAVE_DC: i32 = 8;
+
+pub const SPELL_CASTING_ABILITIES: &[Ability; 3] =
+    &[Ability::Intelligence, Ability::Wisdom, Ability::Charisma];
 
 /// A deterministic bounded set:
 /// - stable iteration order (insertion order)

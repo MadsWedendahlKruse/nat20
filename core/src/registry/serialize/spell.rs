@@ -11,9 +11,7 @@ use crate::{
     registry::{
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
-            action::{
-                ActionKindDefinition, ActionUsabilityDefinition, TargetUsabilityDefinition,
-            },
+            action::{ActionKindDefinition, ActionUsabilityDefinition, TargetUsabilityDefinition},
             reaction::ReactionTriggerDefinition,
             targeting::TargetingDefinition,
         },

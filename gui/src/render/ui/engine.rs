@@ -5,7 +5,7 @@ use nat20_core::{
     components::{
         d20::{D20CheckDC, D20CheckKind},
         id::EntityIdentifier,
-        spells::spell::ConcentrationInstance,
+        spells::concentration::ConcentrationInstance,
         time::TurnBoundary,
     },
     engine::{
@@ -13,7 +13,7 @@ use nat20_core::{
         event::{EncounterEvent, Event, EventKind, EventLog},
         game_state::GameState,
     },
-    systems::{self},
+    systems,
 };
 use strum::{Display, EnumIter};
 

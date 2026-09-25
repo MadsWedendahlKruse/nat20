@@ -223,7 +223,9 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                             }
                         }
 
-                        (LineOfSightTarget::Point(_), LineOfSightTarget::Entity(_entity)) => todo!(),
+                        (LineOfSightTarget::Point(_), LineOfSightTarget::Entity(_entity)) => {
+                            todo!()
+                        }
 
                         (
                             LineOfSightTarget::Point(from_point),

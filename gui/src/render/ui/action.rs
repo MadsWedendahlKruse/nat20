@@ -14,10 +14,11 @@ use nat20_core::{
         items::equipment::weapon::MELEE_RANGE_DEFAULT,
         modifier::FlatModifiable,
         resource::{RechargeRule, ResourceAmountMap},
-        spells::spell::ConcentrationError,
+        spells::concentration::ConcentrationError,
     },
     registry::registry::{ActionVariantsRegistry, SpellsRegistry},
-    systems::{self, actions::ActionUsabilityError, geometry::Displacement, time::RestKind},
+    systems,
+    systems::{actions::ActionUsabilityError, geometry::Displacement, time::RestKind},
 };
 use uom::si::{angle::degree, length::meter};
 

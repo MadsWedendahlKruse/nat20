@@ -33,7 +33,7 @@ pub enum ArmorType {
 #[derive(Default)]
 pub enum ArmorDexterityBonus {
     #[default]
-    Unlimited,   // No limit on Dexterity bonus
+    Unlimited, // No limit on Dexterity bonus
     Limited(u8), // Maximum Dexterity bonus allowed
 }
 
@@ -45,7 +45,6 @@ impl ArmorDexterityBonus {
         }
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArmorClass {

@@ -21,7 +21,7 @@ use crate::{
         effects::effect::EffectInstanceTemplate,
         id::{EffectId, EntityIdentifier},
         modifier::{ModifierKindResult, ModifierResult, ModifierSource},
-        spells::spell::{ConcentrationInstance, SpellFlag},
+        spells::{concentration::ConcentrationInstance, spell::SpellFlag},
     },
     engine::{
         action_prompt::ActionData,
@@ -29,8 +29,8 @@ use crate::{
         game_state::GameState,
     },
     registry::registry::SpellsRegistry,
+    systems,
     systems::{
-        self,
         effects::EffectApplicationResult,
         geometry::{Displacement, DisplacementTemplate},
     },

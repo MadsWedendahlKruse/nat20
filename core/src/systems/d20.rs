@@ -110,12 +110,8 @@ pub fn preview_attack_roll(
     target: Entity,
     check: &mut D20Check,
 ) {
-    systems::effects::effects(&game_state.world, target).on_attacked(
-        game_state,
-        target,
-        attacker,
-        check,
-    );
+    systems::effects::effects(&game_state.world, target)
+        .on_attacked(game_state, target, attacker, check);
 
     check.apply_pre_roll_hooks(game_state, attacker);
 }

@@ -13,7 +13,8 @@ use crate::{
         level_up::LevelUpPrompt,
         resource::{ResourceAmount, ResourceBudgetKind, ResourceMap},
         spells::{
-            spell::{ConcentrationError, ConcentrationInstance, SpellFlag},
+            concentration::{ConcentrationError, ConcentrationInstance},
+            spell::SpellFlag,
             spellbook::{ClassSpellcastingState, SpellSource, Spellbook, SpellbookError},
         },
     },

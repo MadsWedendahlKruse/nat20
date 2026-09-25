@@ -19,10 +19,7 @@ use crate::{
         id::{ActionId, ActionVariantId, EntityIdentifier, ResourceId},
         items::equipment::loadout::Loadout,
         resource::{RechargeRule, ResourceAmountMap},
-        spells::{
-            spell::{ConcentrationError, SpellFlag},
-            spellbook::Spellbook,
-        },
+        spells::{concentration::ConcentrationError, spell::SpellFlag, spellbook::Spellbook},
     },
     engine::{
         action_prompt::ActionData,
@@ -31,7 +28,8 @@ use crate::{
         interaction::InteractionScopeId,
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
-    systems::{self, geometry::RaycastFilter},
+    systems,
+    systems::geometry::RaycastFilter,
 };
 
 pub fn get_action(action_id: &ActionId) -> Option<&Action> {

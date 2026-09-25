@@ -17,7 +17,7 @@ use crate::{
         effects::effect::EffectInstanceId,
         health::life_state::LifeState,
         id::{ActionId, EntityIdentifier, ItemId},
-        spells::spell::ConcentrationInstance,
+        spells::concentration::ConcentrationInstance,
         time::TurnBoundary,
     },
     engine::{

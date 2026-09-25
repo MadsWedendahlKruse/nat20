@@ -28,7 +28,7 @@ use crate::{
         },
         resource::{ResourceAmountMap, ResourceBudgetKind, ResourceMap},
         skill::{Skill, SkillSet},
-        spells::{spell::ConcentrationInstance, spellbook::Spellbook},
+        spells::{concentration::ConcentrationInstance, spellbook::Spellbook},
         time::{TimeMode, TimeStep, TurnBoundary},
     },
     engine::{
@@ -38,7 +38,8 @@ use crate::{
         game_state::GameState,
     },
     registry::registry::ItemsRegistry,
-    systems::{self, time::RestKind},
+    systems,
+    systems::time::RestKind,
     test_utils::{creature_builder::CreatureBuilder, fixtures},
 };
 

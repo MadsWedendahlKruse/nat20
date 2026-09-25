@@ -75,7 +75,6 @@ impl fmt::Display for Skill {
     }
 }
 
-
 pub type SkillSet = D20CheckMap<Skill>;
 
 impl Default for SkillSet {

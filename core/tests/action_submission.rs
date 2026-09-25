@@ -19,7 +19,7 @@ use nat20_core::{
         health::life_state::LifeState,
         items::equipment::{slots::EquipmentSlot, weapon::WeaponKind},
         resource::{RechargeRule, ResourceAmount, ResourceAmountMap},
-        spells::{spell::ConcentrationError, spellbook::SpellSource},
+        spells::{concentration::ConcentrationError, spellbook::SpellSource},
         time::TurnBoundary,
     },
     engine::{
