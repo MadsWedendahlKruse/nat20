@@ -16,23 +16,23 @@ mod tests {
 
     #[test]
     fn character_armor_class_no_dex() {
-        let mut game_state = fixtures::engine::game_state();
-        let character = game_state.world.spawn(Character::default());
+        let mut engine_state = fixtures::engine::engine_state();
+        let character = engine_state.world.spawn(Character::default());
 
         let _ = systems::loadout::equip(
-            &mut game_state,
+            &mut engine_state,
             character,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.chainmail"))
                 .unwrap()
                 .clone(),
         );
 
-        let armor_class = systems::loadout::armor_class(&game_state, character);
+        let armor_class = systems::loadout::armor_class(&engine_state, character);
         assert_eq!(16, armor_class.total());
         println!("{:?}", armor_class);
 
         // Check that the heavy armor gives stealth disadvantage
-        let effects = systems::effects::effects(&game_state.world, character)
+        let effects = systems::effects::effects(&engine_state.world, character)
             .values()
             .cloned()
             .collect::<Vec<_>>();
@@ -45,12 +45,12 @@ mod tests {
     #[test]
     fn character_armor_class_dex_and_bonus() {
         // Create a character with a Dexterity modifier of +3
-        let mut game_state = fixtures::engine::game_state();
-        let character = game_state.world.spawn(Character::default());
+        let mut engine_state = fixtures::engine::engine_state();
+        let character = engine_state.world.spawn(Character::default());
 
         {
             let mut ability_scores = systems::helpers::get_component_mut::<AbilityScoreMap>(
-                &mut game_state.world,
+                &mut engine_state.world,
                 character,
             );
             ability_scores.set(
@@ -65,7 +65,7 @@ mod tests {
         }
 
         let _ = systems::loadout::equip(
-            &mut game_state,
+            &mut engine_state,
             character,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.studded_leather_armor"))
                 .unwrap()
@@ -73,7 +73,7 @@ mod tests {
         );
 
         {
-            let armor_class = systems::loadout::armor_class(&game_state, character);
+            let armor_class = systems::loadout::armor_class(&engine_state, character);
             // Armour Class
             // Dex: 15 + 2 (item) = 17
             // 12 (armor) + 3 (Dex mod) = 15
@@ -83,8 +83,8 @@ mod tests {
 
         // Un-equip the armor
         let armor =
-            systems::loadout::unequip(&mut game_state, character, &EquipmentSlot::Armor).unwrap();
-        let armor_class = systems::loadout::armor_class(&game_state, character);
+            systems::loadout::unequip(&mut engine_state, character, &EquipmentSlot::Armor).unwrap();
+        let armor_class = systems::loadout::armor_class(&engine_state, character);
         println!("Un-equipped {:?}", armor);
         // Check if the armor class is updated
         println!("{:?}", armor_class);

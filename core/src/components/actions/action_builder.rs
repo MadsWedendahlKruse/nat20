@@ -18,7 +18,7 @@ use crate::{
             ActionData, ActionDecision, ActionDecisionKind, ActionPromptId, ActionPromptKind,
         },
         event::Event,
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems::{
         self,
@@ -32,26 +32,26 @@ pub struct ActionBuilder {
 }
 
 impl ActionBuilder {
-    pub fn all(game_state: &GameState, entity: Entity) -> Self {
+    pub fn all(engine_state: &EngineState, entity: Entity) -> Self {
         Self::new(
-            game_state,
+            engine_state,
             entity,
-            systems::actions::all_actions(game_state, entity),
+            systems::actions::all_actions(engine_state, entity),
         )
     }
 
-    pub fn available(game_state: &GameState, entity: Entity) -> Self {
+    pub fn available(engine_state: &EngineState, entity: Entity) -> Self {
         Self::new(
-            game_state,
+            engine_state,
             entity,
-            systems::actions::available_actions(game_state, entity),
+            systems::actions::available_actions(engine_state, entity),
         )
     }
 
-    fn new(game_state: &GameState, entity: Entity, mut actions: ActionMap) -> Self {
-        if !systems::health::is_alive(&game_state.world, entity) {
+    fn new(engine_state: &EngineState, entity: Entity, mut actions: ActionMap) -> Self {
+        if !systems::health::is_alive(&engine_state.world, entity) {
             return Self {
-                actor: EntityIdentifier::from_world(&game_state.world, entity),
+                actor: EntityIdentifier::from_world(&engine_state.world, entity),
                 state: Err(ActionBuilderError::DeadActor),
             };
         }
@@ -66,7 +66,7 @@ impl ActionBuilder {
         });
 
         Self {
-            actor: EntityIdentifier::from_world(&game_state.world, entity),
+            actor: EntityIdentifier::from_world(&engine_state.world, entity),
             state: Ok(ActionBuilderState::Action { actions }),
         }
     }
@@ -83,11 +83,11 @@ impl ActionBuilder {
         self.state.as_mut()
     }
 
-    pub fn action(&mut self, game_state: &GameState, action_id: &ActionId) -> &mut Self {
+    pub fn action(&mut self, engine_state: &EngineState, action_id: &ActionId) -> &mut Self {
         let actor = self.actor.clone();
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Action { actions }) => {
-                Self::pick_action(&actor, game_state, actions, action_id)
+                Self::pick_action(&actor, engine_state, actions, action_id)
             }
             Ok(other) => Err(ActionBuilderError::InvalidStateTransition {
                 expected: "Action",
@@ -212,11 +212,11 @@ impl ActionBuilder {
         })
     }
 
-    pub fn target(&mut self, game_state: &mut GameState, target: TargetInstance) -> &mut Self {
+    pub fn target(&mut self, engine_state: &mut EngineState, target: TargetInstance) -> &mut Self {
         self.state = match &mut self.state {
             Ok(ActionBuilderState::Targets { action, .. }) => {
                 action.targets.push(target.clone());
-                match systems::movement::path_to_target(game_state, action) {
+                match systems::movement::path_to_target(engine_state, action) {
                     Err(reason) => Err(ActionBuilderError::InvalidTarget { target, reason }),
                     Ok(path_to_target) => Ok(ActionBuilderState::Targets {
                         action: action.clone(),
@@ -235,29 +235,29 @@ impl ActionBuilder {
 
     pub fn target_point(
         &mut self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         point: impl Into<Point3<f32>>,
     ) -> &mut Self {
-        self.target(game_state, TargetInstance::Point(point.into()))
+        self.target(engine_state, TargetInstance::Point(point.into()))
     }
 
-    pub fn target_entity(&mut self, game_state: &mut GameState, entity: Entity) -> &mut Self {
+    pub fn target_entity(&mut self, engine_state: &mut EngineState, entity: Entity) -> &mut Self {
         let target =
-            TargetInstance::entity(EntityIdentifier::from_world(&game_state.world, entity));
-        self.target(game_state, target)
+            TargetInstance::entity(EntityIdentifier::from_world(&engine_state.world, entity));
+        self.target(engine_state, target)
     }
 
     pub fn target_entity_point(
         &mut self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         entity: Entity,
         point_on_entity: impl Into<Point3<f32>>,
     ) -> &mut Self {
         let target = TargetInstance::Entity {
-            entity: EntityIdentifier::from_world(&game_state.world, entity),
+            entity: EntityIdentifier::from_world(&engine_state.world, entity),
             point_on_entity: Some(point_on_entity.into()),
         };
-        self.target(game_state, target)
+        self.target(engine_state, target)
     }
 
     pub fn remove_target(&mut self, target: &TargetInstance) -> &mut Self {
@@ -299,7 +299,7 @@ impl ActionBuilder {
         self
     }
 
-    pub fn build(&self, game_state: &mut GameState) -> Result<Activity, ActionBuilderError> {
+    pub fn build(&self, engine_state: &mut EngineState) -> Result<Activity, ActionBuilderError> {
         match &self.state {
             Ok(ActionBuilderState::Targets {
                 action,
@@ -308,7 +308,7 @@ impl ActionBuilder {
                 let decision_kind = ActionDecisionKind::Action {
                     action: action.clone(),
                 };
-                let decision = if let Some(prompt_id) = game_state
+                let decision = if let Some(prompt_id) = engine_state
                     .next_prompt_entity(self.actor.id())
                     .map(|prompt| prompt.id)
                 {
@@ -357,17 +357,17 @@ impl ActionBuilder {
         }
     }
 
-    pub fn perform(&self, game_state: &mut GameState) -> Result<(), ActionBuilderError> {
-        let activity = self.build(game_state)?;
-        game_state
+    pub fn perform(&self, engine_state: &mut EngineState) -> Result<(), ActionBuilderError> {
+        let activity = self.build(engine_state)?;
+        engine_state
             .submit_activity(activity)
             .map_err(ActionBuilderError::Activity)
     }
 
     /// Convenience method for performing an action and panicking if it returns an
     /// error, to reduce boilerplate in tests where the action is expected to succeed.
-    pub fn perform_ok(&self, game_state: &mut GameState) {
-        match self.perform(game_state) {
+    pub fn perform_ok(&self, engine_state: &mut EngineState) {
+        match self.perform(engine_state) {
             Ok(()) => (),
             Err(e) => panic!(
                 "Expected perform to succeed, but it returned error: {:#?}",
@@ -378,7 +378,7 @@ impl ActionBuilder {
 
     fn pick_action(
         actor: &EntityIdentifier,
-        game_state: &GameState,
+        engine_state: &EngineState,
         actions: &mut ActionMap,
         action_id: &ActionId,
     ) -> Result<ActionBuilderState, ActionBuilderError> {
@@ -402,7 +402,7 @@ impl ActionBuilder {
             }),
             _ => Self::pick_contexts(
                 actor,
-                &game_state.world,
+                &engine_state.world,
                 action_id,
                 None,
                 contexts_and_costs.clone(),
@@ -545,17 +545,17 @@ pub struct ReactionBuilder {
 }
 
 impl ReactionBuilder {
-    pub fn new(game_state: &GameState, entity: Entity) -> Self {
-        let actor = EntityIdentifier::from_world(&game_state.world, entity);
+    pub fn new(engine_state: &EngineState, entity: Entity) -> Self {
+        let actor = EntityIdentifier::from_world(&engine_state.world, entity);
 
-        if !systems::health::is_alive(&game_state.world, entity) {
+        if !systems::health::is_alive(&engine_state.world, entity) {
             return Self {
                 actor,
                 state: Err(ReactionBuilderError::DeadActor),
             };
         }
 
-        let Some(prompt) = game_state.next_prompt_entity(entity) else {
+        let Some(prompt) = engine_state.next_prompt_entity(entity) else {
             return Self {
                 actor,
                 state: Err(ReactionBuilderError::NoPrompt),
@@ -704,17 +704,17 @@ impl ReactionBuilder {
         }
     }
 
-    pub fn perform(&self, game_state: &mut GameState) -> Result<(), ReactionBuilderError> {
+    pub fn perform(&self, engine_state: &mut EngineState) -> Result<(), ReactionBuilderError> {
         let activity = self.build()?;
-        game_state
+        engine_state
             .submit_activity(activity)
             .map_err(ReactionBuilderError::Activity)
     }
 
     /// See `ActionBuilder::perform_ok`
     #[track_caller]
-    pub fn perform_ok(&self, game_state: &mut GameState) {
-        match self.perform(game_state) {
+    pub fn perform_ok(&self, engine_state: &mut EngineState) {
+        match self.perform(engine_state) {
             Ok(()) => (),
             Err(e) => panic!(
                 "Expected perform to succeed, but it returned error: {:#?}",
@@ -784,42 +784,42 @@ mod tests {
     };
 
     #[fixture]
-    fn game_state() -> GameState {
-        fixtures::engine::game_state()
+    fn engine_state() -> EngineState {
+        fixtures::engine::engine_state()
     }
 
     #[fixture]
-    fn game_state_fighter(mut game_state: GameState) -> (GameState, EntityIdentifier) {
+    fn engine_state_fighter(mut engine_state: EngineState) -> (EngineState, EntityIdentifier) {
         let fighter = CreatureBuilder::new("hero.fighter")
             .level(5)
-            .spawn(&mut game_state);
-        (game_state, fighter)
+            .spawn(&mut engine_state);
+        (engine_state, fighter)
     }
 
     #[rstest]
     fn action_builder_known_action_with_available_context_succeeds(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         let action_id = ActionId::new("nat20_core", "action.fighter.action_surge");
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .action(&game_state, &action_id)
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .action(&engine_state, &action_id)
+            .perform(&mut engine_state);
 
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
     }
 
     #[rstest]
     fn action_builder_unknown_action_returns_error(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         let bogus = ActionId::new("nat20_core", "action.does_not_exist");
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .action(&game_state, &bogus)
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .action(&engine_state, &bogus)
+            .perform(&mut engine_state);
 
         assert!(
             matches!(result, Err(ActionBuilderError::ActionNotFound(ref id)) if id == &bogus),
@@ -830,15 +830,15 @@ mod tests {
 
     #[rstest]
     fn action_builder_unavailable_action_returns_error(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         // Fighter doesn't know any spells, so this should return an ActionNotAvailable error, not ActionNotFound
         let action_id = ActionId::new("nat20_core", "spell.magic_missile");
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .action(&game_state, &action_id)
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .action(&engine_state, &action_id)
+            .perform(&mut engine_state);
 
         assert!(
             matches!(
@@ -854,14 +854,14 @@ mod tests {
     }
 
     #[rstest]
-    fn action_builder_wrong_state_returns_error(game_state_fighter: (GameState, EntityIdentifier)) {
-        let (mut game_state, fighter) = game_state_fighter;
+    fn action_builder_wrong_state_returns_error(engine_state_fighter: (EngineState, EntityIdentifier)) {
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         // Calling target() before action() should poison the builder with
         // an InvalidStateTransition error that surfaces at perform().
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .target(&mut game_state, TargetInstance::entity(fighter.clone()))
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .target(&mut engine_state, TargetInstance::entity(fighter.clone()))
+            .perform(&mut engine_state);
 
         assert!(
             matches!(
@@ -877,41 +877,41 @@ mod tests {
     }
 
     #[fixture]
-    fn game_state_wizard(mut game_state: GameState) -> (GameState, EntityIdentifier) {
+    fn engine_state_wizard(mut engine_state: EngineState) -> (EngineState, EntityIdentifier) {
         let wizard = CreatureBuilder::new("hero.wizard")
             .level(5)
-            .spawn(&mut game_state);
-        (game_state, wizard)
+            .spawn(&mut engine_state);
+        (engine_state, wizard)
     }
 
     #[rstest]
     fn action_builder_valid_context_index_succeeds(
-        game_state_wizard: (GameState, EntityIdentifier),
+        engine_state_wizard: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, wizard) = game_state_wizard;
+        let (mut engine_state, wizard) = engine_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state, wizard.id())
-            .action(&game_state, &action_id)
-            .context_index(&game_state.world, 0)
-            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, wizard.id())
+            .action(&engine_state, &action_id)
+            .context_index(&engine_state.world, 0)
+            .target(&mut engine_state, TargetInstance::entity(wizard.clone()))
+            .perform(&mut engine_state);
 
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
     }
 
     #[rstest]
     fn action_builder_invalid_context_index_returns_error(
-        game_state_wizard: (GameState, EntityIdentifier),
+        engine_state_wizard: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, wizard) = game_state_wizard;
+        let (mut engine_state, wizard) = engine_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state, wizard.id())
-            .action(&game_state, &action_id)
-            .context_index(&game_state.world, 999) // Invalid index
-            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, wizard.id())
+            .action(&engine_state, &action_id)
+            .context_index(&engine_state.world, 999) // Invalid index
+            .target(&mut engine_state, TargetInstance::entity(wizard.clone()))
+            .perform(&mut engine_state);
 
         assert!(
             matches!(
@@ -925,14 +925,14 @@ mod tests {
 
     #[rstest]
     fn action_builder_valid_context_filter_succeeds(
-        game_state_wizard: (GameState, EntityIdentifier),
+        engine_state_wizard: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, wizard) = game_state_wizard;
+        let (mut engine_state, wizard) = engine_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state, wizard.id())
-            .action(&game_state, &action_id)
-            .context_filter(&game_state.world, |context, _cost| {
+        let result = ActionBuilder::available(&engine_state, wizard.id())
+            .action(&engine_state, &action_id)
+            .context_filter(&engine_state.world, |context, _cost| {
                 context
                     .spell
                     .as_ref()
@@ -940,22 +940,22 @@ mod tests {
                     .map(|spell| spell.level == 3)
                     .unwrap_or(false)
             })
-            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
-            .perform(&mut game_state);
+            .target(&mut engine_state, TargetInstance::entity(wizard.clone()))
+            .perform(&mut engine_state);
 
         assert!(result.is_ok(), "expected Ok(()), got {:?}", result.err());
     }
 
     #[rstest]
     fn action_builder_invalid_context_filter_returns_error(
-        game_state_wizard: (GameState, EntityIdentifier),
+        engine_state_wizard: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, wizard) = game_state_wizard;
+        let (mut engine_state, wizard) = engine_state_wizard;
 
         let action_id = ActionId::new("nat20_core", "action.magic_missile");
-        let result = ActionBuilder::available(&game_state, wizard.id())
-            .action(&game_state, &action_id)
-            .context_filter(&game_state.world, |context, _cost| {
+        let result = ActionBuilder::available(&engine_state, wizard.id())
+            .action(&engine_state, &action_id)
+            .context_filter(&engine_state.world, |context, _cost| {
                 context
                     .spell
                     .as_ref()
@@ -963,8 +963,8 @@ mod tests {
                     .map(|spell| spell.level == 9)
                     .unwrap_or(false)
             })
-            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
-            .perform(&mut game_state);
+            .target(&mut engine_state, TargetInstance::entity(wizard.clone()))
+            .perform(&mut engine_state);
 
         assert!(
             matches!(result, Err(ActionBuilderError::NoMatchingContext { ref options }) if options.len() > 0),
@@ -975,20 +975,20 @@ mod tests {
 
     #[rstest]
     fn action_builder_target_entity_in_range_succeeds(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
             .position([1.0, 0.0, 0.0], false)
-            .spawn(&mut game_state);
+            .spawn(&mut engine_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .action(&game_state, &action_id)
-            .target(&mut game_state, TargetInstance::entity(goblin.clone()))
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .action(&engine_state, &action_id)
+            .target(&mut engine_state, TargetInstance::entity(goblin.clone()))
+            .perform(&mut engine_state);
 
         assert!(
             result.is_ok(),
@@ -999,20 +999,20 @@ mod tests {
 
     #[rstest]
     fn action_builder_target_entity_out_of_range_but_within_movement_succeeds(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
             .position([3.0, 0.0, 0.0], false)
-            .spawn(&mut game_state);
+            .spawn(&mut engine_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .action(&game_state, &action_id)
-            .target(&mut game_state, TargetInstance::entity(goblin.clone()))
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .action(&engine_state, &action_id)
+            .target(&mut engine_state, TargetInstance::entity(goblin.clone()))
+            .perform(&mut engine_state);
 
         assert!(
             result.is_ok(),
@@ -1023,24 +1023,24 @@ mod tests {
 
     #[rstest]
     fn action_builder_target_entity_out_of_range_returns_error(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         let goblin = CreatureBuilder::new("monster.goblin_warrior")
             .level(1)
             .position([100.0, 0.0, 0.0], false)
-            .spawn(&mut game_state);
+            .spawn(&mut engine_state);
 
         let action_id = ActionId::new("nat20_core", "action.melee_attack");
-        let result = ActionBuilder::available(&game_state, fighter.id())
-            .action(&game_state, &action_id)
-            .target(&mut game_state, TargetInstance::entity(goblin.clone()))
-            .perform(&mut game_state);
+        let result = ActionBuilder::available(&engine_state, fighter.id())
+            .action(&engine_state, &action_id)
+            .target(&mut engine_state, TargetInstance::entity(goblin.clone()))
+            .perform(&mut engine_state);
 
         assert!(
             matches!(result, Err(ActionBuilderError::InvalidTarget { ref target, ref reason })
-            if target == &TargetInstance::entity(EntityIdentifier::from_world(&game_state.world, goblin.id()))),
+            if target == &TargetInstance::entity(EntityIdentifier::from_world(&engine_state.world, goblin.id()))),
             // && matches!(reason, TargetingError::OutOfRange { .. })),
             "expected InvalidTarget with reason OutOfRange, got {:?}",
             result
@@ -1048,10 +1048,10 @@ mod tests {
     }
 
     #[rstest]
-    fn reaction_builder_no_prompt_returns_error(game_state_fighter: (GameState, EntityIdentifier)) {
-        let (game_state, fighter) = game_state_fighter;
+    fn reaction_builder_no_prompt_returns_error(engine_state_fighter: (EngineState, EntityIdentifier)) {
+        let (engine_state, fighter) = engine_state_fighter;
 
-        let result = ReactionBuilder::new(&game_state, fighter.id()).build();
+        let result = ReactionBuilder::new(&engine_state, fighter.id()).build();
 
         assert!(
             matches!(result, Err(ReactionBuilderError::NoPrompt)),
@@ -1062,14 +1062,14 @@ mod tests {
 
     #[rstest]
     fn reaction_builder_wrong_prompt_type_returns_error(
-        game_state_fighter: (GameState, EntityIdentifier),
+        engine_state_fighter: (EngineState, EntityIdentifier),
     ) {
-        let (mut game_state, fighter) = game_state_fighter;
+        let (mut engine_state, fighter) = engine_state_fighter;
 
         // Start encounter to queue an action prompt
-        game_state.start_encounter(HashSet::from([fighter.id()]));
+        engine_state.start_encounter(HashSet::from([fighter.id()]));
 
-        let result = ReactionBuilder::new(&game_state, fighter.id()).build();
+        let result = ReactionBuilder::new(&engine_state, fighter.id()).build();
 
         assert!(
             matches!(result, Err(ReactionBuilderError::NoReactionPrompt)),
@@ -1079,19 +1079,19 @@ mod tests {
     }
 
     #[fixture]
-    fn game_state_reaction(
-        mut game_state: GameState,
-    ) -> (GameState, EntityIdentifier, EntityIdentifier) {
+    fn engine_state_reaction(
+        mut engine_state: EngineState,
+    ) -> (EngineState, EntityIdentifier, EntityIdentifier) {
         let fighter = CreatureBuilder::new("hero.fighter")
             .level(5)
             .position([0.0, 0.0, 0.0], false)
-            .spawn(&mut game_state);
+            .spawn(&mut engine_state);
         let wizard = CreatureBuilder::new("hero.wizard")
             .level(5)
             .position([1.0, 0.0, 0.0], false)
-            .spawn(&mut game_state);
+            .spawn(&mut engine_state);
         // Force the fighter to hit the attack so the wizard has a reason to react
-        systems::loadout::loadout_mut(&mut game_state.world, fighter.id())
+        systems::loadout::loadout_mut(&mut engine_state.world, fighter.id())
             .attack_roll_template_mut(&WeaponKind::Melee)
             .set_forced_outcome(
                 ModifierSource::Custom("Testing".to_string()),
@@ -1099,26 +1099,26 @@ mod tests {
             );
 
         // Fighter attacking wizard triggers shield reaction
-        ActionBuilder::available(&game_state, fighter.id())
+        ActionBuilder::available(&engine_state, fighter.id())
             .action(
-                &game_state,
+                &engine_state,
                 &ActionId::new("nat20_core", "action.melee_attack"),
             )
-            .target(&mut game_state, TargetInstance::entity(wizard.clone()))
-            .perform(&mut game_state)
+            .target(&mut engine_state, TargetInstance::entity(wizard.clone()))
+            .perform(&mut engine_state)
             .expect("Failed to perform action");
-        game_state.update(10.0);
+        engine_state.update(10.0);
 
-        (game_state, fighter, wizard)
+        (engine_state, fighter, wizard)
     }
 
     #[rstest]
     fn reaction_builder_no_options_for_entity_returns_error(
-        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+        engine_state_reaction: (EngineState, EntityIdentifier, EntityIdentifier),
     ) {
-        let (game_state, fighter, _wizard) = game_state_reaction;
+        let (engine_state, fighter, _wizard) = engine_state_reaction;
 
-        let result = ReactionBuilder::new(&game_state, fighter.id()).build();
+        let result = ReactionBuilder::new(&engine_state, fighter.id()).build();
 
         assert!(
             matches!(result, Err(ReactionBuilderError::NoOptionsForEntity { .. })),
@@ -1129,11 +1129,11 @@ mod tests {
 
     #[rstest]
     fn reaction_builder_valid_option_index_succeeds(
-        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+        engine_state_reaction: (EngineState, EntityIdentifier, EntityIdentifier),
     ) {
-        let (game_state, _fighter, wizard) = game_state_reaction;
+        let (engine_state, _fighter, wizard) = engine_state_reaction;
 
-        let result = ReactionBuilder::new(&game_state, wizard.id())
+        let result = ReactionBuilder::new(&engine_state, wizard.id())
             .option_index(0) // Choose the first reaction option (Shield spell)
             .build();
 
@@ -1146,11 +1146,11 @@ mod tests {
 
     #[rstest]
     fn reaction_builder_invalid_option_index_returns_error(
-        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+        engine_state_reaction: (EngineState, EntityIdentifier, EntityIdentifier),
     ) {
-        let (game_state, _fighter, wizard) = game_state_reaction;
+        let (engine_state, _fighter, wizard) = engine_state_reaction;
 
-        let result = ReactionBuilder::new(&game_state, wizard.id())
+        let result = ReactionBuilder::new(&engine_state, wizard.id())
             .option_index(999) // Invalid index
             .build();
 
@@ -1166,11 +1166,11 @@ mod tests {
 
     #[rstest]
     fn reaction_builder_option_none_succeeds(
-        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+        engine_state_reaction: (EngineState, EntityIdentifier, EntityIdentifier),
     ) {
-        let (game_state, _fighter, wizard) = game_state_reaction;
+        let (engine_state, _fighter, wizard) = engine_state_reaction;
 
-        let result = ReactionBuilder::new(&game_state, wizard.id())
+        let result = ReactionBuilder::new(&engine_state, wizard.id())
             .option_none() // Choose to not react
             .build();
 
@@ -1183,11 +1183,11 @@ mod tests {
 
     #[rstest]
     fn reaction_builder_option_filter_succeeds(
-        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+        engine_state_reaction: (EngineState, EntityIdentifier, EntityIdentifier),
     ) {
-        let (game_state, _fighter, wizard) = game_state_reaction;
+        let (engine_state, _fighter, wizard) = engine_state_reaction;
 
-        let result = ReactionBuilder::new(&game_state, wizard.id())
+        let result = ReactionBuilder::new(&engine_state, wizard.id())
             .option_filter(|option| {
                 // Choose the level 3 Shield reaction option
                 option
@@ -1209,11 +1209,11 @@ mod tests {
 
     #[rstest]
     fn reaction_builder_option_filter_no_match_returns_error(
-        game_state_reaction: (GameState, EntityIdentifier, EntityIdentifier),
+        engine_state_reaction: (EngineState, EntityIdentifier, EntityIdentifier),
     ) {
-        let (game_state, _fighter, wizard) = game_state_reaction;
+        let (engine_state, _fighter, wizard) = engine_state_reaction;
 
-        let result = ReactionBuilder::new(&game_state, wizard.id())
+        let result = ReactionBuilder::new(&engine_state, wizard.id())
             // Try to choose a non-existent reaction option
             .option_filter(|option| {
                 option

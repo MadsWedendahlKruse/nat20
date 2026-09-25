@@ -20,7 +20,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{Event, EventKind, EventKindTag},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::serialize::schema::impl_string_schema,
     systems,
@@ -49,7 +49,7 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
         HashMap::from([(
             "cancel_event".to_string(),
             Arc::new(
-                |game_state: &mut GameState, reaction_data: &ActionData, event: &mut Event| {
+                |engine_state: &mut EngineState, reaction_data: &ActionData, event: &mut Event| {
                     debug!("Cancelling event with ID {} due to reaction", event.id);
 
                     // TODO: Bit of a hack to comply with Counterspell
@@ -64,7 +64,7 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                                 resources_to_refund.map.remove(&resource);
                             }
                             let _ = systems::resources::restore(
-                                &mut game_state.world,
+                                &mut engine_state.world,
                                 action.actor.id(),
                                 &resources_to_refund,
                             );
@@ -112,8 +112,8 @@ impl FromStr for ReactionTriggerScript {
 
         Ok(ReactionTriggerScript {
             raw: s.to_string(),
-            function: Arc::new(move |game_state, reactor, event| {
-                systems::scripts::evaluate_reaction_trigger(&script_id, game_state, *reactor, event)
+            function: Arc::new(move |engine_state, reactor, event| {
+                systems::scripts::evaluate_reaction_trigger(&script_id, engine_state, *reactor, event)
             }),
             script,
         })
@@ -181,10 +181,10 @@ impl FromStr for ReactionBodyDefinition {
 
         Ok(ReactionBodyDefinition {
             raw: s.to_string(),
-            function: Arc::new(move |game_state, reaction_data, event| {
+            function: Arc::new(move |engine_state, reaction_data, event| {
                 systems::scripts::evaluate_reaction_body(
                     &script_id,
-                    game_state,
+                    engine_state,
                     reaction_data,
                     event,
                 );

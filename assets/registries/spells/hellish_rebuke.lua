@@ -1,5 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(game_state, reactor, event)
+local function reaction_trigger(engine_state, reactor, event)
     local result, actor = event:as_action_result()
     if not result then
         return false

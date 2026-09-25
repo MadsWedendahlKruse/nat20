@@ -14,48 +14,48 @@ use crate::{
         resource::ResourceAmountMap,
         speed::Speed,
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::{action_prompt::ActionData, engine_state::EngineState},
     systems::time::RestKind,
 };
 
 pub type ApplyEffectHook =
-    Arc<dyn Fn(&mut GameState, Entity, Option<&ActionContext>) + Send + Sync>;
+    Arc<dyn Fn(&mut EngineState, Entity, Option<&ActionContext>) + Send + Sync>;
 /// Hook for how long an effect lasts. Parameters are: applier,
 /// target, the effect about to be applied, its lifetime.
 pub type EffectLifetimeHook =
-    Arc<dyn Fn(&GameState, Entity, Entity, &EffectId, &mut EffectLifetime) + Send + Sync>;
-pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
+    Arc<dyn Fn(&EngineState, Entity, Entity, &EffectId, &mut EffectLifetime) + Send + Sync>;
+pub type UnapplyEffectHook = Arc<dyn Fn(&mut EngineState, Entity) + Send + Sync>;
 /// Hook for when an entity is attacked. Parameters are: world, effect instance,
 /// victim, attacker, the attacker's (not yet rolled) check.
 pub type AttackedHook =
-    Arc<dyn Fn(&GameState, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
-pub type ArmorClassHook = Arc<dyn Fn(&GameState, Entity, &mut ArmorClass) + Send + Sync>;
-pub type SpeedHook = Arc<dyn Fn(&GameState, Entity, &mut Speed) + Send + Sync>;
+    Arc<dyn Fn(&EngineState, &EffectInstance, Entity, Entity, &mut D20Check) + Send + Sync>;
+pub type ArmorClassHook = Arc<dyn Fn(&EngineState, Entity, &mut ArmorClass) + Send + Sync>;
+pub type SpeedHook = Arc<dyn Fn(&EngineState, Entity, &mut Speed) + Send + Sync>;
 pub type D20AbilityHook =
-    Arc<dyn Fn(&GameState, Entity, &D20Check) -> Option<Ability> + Send + Sync>;
-pub type D20CheckHook = Arc<dyn Fn(&GameState, Entity, &mut D20Check) + Send + Sync>;
-pub type D20CheckResultHook = Arc<dyn Fn(&GameState, Entity, &mut D20CheckResult) + Send + Sync>;
+    Arc<dyn Fn(&EngineState, Entity, &D20Check) -> Option<Ability> + Send + Sync>;
+pub type D20CheckHook = Arc<dyn Fn(&EngineState, Entity, &mut D20Check) + Send + Sync>;
+pub type D20CheckResultHook = Arc<dyn Fn(&EngineState, Entity, &mut D20CheckResult) + Send + Sync>;
 pub type DamageRollHook = Arc<
-    dyn Fn(&GameState, Entity, &mut DamageRoll, &ActionData, &ActionConditionResolution)
+    dyn Fn(&EngineState, Entity, &mut DamageRoll, &ActionData, &ActionConditionResolution)
         + Send
         + Sync,
 >;
 pub type DamageRollResultHook = Arc<
-    dyn Fn(&GameState, Entity, &mut DamageRollResult, &ActionData, &ActionConditionResolution)
+    dyn Fn(&EngineState, Entity, &mut DamageRollResult, &ActionData, &ActionConditionResolution)
         + Send
         + Sync,
 >;
-pub type ActionHook = Arc<dyn Fn(&mut GameState, &ActionData) + Send + Sync>;
-pub type ActionResultHook = Arc<dyn Fn(&mut GameState, &ActionData, &ActionResult) + Send + Sync>;
+pub type ActionHook = Arc<dyn Fn(&mut EngineState, &ActionData) + Send + Sync>;
+pub type ActionResultHook = Arc<dyn Fn(&mut EngineState, &ActionData, &ActionResult) + Send + Sync>;
 pub type ResourceCostHook = Arc<
-    dyn Fn(&GameState, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync,
+    dyn Fn(&EngineState, Entity, &ActionId, &ActionContext, &mut ResourceAmountMap) + Send + Sync,
 >;
 /// Hook for effects which block certain actions, returns block reason if any
 pub type ActionUsabilityHook =
-    Arc<dyn Fn(&GameState, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync>;
+    Arc<dyn Fn(&EngineState, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync>;
 pub type PreDamageMitigationHook = Arc<
     dyn Fn(
-            &GameState,
+            &EngineState,
             &EffectInstance,
             Entity,
             &mut DamageRollResult,
@@ -66,7 +66,7 @@ pub type PreDamageMitigationHook = Arc<
 >;
 pub type PostDamageMitigationHook = Arc<
     dyn Fn(
-            &GameState,
+            &EngineState,
             Entity,
             &mut DamageMitigationResult,
             Option<&ActionData>,
@@ -77,12 +77,12 @@ pub type PostDamageMitigationHook = Arc<
 /// Runs when an entity drops to 0 HP, but before they're actually declared dead.
 /// If anybody's got any objections, this is where to put them, e.g. Death Ward
 pub type PreDeathHook =
-    Arc<dyn Fn(&mut GameState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
+    Arc<dyn Fn(&mut EngineState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
 // Entitys in order: 1. victim, 2. killer (if any), 3. effect applier (if any)
 pub type DeathHook =
-    Arc<dyn Fn(&mut GameState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
-pub type RestHook = Arc<dyn Fn(&mut GameState, Entity, &RestKind) + Send + Sync>;
-pub type TurnStartHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
+    Arc<dyn Fn(&mut EngineState, Entity, Option<Entity>, Option<Entity>) + Send + Sync>;
+pub type RestHook = Arc<dyn Fn(&mut EngineState, Entity, &RestKind) + Send + Sync>;
+pub type TurnStartHook = Arc<dyn Fn(&mut EngineState, Entity) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct D20CheckHooks {
@@ -107,25 +107,25 @@ impl D20CheckHooks {
         let result_hooks: Vec<D20CheckResultHook> =
             hooks.iter().map(|h| h.result_hook.clone()).collect();
         Self {
-            ability_hook: Arc::new(move |game_state, entity, check| {
+            ability_hook: Arc::new(move |engine_state, entity, check| {
                 // TODO: Not really sure what to do here, but on the other hand I
                 // don't think we'll ever have more than one ability hook on the
                 // same effect, so this is probably fine
                 for hook in &hooks {
-                    if let Some(ability) = (hook.ability_hook)(game_state, entity, check) {
+                    if let Some(ability) = (hook.ability_hook)(engine_state, entity, check) {
                         return Some(ability);
                     }
                 }
                 None
             }),
-            check_hook: Arc::new(move |game_state, entity, check| {
+            check_hook: Arc::new(move |engine_state, entity, check| {
                 for hook in &check_hooks {
-                    hook(game_state, entity, check);
+                    hook(engine_state, entity, check);
                 }
             }),
-            result_hook: Arc::new(move |game_state, entity, result| {
+            result_hook: Arc::new(move |engine_state, entity, result| {
                 for hook in &result_hooks {
-                    hook(game_state, entity, result);
+                    hook(engine_state, entity, result);
                 }
             }),
         }

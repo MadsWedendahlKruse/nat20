@@ -19,7 +19,7 @@ use crate::{
     },
     engine::{
         event::{Event, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems,
 };
@@ -33,7 +33,7 @@ pub fn loadout_mut(world: &mut World, entity: Entity) -> &mut Loadout {
 }
 
 pub fn equip_in_slot<T>(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     slot: &EquipmentSlot,
     equipment: T,
@@ -45,35 +45,35 @@ where
     let item_id = equipment.item().id.clone();
 
     let unequipped_items =
-        loadout_mut(&mut game_state.world, entity).equip_in_slot(slot, equipment)?;
+        loadout_mut(&mut engine_state.world, entity).equip_in_slot(slot, equipment)?;
     for unequipped_item in &unequipped_items {
         systems::effects::remove_effects_by_source(
-            game_state,
+            engine_state,
             entity,
             &ModifierSource::Item(unequipped_item.item().id.clone()),
         );
-        equipment_changed_event(game_state, entity, unequipped_item.item().id.clone(), false);
+        equipment_changed_event(engine_state, entity, unequipped_item.item().id.clone(), false);
     }
 
-    let effects = loadout(&game_state.world, entity)
+    let effects = loadout(&engine_state.world, entity)
         .item_in_slot(slot)
         .unwrap()
         .effects()
         .clone();
     systems::effects::add_permanent_effects(
-        game_state,
+        engine_state,
         entity,
         effects,
         &ModifierSource::Item(item_id.clone()),
         None,
     );
-    equipment_changed_event(game_state, entity, item_id, true);
+    equipment_changed_event(engine_state, entity, item_id, true);
 
     Ok(unequipped_items)
 }
 
 pub fn equip<T>(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     equipment: T,
 ) -> Result<Vec<EquipmentInstance>, TryEquipError>
@@ -85,60 +85,60 @@ where
     // TODO: Slightly less performant than calling `equip_in_slot` directly
     let effects = equipment.effects().clone();
 
-    let unequipped_items = loadout_mut(&mut game_state.world, entity).equip(equipment)?;
+    let unequipped_items = loadout_mut(&mut engine_state.world, entity).equip(equipment)?;
     for unequipped_item in &unequipped_items {
         systems::effects::remove_effects_by_source(
-            game_state,
+            engine_state,
             entity,
             &ModifierSource::Item(unequipped_item.item().id.clone()),
         );
-        equipment_changed_event(game_state, entity, unequipped_item.item().id.clone(), false);
+        equipment_changed_event(engine_state, entity, unequipped_item.item().id.clone(), false);
     }
 
     systems::effects::add_permanent_effects(
-        game_state,
+        engine_state,
         entity,
         effects,
         &ModifierSource::Item(item_id.clone()),
         None,
     );
-    equipment_changed_event(game_state, entity, item_id, true);
+    equipment_changed_event(engine_state, entity, item_id, true);
 
     Ok(unequipped_items)
 }
 
 pub fn unequip(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     slot: &EquipmentSlot,
 ) -> Option<EquipmentInstance> {
-    let unequipped_item = loadout_mut(&mut game_state.world, entity).unequip(slot);
+    let unequipped_item = loadout_mut(&mut engine_state.world, entity).unequip(slot);
     if let Some(item) = &unequipped_item {
         systems::effects::remove_effects_by_source(
-            game_state,
+            engine_state,
             entity,
             &ModifierSource::Item(item.item().id.clone()),
         );
-        equipment_changed_event(game_state, entity, item.item().id.clone(), false);
+        equipment_changed_event(engine_state, entity, item.item().id.clone(), false);
     }
     unequipped_item
 }
 
 fn equipment_changed_event(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     item: ItemId,
     equipped: bool,
 ) {
-    game_state.process_event(Event::new(EventKind::EquipmentChanged {
-        entity: EntityIdentifier::from_world(&game_state.world, entity),
+    engine_state.process_event(Event::new(EventKind::EquipmentChanged {
+        entity: EntityIdentifier::from_world(&engine_state.world, entity),
         item,
         equipped,
     }));
 }
 
-pub fn armor_class(game_state: &GameState, entity: Entity) -> ArmorClass {
-    loadout(&game_state.world, entity).armor_class(game_state, entity)
+pub fn armor_class(engine_state: &EngineState, entity: Entity) -> ArmorClass {
+    loadout(&engine_state.world, entity).armor_class(engine_state, entity)
 }
 
 pub fn can_equip(world: &World, entity: Entity, equipment: &EquipmentInstance) -> bool {

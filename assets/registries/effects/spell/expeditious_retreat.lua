@@ -1,5 +1,5 @@
 ---@type ResourceCostHookFn
-local function resource_cost_hook(game_state, entity, action, cost)
+local function resource_cost_hook(engine_state, entity, action, cost)
     if action.action_id ~= "nat20_core::action.dash" then
         return
     end

@@ -30,7 +30,7 @@ use nat20_core::{
             CallbackResult, EventCallback, EventFilter, EventKind, EventKindTag, EventListener,
             EventListenerId, ListenerSource,
         },
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::registry::EffectsRegistry,
     systems::{
@@ -82,14 +82,14 @@ pub struct ActionBarWindow {
     listener_id: EventListenerId,
 }
 
-impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
+impl RenderableMutWithContext<&mut EngineState> for ActionBarWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
-        let disabled_token = ui.begin_disabled(self.is_disabled(game_state));
+        let disabled_token = ui.begin_disabled(self.is_disabled(engine_state));
 
         let window_manager_ptr =
             unsafe { &mut *(&mut gui_state.window_manager as *mut WindowManager) };
@@ -99,7 +99,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
         if matches!(self.builder.state(), Ok(ActionBuilderState::Action { .. }))
             && self.invalidated.swap(false, Ordering::Relaxed)
         {
-            self.builder = ActionBuilder::all(game_state, self.actor());
+            self.builder = ActionBuilder::all(engine_state, self.actor());
         }
 
         window_manager_ptr.render_window(
@@ -114,45 +114,45 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
                 match self.builder.state() {
                     Ok(state) => match state {
                         ActionBuilderState::Action { .. } => {
-                            self.render_actions(ui, game_state);
+                            self.render_actions(ui, engine_state);
                             ui.same_line();
-                            self.render_resources(ui, game_state);
+                            self.render_resources(ui, engine_state);
                             ui.separator();
-                            self.render_end_turn(ui, game_state);
+                            self.render_end_turn(ui, engine_state);
                             self.movement_preview
-                                .update(ui, gui_state, game_state, None);
+                                .update(ui, gui_state, engine_state, None);
                             self.movement_preview
-                                .render_with_context(ui, gui_state, game_state);
+                                .render_with_context(ui, gui_state, engine_state);
                         }
 
                         ActionBuilderState::Variant { .. } => {
-                            self.render_variants(ui, game_state);
+                            self.render_variants(ui, engine_state);
                             ui.separator();
-                            self.right_click_cancel(ui, gui_state, game_state);
+                            self.right_click_cancel(ui, gui_state, engine_state);
                             self.movement_preview
-                                .update(ui, gui_state, game_state, None);
+                                .update(ui, gui_state, engine_state, None);
                             self.movement_preview
-                                .render_with_context(ui, gui_state, game_state);
+                                .render_with_context(ui, gui_state, engine_state);
                         }
 
                         ActionBuilderState::Context { .. } => {
-                            self.render_context_selection(ui, gui_state, game_state);
+                            self.render_context_selection(ui, gui_state, engine_state);
                             self.movement_preview
-                                .update(ui, gui_state, game_state, None);
+                                .update(ui, gui_state, engine_state, None);
                             self.movement_preview
-                                .render_with_context(ui, gui_state, game_state);
+                                .render_with_context(ui, gui_state, engine_state);
                         }
 
                         ActionBuilderState::Targets { .. } => {
                             move_on_click = false;
-                            self.render_target_selection(ui, gui_state, game_state);
+                            self.render_target_selection(ui, gui_state, engine_state);
                         }
                     },
 
                     Err(error) => {
                         // TODO: Would be cool if this was a pop up?
                         error!("Error building action: {:#?}", error);
-                        self.builder = ActionBuilder::all(game_state, self.builder.actor().id());
+                        self.builder = ActionBuilder::all(engine_state, self.builder.actor().id());
                     }
                 }
 
@@ -162,7 +162,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
                     && let Some(closest) = cursor_ray_result.closest()
                     && closest.kind == RaycastHitKind::World
                 {
-                    let movement_result = game_state.submit_activity(Activity::Move {
+                    let movement_result = engine_state.submit_activity(Activity::Move {
                         entity: self.actor(),
                         goal: closest.poi,
                     });
@@ -189,7 +189,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
 
         if !opened {
             gui_state.selected_entity.take();
-            game_state
+            engine_state
                 .event_dispatcher
                 .remove_listener_by_id(&self.listener_id);
         }
@@ -197,7 +197,7 @@ impl RenderableMutWithContext<&mut GameState> for ActionBarWindow {
 }
 
 impl ActionBarWindow {
-    pub fn new(game_state: &mut GameState, entity: Entity) -> Self {
+    pub fn new(engine_state: &mut EngineState, entity: Entity) -> Self {
         let invalidated = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&invalidated);
 
@@ -208,7 +208,7 @@ impl ActionBarWindow {
                 // I think we can just do all the filtering in the callback?
                 true
             }),
-            EventCallback::new(move |_game_state, event, _source| match &event.kind {
+            EventCallback::new(move |_engine_state, event, _source| match &event.kind {
                 EventKind::ActionResult { result, .. } if result.target.id() != entity => {
                     let components = result.components_kind(ActionResultComponentKind::Effect);
                     for component in components {
@@ -255,10 +255,10 @@ impl ActionBarWindow {
         ]);
         let listener_id = listener.id;
 
-        game_state.event_dispatcher.register_listener(listener);
+        engine_state.event_dispatcher.register_listener(listener);
 
         Self {
-            builder: ActionBuilder::all(game_state, entity),
+            builder: ActionBuilder::all(engine_state, entity),
             movement_preview: MovementPreview::new(entity),
             invalidated,
             listener_id,
@@ -269,19 +269,19 @@ impl ActionBarWindow {
         self.builder.actor().id()
     }
 
-    pub fn is_disabled(&self, game_state: &GameState) -> bool {
-        if let Some(encounter) = game_state.encounter_for_entity(self.builder.actor().id()) {
+    pub fn is_disabled(&self, engine_state: &EngineState) -> bool {
+        if let Some(encounter) = engine_state.encounter_for_entity(self.builder.actor().id()) {
             if encounter.current_entity() != self.builder.actor().id() {
                 return true;
             }
-            if let Some(prompt) = game_state.next_prompt_entity(self.builder.actor().id())
+            if let Some(prompt) = engine_state.next_prompt_entity(self.builder.actor().id())
                 && matches!(prompt.kind, ActionPromptKind::Reactions { .. })
             {
                 return true;
             }
         }
 
-        if systems::helpers::get_component::<ActivityState>(&game_state.world, self.actor())
+        if systems::helpers::get_component::<ActivityState>(&engine_state.world, self.actor())
             .is_acting()
         {
             return true;
@@ -290,7 +290,7 @@ impl ActionBarWindow {
         false
     }
 
-    fn render_actions(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+    fn render_actions(&mut self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         ui.child_window("Actions")
             .child_flags(
                 ChildFlags::ALWAYS_AUTO_RESIZE
@@ -308,12 +308,12 @@ impl ActionBarWindow {
                     )
                     .size([0.0, ACTION_LIST_HEIGHT])
                     .build(|| {
-                        self.render_actions_list(ui, game_state);
+                        self.render_actions_list(ui, engine_state);
                     });
             });
     }
 
-    fn render_actions_list(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+    fn render_actions_list(&mut self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         let actor = self.builder.actor().id();
 
         let actions = match self.builder.state().ok().unwrap() {
@@ -326,7 +326,7 @@ impl ActionBarWindow {
         for (action_id, contexts_and_costs) in actions {
             // The variant, if the action has any, is chosen in the next step
             let (contexts_usability, first_usable_context) =
-                usable_contexts(game_state, actor, action_id, None, contexts_and_costs);
+                usable_contexts(engine_state, actor, action_id, None, contexts_and_costs);
 
             let disabled_token = ui.begin_disabled(first_usable_context.is_none());
 
@@ -343,18 +343,18 @@ impl ActionBarWindow {
                     let usability = &contexts_usability[context_index];
                     (action_id, context, cost).render_with_context(
                         ui,
-                        (&game_state.world, actor, usability.as_ref().err(), None),
+                        (&engine_state.world, actor, usability.as_ref().err(), None),
                     );
                 });
             }
         }
 
         if let Some(action_id) = selected_action {
-            self.builder.action(game_state, &action_id);
+            self.builder.action(engine_state, &action_id);
         }
     }
 
-    fn render_variants(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+    fn render_variants(&mut self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         ui.child_window("Variants")
             .child_flags(
                 ChildFlags::ALWAYS_AUTO_RESIZE
@@ -372,12 +372,12 @@ impl ActionBarWindow {
                     )
                     .size([0.0, ACTION_LIST_HEIGHT])
                     .build(|| {
-                        self.render_variants_list(ui, game_state);
+                        self.render_variants_list(ui, engine_state);
                     });
             });
     }
 
-    fn render_variants_list(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+    fn render_variants_list(&mut self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         let ActionBuilderState::Variant {
             action,
             variants,
@@ -396,7 +396,7 @@ impl ActionBarWindow {
             if ui.is_item_hovered_with_flags(HoveredFlags::ALLOW_WHEN_DISABLED) {
                 ui.tooltip(|| {
                     let (contexts_usability, first_usable_context) =
-                        usable_contexts(game_state, self.actor(), action, None, contexts_and_costs);
+                        usable_contexts(engine_state, self.actor(), action, None, contexts_and_costs);
 
                     let context_index = first_usable_context.unwrap_or(0);
                     let (context, cost) = &contexts_and_costs[context_index];
@@ -404,7 +404,7 @@ impl ActionBarWindow {
                     (action, context, cost).render_with_context(
                         ui,
                         (
-                            &game_state.world,
+                            &engine_state.world,
                             self.actor(),
                             usability.as_ref().err(),
                             Some(variant_id),
@@ -415,18 +415,18 @@ impl ActionBarWindow {
         }
 
         if let Some(variant_id) = selected_variant {
-            self.builder.variant(&game_state.world, &variant_id);
+            self.builder.variant(&engine_state.world, &variant_id);
         }
     }
 
-    fn render_end_turn(&self, ui: &imgui::Ui, game_state: &mut GameState) {
+    fn render_end_turn(&self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         let entity = self.builder.actor().id();
-        if systems::combat::is_in_combat(&game_state, entity) && ui.button("End Turn") {
-            game_state.end_turn(entity);
+        if systems::combat::is_in_combat(&engine_state, entity) && ui.button("End Turn") {
+            engine_state.end_turn(entity);
         }
     }
 
-    fn render_resources(&self, ui: &imgui::Ui, game_state: &mut GameState) {
+    fn render_resources(&self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         ui.child_window("Resources")
             .child_flags(
                 ChildFlags::ALWAYS_AUTO_RESIZE
@@ -437,11 +437,11 @@ impl ActionBarWindow {
                 let entity = self.builder.actor().id();
 
                 ui.separator_with_text("Resources");
-                systems::helpers::get_component::<ResourceMap>(&game_state.world, entity)
+                systems::helpers::get_component::<ResourceMap>(&engine_state.world, entity)
                     .render(ui);
 
                 ui.separator_with_text("Speed");
-                systems::movement::speed(game_state, entity).render(ui);
+                systems::movement::speed(engine_state, entity).render(ui);
             });
     }
 
@@ -449,7 +449,7 @@ impl ActionBarWindow {
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let actor = self.builder.actor().id();
 
@@ -477,7 +477,7 @@ impl ActionBarWindow {
 
             let disabled_token = ui.begin_disabled(
                 systems::actions::action_usable(
-                    game_state,
+                    engine_state,
                     actor,
                     action,
                     variant.as_ref(),
@@ -517,7 +517,7 @@ impl ActionBarWindow {
                 ui.tooltip(|| {
                     (action, context, cost).render_with_context(
                         ui,
-                        (&game_state.world, actor, None, variant.as_ref()),
+                        (&engine_state.world, actor, None, variant.as_ref()),
                     );
                 });
             }
@@ -526,17 +526,17 @@ impl ActionBarWindow {
         ui.separator();
 
         if let Some(context_index) = selected_context {
-            self.builder.context_index(&game_state.world, context_index);
+            self.builder.context_index(&engine_state.world, context_index);
         }
 
-        self.right_click_cancel(ui, gui_state, game_state);
+        self.right_click_cancel(ui, gui_state, engine_state);
     }
 
     fn right_click_cancel(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let right_click_cancel =
             if gui_state.cursor_ray_result.is_some() && ui.is_mouse_clicked(MouseButton::Right) {
@@ -547,7 +547,7 @@ impl ActionBarWindow {
             };
 
         if ui.button("Cancel") || right_click_cancel {
-            self.builder = ActionBuilder::all(game_state, self.builder.actor().id());
+            self.builder = ActionBuilder::all(engine_state, self.builder.actor().id());
         }
     }
 
@@ -555,7 +555,7 @@ impl ActionBarWindow {
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let action = match self.builder.state().ok().unwrap() {
             ActionBuilderState::Targets { action, .. } => action,
@@ -563,17 +563,17 @@ impl ActionBarWindow {
         };
         let num_targets = action.targets.len();
 
-        let targeting_context = systems::actions::targeting_context_data(&game_state.world, action);
+        let targeting_context = systems::actions::targeting_context_data(&engine_state.world, action);
 
         let mut submit = Self::render_targeting_ui(ui, action, &targeting_context);
 
-        Self::render_range_preview(gui_state, game_state, action, &targeting_context);
+        Self::render_range_preview(gui_state, engine_state, action, &targeting_context);
 
         if !ui.io().want_capture_mouse {
             self.handle_cursor_targeting(
                 ui,
                 gui_state,
-                game_state,
+                engine_state,
                 num_targets,
                 targeting_context,
                 &mut submit,
@@ -587,7 +587,7 @@ impl ActionBarWindow {
                 Ok(ActionBuilderState::Targets { action, .. }) => action.clone(),
                 other => panic!("Invalid state for submitting action: {:#?}", other),
             };
-            let result = self.builder.perform(game_state);
+            let result = self.builder.perform(engine_state);
             match result {
                 Ok(()) => {
                     info!("Successfully submitted action: {:?}", action);
@@ -596,17 +596,17 @@ impl ActionBarWindow {
                     error!("Failed to submit action: {:?}", err);
                 }
             }
-            self.builder = ActionBuilder::all(game_state, self.builder.actor().id());
+            self.builder = ActionBuilder::all(engine_state, self.builder.actor().id());
         }
 
-        self.right_click_cancel(ui, gui_state, game_state);
+        self.right_click_cancel(ui, gui_state, engine_state);
     }
 
     fn handle_cursor_targeting(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         num_targets: usize,
         targeting_context: TargetingContext,
         submit: &mut bool,
@@ -624,7 +624,7 @@ impl ActionBarWindow {
             }
 
             TargetingKind::Single => {
-                self.handle_single_target(ui, gui_state, game_state, submit, cursor_ray_result);
+                self.handle_single_target(ui, gui_state, engine_state, submit, cursor_ray_result);
             }
 
             TargetingKind::Multiple { max_targets, .. } => {
@@ -649,7 +649,7 @@ impl ActionBarWindow {
                     return;
                 };
 
-                let target = closest.target_instance(&game_state.world);
+                let target = closest.target_instance(&engine_state.world);
 
                 let action = match self.builder.state().ok().unwrap() {
                     ActionBuilderState::Targets { action, .. } => action.clone(),
@@ -661,8 +661,8 @@ impl ActionBarWindow {
 
                 // Calculate line of sight manually so we can render the raycast
                 let line_of_sight = systems::geometry::line_of_sight_entity_target(
-                    &game_state.world,
-                    &game_state.geometry,
+                    &engine_state.world,
+                    &engine_state.geometry,
                     self.actor(),
                     &target,
                     &targeting_context.line_of_sight,
@@ -670,7 +670,7 @@ impl ActionBarWindow {
                 line_of_sight.render(ui, gui_state);
 
                 let usable_on_target = systems::actions::action_usable_on_targets(
-                    game_state,
+                    engine_state,
                     self.actor(),
                     &action.action_id,
                     action.variant.as_ref(),
@@ -705,10 +705,10 @@ impl ActionBarWindow {
                     }
                 };
 
-                render_target_chance_tooltips(ui, game_state, &action, &target);
+                render_target_chance_tooltips(ui, engine_state, &action, &target);
 
                 if ui.is_mouse_clicked(MouseButton::Left) {
-                    self.builder.target(game_state, target);
+                    self.builder.target(engine_state, target);
                     gui_state.cursor_ray_result.take();
                     if num_targets + 1 == *max_targets {
                         *submit = true;
@@ -726,7 +726,7 @@ impl ActionBarWindow {
                 };
 
                 let shape_transform = shape.parry3d_shape(
-                    &game_state.world,
+                    &engine_state.world,
                     self.actor(),
                     *fixed_on_actor,
                     &closest.poi,
@@ -762,14 +762,14 @@ impl ActionBarWindow {
                     _ => panic!("Invalid state for area targeting"),
                 };
 
-                let target = closest.target_instance(&game_state.world);
+                let target = closest.target_instance(&engine_state.world);
 
-                render_target_chance_tooltips(ui, game_state, action, &target);
+                render_target_chance_tooltips(ui, engine_state, action, &target);
 
-                let displacement = get_displacement_component(game_state, action);
+                let displacement = get_displacement_component(engine_state, action);
 
                 let affected_entities = systems::actions::get_targeted_entities(
-                    game_state,
+                    engine_state,
                     action,
                     Some(vec![target.clone()]),
                 );
@@ -785,7 +785,7 @@ impl ActionBarWindow {
 
                     if let Some(displacement) = &displacement
                         && let Some(displacement) =
-                            displacement.instantiate(game_state, action, entity)
+                            displacement.instantiate(engine_state, action, entity)
                     {
                         displacement.render(ui, gui_state);
                     }
@@ -793,11 +793,11 @@ impl ActionBarWindow {
 
                 if *fixed_on_actor {
                     if ui.is_mouse_clicked(MouseButton::Left) {
-                        self.builder.target(game_state, target);
+                        self.builder.target(engine_state, target);
                         *submit = true;
                     }
                 } else {
-                    self.handle_single_target(ui, gui_state, game_state, submit, cursor_ray_result);
+                    self.handle_single_target(ui, gui_state, engine_state, submit, cursor_ray_result);
                 }
             }
         }
@@ -807,7 +807,7 @@ impl ActionBarWindow {
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         submit: &mut bool,
         cursor_ray_result: &systems::geometry::RaycastResult,
     ) {
@@ -820,10 +820,10 @@ impl ActionBarWindow {
             _ => panic!("Invalid state for single target selection"),
         };
 
-        let target = closest.target_instance(&game_state.world);
+        let target = closest.target_instance(&engine_state.world);
 
         let usable_on_target = systems::actions::action_usable_on_targets(
-            game_state,
+            engine_state,
             self.actor(),
             &action.action_id,
             action.variant.as_ref(),
@@ -858,14 +858,14 @@ impl ActionBarWindow {
             }
         };
 
-        render_target_chance_tooltips(ui, game_state, &action, &target);
+        render_target_chance_tooltips(ui, engine_state, &action, &target);
 
         if let TargetInstance::Entity { entity, .. } = &target {
-            let displacement = get_displacement_component(game_state, &action);
+            let displacement = get_displacement_component(engine_state, &action);
 
             if let Some(displacement) = &displacement
                 && let Some(displacement) =
-                    displacement.instantiate(game_state, &action, entity.id())
+                    displacement.instantiate(engine_state, &action, entity.id())
             {
                 displacement.render(ui, gui_state);
             }
@@ -873,7 +873,7 @@ impl ActionBarWindow {
 
         action.targets.push(target.clone());
 
-        match systems::movement::path_to_target(game_state, &action) {
+        match systems::movement::path_to_target(engine_state, &action) {
             Ok(path_result) => {
                 match path_result {
                     TargetPathFindingResult::AlreadyInRange(line_of_sight_result) => {
@@ -887,14 +887,14 @@ impl ActionBarWindow {
                         };
 
                         self.movement_preview
-                            .update(ui, gui_state, game_state, Some(*goal));
+                            .update(ui, gui_state, engine_state, Some(*goal));
                         self.movement_preview
-                            .render_with_context(ui, gui_state, game_state);
+                            .render_with_context(ui, gui_state, engine_state);
 
                         if let Some((shape, shape_pose_at_preview)) =
                             systems::geometry::get_shape_at_point(
-                                &game_state.world,
-                                &game_state.geometry,
+                                &engine_state.world,
+                                &engine_state.geometry,
                                 action.actor.id(),
                                 goal,
                             )
@@ -925,7 +925,7 @@ impl ActionBarWindow {
                 }
 
                 if ui.is_mouse_clicked(MouseButton::Left) {
-                    self.builder.target(game_state, target);
+                    self.builder.target(engine_state, target);
                     *submit = true;
                 }
             }
@@ -973,7 +973,7 @@ impl ActionBarWindow {
 
     fn render_range_preview(
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         targeting_context: &TargetingContext,
     ) {
@@ -982,7 +982,7 @@ impl ActionBarWindow {
         // Take the size of the actor into account when rendering the range.
         // This is mostly relevant for melee attacks
         let Some((actor_shape, actor_pose)) =
-            systems::geometry::get_shape(&game_state.world, action.actor.id())
+            systems::geometry::get_shape(&engine_state.world, action.actor.id())
         else {
             return;
         };
@@ -1007,7 +1007,7 @@ impl ActionBarWindow {
 }
 
 fn usable_contexts(
-    game_state: &GameState,
+    engine_state: &EngineState,
     actor: Entity,
     action_id: &ActionId,
     variant_id: Option<&ActionVariantId>,
@@ -1018,7 +1018,7 @@ fn usable_contexts(
 
     for (i, (context, cost)) in contexts_and_costs.iter().enumerate() {
         let usability = systems::actions::action_usable(
-            game_state,
+            engine_state,
             actor,
             action_id,
             variant_id,
@@ -1098,7 +1098,7 @@ impl ImguiRenderable for TargetingError {
 /// Only runs when the hovered potential target is an Entity.
 fn render_target_chance_tooltips(
     ui: &imgui::Ui,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     action: &ActionData,
     target: &TargetInstance,
 ) {
@@ -1113,12 +1113,12 @@ fn render_target_chance_tooltips(
     for phase in action_def.kind().phases(action.variant.as_ref()) {
         match &phase.condition {
             ActionCondition::AttackRoll(attack_roll) => {
-                render_attack_hit_chance_tooltip(ui, game_state, action, entity.id(), attack_roll);
+                render_attack_hit_chance_tooltip(ui, engine_state, action, entity.id(), attack_roll);
             }
             ActionCondition::SavingThrow(saving_throw) => {
                 render_save_success_chance_tooltip(
                     ui,
-                    game_state,
+                    engine_state,
                     action,
                     entity.id(),
                     saving_throw,
@@ -1131,22 +1131,22 @@ fn render_target_chance_tooltips(
 
 fn render_attack_hit_chance_tooltip(
     ui: &imgui::Ui,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     action: &ActionData,
     target: Entity,
     attack_roll_fn: &Arc<AttackRollFunction>,
 ) {
     let (_source, mut attack_roll) = attack_roll_fn(
-        &game_state.world,
+        &engine_state.world,
         action.actor.id(),
         target,
         &action.context,
     );
     attack_roll.set_action(action.action_id.clone());
 
-    systems::d20::preview_attack_roll(game_state, action.actor.id(), target, &mut attack_roll);
+    systems::d20::preview_attack_roll(engine_state, action.actor.id(), target, &mut attack_roll);
 
-    let target_ac = systems::loadout::armor_class(game_state, target);
+    let target_ac = systems::loadout::armor_class(engine_state, target);
 
     let hit_chance = attack_roll
         .success_probability(target_ac.total() as u32)
@@ -1198,15 +1198,15 @@ fn render_attack_hit_chance_tooltip(
 
 fn render_save_success_chance_tooltip(
     ui: &imgui::Ui,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     action: &ActionData,
     target: Entity,
     saving_throw_fn: &Arc<SavingThrowFunction>,
 ) {
-    let saving_throw_dc = saving_throw_fn(&game_state.world, action.actor.id(), &action.context);
+    let saving_throw_dc = saving_throw_fn(&engine_state.world, action.actor.id(), &action.context);
 
     let result = systems::d20::check_no_event(
-        game_state,
+        engine_state,
         target,
         &saving_throw_dc,
         Some(&action.action_id),
@@ -1411,7 +1411,7 @@ fn reverse_text_kind(text_kind: TextKind) -> TextKind {
 }
 
 fn get_displacement_component(
-    game_state: &GameState,
+    engine_state: &EngineState,
     action_data: &ActionData,
 ) -> Option<DisplacementTemplate> {
     let action = systems::actions::get_action(&action_data.action_id)?;
@@ -1419,7 +1419,7 @@ fn get_displacement_component(
         for component in phase.payload.components() {
             if let ActionPayloadComponent::Displacement(displacement_fn) = component {
                 return Some(displacement_fn(
-                    &game_state.world,
+                    &engine_state.world,
                     action_data.actor.id(),
                     &action_data.context,
                 ));

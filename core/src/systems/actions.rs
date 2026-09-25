@@ -23,8 +23,8 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
+        engine_state::EngineState,
         event::{Event, EventKindTag},
-        game_state::GameState,
         prompt::PromptScopeId,
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
@@ -95,18 +95,19 @@ pub fn set_cooldown(
     cooldowns.insert(action_id.clone(), cooldown);
 }
 
-pub fn all_actions(game_state: &GameState, entity: Entity) -> ActionMap {
-    let mut actions = systems::helpers::get_component_clone::<ActionMap>(&game_state.world, entity);
+pub fn all_actions(engine_state: &EngineState, entity: Entity) -> ActionMap {
+    let mut actions =
+        systems::helpers::get_component_clone::<ActionMap>(&engine_state.world, entity);
 
     merge_action_maps(
         &mut actions,
-        systems::helpers::get_component::<Spellbook>(&game_state.world, entity)
-            .actions(&game_state.world, entity),
+        systems::helpers::get_component::<Spellbook>(&engine_state.world, entity)
+            .actions(&engine_state.world, entity),
     );
     merge_action_maps(
         &mut actions,
-        systems::helpers::get_component::<Loadout>(&game_state.world, entity)
-            .actions(&game_state.world, entity),
+        systems::helpers::get_component::<Loadout>(&engine_state.world, entity)
+            .actions(&engine_state.world, entity),
     );
 
     // Make sure we have the correct resource costs
@@ -116,8 +117,8 @@ pub fn all_actions(game_state: &GameState, entity: Entity) -> ActionMap {
             contexts_and_costs
                 .iter_mut()
                 .for_each(|(action_context, resource_cost)| {
-                    systems::effects::effects(&game_state.world, entity).resource_cost(
-                        game_state,
+                    systems::effects::effects(&engine_state.world, entity).resource_cost(
+                        engine_state,
                         entity,
                         action_id,
                         action_context,
@@ -171,7 +172,7 @@ pub enum ActionUsabilityCheck {
 }
 
 pub fn action_usable(
-    game_state: &GameState,
+    engine_state: &EngineState,
     actor: Entity,
     action_id: &ActionId,
     variant_id: Option<&ActionVariantId>,
@@ -184,13 +185,13 @@ pub fn action_usable(
     };
 
     if !skip_checks.contains(&ActionUsabilityCheck::Alive)
-        && !systems::health::is_alive(&game_state.world, actor)
+        && !systems::health::is_alive(&engine_state.world, actor)
     {
         return Err(ActionUsabilityError::ActorNotAlive(actor));
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::ActionKnown) {
-        let all_actions = all_actions(game_state, actor);
+        let all_actions = all_actions(engine_state, actor);
 
         let Some(context_and_cost) = all_actions.get(action_id) else {
             return Err(ActionUsabilityError::ActionNotKnown {
@@ -215,14 +216,14 @@ pub fn action_usable(
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::Cooldown)
-        && let Some(cooldown) = on_cooldown(&game_state.world, actor, action_id)
+        && let Some(cooldown) = on_cooldown(&engine_state.world, actor, action_id)
     {
         return Err(ActionUsabilityError::OnCooldown(cooldown));
     }
 
     if !skip_checks.contains(&ActionUsabilityCheck::Resources)
         && let Err(missing_resources) =
-            systems::resources::can_afford(&game_state.world, actor, resource_cost)
+            systems::resources::can_afford(&engine_state.world, actor, resource_cost)
     {
         return Err(ActionUsabilityError::NotEnoughResources(missing_resources));
     }
@@ -232,7 +233,7 @@ pub fn action_usable(
     }
 
     if let Some(attack_context) = &action_context.attack {
-        let loadout = systems::helpers::get_component::<Loadout>(&game_state.world, actor);
+        let loadout = systems::helpers::get_component::<Loadout>(&engine_state.world, actor);
         if !loadout.is_valid_context(attack_context) {
             return Err(ActionUsabilityError::InvalidContext(action_context.clone()));
         }
@@ -241,7 +242,7 @@ pub fn action_usable(
     if let Some(spell) = SpellsRegistry::get(&action_id.into()) {
         if spell.has_flag(SpellFlag::Concentration)
             && let Err(concentration_error) =
-                systems::spells::can_concentrate(&game_state.world, actor)
+                systems::spells::can_concentrate(&engine_state.world, actor)
         {
             return Err(ActionUsabilityError::ConcentrationError(
                 concentration_error,
@@ -250,13 +251,13 @@ pub fn action_usable(
     }
 
     if let Some(usability_fn) = &action.usability
-        && let Some(reason) = usability_fn(game_state, actor, action_id, action_context)
+        && let Some(reason) = usability_fn(engine_state, actor, action_id, action_context)
     {
         return Err(ActionUsabilityError::UsabilityFunctionError(reason));
     }
 
-    if let Some(reason) = systems::effects::effects(&game_state.world, actor).action_usability(
-        game_state,
+    if let Some(reason) = systems::effects::effects(&engine_state.world, actor).action_usability(
+        engine_state,
         actor,
         action_id,
         action_context,
@@ -274,7 +275,7 @@ pub enum ReactionUsabilityError {
 }
 
 pub fn reaction_usable(
-    game_state: &GameState,
+    engine_state: &EngineState,
     actor: Entity,
     trigger_event: Option<&Event>,
 ) -> Result<(), ReactionUsabilityError> {
@@ -282,7 +283,7 @@ pub fn reaction_usable(
         return Err(ReactionUsabilityError::NoTriggerEvent);
     }
 
-    if let Some(scope) = game_state.scope_for_entity(actor)
+    if let Some(scope) = engine_state.scope_for_entity(actor)
         && scope.pending_events().is_empty()
     {
         return Err(ReactionUsabilityError::NoPendingEvent);
@@ -342,7 +343,7 @@ fn variant_usable(
 }
 
 pub fn action_usable_on_targets(
-    game_state: &GameState,
+    engine_state: &EngineState,
     actor: Entity,
     action_id: &ActionId,
     variant_id: Option<&ActionVariantId>,
@@ -352,7 +353,7 @@ pub fn action_usable_on_targets(
     skip_checks: &[ActionUsabilityCheck],
 ) -> Result<(), ActionUsabilityError> {
     action_usable(
-        game_state,
+        engine_state,
         actor,
         action_id,
         variant_id,
@@ -369,14 +370,14 @@ pub fn action_usable_on_targets(
                 continue;
             };
             if let Some(reason) =
-                target_usability(game_state, actor, entity.id(), action_id, context)
+                target_usability(engine_state, actor, entity.id(), action_id, context)
             {
                 return Err(ActionUsabilityError::UsabilityFunctionError(reason));
             }
         }
     }
 
-    let targeting_context = targeting_context(&game_state.world, actor, action_id, context);
+    let targeting_context = targeting_context(&engine_state.world, actor, action_id, context);
 
     let targeting_check = skip_checks
         .iter()
@@ -390,7 +391,7 @@ pub fn action_usable_on_targets(
         .unwrap_or(Vec::new()); // If no targeting checks are being skipped, use an empty vector
 
     if let Err(targeting_error) =
-        targeting_context.validate_targets(game_state, actor, targets, &targeting_check)
+        targeting_context.validate_targets(engine_state, actor, targets, &targeting_check)
     {
         return Err(ActionUsabilityError::TargetingError(targeting_error));
     }
@@ -398,13 +399,13 @@ pub fn action_usable_on_targets(
     Ok(())
 }
 
-pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
-    let mut actions = all_actions(game_state, entity);
+pub fn available_actions(engine_state: &EngineState, entity: Entity) -> ActionMap {
+    let mut actions = all_actions(engine_state, entity);
 
     actions.retain(|action_id, action_data| {
         action_data.retain_mut(|(action_context, resource_cost)| {
             action_usable(
-                game_state,
+                engine_state,
                 entity,
                 action_id,
                 None,
@@ -429,7 +430,7 @@ pub fn available_actions(game_state: &GameState, entity: Entity) -> ActionMap {
     actions
 }
 
-pub fn perform_action(game_state: &mut GameState, action_data: &ActionData) {
+pub fn perform_action(engine_state: &mut EngineState, action_data: &ActionData) {
     // TODO: Handle missing action
     let action = get_action(&action_data.action_id)
         .expect("Action not found in character's actions or registry");
@@ -437,22 +438,22 @@ pub fn perform_action(game_state: &mut GameState, action_data: &ActionData) {
     // Set the action on cooldown if applicable
     if let Some(cooldown) = action.cooldown {
         set_cooldown(
-            &mut game_state.world,
+            &mut engine_state.world,
             action_data.actor.id(),
             &action_data.action_id,
             cooldown,
         );
     }
 
-    let phases = action.perform(game_state, action_data);
+    let phases = action.perform(engine_state, action_data);
 
-    start_execution(game_state, action, action_data.clone(), phases);
+    start_execution(engine_state, action, action_data.clone(), phases);
 }
 
 /// Begin executing an action: the `ActionExecution` owns the phases from here
 /// on; the actor's activity state drives it along the action's timeline.
 pub fn start_execution(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     action: &Action,
     action_data: ActionData,
     phases: Vec<PhaseState>,
@@ -463,16 +464,17 @@ pub fn start_execution(
     }
 
     let actor = action_data.actor.id();
-    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, actor)
+    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut engine_state.world, actor)
         .replace(ActionExecution::new(action_data.clone(), phases));
-    systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, actor).set_acting(
-        action,
-        action_data.trigger_event.as_deref().map(|event| event.id),
-    );
+    systems::helpers::get_component_mut::<ActivityState>(&mut engine_state.world, actor)
+        .set_acting(
+            action,
+            action_data.trigger_event.as_deref().map(|event| event.id),
+        );
 }
 
-pub fn execution_status(game_state: &GameState, entity: Entity) -> Option<ExecutionStatus> {
-    systems::helpers::get_component::<Option<ActionExecution>>(&game_state.world, entity)
+pub fn execution_status(engine_state: &EngineState, entity: Entity) -> Option<ExecutionStatus> {
+    systems::helpers::get_component::<Option<ActionExecution>>(&engine_state.world, entity)
         .as_ref()
         .map(ActionExecution::status)
 }
@@ -481,41 +483,41 @@ pub fn execution_status(game_state: &GameState, entity: Entity) -> Option<Execut
 /// state; the execution is temporarily taken out of the table for borrow
 /// separation
 fn with_execution(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
-    operation: impl FnOnce(&mut ActionExecution, &mut GameState),
+    operation: impl FnOnce(&mut ActionExecution, &mut EngineState),
 ) {
     let Some(mut execution) = systems::helpers::get_component_mut::<Option<ActionExecution>>(
-        &mut game_state.world,
+        &mut engine_state.world,
         entity,
     )
     .take() else {
         return;
     };
 
-    operation(&mut execution, game_state);
+    operation(&mut execution, engine_state);
 
-    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, entity)
+    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut engine_state.world, entity)
         .replace(execution);
 }
 
-pub fn advance_execution(game_state: &mut GameState, entity: Entity) {
-    with_execution(game_state, entity, |execution, game_state| {
-        execution.advance(game_state)
+pub fn advance_execution(engine_state: &mut EngineState, entity: Entity) {
+    with_execution(engine_state, entity, |execution, engine_state| {
+        execution.advance(engine_state)
     });
 }
 
-pub fn projectile_impact(game_state: &mut GameState, entity: Entity) {
-    with_execution(game_state, entity, |execution, game_state| {
-        execution.resume_from_projectile(game_state)
+pub fn projectile_impact(engine_state: &mut EngineState, entity: Entity) {
+    with_execution(engine_state, entity, |execution, engine_state| {
+        execution.resume_from_projectile(engine_state)
     });
 }
 
 /// Re-run executions in this scope that are waiting on an event resolution.
 /// Safe to call speculatively: an execution whose result hasn't arrived yet
 /// simply parks again.
-pub fn resume_waiting_executions(game_state: &mut GameState, scope: PromptScopeId) {
-    let waiting: Vec<Entity> = game_state
+pub fn resume_waiting_executions(engine_state: &mut EngineState, scope: PromptScopeId) {
+    let waiting: Vec<Entity> = engine_state
         .world
         .query::<&Option<ActionExecution>>()
         .iter()
@@ -525,7 +527,7 @@ pub fn resume_waiting_executions(game_state: &mut GameState, scope: PromptScopeI
             };
 
             execution.status() == ExecutionStatus::Waiting(WaitReason::EventResolution)
-                && game_state.scope_id_for_entity(*entity) == scope
+                && engine_state.scope_id_for_entity(*entity) == scope
         })
         .map(|(entity, _)| entity)
         .collect();
@@ -536,20 +538,20 @@ pub fn resume_waiting_executions(game_state: &mut GameState, scope: PromptScopeI
     );
 
     for entity in waiting {
-        with_execution(game_state, entity, |execution, game_state| {
-            execution.resume_from_event(game_state)
+        with_execution(engine_state, entity, |execution, engine_state| {
+            execution.resume_from_event(engine_state)
         });
     }
 }
 
 pub fn get_targeted_entities(
-    game_state: &GameState,
+    engine_state: &EngineState,
     action_data: &ActionData,
     specific_targets: Option<Vec<TargetInstance>>,
 ) -> Vec<Entity> {
     let mut entities = Vec::new();
     let targeting_context = targeting_context(
-        &game_state.world,
+        &engine_state.world,
         action_data.actor.id(),
         &action_data.action_id,
         &action_data.context,
@@ -564,7 +566,7 @@ pub fn get_targeted_entities(
                     TargetInstance::Entity { entity, .. } => entities.push(entity.id()),
                     TargetInstance::Point(point) => {
                         if let Some(entity) =
-                            systems::geometry::get_entity_at_point(&game_state.world, *point)
+                            systems::geometry::get_entity_at_point(&engine_state.world, *point)
                         {
                             entities.push(entity);
                         }
@@ -579,9 +581,9 @@ pub fn get_targeted_entities(
             filters,
         } => {
             for target in &targets {
-                let point = target_point(game_state, target);
+                let point = target_point(engine_state, target);
                 entities.extend(entities_in_area(
-                    game_state,
+                    engine_state,
                     action_data,
                     &targeting_context,
                     shape,
@@ -608,20 +610,20 @@ pub fn get_targeted_entities(
 /// allowed-target rules. Used by action phases that derive their targets from a
 /// previously chosen target (e.g. Ice Knife's burst around the struck creature).
 pub fn entities_in_shape_at_target(
-    game_state: &GameState,
+    engine_state: &EngineState,
     action_data: &ActionData,
     target: &TargetInstance,
     shape: &AreaShapeFunction,
 ) -> Vec<Entity> {
-    let targeting_context = targeting_context_data(&game_state.world, action_data);
+    let targeting_context = targeting_context_data(&engine_state.world, action_data);
     let shape = shape(
-        &game_state.world,
+        &engine_state.world,
         action_data.actor.id(),
         &action_data.context,
     );
-    let point = target_point(game_state, target);
+    let point = target_point(engine_state, target);
     entities_in_area(
-        game_state,
+        engine_state,
         action_data,
         &targeting_context,
         &shape,
@@ -630,17 +632,17 @@ pub fn entities_in_shape_at_target(
     )
 }
 
-fn target_point(game_state: &GameState, target: &TargetInstance) -> Point3<f32> {
+fn target_point(engine_state: &EngineState, target: &TargetInstance) -> Point3<f32> {
     match target {
         TargetInstance::Entity { entity, .. } => {
-            systems::geometry::get_foot_position(&game_state.world, entity.id()).unwrap()
+            systems::geometry::get_foot_position(&engine_state.world, entity.id()).unwrap()
         }
         TargetInstance::Point(point) => *point,
     }
 }
 
 fn entities_in_area(
-    game_state: &GameState,
+    engine_state: &EngineState,
     action_data: &ActionData,
     targeting_context: &TargetingContext,
     shape: &AreaShape,
@@ -648,14 +650,14 @@ fn entities_in_area(
     point: &Point3<f32>,
 ) -> Vec<Entity> {
     let shape_transform = shape.parry3d_shape(
-        &game_state.world,
+        &engine_state.world,
         action_data.actor.id(),
         fixed_on_actor,
         point,
     );
 
     let mut entities_in_shape = systems::geometry::entities_in_shape(
-        &game_state.world,
+        &engine_state.world,
         shape_transform.shape.as_ref(),
         &shape_transform.transform,
     );
@@ -663,7 +665,7 @@ fn entities_in_area(
     // Only keep the entities that are valid targets
     entities_in_shape.retain(|entity| {
         targeting_context
-            .allowed_target(&game_state.world, *entity, Some(action_data.actor.id()))
+            .allowed_target(&engine_state.world, *entity, Some(action_data.actor.id()))
             .is_ok()
     });
 
@@ -673,13 +675,13 @@ fn entities_in_area(
 
     if fixed_on_actor {
         let (_, actor_shape_pose) =
-            systems::geometry::get_shape(&game_state.world, action_data.actor.id()).unwrap();
+            systems::geometry::get_shape(&engine_state.world, action_data.actor.id()).unwrap();
         let actor_position = Point3::from(actor_shape_pose.translation.vector);
 
         entities_in_shape.retain(|entity| {
             systems::geometry::line_of_sight_entity_point_filter(
-                &game_state.world,
-                &game_state.geometry,
+                &engine_state.world,
+                &engine_state.geometry,
                 *entity,
                 &actor_position,
                 &LineOfSightTrajectory::Ray,
@@ -690,8 +692,8 @@ fn entities_in_area(
     } else if let AreaShape::Sphere { .. } = shape {
         entities_in_shape.retain(|entity| {
             systems::geometry::line_of_sight_entity_point_filter(
-                &game_state.world,
-                &game_state.geometry,
+                &engine_state.world,
+                &engine_state.geometry,
                 *entity,
                 point,
                 &LineOfSightTrajectory::Ray,
@@ -725,15 +727,15 @@ pub fn targeting_context_data(world: &World, action_data: &ActionData) -> Target
 }
 
 pub fn available_reactions_to_event(
-    game_state: &GameState,
+    engine_state: &EngineState,
     reactor: Entity,
     event: &Event,
     skip_checks: &[ActionUsabilityCheck],
 ) -> Vec<ActionData> {
     let mut reactions = Vec::new();
 
-    let available = systems::actions::available_actions(game_state, reactor);
-    let world = &game_state.world;
+    let available = systems::actions::available_actions(engine_state, reactor);
+    let world = &engine_state.world;
     for (reaction_id, contexts_and_costs) in available {
         let reaction = systems::actions::get_action(&reaction_id);
         if reaction.is_none() {
@@ -747,7 +749,7 @@ pub fn available_reactions_to_event(
                 continue;
             }
 
-            if (trigger.function)(game_state, &reactor, event) {
+            if (trigger.function)(engine_state, &reactor, event) {
                 for (context, resource_cost) in &contexts_and_costs {
                     let self_target = matches!(
                         targeting_context(world, reactor, &reaction_id, context).kind,
@@ -763,7 +765,7 @@ pub fn available_reactions_to_event(
                     };
 
                     let usability_result = action_usable_on_targets(
-                        game_state,
+                        engine_state,
                         reactor,
                         &reaction_id,
                         // TODO: For now assume that no reaction has variants

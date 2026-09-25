@@ -13,7 +13,7 @@ use crate::{
         resource::ResourceAmountMap,
         speed::Speed,
     },
-    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
+    engine::{action_prompt::ActionData, event::Event, engine_state::EngineState},
     registry::registry::ScriptsRegistry,
     scripts::{script::ScriptError, script_engine::SCRIPT_ENGINE},
     systems::time::RestKind,
@@ -24,7 +24,7 @@ use crate::{
 
 pub fn evaluate_reaction_trigger(
     reaction_trigger: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     reactor: Entity,
     event: &Event,
 ) -> bool {
@@ -34,7 +34,7 @@ pub fn evaluate_reaction_trigger(
             reaction_trigger
         )
     });
-    match SCRIPT_ENGINE.evaluate_reaction_trigger(script, game_state, reactor, event) {
+    match SCRIPT_ENGINE.evaluate_reaction_trigger(script, engine_state, reactor, event) {
         Ok(result) => result,
         Err(err) => {
             error!(
@@ -72,13 +72,13 @@ pub fn evaluate_event_filter(
 
 pub fn evaluate_reaction_body(
     reaction_body: &ScriptId,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     reaction: &ActionData,
     event: &mut Event,
 ) {
     let script = ScriptsRegistry::get(reaction_body)
         .unwrap_or_else(|| panic!("Reaction script not found in registry: {:?}", reaction_body));
-    if let Err(err) = SCRIPT_ENGINE.evaluate_reaction_body(script, game_state, reaction, event) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_reaction_body(script, engine_state, reaction, event) {
         error!(
             "Error evaluating reaction body script {:?} for reactor {:?}: {:?}",
             reaction_body,
@@ -90,7 +90,7 @@ pub fn evaluate_reaction_body(
 
 pub fn evaluate_resource_cost_hook(
     resource_cost_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     action_id: &ActionId,
     action_context: &ActionContext,
@@ -104,7 +104,7 @@ pub fn evaluate_resource_cost_hook(
     });
     if let Err(err) = SCRIPT_ENGINE.evaluate_resource_cost_hook(
         script,
-        game_state,
+        engine_state,
         entity,
         action_id,
         action_context,
@@ -119,7 +119,7 @@ pub fn evaluate_resource_cost_hook(
 
 pub fn evaluate_action_hook(
     action_hook: &ScriptId,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     action: &ActionData,
 ) {
     let script = ScriptsRegistry::get(action_hook).unwrap_or_else(|| {
@@ -128,7 +128,7 @@ pub fn evaluate_action_hook(
             action_hook
         )
     });
-    if let Err(err) = SCRIPT_ENGINE.evaluate_action_hook(script, game_state, action) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_action_hook(script, engine_state, action) {
         error!(
             "Error evaluating action hook script {:?}: {:?}",
             action_hook, err
@@ -138,7 +138,7 @@ pub fn evaluate_action_hook(
 
 pub fn evaluate_action_result_hook(
     action_result_hook: &ScriptId,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     action: &ActionData,
     results: &ActionResult,
 ) {
@@ -148,7 +148,7 @@ pub fn evaluate_action_result_hook(
             action_result_hook
         )
     });
-    if let Err(err) = SCRIPT_ENGINE.evaluate_action_result_hook(script, game_state, action, results)
+    if let Err(err) = SCRIPT_ENGINE.evaluate_action_result_hook(script, engine_state, action, results)
     {
         error!(
             "Error evaluating action result hook script {:?}: {:?}",
@@ -159,7 +159,7 @@ pub fn evaluate_action_result_hook(
 
 pub fn evaluate_armor_class_hook(
     armor_class_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     armor_class: &mut ArmorClass,
 ) {
@@ -170,7 +170,7 @@ pub fn evaluate_armor_class_hook(
         )
     });
     if let Err(err) =
-        SCRIPT_ENGINE.evaluate_armor_class_hook(script, game_state, entity, armor_class)
+        SCRIPT_ENGINE.evaluate_armor_class_hook(script, engine_state, entity, armor_class)
     {
         error!(
             "Error evaluating armor class hook script {:?} for entity {:?}: {:?}",
@@ -181,13 +181,13 @@ pub fn evaluate_armor_class_hook(
 
 pub fn evaluate_speed_hook(
     speed_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     speed: &mut Speed,
 ) {
     let script = ScriptsRegistry::get(speed_hook)
         .unwrap_or_else(|| panic!("Speed hook script not found in registry: {:?}", speed_hook));
-    if let Err(err) = SCRIPT_ENGINE.evaluate_speed_hook(script, game_state, entity, speed) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_speed_hook(script, engine_state, entity, speed) {
         error!(
             "Error evaluating speed hook script {:?} for entity {:?}: {:?}",
             speed_hook, entity, err
@@ -197,7 +197,7 @@ pub fn evaluate_speed_hook(
 
 pub fn evaluate_effect_lifetime_hook(
     effect_lifetime_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     applier: Entity,
     target: Entity,
     effect_id: &EffectId,
@@ -210,7 +210,7 @@ pub fn evaluate_effect_lifetime_hook(
         )
     });
     if let Err(err) = SCRIPT_ENGINE.evaluate_effect_lifetime_hook(
-        script, game_state, applier, target, effect_id, lifetime,
+        script, engine_state, applier, target, effect_id, lifetime,
     ) {
         error!(
             "Error evaluating effect lifetime hook script {:?} for effect {:?} on entity {:?}: {:?}",
@@ -221,7 +221,7 @@ pub fn evaluate_effect_lifetime_hook(
 
 pub fn evaluate_d20_ability_hook(
     ability_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     check: &D20Check,
 ) -> Option<Ability> {
@@ -231,7 +231,7 @@ pub fn evaluate_d20_ability_hook(
             ability_hook
         )
     });
-    match SCRIPT_ENGINE.evaluate_d20_ability_hook(script, game_state, entity, check) {
+    match SCRIPT_ENGINE.evaluate_d20_ability_hook(script, engine_state, entity, check) {
         Ok(result) => result,
         Err(err) => {
             error!(
@@ -245,7 +245,7 @@ pub fn evaluate_d20_ability_hook(
 
 pub fn evaluate_d20_check_hook(
     check_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     check: &mut D20Check,
 ) {
@@ -255,7 +255,7 @@ pub fn evaluate_d20_check_hook(
             check_hook
         )
     });
-    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_check_hook(script, game_state, entity, check) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_check_hook(script, engine_state, entity, check) {
         error!(
             "Error evaluating d20 check hook script {:?} for entity {:?}: {:?}",
             check_hook, entity, err
@@ -265,7 +265,7 @@ pub fn evaluate_d20_check_hook(
 
 pub fn evaluate_d20_result_hook(
     result_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     result: &mut D20CheckResult,
 ) {
@@ -275,7 +275,7 @@ pub fn evaluate_d20_result_hook(
             result_hook
         )
     });
-    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_result_hook(script, game_state, entity, result) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_d20_result_hook(script, engine_state, entity, result) {
         error!(
             "Error evaluating d20 result hook script {:?} for entity {:?}: {:?}",
             result_hook, entity, err
@@ -285,7 +285,7 @@ pub fn evaluate_d20_result_hook(
 
 pub fn evaluate_damage_roll_hook(
     damage_roll_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     damage_roll: &mut DamageRoll,
     action: &ActionData,
@@ -299,7 +299,7 @@ pub fn evaluate_damage_roll_hook(
     });
     if let Err(err) = SCRIPT_ENGINE.evaluate_damage_roll_hook(
         script,
-        game_state,
+        engine_state,
         entity,
         damage_roll,
         action,
@@ -314,7 +314,7 @@ pub fn evaluate_damage_roll_hook(
 
 pub fn evaluate_damage_roll_result_hook(
     damage_roll_result_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     damage_roll_result: &mut DamageRollResult,
     action: &ActionData,
@@ -328,7 +328,7 @@ pub fn evaluate_damage_roll_result_hook(
     });
     if let Err(err) = SCRIPT_ENGINE.evaluate_damage_roll_result_hook(
         script,
-        game_state,
+        engine_state,
         entity,
         damage_roll_result,
         action,
@@ -343,7 +343,7 @@ pub fn evaluate_damage_roll_result_hook(
 
 pub fn evaluate_pre_damage_mitigation_hook(
     pre_damage_mitigation_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     effect: &EffectInstance,
     damage_roll_result: &mut DamageRollResult,
@@ -358,7 +358,7 @@ pub fn evaluate_pre_damage_mitigation_hook(
     });
     if let Err(err) = SCRIPT_ENGINE.evaluate_pre_damage_mitigation_hook(
         script,
-        game_state,
+        engine_state,
         entity,
         effect,
         damage_roll_result,
@@ -374,7 +374,7 @@ pub fn evaluate_pre_damage_mitigation_hook(
 
 pub fn evaluate_post_damage_mitigation_hook(
     damage_mitigation_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     damage_mitigation_result: &mut DamageMitigationResult,
     action: Option<&ActionData>,
@@ -388,7 +388,7 @@ pub fn evaluate_post_damage_mitigation_hook(
     });
     if let Err(err) = SCRIPT_ENGINE.evaluate_post_damage_mitigation_hook(
         script,
-        game_state,
+        engine_state,
         entity,
         damage_mitigation_result,
         action,
@@ -403,14 +403,14 @@ pub fn evaluate_post_damage_mitigation_hook(
 
 pub fn evaluate_death_hook(
     death_hook: &ScriptId,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     victim: Entity,
     killer: Option<Entity>,
     applier: Option<Entity>,
 ) {
     let script = ScriptsRegistry::get(death_hook)
         .unwrap_or_else(|| panic!("Death hook script not found in registry: {:?}", death_hook));
-    if let Err(err) = SCRIPT_ENGINE.evaluate_death_hook(script, game_state, victim, killer, applier)
+    if let Err(err) = SCRIPT_ENGINE.evaluate_death_hook(script, engine_state, victim, killer, applier)
     {
         error!(
             "Error evaluating death hook script {:?} for entity {:?}: {:?}",
@@ -421,7 +421,7 @@ pub fn evaluate_death_hook(
 
 pub fn evaluate_pre_death_hook(
     script_id: &ScriptId,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     victim: Entity,
     killer: Option<Entity>,
     applier: Option<Entity>,
@@ -433,7 +433,7 @@ pub fn evaluate_pre_death_hook(
         )
     });
     if let Err(err) =
-        SCRIPT_ENGINE.evaluate_pre_death_hook(script, game_state, victim, killer, applier)
+        SCRIPT_ENGINE.evaluate_pre_death_hook(script, engine_state, victim, killer, applier)
     {
         error!(
             "Error evaluating pre-death hook script {:?} for entity {:?}: {:?}",
@@ -444,13 +444,13 @@ pub fn evaluate_pre_death_hook(
 
 pub fn evaluate_rest_hook(
     script_id: &ScriptId,
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     kind: &RestKind,
 ) {
     let script = ScriptsRegistry::get(script_id)
         .unwrap_or_else(|| panic!("Rest hook script not found in registry: {:?}", script_id));
-    if let Err(err) = SCRIPT_ENGINE.evaluate_rest_hook(script, game_state, entity, kind) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_rest_hook(script, engine_state, entity, kind) {
         error!(
             "Error evaluating rest hook script {:?} for entity {:?}: {:?}",
             script_id, entity, err
@@ -458,10 +458,10 @@ pub fn evaluate_rest_hook(
     }
 }
 
-pub fn evaluate_turn_start_hook(script_id: &ScriptId, game_state: &mut GameState, entity: Entity) {
+pub fn evaluate_turn_start_hook(script_id: &ScriptId, engine_state: &mut EngineState, entity: Entity) {
     let script = ScriptsRegistry::get(script_id)
         .unwrap_or_else(|| panic!("Turn start hook script not found: {:?}", script_id));
-    if let Err(err) = SCRIPT_ENGINE.evaluate_turn_start_hook(script, game_state, entity) {
+    if let Err(err) = SCRIPT_ENGINE.evaluate_turn_start_hook(script, engine_state, entity) {
         error!(
             "Error evaluating turn start hook script {:?} for entity {:?}: {:?}",
             script_id, entity, err
@@ -471,7 +471,7 @@ pub fn evaluate_turn_start_hook(script_id: &ScriptId, game_state: &mut GameState
 
 pub fn evaluate_action_usability(
     action_usability: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     action_id: &ActionId,
     action_context: &ActionContext,
@@ -484,7 +484,7 @@ pub fn evaluate_action_usability(
     });
     match SCRIPT_ENGINE.evaluate_action_usability(
         script,
-        game_state,
+        engine_state,
         entity,
         action_id,
         action_context,
@@ -496,7 +496,7 @@ pub fn evaluate_action_usability(
 
 pub fn evaluate_action_usability_hook(
     action_usability_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     action_id: &ActionId,
     action_context: &ActionContext,
@@ -509,7 +509,7 @@ pub fn evaluate_action_usability_hook(
     });
     match SCRIPT_ENGINE.evaluate_action_usability_hook(
         script,
-        game_state,
+        engine_state,
         entity,
         action_id,
         action_context,
@@ -521,7 +521,7 @@ pub fn evaluate_action_usability_hook(
 
 pub fn evaluate_target_usability(
     target_usability: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     target: Entity,
     action_id: &ActionId,
@@ -535,7 +535,7 @@ pub fn evaluate_target_usability(
     });
     match SCRIPT_ENGINE.evaluate_target_usability(
         script,
-        game_state,
+        engine_state,
         entity,
         target,
         action_id,
@@ -556,7 +556,7 @@ fn usability_script_error(script: &ScriptId, entity: Entity, err: ScriptError) -
 
 pub fn evaluate_attacked_hook(
     attacked_hook: &ScriptId,
-    game_state: &GameState,
+    engine_state: &EngineState,
     effect: &EffectInstance,
     victim: Entity,
     attacker: Entity,
@@ -569,7 +569,7 @@ pub fn evaluate_attacked_hook(
         )
     });
     if let Err(err) =
-        SCRIPT_ENGINE.evaluate_attacked_hook(script, game_state, effect, victim, attacker, check)
+        SCRIPT_ENGINE.evaluate_attacked_hook(script, engine_state, effect, victim, attacker, check)
     {
         error!(
             "Error evaluating attacked hook script {:?} for victim {:?}: {:?}",

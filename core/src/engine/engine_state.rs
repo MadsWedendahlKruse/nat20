@@ -32,7 +32,7 @@ use crate::{
 };
 
 // TODO: WorldState instead?
-pub struct GameState {
+pub struct EngineState {
     pub world: World,
     pub geometry: WorldGeometry,
 
@@ -43,7 +43,7 @@ pub struct GameState {
     pub event_dispatcher: EventDispatcher,
 }
 
-impl GameState {
+impl EngineState {
     pub fn new(geometry: WorldGeometry) -> Self {
         Self {
             world: World::new(),

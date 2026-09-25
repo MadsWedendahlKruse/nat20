@@ -3,7 +3,7 @@ use crate::{
         actions::action::{ActionConditionResolution, DamageFunction},
         damage::{DamageRoll, DamageRollResult},
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::{action_prompt::ActionData, engine_state::EngineState},
     systems,
 };
 
@@ -11,14 +11,14 @@ use crate::{
 
 pub fn damage_roll(
     mut damage_roll: DamageRoll,
-    game_state: &GameState,
+    engine_state: &EngineState,
     action: &ActionData,
     resolution: &ActionConditionResolution,
 ) -> DamageRollResult {
     let entity = action.actor.id();
 
-    systems::effects::effects(&game_state.world, entity).pre_damage_roll(
-        game_state,
+    systems::effects::effects(&engine_state.world, entity).pre_damage_roll(
+        engine_state,
         entity,
         &mut damage_roll,
         action,
@@ -27,8 +27,8 @@ pub fn damage_roll(
 
     let mut result = damage_roll.roll(resolution.is_crit());
 
-    systems::effects::effects(&game_state.world, entity).post_damage_roll(
-        game_state,
+    systems::effects::effects(&engine_state.world, entity).post_damage_roll(
+        engine_state,
         entity,
         &mut result,
         action,
@@ -40,10 +40,10 @@ pub fn damage_roll(
 
 pub fn damage_roll_fn(
     damage_roll_fn: &DamageFunction,
-    game_state: &GameState,
+    engine_state: &EngineState,
     action: &ActionData,
     resolution: &ActionConditionResolution,
 ) -> DamageRollResult {
-    let roll = damage_roll_fn(&game_state.world, action.actor.id(), &action.context);
-    damage_roll(roll, game_state, action, resolution)
+    let roll = damage_roll_fn(&engine_state.world, action.actor.id(), &action.context);
+    damage_roll(roll, engine_state, action, resolution)
 }

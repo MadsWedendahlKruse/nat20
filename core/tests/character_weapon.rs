@@ -34,13 +34,13 @@ mod tests {
 
     #[test]
     fn character_weapon_finesse_modifier() {
-        let mut game_state = fixtures::engine::game_state();
-        let entity = game_state.world.spawn(Character::default());
+        let mut engine_state = fixtures::engine::engine_state();
+        let entity = engine_state.world.spawn(Character::default());
 
         // Set Strength 14, Dexterity 16
         {
             let mut scores =
-                helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity);
+                helpers::get_component_mut::<AbilityScoreMap>(&mut engine_state.world, entity);
             scores.set(Ability::Strength, AbilityScore::new(Ability::Strength, 14));
             scores.set(
                 Ability::Dexterity,
@@ -58,7 +58,7 @@ mod tests {
 
         let damage_roll = {
             let ability_scores =
-                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
+                systems::helpers::get_component::<AbilityScoreMap>(&engine_state.world, entity);
             assert_eq!(
                 weapon.determine_ability(&ability_scores),
                 Ability::Dexterity
@@ -69,7 +69,7 @@ mod tests {
             )
         };
         let action = ActionData::new(
-            EntityIdentifier::from_world(&game_state.world, entity),
+            EntityIdentifier::from_world(&engine_state.world, entity),
             ActionId::new("nat20_core", "action.placeholder"),
             ActionContext::default(),
             ResourceAmountMap::new(),
@@ -77,7 +77,7 @@ mod tests {
         );
         let damage_result = systems::damage::damage_roll(
             damage_roll,
-            &game_state,
+            &engine_state,
             &action,
             &ActionConditionResolution::Unconditional,
         );
@@ -98,18 +98,18 @@ mod tests {
 
     #[test]
     fn character_versatile_weapon() {
-        let mut game_state = fixtures::engine::game_state();
-        let entity = game_state.world.spawn(Character::default());
+        let mut engine_state = fixtures::engine::engine_state();
+        let entity = engine_state.world.spawn(Character::default());
 
         // Equip longsword
         let longsword = ItemsRegistry::get(&ItemId::new("nat20_core", "item.longsword"))
             .unwrap()
             .clone();
-        let _ = systems::loadout::equip(&mut game_state, entity, longsword);
+        let _ = systems::loadout::equip(&mut engine_state, entity, longsword);
 
         // Longsword used with two hands
         let roll = systems::loadout::weapon_damage_roll(
-            &game_state.world,
+            &engine_state.world,
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
@@ -119,7 +119,7 @@ mod tests {
         );
 
         systems::loadout::equip_in_slot(
-            &mut game_state,
+            &mut engine_state,
             entity,
             &EquipmentSlot::MeleeOffHand,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
@@ -130,7 +130,7 @@ mod tests {
 
         // Longsword now used one-handed
         let roll = systems::loadout::weapon_damage_roll(
-            &game_state.world,
+            &engine_state.world,
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
@@ -140,12 +140,12 @@ mod tests {
         );
 
         // Unequip dagger
-        let _ = systems::loadout::unequip(&mut game_state, entity, &EquipmentSlot::MeleeOffHand)
+        let _ = systems::loadout::unequip(&mut engine_state, entity, &EquipmentSlot::MeleeOffHand)
             .unwrap();
 
         // Longsword used with two hands again
         let roll = systems::loadout::weapon_damage_roll(
-            &game_state.world,
+            &engine_state.world,
             entity,
             &EquipmentSlot::MeleeMainHand,
         );
@@ -157,11 +157,11 @@ mod tests {
 
     #[test]
     fn character_two_handed_weapon() {
-        let mut game_state = fixtures::engine::game_state();
-        let entity = game_state.world.spawn(Character::default());
+        let mut engine_state = fixtures::engine::engine_state();
+        let entity = engine_state.world.spawn(Character::default());
 
         systems::loadout::equip_in_slot(
-            &mut game_state,
+            &mut engine_state,
             entity,
             &EquipmentSlot::MeleeOffHand,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
@@ -170,7 +170,7 @@ mod tests {
         )
         .unwrap();
         let _ = systems::loadout::equip_in_slot(
-            &mut game_state,
+            &mut engine_state,
             entity,
             &EquipmentSlot::MeleeMainHand,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.longsword"))
@@ -179,7 +179,7 @@ mod tests {
         );
 
         let unequipped = systems::loadout::equip(
-            &mut game_state,
+            &mut engine_state,
             entity,
             ItemsRegistry::get(&ItemId::new("nat20_core", "item.greatsword"))
                 .unwrap()
@@ -189,19 +189,19 @@ mod tests {
         assert_eq!(unequipped.len(), 2);
 
         // Main hand has greatsword, off-hand should be empty
-        let loadout = systems::helpers::get_component::<Loadout>(&game_state.world, entity);
+        let loadout = systems::helpers::get_component::<Loadout>(&engine_state.world, entity);
         assert!(loadout.has_weapon_in_hand(&EquipmentSlot::MeleeMainHand));
         assert!(!loadout.has_weapon_in_hand(&EquipmentSlot::MeleeOffHand));
     }
 
     #[test]
     fn character_attack_roll_basic() {
-        let mut game_state = fixtures::engine::game_state();
-        let entity = game_state.world.spawn(Character::default());
+        let mut engine_state = fixtures::engine::engine_state();
+        let entity = engine_state.world.spawn(Character::default());
 
         {
             let mut scores =
-                helpers::get_component_mut::<AbilityScoreMap>(&mut game_state.world, entity);
+                helpers::get_component_mut::<AbilityScoreMap>(&mut engine_state.world, entity);
             scores.set(Ability::Strength, AbilityScore::new(Ability::Strength, 14));
             scores.set(
                 Ability::Dexterity,
@@ -226,10 +226,10 @@ mod tests {
             vec![],
         );
 
-        systems::loadout::equip(&mut game_state, entity, longsword).unwrap();
+        systems::loadout::equip(&mut engine_state, entity, longsword).unwrap();
 
-        let (_, roll) = systems::loadout::loadout(&game_state.world, entity).attack_roll(
-            &game_state.world,
+        let (_, roll) = systems::loadout::loadout(&engine_state.world, entity).attack_roll(
+            &engine_state.world,
             entity,
             entity,
             &ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),

@@ -3,7 +3,7 @@ use core::f32;
 use hecs::Entity;
 use nat20_core::{
     components::{actions::targeting::LineOfSightTrajectory, id::Name},
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems::{
         self,
         geometry::{LineOfSightResult, RaycastMode},
@@ -119,12 +119,12 @@ impl LineOfSightDebugWindow {
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
+impl RenderableMutWithContext<&mut EngineState> for LineOfSightDebugWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let mut los_debug_open = *gui_state
             .settings
@@ -148,7 +148,7 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
 
                 let width_token = ui.push_item_width(200.0);
 
-                let mut query = game_state.world.query::<&Name>();
+                let mut query = engine_state.world.query::<&Name>();
                 let all_entities = query.iter().collect::<Vec<_>>();
 
                 Self::render_line_of_sight_target(&mut self.from, "From", ui, &all_entities);
@@ -202,8 +202,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                                 (from_entity_option, to_entity_option)
                             {
                                 self.result = Some(systems::geometry::line_of_sight_entity_entity(
-                                    &game_state.world,
-                                    &game_state.geometry,
+                                    &engine_state.world,
+                                    &engine_state.geometry,
                                     *from_entity,
                                     *to_entity,
                                     &self.mode,
@@ -214,8 +214,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                         (LineOfSightTarget::Entity(entity), LineOfSightTarget::Point(to_point)) => {
                             if let Some(entity) = entity {
                                 self.result = Some(systems::geometry::line_of_sight_entity_point(
-                                    &game_state.world,
-                                    &game_state.geometry,
+                                    &engine_state.world,
+                                    &engine_state.geometry,
                                     *entity,
                                     &(*to_point).into(),
                                     &self.mode,
@@ -232,8 +232,8 @@ impl RenderableMutWithContext<&mut GameState> for LineOfSightDebugWindow {
                             LineOfSightTarget::Point(to_point),
                         ) => {
                             self.result = Some(systems::geometry::line_of_sight_point_point(
-                                &game_state.world,
-                                &game_state.geometry,
+                                &engine_state.world,
+                                &engine_state.geometry,
                                 &(*from_point).into(),
                                 &(*to_point).into(),
                                 &self.mode,

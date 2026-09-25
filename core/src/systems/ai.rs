@@ -11,7 +11,7 @@ use crate::{
     },
     engine::{
         action_prompt::{ActionData, ActionPrompt},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::{self},
     systems,
@@ -22,17 +22,17 @@ pub fn is_player_controlled(world: &World, entity: Entity) -> bool {
 }
 
 pub fn decide_activity(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     prompt: &ActionPrompt,
     actor: Entity,
 ) -> Option<Activity> {
     let controller_id =
-        systems::helpers::get_component_clone::<AIControllerId>(&game_state.world, actor);
+        systems::helpers::get_component_clone::<AIControllerId>(&engine_state.world, actor);
 
     registry::ai::AI_CONTROLLER_REGISTRY
         .get(&controller_id)
         .unwrap()
-        .decide(game_state, prompt, actor)
+        .decide(engine_state, prompt, actor)
 }
 
 pub fn recommeneded_target_attitude(
@@ -74,24 +74,24 @@ pub fn recommeneded_target_attitude(
     }
 }
 
-pub fn possible_targets(game_state: &GameState, action_data: &ActionData) -> Vec<Entity> {
-    let targeting = systems::actions::targeting_context_data(&game_state.world, action_data);
+pub fn possible_targets(engine_state: &EngineState, action_data: &ActionData) -> Vec<Entity> {
+    let targeting = systems::actions::targeting_context_data(&engine_state.world, action_data);
 
-    if let Some(encounter) = game_state.encounter_for_entity(action_data.actor.id())
+    if let Some(encounter) = engine_state.encounter_for_entity(action_data.actor.id())
         && let Some(action) = systems::actions::get_action(&action_data.action_id)
     {
         encounter
-            .participants(&game_state.world, &targeting.allowed_entities)
+            .participants(&engine_state.world, &targeting.allowed_entities)
             .into_iter()
             .filter(|target| {
                 let target_attitude = systems::factions::mutual_attitude(
-                    &game_state.world,
+                    &engine_state.world,
                     action_data.actor.id(),
                     *target,
                 );
                 target_attitude
                     == recommeneded_target_attitude(
-                        &game_state.world,
+                        &engine_state.world,
                         action_data.actor.id(),
                         &action.kind,
                         action_data.variant.as_ref(),

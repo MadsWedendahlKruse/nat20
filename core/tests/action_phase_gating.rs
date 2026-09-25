@@ -49,7 +49,7 @@ fn cast_gated_ray_of_frost(
         phases: vec![base, gated],
     };
 
-    let (context, cost) = systems::actions::available_actions(&scenario.game_state, wizard.id())
+    let (context, cost) = systems::actions::available_actions(&scenario.engine_state, wizard.id())
         .get(&action_id)
         .expect("wizard should have ray_of_frost")[0]
         .clone();
@@ -61,11 +61,11 @@ fn cast_gated_ray_of_frost(
         vec![TargetInstance::entity(goblin)],
     );
 
-    let phases = kind.perform(&mut scenario.game_state, &action_data);
-    systems::actions::start_execution(&mut scenario.game_state, action, action_data, phases);
+    let phases = kind.perform(&mut scenario.engine_state, &action_data);
+    systems::actions::start_execution(&mut scenario.engine_state, action, action_data, phases);
 
     for _ in 0..10 {
-        scenario.game_state.update(0.5);
+        scenario.engine_state.update(0.5);
     }
 }
 

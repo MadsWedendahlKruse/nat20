@@ -21,7 +21,7 @@ use crate::{
         faction::Attitude, health::life_state::LifeState, id::EntityIdentifier,
         items::equipment::weapon::MELEE_RANGE_REACH, species::CreatureType,
     },
-    engine::{game_state::GameState, geometry::WorldGeometry},
+    engine::{engine_state::EngineState, geometry::WorldGeometry},
     registry::serialize::schema::impl_string_schema,
     systems::{self, entities::EntityKind, geometry::EPSILON},
 };
@@ -80,7 +80,7 @@ impl TargetingContext {
 
     pub fn validate_targets(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         actor: Entity,
         targets: &[TargetInstance],
         skip_checks: &[TargetingCheck],
@@ -94,7 +94,7 @@ impl TargetingContext {
             match target {
                 TargetInstance::Entity { entity, .. } => {
                     if let Err(violated_filters) =
-                        self.allowed_target(&game_state.world, entity.id(), Some(actor))
+                        self.allowed_target(&engine_state.world, entity.id(), Some(actor))
                     {
                         return Err(TargetingError::InvalidTarget {
                             target: target.clone(),
@@ -115,13 +115,13 @@ impl TargetingContext {
                         && !filters.is_empty()
                     {
                         let shape_transform =
-                            shape.parry3d_shape(&game_state.world, actor, *fixed_on_actor, point);
+                            shape.parry3d_shape(&engine_state.world, actor, *fixed_on_actor, point);
                         let violated_filters: Vec<TargetFilter> = filters
                             .iter()
                             .filter(|filter| {
                                 !filter.matches(
-                                    &game_state.world,
-                                    &game_state.geometry,
+                                    &engine_state.world,
+                                    &engine_state.geometry,
                                     &shape_transform,
                                 )
                             })
@@ -143,7 +143,7 @@ impl TargetingContext {
                 let distance = match target {
                     TargetInstance::Entity { entity, .. } => {
                         systems::geometry::distance_between_entities(
-                            &game_state.world,
+                            &engine_state.world,
                             actor,
                             entity.id(),
                         )
@@ -152,7 +152,7 @@ impl TargetingContext {
 
                     TargetInstance::Point(point) => {
                         let actor_position =
-                            systems::geometry::get_foot_position(&game_state.world, actor).unwrap();
+                            systems::geometry::get_foot_position(&engine_state.world, actor).unwrap();
                         Length::new::<meter>((point - actor_position).norm())
                     }
                 };
@@ -170,8 +170,8 @@ impl TargetingContext {
                 && self.kind.check_line_of_sight()
             {
                 let line_of_sight_result = systems::geometry::line_of_sight_entity_target(
-                    &game_state.world,
-                    &game_state.geometry,
+                    &engine_state.world,
+                    &engine_state.geometry,
                     actor,
                     target,
                     &self.line_of_sight,
@@ -190,7 +190,7 @@ impl TargetingContext {
                 if targets.len() > 1 {
                     return Err(TargetingError::ExceedsMaxTargets);
                 }
-                let actor = EntityIdentifier::from_world(&game_state.world, actor);
+                let actor = EntityIdentifier::from_world(&engine_state.world, actor);
                 let TargetInstance::Entity { entity, .. } = &targets[0] else {
                     return Err(TargetingError::NotSelf {
                         target: targets[0].clone(),

@@ -1,5 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(game_state, reactor, event)
+local function reaction_trigger(engine_state, reactor, event)
     local action = event:as_action_requested()
     if action then
         -- Cannot use Shield as a reaction to your own spell
@@ -24,7 +24,7 @@ local function reaction_trigger(game_state, reactor, event)
 end
 
 ---@type PostDamageMitigationHookFn
-local function post_damage_mitigation_hook(game_state, entity, damage_mitigation_result, action, resolution)
+local function post_damage_mitigation_hook(engine_state, entity, damage_mitigation_result, action, resolution)
     if action and action.action_id == "nat20_core::action.magic_missile" then
         damage_mitigation_result:add_immunity("nat20_core::effect.spell.shield")
     end

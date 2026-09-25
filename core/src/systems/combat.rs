@@ -1,6 +1,6 @@
 use hecs::Entity;
 
-use crate::engine::{encounter::EncounterId, game_state::GameState};
+use crate::engine::{encounter::EncounterId, engine_state::EngineState};
 
 // TODO: Not sure where this should live
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -25,8 +25,8 @@ impl CombatState {
 }
 
 /// Used often enough to warrant a helper function
-pub fn is_in_combat(game_state: &GameState, entity: Entity) -> bool {
-    if let Ok(combat_state) = game_state.world.get::<&CombatState>(entity) {
+pub fn is_in_combat(engine_state: &EngineState, entity: Entity) -> bool {
+    if let Ok(combat_state) = engine_state.world.get::<&CombatState>(entity) {
         combat_state.is_in_combat()
     } else {
         false

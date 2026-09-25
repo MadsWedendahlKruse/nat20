@@ -34,8 +34,8 @@ use crate::{
     engine::{
         action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
         encounter::EncounterId,
+        engine_state::EngineState,
         event::{Event, EventCallback, EventFilter, EventKind},
-        game_state::GameState,
     },
     registry::registry::ItemsRegistry,
     systems,
@@ -44,7 +44,7 @@ use crate::{
 };
 
 pub struct Scenario {
-    pub game_state: GameState,
+    pub engine_state: EngineState,
     pub creatures: HashMap<String, EntityIdentifier>,
     pub encounter_id: Option<EncounterId>,
     _log_guard: DefaultGuard,
@@ -57,9 +57,9 @@ impl Default for Scenario {
 }
 
 impl Scenario {
-    pub fn from_game_state(game_state: GameState) -> Self {
+    pub fn from_engine_state(engine_state: EngineState) -> Self {
         Self {
-            game_state,
+            engine_state,
             creatures: HashMap::default(),
             encounter_id: None,
             _log_guard: Self::init_test_logging(),
@@ -67,7 +67,7 @@ impl Scenario {
     }
 
     pub fn new() -> Self {
-        Self::from_game_state(fixtures::engine::game_state())
+        Self::from_engine_state(fixtures::engine::engine_state())
     }
 
     fn init_test_logging() -> DefaultGuard {
@@ -132,8 +132,8 @@ impl Scenario {
     ) -> ScenarioActionBuilder<'_> {
         let handle = handle.into();
         let entity = self.entity(&handle);
-        let mut builder = ActionBuilder::available(&self.game_state, entity);
-        builder.action(&self.game_state, &action.into());
+        let mut builder = ActionBuilder::available(&self.engine_state, entity);
+        builder.action(&self.engine_state, &action.into());
         ScenarioActionBuilder {
             scenario: self,
             builder,
@@ -143,7 +143,7 @@ impl Scenario {
     pub fn react<'s>(&mut self, handle: impl Into<String>) -> ScenarioReactionBuilder<'_> {
         let handle = handle.into();
         let entity = self.entity(&handle);
-        let builder = ReactionBuilder::new(&self.game_state, entity);
+        let builder = ReactionBuilder::new(&self.engine_state, entity);
         ScenarioReactionBuilder {
             scenario: self,
             builder,
@@ -154,7 +154,7 @@ impl Scenario {
         &mut self,
         decision: ActionDecisionKind,
     ) -> Result<(), ActivityError> {
-        let decision = match self.game_state.next_prompt_entity(decision.actor()) {
+        let decision = match self.engine_state.next_prompt_entity(decision.actor()) {
             Some(prompt) => ActionDecision {
                 response_to: prompt.id,
                 kind: decision,
@@ -163,12 +163,12 @@ impl Scenario {
         };
 
         let result = self
-            .game_state
+            .engine_state
             .submit_activity(Activity::Act { action: decision });
 
         if result.is_ok() {
             for _ in 0..10 {
-                self.game_state.update(0.5);
+                self.engine_state.update(0.5);
             }
         }
 
@@ -178,7 +178,7 @@ impl Scenario {
     pub fn movement(&mut self, handle: impl Into<String>, position: impl Into<Point3<f32>>) {
         let handle = handle.into();
         let entity = self.entity(&handle);
-        let result = self.game_state.submit_activity(Activity::Move {
+        let result = self.engine_state.submit_activity(Activity::Move {
             entity,
             goal: position.into(),
         });
@@ -186,7 +186,7 @@ impl Scenario {
             Ok(_) => {
                 // TODO: More sophisticated movement resolution
                 for _ in 0..10 {
-                    self.game_state.update(0.5);
+                    self.engine_state.update(0.5);
                 }
             }
             Err(err) => panic!("Failed to submit movement activity: {:?}", err),
@@ -194,18 +194,18 @@ impl Scenario {
     }
 
     pub fn update(&mut self, delta_time: f32) {
-        self.game_state.update(delta_time);
+        self.engine_state.update(delta_time);
     }
 
     pub fn filter_events(&self, event_filter: EventFilter) -> Vec<&Event> {
         let event_log = if let Some(encounter_id) = &self.encounter_id {
-            self.game_state
+            self.engine_state
                 .encounters
                 .get(encounter_id)
-                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in game state"))
+                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in engine state"))
                 .event_log()
         } else {
-            &self.game_state.event_log
+            &self.engine_state.event_log
         };
 
         event_log
@@ -262,7 +262,7 @@ impl<'s> ScenarioCreatureBuilder<'s> {
     }
 
     pub fn spawn(mut self) {
-        let creature = self.builder.spawn(&mut self.scenario.game_state);
+        let creature = self.builder.spawn(&mut self.scenario.engine_state);
         self.scenario
             .creatures
             .insert(self.handle.clone(), creature);
@@ -319,7 +319,7 @@ impl<'s> ScenarioEncounterBuilder<'s> {
             let creature = self.scenario.creatures.get(handle).unwrap();
             let entity = creature.id();
             let skills = systems::helpers::get_component_mut::<SkillSet>(
-                &mut self.scenario.game_state.world,
+                &mut self.scenario.engine_state.world,
                 entity,
             );
             skills
@@ -331,7 +331,7 @@ impl<'s> ScenarioEncounterBuilder<'s> {
                 );
         }
 
-        self.scenario.encounter_id = Some(self.scenario.game_state.start_encounter(participants));
+        self.scenario.encounter_id = Some(self.scenario.engine_state.start_encounter(participants));
     }
 }
 
@@ -343,13 +343,13 @@ pub struct ScenarioActionBuilder<'s> {
 impl ScenarioActionBuilder<'_> {
     pub fn variant(mut self, variant: impl Into<ActionVariantId>) -> Self {
         self.builder
-            .variant(&self.scenario.game_state.world, &variant.into());
+            .variant(&self.scenario.engine_state.world, &variant.into());
         self
     }
 
     pub fn context_index(mut self, index: usize) -> Self {
         self.builder
-            .context_index(&self.scenario.game_state.world, index);
+            .context_index(&self.scenario.engine_state.world, index);
         self
     }
 
@@ -358,30 +358,30 @@ impl ScenarioActionBuilder<'_> {
         filter: impl Fn(&ActionContext, &ResourceAmountMap) -> bool,
     ) -> Self {
         self.builder
-            .context_filter(&self.scenario.game_state.world, filter);
+            .context_filter(&self.scenario.engine_state.world, filter);
         self
     }
 
     pub fn context_spell_level(mut self, spell_level: u8) -> Self {
         self.builder
-            .context_spell_level(&self.scenario.game_state.world, spell_level);
+            .context_spell_level(&self.scenario.engine_state.world, spell_level);
         self
     }
 
     pub fn target(mut self, target: TargetInstance) -> Self {
-        self.builder.target(&mut self.scenario.game_state, target);
+        self.builder.target(&mut self.scenario.engine_state, target);
         self
     }
 
     pub fn target_point(mut self, point: impl Into<Point3<f32>>) -> Self {
         self.builder
-            .target_point(&mut self.scenario.game_state, point);
+            .target_point(&mut self.scenario.engine_state, point);
         self
     }
 
     pub fn target_entity(mut self, handle: impl Into<String>) -> Self {
         self.builder.target_entity(
-            &mut self.scenario.game_state,
+            &mut self.scenario.engine_state,
             self.scenario.creatures.get(&handle.into()).unwrap().id(),
         );
         self
@@ -394,23 +394,27 @@ impl ScenarioActionBuilder<'_> {
             .collect::<Vec<_>>();
         for target in targets {
             self.builder
-                .target_entity(&mut self.scenario.game_state, target);
+                .target_entity(&mut self.scenario.engine_state, target);
         }
         self
     }
 
     pub fn perform(self) {
-        self.builder.perform_ok(&mut self.scenario.game_state);
+        self.builder.perform_ok(&mut self.scenario.engine_state);
         // TODO: Do this in a more elegant way
         for _ in 0..10 {
-            self.scenario.game_state.update(0.5);
+            self.scenario.engine_state.update(0.5);
         }
     }
 
     /// For actions that are usable in general, but not on a specific target
     #[track_caller]
     pub fn assert_perform_fails(self) {
-        if self.builder.perform(&mut self.scenario.game_state).is_ok() {
+        if self
+            .builder
+            .perform(&mut self.scenario.engine_state)
+            .is_ok()
+        {
             panic!("Expected perform to fail, but it succeeded");
         }
     }
@@ -443,16 +447,20 @@ impl ScenarioReactionBuilder<'_> {
     }
 
     pub fn perform(self) {
-        self.builder.perform_ok(&mut self.scenario.game_state);
+        self.builder.perform_ok(&mut self.scenario.engine_state);
         // TODO: Do this in a more elegant way
         for _ in 0..10 {
-            self.scenario.game_state.update(0.5);
+            self.scenario.engine_state.update(0.5);
         }
     }
 
     #[track_caller]
     pub fn assert_perform_fails(self) {
-        if self.builder.perform(&mut self.scenario.game_state).is_ok() {
+        if self
+            .builder
+            .perform(&mut self.scenario.engine_state)
+            .is_ok()
+        {
             panic!("Expected perform to fail, but it succeeded");
         }
     }
@@ -460,7 +468,7 @@ impl ScenarioReactionBuilder<'_> {
 
 /// A handle-scoped view over one creature in a `Scenario`. All the assertions
 /// and interactions operate on that creature, borrowing the scenario's
-/// `GameState` as needed. Chainable methods return `&mut Self` so calls can be
+/// `EngineState` as needed. Chainable methods return `&mut Self` so calls can be
 /// strung together.
 pub struct ScenarioProbe<'s> {
     scenario: &'s mut Scenario,
@@ -479,11 +487,11 @@ impl ScenarioProbe<'_> {
     }
 
     fn world(&self) -> &World {
-        &self.scenario.game_state.world
+        &self.scenario.engine_state.world
     }
 
-    fn game_state(&self) -> &GameState {
-        &self.scenario.game_state
+    fn engine_state(&self) -> &EngineState {
+        &self.scenario.engine_state
     }
 
     // -- Actions --
@@ -505,10 +513,10 @@ impl ScenarioProbe<'_> {
     /// `end_turn` that leads into it.
     pub fn end_turn(&mut self) -> &mut Self {
         let entity = self.entity();
-        if systems::combat::is_in_combat(self.game_state(), entity) {
+        if systems::combat::is_in_combat(self.engine_state(), entity) {
             // The encounter fires both boundaries and moves initiative on
-            self.scenario.game_state.end_turn(entity);
-            self.scenario.game_state.update(0.0);
+            self.scenario.engine_state.end_turn(entity);
+            self.scenario.engine_state.update(0.0);
             self
         } else {
             self.turn_boundary(TurnBoundary::End)
@@ -519,19 +527,19 @@ impl ScenarioProbe<'_> {
     fn turn_boundary(&mut self, boundary: TurnBoundary) -> &mut Self {
         let entity = self.entity();
         systems::time::advance_time(
-            &mut self.scenario.game_state,
+            &mut self.scenario.engine_state,
             entity,
             TimeStep::TurnBoundary { entity, boundary },
         );
         // The update sweeps any effects that expired at the boundary
-        self.scenario.game_state.update(0.0);
+        self.scenario.engine_state.update(0.0);
         self
     }
 
     pub fn apply_effect(&mut self, effect: impl Into<EffectId>) -> &mut Self {
         let entity = self.entity();
         systems::effects::add_permanent_effect(
-            &mut self.scenario.game_state,
+            &mut self.scenario.engine_state,
             entity,
             effect.into(),
             &ModifierSource::Custom("Test effect".to_string()),
@@ -547,7 +555,7 @@ impl ScenarioProbe<'_> {
         let item = ItemsRegistry::get(&item_id)
             .unwrap_or_else(|| panic!("No item with id {item_id} in registry"))
             .clone();
-        if systems::loadout::equip(&mut self.scenario.game_state, entity, item).is_err() {
+        if systems::loadout::equip(&mut self.scenario.engine_state, entity, item).is_err() {
             panic!("Failed to equip {item_id} on {:?}", creature);
         }
         self
@@ -555,7 +563,7 @@ impl ScenarioProbe<'_> {
 
     pub fn unequip(&mut self, slot: &EquipmentSlot) -> &mut Self {
         let entity = self.entity();
-        systems::loadout::unequip(&mut self.scenario.game_state, entity, slot);
+        systems::loadout::unequip(&mut self.scenario.engine_state, entity, slot);
         self
     }
 
@@ -575,7 +583,7 @@ impl ScenarioProbe<'_> {
         let entity = self.entity();
 
         let _ = systems::health::damage(
-            &mut self.scenario.game_state,
+            &mut self.scenario.engine_state,
             entity,
             &mut damage,
             None,
@@ -594,9 +602,9 @@ impl ScenarioProbe<'_> {
         let entity = self.entity();
         let participants = vec![entity];
 
-        systems::time::start_rest(&mut self.scenario.game_state, participants.clone(), &kind)
+        systems::time::start_rest(&mut self.scenario.engine_state, participants.clone(), &kind)
             .unwrap_or_else(|err| panic!("Failed to start {kind:?} rest: {err:?}"));
-        systems::time::finish_rest(&mut self.scenario.game_state, participants)
+        systems::time::finish_rest(&mut self.scenario.engine_state, participants)
             .unwrap_or_else(|err| panic!("Failed to finish {kind:?} rest: {err:?}"));
 
         self
@@ -604,8 +612,8 @@ impl ScenarioProbe<'_> {
 
     pub fn d20_check(&mut self, dc: &D20CheckDC) -> &mut Self {
         let entity = self.entity();
-        let event = systems::d20::check(&mut self.scenario.game_state, entity, dc);
-        self.scenario.game_state.process_event(event);
+        let event = systems::d20::check(&mut self.scenario.engine_state, entity, dc);
+        self.scenario.engine_state.process_event(event);
         self
     }
 
@@ -615,23 +623,23 @@ impl ScenarioProbe<'_> {
         callback: EventCallback,
     ) -> &mut Self {
         let entity = self.entity();
-        let event = systems::d20::check(&mut self.scenario.game_state, entity, dc);
+        let event = systems::d20::check(&mut self.scenario.engine_state, entity, dc);
         self.scenario
-            .game_state
+            .engine_state
             .process_event_with_response_callback(event, callback);
         self
     }
 
     pub fn d20_force_outcome(&mut self, kind: D20CheckKind, outcome: D20CheckOutcome) -> &mut Self {
         let entity = self.entity();
-        systems::d20::get_mut(&mut self.scenario.game_state.world, entity, kind)
+        systems::d20::get_mut(&mut self.scenario.engine_state.world, entity, kind)
             .set_forced_outcome(ModifierSource::Custom("Test outcome".to_string()), outcome);
         self
     }
 
     pub fn d20_clear_forced_outcome(&mut self, kind: D20CheckKind) -> &mut Self {
         let entity = self.entity();
-        systems::d20::get_mut(&mut self.scenario.game_state.world, entity, kind)
+        systems::d20::get_mut(&mut self.scenario.engine_state.world, entity, kind)
             .clear_forced_outcome();
         self
     }
@@ -661,7 +669,7 @@ impl ScenarioProbe<'_> {
     }
 
     pub fn movement_speed(&self) -> Length {
-        systems::movement::speed(self.game_state(), self.entity()).total_speed()
+        systems::movement::speed(self.engine_state(), self.entity()).total_speed()
     }
 
     pub fn preview_attack_roll(
@@ -680,7 +688,7 @@ impl ScenarioProbe<'_> {
             &context,
         );
         check.set_action(action.into());
-        systems::d20::preview_attack_roll(self.game_state(), entity, target, &mut check);
+        systems::d20::preview_attack_roll(self.engine_state(), entity, target, &mut check);
         check
     }
 
@@ -740,7 +748,7 @@ impl ScenarioProbe<'_> {
 
     pub fn effect_remaining_turns(&self, effect: impl Into<EffectId>) -> Option<u32> {
         systems::effects::effect_remaining_duration(
-            &self.scenario.game_state,
+            &self.scenario.engine_state,
             self.entity(),
             &effect.into(),
         )
@@ -773,7 +781,7 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_has_action(&mut self, action: impl Into<ActionId>) -> &mut Self {
         let action: ActionId = action.into();
-        let actions = systems::actions::all_actions(self.game_state(), self.entity());
+        let actions = systems::actions::all_actions(self.engine_state(), self.entity());
         assert!(
             actions.contains_key(&action),
             "Expected creature {:?} to have action {:?}, but it was not found. Available actions: {:#?}",
@@ -787,7 +795,7 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_no_action(&mut self, action: impl Into<ActionId>) -> &mut Self {
         let action: ActionId = action.into();
-        let actions = systems::actions::all_actions(self.game_state(), self.entity());
+        let actions = systems::actions::all_actions(self.engine_state(), self.entity());
         assert!(
             !actions.contains_key(&action),
             "Expected creature {:?} to not have action {:?}, but it was found. Available actions: {:#?}",
@@ -801,7 +809,8 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_action_available(&mut self, action: impl Into<ActionId>) -> &mut Self {
         let action: ActionId = action.into();
-        let actions = systems::actions::available_actions(&self.scenario.game_state, self.entity());
+        let actions =
+            systems::actions::available_actions(&self.scenario.engine_state, self.entity());
         assert!(
             actions.contains_key(&action),
             "Expected creature {:?} to have action {:?}, but it was not found. Available actions: {:#?}",
@@ -815,7 +824,8 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_action_unavailable(&mut self, action: impl Into<ActionId>) -> &mut Self {
         let action: ActionId = action.into();
-        let actions = systems::actions::available_actions(&self.scenario.game_state, self.entity());
+        let actions =
+            systems::actions::available_actions(&self.scenario.engine_state, self.entity());
         assert!(
             !actions.contains_key(&action),
             "Expected creature {:?} to not have action {:?}, but it was found. Available actions: {:#?}",
@@ -881,7 +891,7 @@ impl ScenarioProbe<'_> {
 
     #[track_caller]
     pub fn has_effect(&self, effect_id: impl Into<EffectId>) -> bool {
-        systems::effects::has_effect(self.game_state(), self.entity(), &effect_id.into())
+        systems::effects::has_effect(self.engine_state(), self.entity(), &effect_id.into())
     }
 
     #[track_caller]
@@ -1016,7 +1026,7 @@ impl ScenarioProbe<'_> {
         source: ModifierSource,
         operator: Operator<f32>,
     ) -> &mut Self {
-        let speed = systems::movement::speed(self.game_state(), self.entity());
+        let speed = systems::movement::speed(self.engine_state(), self.entity());
         assert!(
             speed
                 .free_movement_multipliers()
@@ -1132,7 +1142,7 @@ impl ScenarioProbe<'_> {
         let mut d20_check = (*systems::d20::get(self.world(), self.entity(), kind.clone())).clone();
 
         systems::effects::effects(self.world(), self.entity()).pre_d20_check(
-            &self.scenario.game_state,
+            &self.scenario.engine_state,
             self.entity(),
             &mut d20_check,
         );
@@ -1180,7 +1190,7 @@ impl ScenarioProbe<'_> {
     pub fn assert_armor_class(&mut self, modifiers: &FlatModifierMap) -> &mut Self {
         let entity = self.entity();
         let armor_class = systems::helpers::get_component::<Loadout>(self.world(), entity)
-            .armor_class(&self.scenario.game_state, entity);
+            .armor_class(&self.scenario.engine_state, entity);
         assert_eq!(
             armor_class.modifiers(),
             modifiers,
@@ -1416,14 +1426,14 @@ impl ScenarioEventFilterBuilder<'_> {
         if let Some(encounter_id) = &self.scenario.encounter_id {
             &self
                 .scenario
-                .game_state
+                .engine_state
                 .encounters
                 .get(encounter_id)
-                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in game state"))
+                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in engine state"))
                 .event_log()
                 .events
         } else {
-            &self.scenario.game_state.event_log.events
+            &self.scenario.engine_state.event_log.events
         }
     }
 }

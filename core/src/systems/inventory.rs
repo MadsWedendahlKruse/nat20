@@ -9,12 +9,12 @@ use crate::{
         inventory::{Inventory, ItemInstance},
         money::{MonetaryValue, MonetaryValueError},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems,
 };
 
 pub fn equip<T>(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     item: T,
 ) -> Result<Vec<ItemInstance>, TryEquipError>
@@ -24,7 +24,7 @@ where
     let item: ItemInstance = item.into();
     let equipment: EquipmentInstance = item.into();
 
-    let unequippped_items = systems::loadout::equip(game_state, entity, equipment)?;
+    let unequippped_items = systems::loadout::equip(engine_state, entity, equipment)?;
 
     Ok(unequippped_items
         .iter()
@@ -33,11 +33,11 @@ where
 }
 
 pub fn unequip(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     slot: &EquipmentSlot,
 ) -> Option<ItemInstance> {
-    let unequipped_item = systems::loadout::unequip(game_state, entity, slot);
+    let unequipped_item = systems::loadout::unequip(engine_state, entity, slot);
     unequipped_item.map(|item| item.into())
 }
 

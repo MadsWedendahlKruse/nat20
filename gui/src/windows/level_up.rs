@@ -14,7 +14,7 @@ use nat20_core::{
         proficiency::{Proficiency, ProficiencyLevel},
         skill::{Skill, SkillSet},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     entities::creature::Character,
     registry::registry::ClassesRegistry,
     systems::{
@@ -326,20 +326,20 @@ impl LevelUpWindow {
         self.level_up_complete
     }
 
-    fn sync_pending_decisions(&mut self, game_state: &mut GameState) {
+    fn sync_pending_decisions(&mut self, engine_state: &mut EngineState) {
         // Preserve the name and id of the character
         let entity_id = self.character.unwrap();
-        let name = systems::helpers::get_component_clone::<Name>(&game_state.world, entity_id);
+        let name = systems::helpers::get_component_clone::<Name>(&engine_state.world, entity_id);
 
         // Drop the current character and spawn a new one with the same name
         // This is to re-apply any changes made during the level-up session
-        game_state.world.despawn(entity_id).unwrap();
-        game_state
+        engine_state.world.despawn(entity_id).unwrap();
+        engine_state
             .world
             .spawn_at(entity_id, self.initial_character.as_ref().unwrap().clone());
-        systems::helpers::set_component(&mut game_state.world, entity_id, name);
+        systems::helpers::set_component(&mut engine_state.world, entity_id, name);
 
-        self.level_up_session = Some(LevelUpSession::new(&game_state.world, entity_id));
+        self.level_up_session = Some(LevelUpSession::new(&engine_state.world, entity_id));
 
         // TODO: Naming seems all over the place here (both variables and structs)
         // Check if any of the current decisions are still valid
@@ -358,7 +358,7 @@ impl LevelUpWindow {
                 .level_up_session
                 .as_mut()
                 .unwrap()
-                .advance(game_state, &decision);
+                .advance(engine_state, &decision);
             if result.is_ok() {
                 valid_decisions.push(prompt_progress.clone());
             }
@@ -385,7 +385,7 @@ impl LevelUpWindow {
             if !already_present {
                 self.pending_decisions.push(LevelUpPromptWithProgress::new(
                     prompt.clone(),
-                    &game_state.world,
+                    &engine_state.world,
                     self.character.unwrap(),
                 ));
             }
@@ -393,8 +393,8 @@ impl LevelUpWindow {
     }
 }
 
-impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
-    fn render_mut_with_context(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+impl ImguiRenderableMutWithContext<&mut EngineState> for LevelUpWindow {
+    fn render_mut_with_context(&mut self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         // TODO: Kind of hacky
         if self.level_up_complete {
             return;
@@ -404,7 +404,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
             if self.character.is_none() {
                 self.initial_character = Some(Character::new(Name::new("Johnny Hero")));
                 self.character = Some(
-                    game_state
+                    engine_state
                         .world
                         .spawn(self.initial_character.as_ref().unwrap().clone()),
                 );
@@ -412,7 +412,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
 
             {
                 let name = systems::helpers::get_component_mut::<Name>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     self.character.unwrap(),
                 );
                 ui.text("Name:");
@@ -421,11 +421,11 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
                     .build();
             }
 
-            render_species_if_present(ui, &game_state.world, self.character.unwrap());
+            render_species_if_present(ui, &engine_state.world, self.character.unwrap());
 
             {
                 let levels = systems::helpers::get_component::<CharacterLevels>(
-                    &game_state.world,
+                    &engine_state.world,
                     self.character.unwrap(),
                 );
                 levels.render(ui);
@@ -436,7 +436,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
                     && let Some(class) = level_up_session.chosen_class()
                 {
                     systems::level_up::level_up_gains(
-                        &game_state.world,
+                        &engine_state.world,
                         self.character.unwrap(),
                         &class,
                         levels.class_level(&class).unwrap().level(),
@@ -507,7 +507,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
             // Check if any new pending prompts were triggered
             // Or if there are no pending decisions to choose from
             if decision_updated.is_some() || self.pending_decisions.is_empty() {
-                self.sync_pending_decisions(game_state);
+                self.sync_pending_decisions(engine_state);
             }
 
             let buttons_disabled = !self.level_up_session.as_ref().unwrap().is_complete();
@@ -522,7 +522,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for LevelUpWindow {
                 tooltip,
             ) {
                 self.initial_character = Some(Character::from_world(
-                    &game_state.world,
+                    &engine_state.world,
                     self.character.unwrap(),
                 ));
                 self.pending_decisions.clear();

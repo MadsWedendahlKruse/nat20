@@ -5,14 +5,14 @@ local BRUTAL_STRIKE_ACTIONS = {
 }
 
 ---@type D20CheckHookFn
-local function d20_check_hook(game_state, entity, check)
+local function d20_check_hook(engine_state, entity, check)
     if BRUTAL_STRIKE_ACTIONS[check.action_id] then
         check:forgo_advantage("nat20_core::effect.barbarian.brutal_strike")
     end
 end
 
 ---@type DamageRollHookFn
-local function damage_roll_hook(game_state, entity, damage_roll, action, resolution)
+local function damage_roll_hook(engine_state, entity, damage_roll, action, resolution)
     if not resolution:is_attack_roll() or not BRUTAL_STRIKE_ACTIONS[action.action_id] then
         return
     end
@@ -23,7 +23,7 @@ local function damage_roll_hook(game_state, entity, damage_roll, action, resolut
     end
 
     local dice = "1d10"
-    if game_state:class_level(entity, "nat20_core::class.barbarian") >= 17 then
+    if engine_state:class_level(entity, "nat20_core::class.barbarian") >= 17 then
         dice = "2d10"
     end
 

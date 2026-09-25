@@ -7,7 +7,7 @@ use nat20_core::{
         health::{hit_points::HitPoints, life_state::LifeState},
         id::Name,
     },
-    engine::{action_prompt::ActionPromptKind, game_state::GameState, geometry::WorldGeometry},
+    engine::{action_prompt::ActionPromptKind, engine_state::EngineState, geometry::WorldGeometry},
     entities::projectile::ProjectileData,
     systems::{
         self,
@@ -44,7 +44,7 @@ use crate::{
         creature_debug::CreatureDebugWindow,
         creature_right_click::CreatureRightClickWindow,
         encounter::EncounterWindow,
-        game_state_debug::GameStateDebugWindow,
+        engine_state_debug::EngineStateDebugWindow,
         level_up::LevelUpWindow,
         line_of_sight_debug::LineOfSightDebugWindow,
         navigation_debug::NavigationDebugWindow,
@@ -55,7 +55,7 @@ use crate::{
 
 pub enum MainMenuState {
     World {
-        game_state: GameState,
+        engine_state: EngineState,
         auto_scroll_event_log: bool,
         log_level: LogLevel,
         log_source: usize,
@@ -68,7 +68,7 @@ pub enum MainMenuState {
         reactions: ReactionsWindow,
         navigation_debug: NavigationDebugWindow,
         line_of_sight_debug: LineOfSightDebugWindow,
-        game_state_debug: GameStateDebugWindow,
+        engine_state_debug: EngineStateDebugWindow,
     },
 }
 
@@ -112,7 +112,7 @@ impl MainMenuWindow {
                 auto_scroll_event_log: true,
                 log_level: LogLevel::Info,
                 log_source: 0,
-                game_state: GameState::new(geometry),
+                engine_state: EngineState::new(geometry),
                 encounters: Vec::new(),
                 level_up: None,
                 spawn_predefined: None,
@@ -122,7 +122,7 @@ impl MainMenuWindow {
                 reactions: ReactionsWindow::new(),
                 navigation_debug: NavigationDebugWindow::new(&initial_config),
                 line_of_sight_debug: LineOfSightDebugWindow::new(),
-                game_state_debug: GameStateDebugWindow::new(),
+                engine_state_debug: EngineStateDebugWindow::new(),
             },
         }
     }
@@ -130,7 +130,7 @@ impl MainMenuWindow {
     pub fn render(&mut self, ui: &imgui::Ui, gui_state: &mut GuiState) {
         match &mut self.state {
             MainMenuState::World {
-                game_state,
+                engine_state,
                 auto_scroll_event_log,
                 log_level,
                 log_source,
@@ -143,32 +143,32 @@ impl MainMenuWindow {
                 reactions,
                 navigation_debug,
                 line_of_sight_debug,
-                game_state_debug,
+                engine_state_debug,
             } => {
-                game_state_debug.render_mut_with_context(ui, gui_state, game_state);
+                engine_state_debug.render_mut_with_context(ui, gui_state, engine_state);
 
                 if *gui_state
                     .settings
-                    .get::<bool>(state::parameters::UPDATE_GAME_STATE)
+                    .get::<bool>(state::parameters::UPDATE_ENGINE_STATE)
                 {
-                    game_state.update(ui.io().delta_time);
+                    engine_state.update(ui.io().delta_time);
                 }
 
                 // In case the selected entity got despawned, deselect it before
                 // the render functions try to access it
                 if let Some(selected_entity) = gui_state.selected_entity
-                    && !game_state.world.contains(selected_entity)
+                    && !engine_state.world.contains(selected_entity)
                 {
                     gui_state.selected_entity.take();
                 }
 
-                navigation_debug.render_mut_with_context(ui, gui_state, game_state);
-                line_of_sight_debug.render_mut_with_context(ui, gui_state, game_state);
+                navigation_debug.render_mut_with_context(ui, gui_state, engine_state);
+                line_of_sight_debug.render_mut_with_context(ui, gui_state, engine_state);
 
                 gui_state.camera.render_mut_with_context(
                     ui,
                     (
-                        game_state,
+                        engine_state,
                         gui_state
                             .settings
                             .get_mut::<bool>(state::parameters::RENDER_CAMERA_DEBUG),
@@ -183,8 +183,8 @@ impl MainMenuWindow {
                     None
                 } else if let Some(ray_from_cursor) = gui_state.camera.ray_from_cursor() {
                     systems::geometry::raycast(
-                        &game_state.world,
-                        &game_state.geometry,
+                        &engine_state.world,
+                        &engine_state.geometry,
                         &RaycastMode::Ray(ray_from_cursor),
                         &RaycastFilter::All,
                     )
@@ -205,7 +205,7 @@ impl MainMenuWindow {
                         Self::render_character_menu(
                             ui,
                             gui_state,
-                            game_state,
+                            engine_state,
                             level_up,
                             spawn_predefined,
                             encounters,
@@ -219,11 +219,11 @@ impl MainMenuWindow {
                     if (action_bar.is_some() && action_bar.as_ref().unwrap().actor() != entity)
                         || action_bar.is_none()
                     {
-                        action_bar.replace(ActionBarWindow::new(game_state, entity));
+                        action_bar.replace(ActionBarWindow::new(engine_state, entity));
                     }
 
                     if !reactions.is_active()
-                        && let Some(prompt) = game_state.next_prompt_entity(entity)
+                        && let Some(prompt) = engine_state.next_prompt_entity(entity)
                         && let ActionPromptKind::Reactions { event, options } = &prompt.kind
                     {
                         reactions.activate(prompt.id, event, options);
@@ -235,7 +235,7 @@ impl MainMenuWindow {
                 Self::render_event_log(
                     ui,
                     &mut gui_state.window_manager,
-                    game_state,
+                    engine_state,
                     encounters,
                     auto_scroll_event_log,
                     log_level,
@@ -244,7 +244,7 @@ impl MainMenuWindow {
 
                 let mut encounter_finished = None;
                 for encounter in &mut *encounters {
-                    encounter.render_mut_with_context(ui, gui_state, game_state);
+                    encounter.render_mut_with_context(ui, gui_state, engine_state);
                     if encounter.finished() {
                         encounter_finished = Some(*encounter.id());
                     }
@@ -254,9 +254,9 @@ impl MainMenuWindow {
                 }
 
                 if let Some(action_bar) = action_bar {
-                    action_bar.render_mut_with_context(ui, gui_state, game_state);
+                    action_bar.render_mut_with_context(ui, gui_state, engine_state);
                 }
-                reactions.render_mut_with_context(ui, gui_state, game_state);
+                reactions.render_mut_with_context(ui, gui_state, engine_state);
 
                 let mut take_ray_result = false;
                 if let Some(raycast) = &gui_state.cursor_ray_result
@@ -281,7 +281,7 @@ impl MainMenuWindow {
                             }
 
                             if ui.is_mouse_clicked(MouseButton::Left)
-                                && systems::ai::is_player_controlled(&game_state.world, *entity)
+                                && systems::ai::is_player_controlled(&engine_state.world, *entity)
                             {
                                 if gui_state.selected_entity.is_some()
                                     && gui_state.selected_entity.unwrap() == *entity
@@ -305,11 +305,11 @@ impl MainMenuWindow {
 
                 if let Some(creature_right_click) = creature_right_click {
                     ui.popup("CreatureRightClick", || {
-                        creature_right_click.render_mut_with_context(ui, game_state);
+                        creature_right_click.render_mut_with_context(ui, engine_state);
                     });
                 }
 
-                Self::render_world(ui, gui_state, game_state);
+                Self::render_world(ui, gui_state, engine_state);
             }
         }
     }
@@ -317,7 +317,7 @@ impl MainMenuWindow {
     fn render_character_menu(
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         level_up_window: &mut Option<LevelUpWindow>,
         spawn_predefined_window: &mut Option<SpawnPredefinedWindow>,
         encounters: &mut Vec<EncounterWindow>,
@@ -333,7 +333,7 @@ impl MainMenuWindow {
             .build(|| {
                 ui.separator_with_text("Creatures");
 
-                let mut entities = game_state
+                let mut entities = engine_state
                     .world
                     .query::<&Name>()
                     .into_iter()
@@ -347,7 +347,7 @@ impl MainMenuWindow {
                         format!("{}##{:?}", name.as_str(), entity),
                         imgui::TreeNodeFlags::FRAMED,
                     ) {
-                        entity.render_mut_with_context(ui, game_state);
+                        entity.render_mut_with_context(ui, engine_state);
                         ui.separator();
 
                         if ui.button(format!("Debug##{:?}", entity)) {
@@ -359,7 +359,7 @@ impl MainMenuWindow {
 
                 if let Some(debug_gui) = debug_window {
                     ui.popup("Debug", || {
-                        debug_gui.render_mut_with_context(ui, game_state);
+                        debug_gui.render_mut_with_context(ui, engine_state);
                     });
                 }
 
@@ -370,7 +370,7 @@ impl MainMenuWindow {
                 Self::render_spawn_creature(
                     ui,
                     gui_state,
-                    game_state,
+                    engine_state,
                     level_up_window,
                     spawn_predefined_window,
                 );
@@ -393,7 +393,7 @@ impl MainMenuWindow {
     fn render_spawn_creature(
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         level_up_window: &mut Option<LevelUpWindow>,
         spawn_predefined_window: &mut Option<SpawnPredefinedWindow>,
     ) {
@@ -404,7 +404,7 @@ impl MainMenuWindow {
                 [20.0, 5.0],
             ) {
                 match index {
-                    0 => *level_up_window = Some(LevelUpWindow::new(&game_state.world, None)),
+                    0 => *level_up_window = Some(LevelUpWindow::new(&engine_state.world, None)),
                     // TODO: Don't create the window from scratch every time
                     1 => *spawn_predefined_window = Some(SpawnPredefinedWindow::new()),
                     _ => unreachable!(),
@@ -414,14 +414,14 @@ impl MainMenuWindow {
         });
 
         if let Some(level_up) = level_up_window {
-            level_up.render_mut_with_context(ui, game_state);
+            level_up.render_mut_with_context(ui, engine_state);
             if level_up.is_level_up_complete() {
                 level_up_window.take();
             }
         }
 
         if let Some(spawn_predefined) = spawn_predefined_window {
-            spawn_predefined.render_mut_with_context(ui, gui_state, game_state);
+            spawn_predefined.render_mut_with_context(ui, gui_state, engine_state);
             if spawn_predefined.is_spawning_completed() {
                 spawn_predefined_window.take();
             }
@@ -431,7 +431,7 @@ impl MainMenuWindow {
     fn render_event_log(
         ui: &imgui::Ui,
         window_manager: &mut WindowManager,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         encounters: &mut Vec<EncounterWindow>,
         auto_scroll_event_log: &mut bool,
         log_level: &mut LogLevel,
@@ -446,7 +446,7 @@ impl MainMenuWindow {
             || {
                 let mut log_sources = vec!["World".to_string()];
                 log_sources.extend(
-                    game_state
+                    engine_state
                         .encounters
                         .iter()
                         .map(|e| format!("Encounter {}", e.0)),
@@ -460,14 +460,14 @@ impl MainMenuWindow {
                 width_token.end();
 
                 let event_log = if *log_source == 0 || encounters.len() < *log_source {
-                    &game_state.event_log
+                    &engine_state.event_log
                 } else {
                     let id = encounters.get(*log_source - 1).map(|e| e.id()).unwrap();
-                    game_state
+                    engine_state
                         .encounters
                         .get(id)
                         .map(|e| e.event_log())
-                        .unwrap_or(&game_state.event_log)
+                        .unwrap_or(&engine_state.event_log)
                 };
 
                 ui.child_window("Event Log Content")
@@ -478,7 +478,7 @@ impl MainMenuWindow {
                     )
                     .size([0.0, 200.0])
                     .build(|| {
-                        event_log.render_with_context(ui, &(game_state, &*log_level));
+                        event_log.render_with_context(ui, &(engine_state, &*log_level));
 
                         if *auto_scroll_event_log && ui.scroll_y() >= ui.scroll_max_y() - 5.0 {
                             ui.set_scroll_here_y_with_ratio(1.0);
@@ -502,7 +502,7 @@ impl MainMenuWindow {
         );
     }
 
-    fn render_world(ui: &imgui::Ui, gui_state: &mut GuiState, game_state: &mut GameState) {
+    fn render_world(ui: &imgui::Ui, gui_state: &mut GuiState, engine_state: &mut EngineState) {
         if *gui_state
             .settings
             .get::<bool>(state::parameters::RENDER_GRID)
@@ -524,7 +524,7 @@ impl MainMenuWindow {
         } else {
             let mesh = Mesh::from_parry_trimesh(
                 gui_state.ig_renderer.gl_context(),
-                &game_state.geometry.trimesh,
+                &engine_state.geometry.trimesh,
             );
             gui_state.mesh_cache.insert("world".to_string(), mesh);
         }
@@ -548,14 +548,14 @@ impl MainMenuWindow {
         } else {
             let mesh = Mesh::from_poly_navmesh(
                 gui_state.ig_renderer.gl_context(),
-                &game_state.geometry.poly_navmesh,
+                &engine_state.geometry.poly_navmesh,
             );
             gui_state.mesh_cache.insert("navmesh".to_string(), mesh);
         }
 
         // TODO: I feel like this should be somewhere else
-        for (entity, pose) in game_state.world.query::<&Pose>().iter() {
-            systems::geometry::get_shape(&game_state.world, entity).map(|(shape, shape_pose)| {
+        for (entity, pose) in engine_state.world.query::<&Pose>().iter() {
+            systems::geometry::get_shape(&engine_state.world, entity).map(|(shape, shape_pose)| {
                 let key = format!("{:#?}", shape);
                 if let Some(mesh) = gui_state.mesh_cache.get(&key) {
                     if let Some(current_entity) = gui_state.selected_entity
@@ -584,7 +584,7 @@ impl MainMenuWindow {
                             .unwrap_or(&MeshRenderMode::MeshOnly),
                     );
 
-                    systems::helpers::get_component::<ActivityState>(&game_state.world, entity)
+                    systems::helpers::get_component::<ActivityState>(&engine_state.world, entity)
                         .render(ui, gui_state);
                 } else {
                     let mesh = shapes::build_capsule_mesh(
@@ -600,7 +600,7 @@ impl MainMenuWindow {
         }
 
         // TODO: Can it just live here?
-        for (_, projectile) in game_state.world.query::<&ProjectileData>().iter() {
+        for (_, projectile) in engine_state.world.query::<&ProjectileData>().iter() {
             let mesh = shapes::build_sphere_mesh(gui_state.ig_renderer.gl_context(), 8, 8, 0.15);
 
             mesh.draw(
@@ -612,7 +612,7 @@ impl MainMenuWindow {
             );
         }
 
-        Self::render_creature_labels(ui, game_state, &gui_state.camera);
+        Self::render_creature_labels(ui, engine_state, &gui_state.camera);
 
         // TODO: Not sure where to put this?
         gui_state.line_renderer.draw(
@@ -622,14 +622,14 @@ impl MainMenuWindow {
         );
     }
 
-    fn render_creature_labels(ui: &imgui::Ui, game_state: &GameState, camera: &OrbitCamera) {
-        for (entity, name) in game_state.world.query::<&Name>().iter() {
-            if let Ok(pose) = game_state.world.get::<&Pose>(entity) {
+    fn render_creature_labels(ui: &imgui::Ui, engine_state: &EngineState, camera: &OrbitCamera) {
+        for (entity, name) in engine_state.world.query::<&Name>().iter() {
+            if let Ok(pose) = engine_state.world.get::<&Pose>(entity) {
                 let translation = pose.translation.vector;
                 let pos = camera.world_to_screen(&Point3::new(
                     translation.x,
                     translation.y
-                        + systems::geometry::get_height(&game_state.world, entity).unwrap() * 1.5,
+                        + systems::geometry::get_height(&engine_state.world, entity).unwrap() * 1.5,
                     translation.z,
                 ));
 
@@ -650,9 +650,9 @@ impl MainMenuWindow {
                         .mouse_inputs(false)
                         .build(|| {
                             name.render(ui);
-                            render_if_present::<HitPoints>(ui, &game_state.world, entity);
+                            render_if_present::<HitPoints>(ui, &engine_state.world, entity);
                             ui.same_line();
-                            render_if_present::<LifeState>(ui, &game_state.world, entity);
+                            render_if_present::<LifeState>(ui, &engine_state.world, entity);
                         });
                 }
             }

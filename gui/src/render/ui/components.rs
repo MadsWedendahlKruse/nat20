@@ -35,7 +35,7 @@ use nat20_core::{
         spells::spellbook::Spellbook,
         time::{TimeDuration, TimeMode},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     registry::registry::FeatsRegistry,
     systems::{self, geometry::DisplacementTemplate},
 };
@@ -208,12 +208,12 @@ impl ImguiRenderable for AbilityScore {
     }
 }
 
-impl ImguiRenderableWithContext<(&GameState, Entity)> for AbilityScoreMap {
-    fn render_with_context(&self, ui: &imgui::Ui, (game_state, entity): (&GameState, Entity)) {
+impl ImguiRenderableWithContext<(&EngineState, Entity)> for AbilityScoreMap {
+    fn render_with_context(&self, ui: &imgui::Ui, (engine_state, entity): (&EngineState, Entity)) {
         ui.separator_with_text("Abilities");
 
         let saving_throws =
-            systems::helpers::get_component::<SavingThrowSet>(&game_state.world, entity);
+            systems::helpers::get_component::<SavingThrowSet>(&engine_state.world, entity);
 
         let style = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([0.5, 0.5]));
         for (i, ability) in Ability::iter().enumerate() {
@@ -247,7 +247,7 @@ impl ImguiRenderableWithContext<(&GameState, Entity)> for AbilityScoreMap {
                         ])
                         .render(ui);
                     }
-                    let result = saving_throws.check(&saving_throw_kind, game_state, entity);
+                    let result = saving_throws.check(&saving_throw_kind, engine_state, entity);
                     let modifiers = &result.check.modifiers();
                     let range = modifiers.range();
                     ui.text(format!("Bonus: {}", range));
@@ -259,8 +259,8 @@ impl ImguiRenderableWithContext<(&GameState, Entity)> for AbilityScoreMap {
     }
 }
 
-impl ImguiRenderableWithContext<(&GameState, Entity)> for SkillSet {
-    fn render_with_context(&self, ui: &imgui::Ui, (game_state, entity): (&GameState, Entity)) {
+impl ImguiRenderableWithContext<(&EngineState, Entity)> for SkillSet {
+    fn render_with_context(&self, ui: &imgui::Ui, (engine_state, entity): (&EngineState, Entity)) {
         // Empty column is for proficiency
         if let Some(table) = table_with_columns!(ui, "Skills", "", "Skill", "Bonus") {
             // Skills are ordered by ability, so if the ability changes, we can
@@ -294,7 +294,7 @@ impl ImguiRenderableWithContext<(&GameState, Entity)> for SkillSet {
                 // Bonus column
                 ui.table_next_column();
                 // TODO: Avoid doing an actual skill check here every time
-                let result = self.check(&skill, game_state, entity);
+                let result = self.check(&skill, engine_state, entity);
                 result
                     .modifiers()
                     .render_with_context(ui, ModifierRenderMode::Hoverable);

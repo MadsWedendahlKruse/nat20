@@ -1,5 +1,5 @@
 ---@type PreDamageMitigationHookFn
-local function pre_damage_mitigation_hook(game_state, victim, effect, damage_roll_result, action, resolution)
+local function pre_damage_mitigation_hook(engine_state, victim, effect, damage_roll_result, action, resolution)
     local applier = effect.applier
     if resolution and resolution:is_attack_roll() and action and applier then
         local actor = action.actor
@@ -10,9 +10,9 @@ local function pre_damage_mitigation_hook(game_state, victim, effect, damage_rol
 end
 
 ---@type DeathHookFn
-local function death_hook(game_state, victim, killer, applier)
-    if applier and not game_state:has_effect(applier, "nat20_core::effect.spell.hex_reapply") then
-        game_state:apply_effect_for_turns(
+local function death_hook(engine_state, victim, killer, applier)
+    if applier and not engine_state:has_effect(applier, "nat20_core::effect.spell.hex_reapply") then
+        engine_state:apply_effect_for_turns(
             applier,
             applier,
             "nat20_core::effect.spell.hex_reapply",

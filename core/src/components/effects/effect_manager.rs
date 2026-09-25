@@ -19,7 +19,7 @@ use crate::{
         speed::Speed,
         time::TimeStep,
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::{action_prompt::ActionData, engine_state::EngineState},
     systems,
 };
 
@@ -93,7 +93,7 @@ impl EffectManager {
     }
 
     /// Collect clones of all hook `Arc`s matching `get_hook`. Callers can then
-    /// drop the shared borrow on the world and invoke the hooks with `&mut GameState`
+    /// drop the shared borrow on the world and invoke the hooks with `&mut EngineState`
     /// or `&mut World` without hitting a double-borrow. Any effects added by a hook
     /// go directly into the world and are never overwritten.
     pub fn collect_hooks<H: Clone>(&self, get_hook: impl Fn(&Effect) -> Option<&H>) -> Vec<H> {
@@ -117,30 +117,30 @@ impl EffectManager {
             .collect()
     }
 
-    pub fn apply(&self, state: &mut GameState, entity: Entity, ctx: Option<&ActionContext>) {
+    pub fn apply(&self, state: &mut EngineState, entity: Entity, ctx: Option<&ActionContext>) {
         self.for_each(
             |effect| effect.on_apply.as_ref(),
             |hook| hook(state, entity, ctx),
         );
     }
 
-    pub fn unapply(&self, state: &mut GameState, entity: Entity) {
+    pub fn unapply(&self, state: &mut EngineState, entity: Entity) {
         self.for_each(
             |effect| effect.on_unapply.as_ref(),
             |hook| hook(state, entity),
         );
     }
 
-    pub fn armor_class(&self, game_state: &GameState, entity: Entity, ac: &mut ArmorClass) {
+    pub fn armor_class(&self, engine_state: &EngineState, entity: Entity, ac: &mut ArmorClass) {
         self.for_each(
             |effect| effect.on_armor_class.as_ref(),
-            |hook| hook(game_state, entity, ac),
+            |hook| hook(engine_state, entity, ac),
         );
     }
 
     pub fn effect_lifetime(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         applier: Entity,
         target: Entity,
         effect_id: &EffectId,
@@ -148,25 +148,25 @@ impl EffectManager {
     ) {
         self.for_each(
             |effect| effect.on_effect_lifetime.as_ref(),
-            |hook| hook(game_state, applier, target, effect_id, lifetime),
+            |hook| hook(engine_state, applier, target, effect_id, lifetime),
         );
     }
 
-    pub fn speed(&self, game_state: &GameState, entity: Entity, speed: &mut Speed) {
+    pub fn speed(&self, engine_state: &EngineState, entity: Entity, speed: &mut Speed) {
         self.for_each(
             |effect| effect.on_speed.as_ref(),
-            |hook| hook(game_state, entity, speed),
+            |hook| hook(engine_state, entity, speed),
         );
     }
 
     // TODO: Could be argued that this has perhaps a bit too much logic to live in
     // the EffectManager, but it makes it a lot easier to apply everything correctly
-    pub fn pre_d20_check(&self, game_state: &GameState, entity: Entity, check: &mut D20Check) {
+    pub fn pre_d20_check(&self, engine_state: &EngineState, entity: Entity, check: &mut D20Check) {
         let kind = check.kind().clone();
 
         for instance in self.effects.values() {
             if let Some(hook) = Self::get_d20_hooks(&kind)(instance.effect())
-                && let Some(ability) = (hook.ability_hook)(game_state, entity, check)
+                && let Some(ability) = (hook.ability_hook)(engine_state, entity, check)
             {
                 check.set_ability(Some(ability));
             }
@@ -174,7 +174,7 @@ impl EffectManager {
 
         if let Some(ability) = check.ability() {
             let ability_scores =
-                systems::helpers::get_component::<AbilityScoreMap>(&game_state.world, entity);
+                systems::helpers::get_component::<AbilityScoreMap>(&engine_state.world, entity);
             check.replace_modifier(
                 ModifierSource::Ability(ability),
                 ability_scores.ability_modifier(&ability).total(),
@@ -182,18 +182,18 @@ impl EffectManager {
         }
 
         self.for_each(Self::get_d20_hooks(&kind), |hook| {
-            (hook.check_hook)(game_state, entity, check)
+            (hook.check_hook)(engine_state, entity, check)
         });
     }
 
     pub fn post_d20_check(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         result: &mut D20CheckResult,
     ) {
         self.for_each(Self::get_d20_hooks(&result.check.kind().clone()), |hook| {
-            (hook.result_hook)(game_state, entity, result)
+            (hook.result_hook)(engine_state, entity, result)
         });
     }
 
@@ -209,7 +209,7 @@ impl EffectManager {
 
     pub fn pre_damage_roll(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         roll: &mut DamageRoll,
         action: &ActionData,
@@ -217,13 +217,13 @@ impl EffectManager {
     ) {
         self.for_each(
             |effect| effect.pre_damage_roll.as_ref(),
-            |hook| hook(game_state, entity, roll, action, resolution),
+            |hook| hook(engine_state, entity, roll, action, resolution),
         );
     }
 
     pub fn post_damage_roll(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         result: &mut DamageRollResult,
         action: &ActionData,
@@ -231,13 +231,13 @@ impl EffectManager {
     ) {
         self.for_each(
             |effect| effect.post_damage_roll.as_ref(),
-            |hook| hook(game_state, entity, result, action, resolution),
+            |hook| hook(engine_state, entity, result, action, resolution),
         );
     }
 
     pub fn resource_cost(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         id: &ActionId,
         ctx: &ActionContext,
@@ -245,13 +245,13 @@ impl EffectManager {
     ) {
         self.for_each(
             |effect| effect.on_resource_cost.as_ref(),
-            |hook| hook(game_state, entity, id, ctx, costs),
+            |hook| hook(engine_state, entity, id, ctx, costs),
         );
     }
 
     pub fn action_usability(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         id: &ActionId,
         ctx: &ActionContext,
@@ -259,12 +259,12 @@ impl EffectManager {
         self.effects
             .values()
             .filter_map(|instance| instance.effect().on_action_usability.as_ref())
-            .find_map(|hook| hook(game_state, entity, id, ctx))
+            .find_map(|hook| hook(engine_state, entity, id, ctx))
     }
 
     pub fn pre_damage_mitigation(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         result: &mut DamageRollResult,
         action: Option<&ActionData>,
@@ -272,13 +272,13 @@ impl EffectManager {
     ) {
         self.for_each_with_instance(
             |effect| effect.pre_damage_mitigation.as_ref(),
-            |hook, inst| hook(game_state, inst, entity, result, action, resolution),
+            |hook, inst| hook(engine_state, inst, entity, result, action, resolution),
         );
     }
 
     pub fn post_damage_mitigation(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         result: &mut DamageMitigationResult,
         action: Option<&ActionData>,
@@ -286,20 +286,20 @@ impl EffectManager {
     ) {
         self.for_each(
             |effect| effect.post_damage_mitigation.as_ref(),
-            |hook| hook(game_state, entity, result, action, resolution),
+            |hook| hook(engine_state, entity, result, action, resolution),
         );
     }
 
     pub fn on_attacked(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         victim: Entity,
         attacker: Entity,
         check: &mut D20Check,
     ) {
         self.for_each_with_instance(
             |effect| effect.on_attacked.as_ref(),
-            |hook, inst| hook(game_state, inst, victim, attacker, check),
+            |hook, inst| hook(engine_state, inst, victim, attacker, check),
         );
     }
 }

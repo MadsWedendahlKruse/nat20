@@ -563,10 +563,10 @@ impl ActionUsabilityDefinition {
         match self {
             ActionUsabilityDefinition::Script(script_id) => Arc::new({
                 let script_id = script_id.clone();
-                move |game_state, entity, action_id, action_context| {
+                move |engine_state, entity, action_id, action_context| {
                     systems::scripts::evaluate_action_usability(
                         &script_id,
-                        game_state,
+                        engine_state,
                         entity,
                         action_id,
                         action_context,
@@ -588,10 +588,10 @@ impl TargetUsabilityDefinition {
         match self {
             TargetUsabilityDefinition::Script(script_id) => Arc::new({
                 let script_id = script_id.clone();
-                move |game_state, entity, target, action_id, action_context| {
+                move |engine_state, entity, target, action_id, action_context| {
                     systems::scripts::evaluate_target_usability(
                         &script_id,
-                        game_state,
+                        engine_state,
                         entity,
                         target,
                         action_id,

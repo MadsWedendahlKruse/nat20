@@ -1,7 +1,7 @@
 use hecs::Entity;
 
 use crate::{
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     entities::{self},
 };
 
@@ -24,27 +24,27 @@ impl EntityKind {
     }
 }
 
-pub fn update(game_state: &mut GameState, delta_time: f32) {
-    for (entity, kind) in get_entities_to_update(game_state) {
+pub fn update(engine_state: &mut EngineState, delta_time: f32) {
+    for (entity, kind) in get_entities_to_update(engine_state) {
         match kind {
             EntityKind::Projectile => {
-                entities::projectile::update(game_state, delta_time, entity);
+                entities::projectile::update(engine_state, delta_time, entity);
             }
 
             EntityKind::Character | EntityKind::Monster => {
-                entities::creature::update(game_state, delta_time, entity);
+                entities::creature::update(engine_state, delta_time, entity);
             }
         }
     }
 }
 
-fn get_entities_to_update(game_state: &GameState) -> Vec<(Entity, EntityKind)> {
-    let mut entities = game_state
+fn get_entities_to_update(engine_state: &EngineState) -> Vec<(Entity, EntityKind)> {
+    let mut entities = engine_state
         .world
         .query::<&EntityKind>()
         .iter()
         .filter_map(|(entity, kind)| {
-            if should_update(game_state, entity, kind) {
+            if should_update(engine_state, entity, kind) {
                 Some((entity, *kind))
             } else {
                 None
@@ -57,11 +57,11 @@ fn get_entities_to_update(game_state: &GameState) -> Vec<(Entity, EntityKind)> {
     entities
 }
 
-fn should_update(game_state: &GameState, entity: Entity, kind: &EntityKind) -> bool {
+fn should_update(engine_state: &EngineState, entity: Entity, kind: &EntityKind) -> bool {
     match kind {
-        EntityKind::Projectile => entities::projectile::should_update(game_state, entity),
+        EntityKind::Projectile => entities::projectile::should_update(engine_state, entity),
         EntityKind::Character | EntityKind::Monster => {
-            entities::creature::should_update(game_state, entity)
+            entities::creature::should_update(engine_state, entity)
         }
     }
 }

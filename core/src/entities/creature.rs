@@ -38,7 +38,7 @@ use crate::{
         spells::spellbook::Spellbook,
         time::{EntityClock, TimeStep},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     from_world, registry,
     systems::{
         self,
@@ -231,8 +231,8 @@ impl Monster {
     }
 }
 
-pub fn should_update(game_state: &GameState, entity: Entity) -> bool {
-    if let Some(scope) = game_state.scope_for_entity(entity)
+pub fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
+    if let Some(scope) = engine_state.scope_for_entity(entity)
         && let Some(pending_event) = scope.pending_events().front()
     {
         pending_event.blocked_by.contains(&entity)
@@ -241,61 +241,61 @@ pub fn should_update(game_state: &GameState, entity: Entity) -> bool {
     }
 }
 
-pub fn update(game_state: &mut GameState, delta_time: f32, entity: Entity) {
+pub fn update(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
     let time_step = TimeStep::RealTime {
         delta_seconds: delta_time,
     };
 
-    systems::time::advance_time(game_state, entity, time_step);
+    systems::time::advance_time(engine_state, entity, time_step);
 
-    update_effects(game_state, entity);
+    update_effects(engine_state, entity);
 
-    handle_ai(game_state, entity);
+    handle_ai(engine_state, entity);
 
-    update_activity(game_state, delta_time, entity);
+    update_activity(engine_state, delta_time, entity);
 }
 
-fn update_effects(game_state: &mut GameState, entity: Entity) {
+fn update_effects(engine_state: &mut EngineState, entity: Entity) {
     let marked_effects =
-        systems::effects::effects_mut(&mut game_state.world, entity).take_marked_for_removal();
+        systems::effects::effects_mut(&mut engine_state.world, entity).take_marked_for_removal();
     if !marked_effects.is_empty() {
         systems::effects::remove_effects(
-            game_state,
+            engine_state,
             entity,
             &marked_effects.into_iter().collect::<Vec<_>>(),
         );
     }
 }
 
-fn handle_ai(game_state: &mut GameState, entity: Entity) {
-    if !systems::ai::is_player_controlled(&game_state.world, entity)
-        && systems::helpers::get_component::<ActivityState>(&game_state.world, entity).is_idle()
-        && let Some(prompt) = game_state.next_prompt_entity(entity).cloned()
+fn handle_ai(engine_state: &mut EngineState, entity: Entity) {
+    if !systems::ai::is_player_controlled(&engine_state.world, entity)
+        && systems::helpers::get_component::<ActivityState>(&engine_state.world, entity).is_idle()
+        && let Some(prompt) = engine_state.next_prompt_entity(entity).cloned()
         && prompt.kind.actors().contains(&entity)
     {
-        if let Some(activity) = systems::ai::decide_activity(game_state, &prompt, entity) {
-            let result = game_state.submit_activity(activity);
+        if let Some(activity) = systems::ai::decide_activity(engine_state, &prompt, entity) {
+            let result = engine_state.submit_activity(activity);
             info!("AI submitted activity: {:?}", result);
         } else {
-            game_state.end_turn(entity);
+            engine_state.end_turn(entity);
         }
     }
 }
 
-fn update_activity(game_state: &mut GameState, delta_time: f32, entity: Entity) {
-    let tag = systems::helpers::get_component::<ActivityState>(&game_state.world, entity).tag();
+fn update_activity(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
+    let tag = systems::helpers::get_component::<ActivityState>(&engine_state.world, entity).tag();
 
     match tag {
         ActivityStateTag::Idle => { /* Do nothing */ }
-        ActivityStateTag::Moving => update_moving(game_state, delta_time, entity),
-        ActivityStateTag::Acting => update_acting(game_state, delta_time, entity),
-        ActivityStateTag::Displaced => update_displaced(game_state, delta_time, entity),
+        ActivityStateTag::Moving => update_moving(engine_state, delta_time, entity),
+        ActivityStateTag::Acting => update_acting(engine_state, delta_time, entity),
+        ActivityStateTag::Displaced => update_displaced(engine_state, delta_time, entity),
     }
 }
 
-fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
+fn update_moving(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
     let target_point = {
-        let activity = systems::helpers::get_component::<ActivityState>(&game_state.world, entity);
+        let activity = systems::helpers::get_component::<ActivityState>(&engine_state.world, entity);
         let ActivityState::Moving {
             path,
             current_target,
@@ -322,19 +322,19 @@ fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
             "Entity {:?} is moving but has no target point. Setting to idle.",
             entity
         );
-        systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, entity)
+        systems::helpers::get_component_mut::<ActivityState>(&mut engine_state.world, entity)
             .set_idle();
         return;
     };
 
-    let position = systems::geometry::get_foot_position(&game_state.world, entity).unwrap();
+    let position = systems::geometry::get_foot_position(&engine_state.world, entity).unwrap();
     let direction = target_point - position;
     let distance_to_target = direction.norm();
     let movement_distance = (MOVEMENT_SPEED * delta_time).min(distance_to_target);
 
     if distance_to_target != 0.0 {
         systems::movement::move_entity(
-            game_state,
+            engine_state,
             entity,
             &(position + direction.normalize() * movement_distance),
             MoveMode::Voluntary,
@@ -349,7 +349,7 @@ fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     // Actually reached the target. We're reborrowing since moving can trigger an
     // opportunity attack which can change the activity state
     let follow_up = {
-        let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
+        let Ok(mut activity) = engine_state.world.get::<&mut ActivityState>(entity) else {
             return;
         };
         let ActivityState::Moving {
@@ -391,16 +391,16 @@ fn update_moving(game_state: &mut GameState, delta_time: f32, entity: Entity) {
         "Entity {:?} has a follow-up action, setting to act after movement",
         entity
     );
-    if let Err(error) = game_state.submit_decision(action_decision) {
+    if let Err(error) = engine_state.submit_decision(action_decision) {
         error!("Failed to submit action decision: {:?}", error);
     }
 }
 
-fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
-    let status = systems::actions::execution_status(game_state, entity);
+fn update_acting(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
+    let status = systems::actions::execution_status(engine_state, entity);
 
     let (advance, finished) = {
-        let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
+        let Ok(mut activity) = engine_state.world.get::<&mut ActivityState>(entity) else {
             return;
         };
         let ActivityState::Acting {
@@ -443,9 +443,9 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
                 entity, total_duration
             );
 
-            let scope = game_state.scope_id_for_entity(entity);
+            let scope = engine_state.scope_id_for_entity(entity);
             if let Some(blocking_event) = blocking_event {
-                game_state
+                engine_state
                     .prompts
                     .scope_mut(scope)
                     .clear_blocker(blocking_event, entity);
@@ -458,7 +458,7 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     };
 
     if advance {
-        systems::actions::advance_execution(game_state, entity);
+        systems::actions::advance_execution(engine_state, entity);
     }
 
     if !finished {
@@ -470,16 +470,16 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
         entity
     );
 
-    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, entity)
+    systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut engine_state.world, entity)
         .take();
 
-    let scope = game_state.scope_id_for_entity(entity);
-    game_state.resume_pending_events_if_ready(scope);
+    let scope = engine_state.scope_id_for_entity(entity);
+    engine_state.resume_pending_events_if_ready(scope);
 }
 
-fn update_displaced(game_state: &mut GameState, delta_time: f32, entity: Entity) {
+fn update_displaced(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
     let (new_position, fall_distance) = {
-        let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
+        let Ok(mut activity) = engine_state.world.get::<&mut ActivityState>(entity) else {
             return;
         };
         let ActivityState::Displaced {
@@ -509,15 +509,15 @@ fn update_displaced(game_state: &mut GameState, delta_time: f32, entity: Entity)
         }
     };
 
-    systems::movement::move_entity(game_state, entity, &new_position, MoveMode::Displace);
+    systems::movement::move_entity(engine_state, entity, &new_position, MoveMode::Displace);
 
     let Some(fall_distance) = fall_distance else {
         return;
     };
 
-    systems::movement::apply_fall_damage(game_state, entity, fall_distance);
+    systems::movement::apply_fall_damage(engine_state, entity, fall_distance);
 
-    let Ok(mut activity) = game_state.world.get::<&mut ActivityState>(entity) else {
+    let Ok(mut activity) = engine_state.world.get::<&mut ActivityState>(entity) else {
         return;
     };
     if matches!(*activity, ActivityState::Displaced { .. }) {

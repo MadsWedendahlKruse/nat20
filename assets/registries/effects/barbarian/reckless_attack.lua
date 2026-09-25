@@ -4,14 +4,14 @@ local BRUTAL_STRIKE_ACTIONS = require("effects.barbarian.brutal_strike").BRUTAL_
 --- the GUI and Brutal Strike's usability gate can check for it. If the Barbarian
 --- already has the "real" Reckless Attack effect active, this hook does nothing
 ---@type D20CheckHookFn
-local function d20_check_hook(game_state, entity, d20_check)
+local function d20_check_hook(engine_state, entity, d20_check)
     if d20_check.action_id ~= "nat20_core::action.barbarian.reckless_attack" and
         not BRUTAL_STRIKE_ACTIONS[d20_check.action_id]
     then
         return
     end
 
-    if game_state:has_effect(entity, "nat20_core::effect.barbarian.reckless_attack_advantage") then
+    if engine_state:has_effect(entity, "nat20_core::effect.barbarian.reckless_attack_advantage") then
         return
     end
 

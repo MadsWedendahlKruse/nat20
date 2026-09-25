@@ -4,7 +4,7 @@ use nat20_core::{
         actions::execution::{ActionExecution, ExecutionMailbox},
         activity::ActivityState,
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems::{self, entities::EntityKind},
 };
 
@@ -14,28 +14,28 @@ use crate::{
     windows::anchor,
 };
 
-pub struct GameStateDebugWindow {
+pub struct EngineStateDebugWindow {
     step_size: f32,
 }
 
-impl GameStateDebugWindow {
+impl EngineStateDebugWindow {
     pub fn new() -> Self {
         Self { step_size: 0.1 }
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
+impl RenderableMutWithContext<&mut EngineState> for EngineStateDebugWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
-        let mut game_state_debug_open = *gui_state
+        let mut engine_state_debug_open = *gui_state
             .settings
-            .get::<bool>(state::parameters::RENDER_GAME_STATE_DEBUG);
+            .get::<bool>(state::parameters::RENDER_ENGINE_STATE_DEBUG);
 
-        if !game_state_debug_open {
+        if !engine_state_debug_open {
             return;
         }
 
@@ -44,26 +44,26 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
             "Game State Debug",
             &anchor::TOP_RIGHT,
             [0.0, 500.0],
-            &mut game_state_debug_open,
+            &mut engine_state_debug_open,
             || {
                 ui.checkbox(
                     "Update Game State",
                     gui_state
                         .settings
-                        .get_mut::<bool>(state::parameters::UPDATE_GAME_STATE),
+                        .get_mut::<bool>(state::parameters::UPDATE_ENGINE_STATE),
                 );
 
                 ui.set_next_item_width(60.0);
                 ui.input_float("Step size [s]", &mut self.step_size).build();
                 ui.same_line();
                 if ui.button("Step") {
-                    game_state.update(self.step_size);
+                    engine_state.update(self.step_size);
                 }
 
                 ui.separator();
 
                 if ui.collapsing_header("Entities", TreeNodeFlags::empty()) {
-                    let entities = game_state
+                    let entities = engine_state
                         .world
                         .query::<&EntityKind>()
                         .iter()
@@ -80,7 +80,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                         ui.text(format!("Entity {:?}", entity));
 
                         let activity_state = systems::helpers::get_component_mut::<ActivityState>(
-                            &mut game_state.world,
+                            &mut engine_state.world,
                             entity,
                         );
 
@@ -92,7 +92,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
 
                 if ui.collapsing_header("Interaction Engine", TreeNodeFlags::empty()) {
                     ui.indent();
-                    for (id, scope) in game_state.prompts.scopes() {
+                    for (id, scope) in engine_state.prompts.scopes() {
                         if ui.collapsing_header(format!("Session {:?}", id), TreeNodeFlags::empty())
                         {
                             ui.indent();
@@ -147,7 +147,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                 if ui.collapsing_header("Event Log", TreeNodeFlags::empty()) {
                     ui.indent();
                     if ui.collapsing_header("Events", TreeNodeFlags::empty()) {
-                        for (i, event) in game_state.event_log.events.iter().enumerate() {
+                        for (i, event) in engine_state.event_log.events.iter().enumerate() {
                             ui.indent();
                             if ui.collapsing_header(
                                 format!("Event {}: {:?}", i, event.id),
@@ -162,7 +162,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
 
                     ui.indent();
                     if ui.collapsing_header("Reactors", TreeNodeFlags::empty()) {
-                        for (event_id, reactors) in game_state.event_log.reactors.iter() {
+                        for (event_id, reactors) in engine_state.event_log.reactors.iter() {
                             ui.indent();
                             if ui.collapsing_header(
                                 format!("Event {:?} Reactors", event_id),
@@ -180,7 +180,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                     ui.indent();
                     if ui.collapsing_header("Action Events", TreeNodeFlags::empty()) {
                         for (action_instance_id, event_id) in
-                            game_state.event_log.action_events.iter()
+                            engine_state.event_log.action_events.iter()
                         {
                             ui.text(format!(
                                 "Action Instance {:?} -> Event {:?}",
@@ -191,11 +191,11 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                     ui.unindent();
                 }
 
-                // TODO: Since these are no longer stored on the GameState, should
+                // TODO: Since these are no longer stored on the EngineState, should
                 // they live somewhere else?
                 if ui.collapsing_header("Action Executions", TreeNodeFlags::empty()) {
                     for (actor, (execution,)) in
-                        game_state.world.query::<(&ActionExecution,)>().iter()
+                        engine_state.world.query::<(&ActionExecution,)>().iter()
                     {
                         ui.indent();
                         if ui.collapsing_header(
@@ -210,7 +210,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
 
                 if ui.collapsing_header("Execution Mailbox", TreeNodeFlags::empty()) {
                     for (actor, (mailbox,)) in
-                        game_state.world.query::<(&ExecutionMailbox,)>().iter()
+                        engine_state.world.query::<(&ExecutionMailbox,)>().iter()
                     {
                         ui.indent();
                         if ui.collapsing_header(

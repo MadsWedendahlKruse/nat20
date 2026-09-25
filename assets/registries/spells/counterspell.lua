@@ -1,5 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(game_state, reactor, event)
+local function reaction_trigger(engine_state, reactor, event)
     local action = event:as_action_requested()
     if not action then
         return false

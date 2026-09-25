@@ -19,7 +19,7 @@ use crate::{
     },
     engine::{
         action_prompt::{ActionPrompt, ActionPromptKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems::{self},
 };
@@ -40,7 +40,7 @@ pub struct RandomController;
 impl AIController for RandomController {
     fn decide(
         &self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         prompt: &ActionPrompt,
         actor: Entity,
     ) -> Option<Activity> {
@@ -48,26 +48,26 @@ impl AIController for RandomController {
 
         match &prompt.kind {
             ActionPromptKind::Action { actor } => {
-                let mut action_builder = ActionBuilder::available(game_state, *actor);
+                let mut action_builder = ActionBuilder::available(engine_state, *actor);
 
                 loop {
                     match action_builder.state() {
                         Ok(state) => match state {
                             ActionBuilderState::Action { actions } => {
                                 action_builder
-                                    .action(game_state, &actions.keys().choose(rng).cloned()?);
+                                    .action(engine_state, &actions.keys().choose(rng).cloned()?);
                             }
 
                             ActionBuilderState::Variant { variants, .. } => {
                                 let variant = variants.iter().choose(rng)?.clone();
-                                action_builder.variant(&game_state.world, &variant);
+                                action_builder.variant(&engine_state.world, &variant);
                             }
 
                             ActionBuilderState::Context {
                                 contexts_and_costs, ..
                             } => {
                                 action_builder.context_index(
-                                    &game_state.world,
+                                    &engine_state.world,
                                     rng.random_range(0..contexts_and_costs.len()),
                                 );
                             }
@@ -75,7 +75,7 @@ impl AIController for RandomController {
                             ActionBuilderState::Targets { action, .. } => {
                                 // This means it was populated on the previous iteration
                                 if !action.targets.is_empty() {
-                                    match action_builder.build(game_state) {
+                                    match action_builder.build(engine_state) {
                                         Ok(activity) => return Some(activity),
                                         Err(error) => {
                                             error!(
@@ -88,7 +88,7 @@ impl AIController for RandomController {
                                 }
 
                                 let possible_targets =
-                                    systems::ai::possible_targets(game_state, action);
+                                    systems::ai::possible_targets(engine_state, action);
 
                                 if possible_targets.is_empty() {
                                     debug!(
@@ -99,18 +99,18 @@ impl AIController for RandomController {
                                 }
 
                                 let targeting = systems::actions::targeting_context_data(
-                                    &game_state.world,
+                                    &engine_state.world,
                                     action,
                                 );
 
                                 match targeting.kind {
                                     TargetingKind::SelfTarget => {
-                                        action_builder.target_entity(game_state, *actor);
+                                        action_builder.target_entity(engine_state, *actor);
                                     }
 
                                     TargetingKind::Single => {
                                         action_builder.target_entity(
-                                            game_state,
+                                            engine_state,
                                             *possible_targets.choose(rng)?,
                                         );
                                     }
@@ -130,7 +130,7 @@ impl AIController for RandomController {
                                         };
 
                                         for target in chosen_targets {
-                                            action_builder.target_entity(game_state, *target);
+                                            action_builder.target_entity(engine_state, *target);
                                         }
                                     }
 
@@ -152,7 +152,7 @@ impl AIController for RandomController {
             }
 
             ActionPromptKind::Reactions { options, .. } => {
-                let mut reaction_builder = ReactionBuilder::new(game_state, actor);
+                let mut reaction_builder = ReactionBuilder::new(engine_state, actor);
 
                 reaction_builder.option_index(rng.random_range(0..options.get(&actor)?.len()));
 

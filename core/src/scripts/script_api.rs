@@ -45,7 +45,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{Event, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::{
         registry::{ActionsRegistry, ItemsRegistry},
@@ -866,7 +866,7 @@ impl UserData for Event {
     }
 }
 
-impl UserData for GameState {
+impl UserData for EngineState {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method(
             "class_level",
@@ -1129,8 +1129,8 @@ impl UserData for GameState {
                 this.process_event(event);
 
                 lua.scope(|scope| {
-                    let game_state = scope.create_userdata_ref_mut(this)?;
-                    callback.call::<()>((game_state, success, result.clone()))
+                    let engine_state = scope.create_userdata_ref_mut(this)?;
+                    callback.call::<()>((engine_state, success, result.clone()))
                 })
             },
         );
@@ -1206,7 +1206,7 @@ fn get_type_from_value<T: UserData + Clone + 'static>(value: Value) -> LuaResult
 
 /// Helper: queue an apply-effect command via the existing system path.
 fn apply_effect_impl(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     applier: ScriptEntity,
     target: ScriptEntity,
     effect_id: EffectId,
@@ -1227,7 +1227,7 @@ fn apply_effect_impl(
     let target_entity: Entity = target.into();
 
     let result = systems::effects::add_effect_template(
-        game_state,
+        engine_state,
         applier.into(),
         target_entity,
         ModifierSource::Effect(source),
@@ -1242,8 +1242,8 @@ fn apply_effect_impl(
 
     match result {
         EffectApplicationResult::Added(_uuid) => {
-            game_state.process_event(Event::action_result_event(
-                EntityIdentifier::from_world(&game_state.world, target_entity),
+            engine_state.process_event(Event::action_result_event(
+                EntityIdentifier::from_world(&engine_state.world, target_entity),
                 ActionResultComponent::Effect(EffectResult {
                     resolution,
                     effects: systems::effects::effect_id_and_children(&effect_id),

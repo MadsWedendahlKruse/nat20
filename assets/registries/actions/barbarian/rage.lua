@@ -21,26 +21,26 @@ local rage_damage_table = {
     [20] = "4"
 }
 
----@param game_state GameState
+---@param engine_state EngineState
 ---@param entity ScriptEntity
 ---@return string
-local function rage_damage(game_state, entity)
-    local barbarian_level = game_state:class_level(entity, "nat20_core::class.barbarian");
+local function rage_damage(engine_state, entity)
+    local barbarian_level = engine_state:class_level(entity, "nat20_core::class.barbarian");
     return rage_damage_table[barbarian_level] or "4"
 end
 
 --- Can Rage be used
 ---@type ActionUsabilityFn
-local function action_usability(game_state, entity, context)
-    if game_state:armor_type(entity) == "Heavy" then
+local function action_usability(engine_state, entity, context)
+    if engine_state:armor_type(entity) == "Heavy" then
         return "Rage cannot be used while wearing Heavy armor"
     end
 
-    if game_state:has_effect(entity, "nat20_core::effect.condition.incapacitated") then
+    if engine_state:has_effect(entity, "nat20_core::effect.condition.incapacitated") then
         return "Rage cannot be used while Incapacitated"
     end
 
-    if game_state:has_effect(entity, "nat20_core::effect.barbarian.rage") then
+    if engine_state:has_effect(entity, "nat20_core::effect.barbarian.rage") then
         return "Rage is already active"
     end
 
@@ -49,14 +49,14 @@ end
 
 --- Can an action be used while Rage is active
 ---@type ActionUsabilityHookFn
-local function action_usability_hook(game_state, entity, action_id, context)
+local function action_usability_hook(engine_state, entity, action_id, context)
     if context:is_spell() then
         return "Cannot cast spells while Raging"
     end
 end
 
 ---@type DamageRollHookFn
-local function damage_roll_hook(game_state, entity, damage_roll, action, resolution)
+local function damage_roll_hook(engine_state, entity, damage_roll, action, resolution)
     if not resolution:is_attack_roll() then
         return
     end
@@ -65,7 +65,7 @@ local function damage_roll_hook(game_state, entity, damage_roll, action, resolut
         local strength_modifier = component.damage:get_modifier("strength")
         if strength_modifier then
             damage_roll:add_damage(
-                rage_damage(game_state, entity),
+                rage_damage(engine_state, entity),
                 component.damage_type,
                 "nat20_core::effect.barbarian.rage"
             )
@@ -91,9 +91,9 @@ local function event_filter(event, applier, target)
 end
 
 ---@type ActionHookFn
-local function action_hook(game_state, action)
+local function action_hook(engine_state, action)
     --- Cannot extend further than next turn
-    local effect_remaining_duration = game_state:effect_remaining_duration(action.actor,
+    local effect_remaining_duration = engine_state:effect_remaining_duration(action.actor,
         "nat20_core::effect.barbarian.rage")
     if effect_remaining_duration and effect_remaining_duration.turns > 1 then
         return
@@ -101,14 +101,14 @@ local function action_hook(game_state, action)
 
     for _, condition in ipairs(action.conditions) do
         if condition:is_attack_roll() or condition:is_saving_throw() then
-            game_state:extend_effect_duration(action.actor, "nat20_core::effect.barbarian.rage", 1)
+            engine_state:extend_effect_duration(action.actor, "nat20_core::effect.barbarian.rage", 1)
             return
         end
     end
 end
 
 ---@type D20CheckHookFn
-local function d20_check_hook(game_state, entity, check)
+local function d20_check_hook(engine_state, entity, check)
     -- Since Primal Knowledge lets you use Strength for skill checks that don't
     -- normally use Strength, we can't just give advantage to the regular Strength
     -- checks, but we have to check if the skill check uses Strength instead.

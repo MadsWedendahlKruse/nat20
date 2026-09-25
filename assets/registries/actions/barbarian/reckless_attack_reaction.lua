@@ -1,5 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(game_state, reactor, event)
+local function reaction_trigger(engine_state, reactor, event)
     local actor, d20_result, d20_dc = event:as_d20_check_performed()
     if actor and d20_result and d20_dc then
         if actor ~= reactor then
@@ -12,7 +12,7 @@ local function reaction_trigger(game_state, reactor, event)
         end
 
         --- Cannot use Reckless Attack if it's already active
-        if game_state:has_effect(reactor, "nat20_core::effect.barbarian.reckless_attack_advantage") then
+        if engine_state:has_effect(reactor, "nat20_core::effect.barbarian.reckless_attack_advantage") then
             return false
         end
 
@@ -25,12 +25,12 @@ local function reaction_trigger(game_state, reactor, event)
 end
 
 ---@type ReactionBodyFn
-local function reaction_body(game_state, reaction, event)
+local function reaction_body(engine_state, reaction, event)
     event:with_d20_check(function(result, dc)
         result:add_advantage("advantage", "nat20_core::effect.barbarian.reckless_attack_advantage")
     end)
 
-    game_state:apply_effect_for_turns(
+    engine_state:apply_effect_for_turns(
         reaction.actor,
         reaction.actor,
         "nat20_core::effect.barbarian.reckless_attack_advantage",

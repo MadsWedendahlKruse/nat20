@@ -26,7 +26,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{CallbackResult, Event, EventCallback, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::registry::SpellsRegistry,
     systems,
@@ -65,7 +65,7 @@ impl ActionExecution {
 
     /// Start the next phase. Called by the action timeline when the execution
     /// is `Running` and the phase spacing has elapsed.
-    pub fn advance(&mut self, game_state: &mut GameState) {
+    pub fn advance(&mut self, engine_state: &mut EngineState) {
         debug_assert_eq!(self.status, ExecutionStatus::Running);
 
         let Some(phase) = self.pending.pop_front() else {
@@ -78,35 +78,35 @@ impl ActionExecution {
                 "Skipping phase {} for target {:?}: requirement {:?} not met",
                 phase.phase_index, phase.target, phase.requires
             );
-            return self.advance(game_state);
+            return self.advance(engine_state);
         }
 
-        self.run(game_state, phase);
+        self.run(engine_state, phase);
     }
 
     /// Re-run the current phase after an event it was waiting on resolved.
     /// Safe to call speculatively: if the result hasn't arrived yet the phase
     /// simply parks again.
-    pub fn resume_from_event(&mut self, game_state: &mut GameState) {
+    pub fn resume_from_event(&mut self, engine_state: &mut EngineState) {
         if self.status != ExecutionStatus::Waiting(WaitReason::EventResolution) {
             return;
         }
         let phase = self.current.take().unwrap();
-        self.run(game_state, phase);
+        self.run(engine_state, phase);
     }
 
     /// Deliver the current phase's payload now that its projectile has landed.
-    pub fn resume_from_projectile(&mut self, game_state: &mut GameState) {
+    pub fn resume_from_projectile(&mut self, engine_state: &mut EngineState) {
         debug_assert_eq!(
             self.status,
             ExecutionStatus::Waiting(WaitReason::ProjectileImpact)
         );
         let phase = self.current.take().unwrap();
-        self.run(game_state, phase);
+        self.run(engine_state, phase);
     }
 
-    fn run(&mut self, game_state: &mut GameState, mut phase: PhaseState) {
-        match phase.perform(game_state) {
+    fn run(&mut self, engine_state: &mut EngineState, mut phase: PhaseState) {
+        match phase.perform(engine_state) {
             PhasePerformResult::Applied => {
                 self.status = if self.pending.is_empty() {
                     ExecutionStatus::Done
@@ -142,7 +142,7 @@ pub struct PhaseState {
 
 impl PhaseState {
     pub fn new(
-        game_state: &GameState,
+        engine_state: &EngineState,
         action: &ActionData,
         phase: &ActionPhaseSpec,
         target: TargetInstance,
@@ -151,12 +151,12 @@ impl PhaseState {
     ) -> Self {
         let targets = match &phase.targets {
             PhaseTargets::Inherited => systems::actions::get_targeted_entities(
-                game_state,
+                engine_state,
                 action,
                 Some(vec![target.clone()]),
             ),
             PhaseTargets::Shape(shape) => systems::actions::entities_in_shape_at_target(
-                game_state,
+                engine_state,
                 action,
                 &target,
                 shape.as_ref(),
@@ -194,37 +194,37 @@ impl PhaseState {
         }
     }
 
-    pub fn perform(&mut self, game_state: &mut GameState) -> PhasePerformResult {
+    pub fn perform(&mut self, engine_state: &mut EngineState) -> PhasePerformResult {
         match self.delivery.clone() {
             PayloadDelivery::Immediate => {
-                if !self.resolve_condition(game_state) {
+                if !self.resolve_condition(engine_state) {
                     return PhasePerformResult::AwaitingEvent;
                 }
-                if !self.resolve_payload(game_state) {
+                if !self.resolve_payload(engine_state) {
                     return PhasePerformResult::AwaitingEvent;
                 }
-                self.apply_payload(game_state);
+                self.apply_payload(engine_state);
                 PhasePerformResult::Applied
             }
 
             PayloadDelivery::Projectile { template } => {
                 match self.condition {
                     ActionConditionKind::None | ActionConditionKind::AttackRoll => {
-                        if !self.resolve_condition(game_state) {
+                        if !self.resolve_condition(engine_state) {
                             return PhasePerformResult::AwaitingEvent;
                         }
-                        if !self.resolve_payload(game_state) {
+                        if !self.resolve_payload(engine_state) {
                             return PhasePerformResult::AwaitingEvent;
                         }
                     }
                     ActionConditionKind::SavingThrow => { /* Don't resolve anything in advance */ }
                 }
 
-                let projectile = template.instantiate(game_state, &self.action, &self.target);
+                let projectile = template.instantiate(engine_state, &self.action, &self.target);
 
                 if let Ok(projectile) = projectile {
                     debug!("Instantiated projectile {:?}", projectile);
-                    game_state.world.spawn(projectile);
+                    engine_state.world.spawn(projectile);
                     // The steps are applied when the projectile lands and the
                     // execution resumes this phase
                     self.delivery = PayloadDelivery::Immediate;
@@ -243,9 +243,9 @@ impl PhaseState {
     }
 
     /// Returns false while a step is waiting on an event round-trip
-    fn resolve_condition(&mut self, game_state: &mut GameState) -> bool {
+    fn resolve_condition(&mut self, engine_state: &mut EngineState) -> bool {
         for step in self.steps.iter_mut() {
-            if !step.resolve_condition(game_state, &self.action) {
+            if !step.resolve_condition(engine_state, &self.action) {
                 return false;
             }
         }
@@ -261,18 +261,18 @@ impl PhaseState {
     }
 
     /// Returns false while a step is waiting on an event round-trip
-    fn resolve_payload(&mut self, game_state: &mut GameState) -> bool {
+    fn resolve_payload(&mut self, engine_state: &mut EngineState) -> bool {
         for step in self.steps.iter_mut() {
-            if !step.resolve_payload(game_state, &self.action) {
+            if !step.resolve_payload(engine_state, &self.action) {
                 return false;
             }
         }
         true
     }
 
-    fn apply_payload(&mut self, game_state: &mut GameState) {
+    fn apply_payload(&mut self, engine_state: &mut EngineState) {
         for step in self.steps.iter_mut() {
-            step.apply_payload(game_state, &self.action);
+            step.apply_payload(engine_state, &self.action);
         }
     }
 }
@@ -366,7 +366,7 @@ impl StepState {
     }
 
     /// Returns false while waiting on an event round-trip
-    fn resolve_condition(&mut self, game_state: &mut GameState, action: &ActionData) -> bool {
+    fn resolve_condition(&mut self, engine_state: &mut EngineState, action: &ActionData) -> bool {
         if self.resolution.is_ready() {
             return true;
         }
@@ -377,14 +377,14 @@ impl StepState {
                 self.resolution = Awaitable::Ready(ActionConditionResolution::Unconditional);
                 return true;
             }
-            self.request_condition_resolution(game_state, action);
+            self.request_condition_resolution(engine_state, action);
             self.resolution = Awaitable::Requested;
         }
 
         // The response callback delivers synchronously unless the event got
         // parked behind a reaction window
         match systems::helpers::get_component_mut::<ExecutionMailbox>(
-            &mut game_state.world,
+            &mut engine_state.world,
             action.actor.id(),
         )
         .take()
@@ -400,7 +400,7 @@ impl StepState {
 
     /// Emits the d20 event for this step's condition; the response callback
     /// delivers the resolution into the actor's execution mailbox
-    fn request_condition_resolution(&self, game_state: &mut GameState, action: &ActionData) {
+    fn request_condition_resolution(&self, engine_state: &mut EngineState, action: &ActionData) {
         let actor = action.actor.id();
 
         debug!(
@@ -413,14 +413,14 @@ impl StepState {
 
             ActionCondition::AttackRoll(attack_roll) => {
                 let (source, mut check) =
-                    attack_roll(&game_state.world, actor, self.target, &action.context);
+                    attack_roll(&engine_state.world, actor, self.target, &action.context);
                 check.set_action(action.action_id.clone());
 
-                systems::d20::check_attack(game_state, actor, self.target, source, check)
+                systems::d20::check_attack(engine_state, actor, self.target, source, check)
             }
 
             ActionCondition::SavingThrow(saving_throw) => {
-                let saving_throw_dc = saving_throw(&game_state.world, actor, &action.context);
+                let saving_throw_dc = saving_throw(&engine_state.world, actor, &action.context);
 
                 debug!(
                     "Performing saving throw for action instance {:?} with DC {:?}...",
@@ -428,7 +428,7 @@ impl StepState {
                 );
 
                 systems::d20::check_with_action(
-                    game_state,
+                    engine_state,
                     self.target,
                     &saving_throw_dc,
                     Some(&action.action_id),
@@ -436,15 +436,15 @@ impl StepState {
             }
         }
         .with_parent(
-            game_state
+            engine_state
                 .event_log(actor)
                 .action_event_id(&action.instance_id),
         );
 
-        let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
+        let callback = EventCallback::new(move |engine_state, event, _| match &event.kind {
             EventKind::D20CheckResolved { result, dc, .. } => {
                 systems::helpers::get_component_mut::<ExecutionMailbox>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     actor,
                 )
                 .replace(ResumePayload::Condition(
@@ -462,25 +462,25 @@ impl StepState {
             ),
         });
 
-        game_state.process_event_with_response_callback(event, callback);
+        engine_state.process_event_with_response_callback(event, callback);
     }
 
     /// Returns false while a component is waiting on an event round-trip
-    fn resolve_payload(&mut self, game_state: &mut GameState, action: &ActionData) -> bool {
+    fn resolve_payload(&mut self, engine_state: &mut EngineState, action: &ActionData) -> bool {
         let Some(resolution) = self.resolution.ready() else {
             return false;
         };
         let resolution = resolution.clone();
 
         for component in self.components.iter_mut() {
-            if !component.resolve(game_state, action, &resolution) {
+            if !component.resolve(engine_state, action, &resolution) {
                 return false;
             }
         }
         true
     }
 
-    fn apply_payload(&mut self, game_state: &mut GameState, action: &ActionData) {
+    fn apply_payload(&mut self, engine_state: &mut EngineState, action: &ActionData) {
         if self.is_applied() {
             return;
         }
@@ -490,11 +490,11 @@ impl StepState {
         let resolution = resolution.clone();
 
         for component in self.components.iter_mut() {
-            component.apply(game_state, action, self.target, &resolution);
+            component.apply(engine_state, action, self.target, &resolution);
         }
 
         let result = ActionResult {
-            target: EntityIdentifier::from_world(&game_state.world, self.target),
+            target: EntityIdentifier::from_world(&engine_state.world, self.target),
             components: self
                 .components
                 .iter()
@@ -508,12 +508,12 @@ impl StepState {
             action: Some(action.action_id.clone()),
         })
         .with_parent(
-            game_state
+            engine_state
                 .event_log(action.actor.id())
                 .action_event_id(&action.instance_id),
         );
 
-        game_state.process_event(event);
+        engine_state.process_event(event);
     }
 }
 
@@ -551,7 +551,7 @@ impl StepComponent {
     /// round-trip, everything else resolves synchronously)
     fn resolve(
         &mut self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         resolution: &ActionConditionResolution,
     ) -> bool {
@@ -561,7 +561,7 @@ impl StepComponent {
 
         if matches!(self.payload_result, Awaitable::Requested) {
             return match systems::helpers::get_component_mut::<ExecutionMailbox>(
-                &mut game_state.world,
+                &mut engine_state.world,
                 action.actor.id(),
             )
             .take()
@@ -606,7 +606,7 @@ impl StepComponent {
 
                 let mut damage_roll = systems::damage::damage_roll_fn(
                     damage_fn.as_ref(),
-                    game_state,
+                    engine_state,
                     action,
                     resolution,
                 );
@@ -635,16 +635,16 @@ impl StepComponent {
                     result: damage_roll,
                 })
                 .with_parent(
-                    game_state
+                    engine_state
                         .event_log(action.actor.id())
                         .action_event_id(&action.instance_id),
                 );
 
                 let actor = action.actor.id();
-                let callback = EventCallback::new(move |game_state, event, _| match &event.kind {
+                let callback = EventCallback::new(move |engine_state, event, _| match &event.kind {
                     EventKind::DamageRollResolved { result, .. } => {
                         systems::helpers::get_component_mut::<ExecutionMailbox>(
-                            &mut game_state.world,
+                            &mut engine_state.world,
                             actor,
                         )
                         .replace(ResumePayload::DamageRoll(result.clone()));
@@ -658,10 +658,10 @@ impl StepComponent {
                 });
 
                 self.payload_result = Awaitable::Requested;
-                game_state.process_event_with_response_callback(damage_event, callback);
+                engine_state.process_event_with_response_callback(damage_event, callback);
 
                 match systems::helpers::get_component_mut::<ExecutionMailbox>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     actor,
                 )
                 .take()
@@ -679,7 +679,7 @@ impl StepComponent {
             ActionPayloadComponent::Healing(healing) => {
                 // TODO: No events yet for healing, might introduce them in the future?
                 let healing_amount =
-                    healing(&game_state.world, action.actor.id(), &action.context).evaluate();
+                    healing(&engine_state.world, action.actor.id(), &action.context).evaluate();
                 self.payload_result = Awaitable::Ready(PayloadResult::Healing(healing_amount));
                 true
             }
@@ -698,7 +698,7 @@ impl StepComponent {
             ActionPayloadComponent::Displacement(displacement) => {
                 let displacement = resolution
                     .is_success()
-                    .then(|| displacement(&game_state.world, action.actor.id(), &action.context));
+                    .then(|| displacement(&engine_state.world, action.actor.id(), &action.context));
                 self.payload_result = Awaitable::Ready(PayloadResult::Displacement(displacement));
                 true
             }
@@ -707,7 +707,7 @@ impl StepComponent {
 
     fn apply(
         &mut self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         target: Entity,
         resolution: &ActionConditionResolution,
@@ -721,34 +721,34 @@ impl StepComponent {
 
         self.action_result = Some(match result.clone() {
             PayloadResult::Damage(damage_result) => {
-                Self::apply_damage(game_state, target, action, resolution, damage_result)
+                Self::apply_damage(engine_state, target, action, resolution, damage_result)
             }
             PayloadResult::Healing(healing_amount) => {
-                Self::apply_healing(game_state, target, healing_amount)
+                Self::apply_healing(engine_state, target, healing_amount)
             }
             PayloadResult::Effect(effect) => {
                 let ActionPayloadComponent::Effect(template) = &self.payload else {
                     unreachable!()
                 };
                 let effect_id = template.effect_id.clone();
-                Self::apply_effect(game_state, action, target, resolution, effect_id, effect)
+                Self::apply_effect(engine_state, action, target, resolution, effect_id, effect)
             }
             PayloadResult::Reaction => {
                 let ActionPayloadComponent::Reaction(reaction) = &self.payload else {
                     unreachable!()
                 };
-                Self::apply_reaction(game_state, action, resolution, reaction)
+                Self::apply_reaction(engine_state, action, resolution, reaction)
             }
             PayloadResult::Displacement(displacement) => {
                 ActionResultComponent::Displacement(displacement.and_then(|displacement| {
-                    Self::apply_displacement(game_state, action, target, displacement)
+                    Self::apply_displacement(engine_state, action, target, displacement)
                 }))
             }
         });
     }
 
     fn apply_damage(
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         target: Entity,
         action: &ActionData,
         resolution: &ActionConditionResolution,
@@ -756,7 +756,7 @@ impl StepComponent {
     ) -> ActionResultComponent {
         let (damage_taken, new_life_state) = if let Some(damage_result) = &mut damage_result {
             systems::health::damage(
-                game_state,
+                engine_state,
                 target,
                 damage_result,
                 Some(action),
@@ -775,12 +775,12 @@ impl StepComponent {
     }
 
     fn apply_healing(
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         target: Entity,
         healing_amount: ModifierResult,
     ) -> ActionResultComponent {
         let new_life_state =
-            systems::health::heal(&mut game_state.world, target, healing_amount.total() as u32);
+            systems::health::heal(&mut engine_state.world, target, healing_amount.total() as u32);
 
         ActionResultComponent::Healing(HealingResult {
             healing: healing_amount,
@@ -789,7 +789,7 @@ impl StepComponent {
     }
 
     fn apply_effect(
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         target: Entity,
         resolution: &ActionConditionResolution,
@@ -805,7 +805,7 @@ impl StepComponent {
         };
 
         let effect_application = systems::effects::add_effect_template(
-            game_state,
+            engine_state,
             action.actor.id(),
             target,
             ModifierSource::Action(action.action_id.clone()),
@@ -822,7 +822,7 @@ impl StepComponent {
                     && spell.has_flag(SpellFlag::Concentration)
                 {
                     systems::spells::add_concentration_instance(
-                        game_state,
+                        engine_state,
                         action.actor.id(),
                         ConcentrationInstance::Effect {
                             entity: target,
@@ -847,7 +847,7 @@ impl StepComponent {
     }
 
     fn apply_reaction(
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         resolution: &ActionConditionResolution,
         reaction: &ReactionBody,
@@ -856,18 +856,18 @@ impl StepComponent {
             return ActionResultComponent::Reaction(ReactionResult::NoEffect);
         }
 
-        let result = reaction.execute(game_state, action);
+        let result = reaction.execute(engine_state, action);
 
         ActionResultComponent::Reaction(result)
     }
 
     fn apply_displacement(
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         target: Entity,
         displacement: DisplacementTemplate,
     ) -> Option<Displacement> {
-        let Some(displacement) = displacement.instantiate(game_state, action, target) else {
+        let Some(displacement) = displacement.instantiate(engine_state, action, target) else {
             error!("Failed to instantiate displacement, cannot apply");
             return None;
         };
@@ -877,15 +877,15 @@ impl StepComponent {
                 let Some(target_position) = action
                     .targets
                     .iter()
-                    .find_map(|target| target.position(&game_state.world))
+                    .find_map(|target| target.position(&engine_state.world))
                 else {
                     error!("No valid target position for teleport displacement");
                     return None;
                 };
 
                 systems::geometry::teleport_to_ground(
-                    &mut game_state.world,
-                    &game_state.geometry,
+                    &mut engine_state.world,
+                    &engine_state.geometry,
                     target,
                     &target_position,
                 );
@@ -894,7 +894,7 @@ impl StepComponent {
             }
 
             Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
-                systems::helpers::get_component_mut::<ActivityState>(&mut game_state.world, target)
+                systems::helpers::get_component_mut::<ActivityState>(&mut engine_state.world, target)
                     .set_displaced(trajectory.clone());
 
                 Some(displacement)

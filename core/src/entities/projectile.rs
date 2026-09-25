@@ -7,7 +7,7 @@ use crate::{
     components::actions::targeting::{
         LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
     },
-    engine::{action_prompt::ActionData, game_state::GameState},
+    engine::{action_prompt::ActionData, engine_state::EngineState},
     entities,
     systems::{
         self,
@@ -31,17 +31,17 @@ impl Projectile {
     }
 }
 
-pub fn should_update(game_state: &GameState, entity: Entity) -> bool {
-    if let Ok(projectile) = game_state.world.get::<&ProjectileData>(entity) {
-        entities::creature::should_update(game_state, projectile.owner)
+pub fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
+    if let Ok(projectile) = engine_state.world.get::<&ProjectileData>(entity) {
+        entities::creature::should_update(engine_state, projectile.owner)
     } else {
         false
     }
 }
 
-pub fn update(game_state: &mut GameState, delta_time: f32, entity: Entity) {
+pub fn update(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
     let owner = {
-        let Ok(mut projectile) = game_state.world.get::<&mut ProjectileData>(entity) else {
+        let Ok(mut projectile) = engine_state.world.get::<&mut ProjectileData>(entity) else {
             return;
         };
 
@@ -66,11 +66,11 @@ pub fn update(game_state: &mut GameState, delta_time: f32, entity: Entity) {
 
     debug!("Projectile {:?} has reached its target", entity);
 
-    game_state
+    engine_state
         .despawn(entity)
         .expect("Failed to despawn projectile entity");
 
-    systems::actions::projectile_impact(game_state, owner);
+    systems::actions::projectile_impact(engine_state, owner);
 }
 
 // TODO: Not sure if it's the most ECS-idiomatic solution to just cram everything
@@ -100,7 +100,7 @@ pub enum ProjectileTemplate {
 impl ProjectileTemplate {
     pub fn instantiate(
         &self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         target: &TargetInstance,
     ) -> Result<Projectile, ProjectileError> {
@@ -112,8 +112,8 @@ impl ProjectileTemplate {
         };
 
         let mut line_of_sight_result = systems::geometry::line_of_sight_entity_target(
-            &game_state.world,
-            &game_state.geometry,
+            &engine_state.world,
+            &engine_state.geometry,
             action.actor.id(),
             target,
             &LineOfSight {

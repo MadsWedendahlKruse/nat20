@@ -5,7 +5,7 @@ use nat20_core::{
     components::id::Name,
     engine::{
         encounter::{Encounter, EncounterId},
-        game_state::GameState,
+        engine_state::EngineState,
     },
 };
 
@@ -55,12 +55,12 @@ impl EncounterWindow {
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for EncounterWindow {
+impl RenderableMutWithContext<&mut EngineState> for EncounterWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         // raw pointer sidesteps borrow checker temporarily
         let window_manager_ptr =
@@ -78,7 +78,7 @@ impl RenderableMutWithContext<&mut GameState> for EncounterWindow {
                         ui.separator_with_text("Encounter creation");
                         ui.text("Select participants:");
 
-                        game_state
+                        engine_state
                             .world
                             .query::<&Name>()
                             .into_iter()
@@ -106,14 +106,14 @@ impl RenderableMutWithContext<&mut GameState> for EncounterWindow {
                             participants.len() < 2,
                             "You must have at least two participants to start an encounter.",
                         ) {
-                            game_state.start_encounter_with_id(participants.clone(), self.id);
+                            engine_state.start_encounter_with_id(participants.clone(), self.id);
                             self.state = EncounterWindowState::EncounterRunning;
                         }
                     }
 
                     EncounterWindowState::EncounterRunning => {
                         // First borrow: get the encounter
-                        let encounter_ptr = game_state
+                        let encounter_ptr = engine_state
                             .encounters
                             .get_mut(&self.id)
                             .map(|enc| enc as *mut Encounter); // raw pointer sidesteps borrow checker temporarily
@@ -122,7 +122,7 @@ impl RenderableMutWithContext<&mut GameState> for EncounterWindow {
                             // SAFETY: we know no other mutable borrow of the encounter exists at this point
                             let encounter = unsafe { &mut *encounter_ptr };
 
-                            encounter.render_mut_with_context(ui, gui_state, game_state);
+                            encounter.render_mut_with_context(ui, gui_state, engine_state);
                         } else {
                             ui.text("Encounter not found!");
                         }
@@ -130,7 +130,7 @@ impl RenderableMutWithContext<&mut GameState> for EncounterWindow {
                         ui.separator();
                         if ui.button("End Encounter") {
                             self.state = EncounterWindowState::EncounterFinished;
-                            game_state.end_encounter(&self.id);
+                            engine_state.end_encounter(&self.id);
                         }
                     }
 
@@ -143,12 +143,12 @@ impl RenderableMutWithContext<&mut GameState> for EncounterWindow {
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for Encounter {
+impl RenderableMutWithContext<&mut EngineState> for Encounter {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         _gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         ui.separator_with_text("Participants");
 
@@ -157,7 +157,7 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
 
         if let Some(table) = table_with_columns!(ui, "Initiative Order", "", "Participant",) {
             for (entity, initiative) in initiative_order {
-                if game_state.world.query_one_mut::<&Name>(*entity).is_ok() {
+                if engine_state.world.query_one_mut::<&Name>(*entity).is_ok() {
                     // Initiative column
                     ui.table_next_column();
                     ui.text(initiative.total().to_string());
@@ -174,7 +174,7 @@ impl RenderableMutWithContext<&mut GameState> for Encounter {
 
                     // Participant column
                     ui.table_next_column();
-                    entity.render_with_context(ui, (game_state, &CreatureRenderMode::Compact));
+                    entity.render_with_context(ui, (engine_state, &CreatureRenderMode::Compact));
                 }
             }
 

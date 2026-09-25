@@ -5,7 +5,7 @@ use nat20_core::{
         inventory::{Inventory, ItemContainer, ItemInstance},
         item::Item,
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     registry::registry::ItemsRegistry,
     systems,
 };
@@ -183,8 +183,8 @@ pub fn render_loadout(ui: &imgui::Ui, world: &World, entity: Entity) -> Option<I
     event
 }
 
-pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, entity: Entity) {
-    if let Some(event) = render_loadout(ui, &game_state.world, entity) {
+pub fn render_loadout_inventory(ui: &imgui::Ui, engine_state: &mut EngineState, entity: Entity) {
+    if let Some(event) = render_loadout(ui, &engine_state.world, entity) {
         // Handle loadout interaction event
         debug!("Loadout interaction: {:?}", event);
 
@@ -199,10 +199,10 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, enti
             }
 
             InteractMode::DoubleClick => {
-                let result = systems::inventory::unequip(game_state, entity, &slot);
+                let result = systems::inventory::unequip(engine_state, entity, &slot);
                 if let Some(item) = result {
                     debug!("Unequipped item: {:?}", item);
-                    systems::inventory::add_item(&mut game_state.world, entity, item);
+                    systems::inventory::add_item(&mut engine_state.world, entity, item);
                 }
             }
 
@@ -213,7 +213,7 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, enti
         }
     }
 
-    if let Some(event) = render_inventory(ui, &mut game_state.world, entity) {
+    if let Some(event) = render_inventory(ui, &mut engine_state.world, entity) {
         // Handle inventory interaction event
         debug!("Inventory interaction: {:?}", event);
 
@@ -221,7 +221,7 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, enti
             return;
         };
 
-        let item = systems::helpers::get_component::<Inventory>(&game_state.world, entity)
+        let item = systems::helpers::get_component::<Inventory>(&engine_state.world, entity)
             .items()
             .get(index)
             .cloned();
@@ -237,17 +237,17 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, enti
                     // Try to equip the item
                     let item_name = item.item().name.clone();
                     debug!("Double-clicked on inventory item: {:?}", item_name);
-                    let result = systems::inventory::equip(game_state, entity, item);
+                    let result = systems::inventory::equip(engine_state, entity, item);
                     match result {
                         Ok(unequipped_items) => {
                             info!("Equipped item: {:?}", item_name);
                             // Remove the item that was equipped from the inventory
-                            systems::inventory::remove_item(&mut game_state.world, entity, index);
+                            systems::inventory::remove_item(&mut engine_state.world, entity, index);
                             for unequipped_item in unequipped_items {
                                 info!("Unequipped item: {:?}", unequipped_item);
                                 // Add unequipped items back to inventory
                                 systems::inventory::add_item(
-                                    &mut game_state.world,
+                                    &mut engine_state.world,
                                     entity,
                                     unequipped_item,
                                 );
@@ -291,7 +291,7 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, game_state: &mut GameState, enti
         if let Some(selected_item) = render_uniform_buttons(ui, strings) {
             let item =
                 ItemsRegistry::get(items[selected_item]).expect("Item should exist in registry");
-            systems::inventory::add_item(&mut game_state.world, entity, item.clone());
+            systems::inventory::add_item(&mut engine_state.world, entity, item.clone());
             ui.close_current_popup();
         }
     });

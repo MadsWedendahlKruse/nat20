@@ -7,8 +7,8 @@ local primal_knowledge_skills = {
 }
 
 ---@type D20AbilityHookFn
-local function d20_ability_hook(game_state, entity, d20_check)
-    if not game_state:has_effect(entity, "nat20_core::effect.barbarian.rage") then
+local function d20_ability_hook(engine_state, entity, d20_check)
+    if not engine_state:has_effect(entity, "nat20_core::effect.barbarian.rage") then
         return
     end
 
@@ -26,8 +26,8 @@ local function d20_ability_hook(game_state, entity, d20_check)
         return
     end
 
-    local ability_modifier = game_state:ability_modifier(entity, ability)
-    local strength_modifier = game_state:ability_modifier(entity, "strength")
+    local ability_modifier = engine_state:ability_modifier(entity, ability)
+    local strength_modifier = engine_state:ability_modifier(entity, "strength")
     if ability_modifier.total > strength_modifier.total then
         return
     end

@@ -1,7 +1,7 @@
 use hecs::Entity;
 use nat20_core::{
     components::activity::ActivityState,
-    engine::{game_state::GameState, geometry::WorldPath},
+    engine::{engine_state::EngineState, geometry::WorldPath},
     systems::{self, movement::PathResult},
 };
 use parry3d::na::Point3;
@@ -38,7 +38,7 @@ impl MovementPreview {
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         goal: Option<Point3<f32>>,
     ) {
         if ui.io().want_capture_mouse {
@@ -62,7 +62,7 @@ impl MovementPreview {
 
         if let Some(prev_goal) = self.prev_goal {
             let activity_state =
-                systems::helpers::get_component::<ActivityState>(&game_state.world, self.entity);
+                systems::helpers::get_component::<ActivityState>(&engine_state.world, self.entity);
 
             match &*activity_state {
                 ActivityState::Moving { .. } => {
@@ -77,19 +77,19 @@ impl MovementPreview {
             // If the goal moved
             if goal != prev_goal {
                 if let Ok(path_result) = systems::movement::path(
-                    game_state,
+                    engine_state,
                     self.entity,
                     &goal,
                     true,
-                    systems::combat::is_in_combat(&game_state, self.entity),
+                    systems::combat::is_in_combat(&engine_state, self.entity),
                 ) {
                     self.prev_goal = Some(goal);
                     self.path_result = Some(path_result.clone());
                     self.opportunity_attacks = potential_opportunity_attacks(
-                        game_state,
+                        engine_state,
                         &path_result.taken_path,
                         self.entity,
-                        &game_state.get_potential_reactors(self.entity),
+                        &engine_state.get_potential_reactors(self.entity),
                     );
                 }
             }
@@ -100,7 +100,7 @@ impl MovementPreview {
 }
 
 fn potential_opportunity_attacks(
-    game_state: &GameState,
+    engine_state: &EngineState,
     path: &WorldPath,
     mover: Entity,
     attackers: &[Entity],
@@ -113,7 +113,7 @@ fn potential_opportunity_attacks(
             .filter_map(|attacker| {
                 if let Some((_event, intersection)) =
                     systems::movement::calculate_opportunity_attack(
-                        game_state, mover, &start, &end, *attacker,
+                        engine_state, mover, &start, &end, *attacker,
                     )
                 {
                     Some((*attacker, intersection))
@@ -129,15 +129,15 @@ fn potential_opportunity_attacks(
     opportunity_attacks
 }
 
-impl RenderableWithContext<&mut GameState> for MovementPreview {
+impl RenderableWithContext<&mut EngineState> for MovementPreview {
     fn render_with_context(
         &self,
         _ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         for (entity, point) in &self.opportunity_attacks {
-            if let Some(position) = systems::geometry::get_foot_position(&game_state.world, *entity)
+            if let Some(position) = systems::geometry::get_foot_position(&engine_state.world, *entity)
             {
                 let reach = (position - point).magnitude();
                 let mut reach_center: [f32; 3] = position.into();

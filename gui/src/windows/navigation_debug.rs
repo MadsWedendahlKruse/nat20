@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::LazyLock};
 
 use imgui::TreeNodeFlags;
 use nat20_core::{
-    engine::{game_state::GameState, geometry::WorldPath},
+    engine::{engine_state::EngineState, geometry::WorldPath},
     systems,
 };
 use rerecast::ConfigBuilder;
@@ -43,12 +43,12 @@ impl NavigationDebugWindow {
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for NavigationDebugWindow {
+impl RenderableMutWithContext<&mut EngineState> for NavigationDebugWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let mut nav_debug_open = *gui_state
             .settings
@@ -81,7 +81,7 @@ impl RenderableMutWithContext<&mut GameState> for NavigationDebugWindow {
 
                     if ui.button("Rebuild Navmesh") {
                         let config = self.navmesh_config.clone().build();
-                        game_state.geometry.rebuild_navmesh(&config);
+                        engine_state.geometry.rebuild_navmesh(&config);
                         gui_state.mesh_cache.remove("navmesh");
                     }
 
@@ -114,7 +114,7 @@ impl RenderableMutWithContext<&mut GameState> for NavigationDebugWindow {
 
                     if ui.button("Find Path") {
                         self.path = systems::geometry::path_point_point(
-                            &game_state.geometry,
+                            &engine_state.geometry,
                             self.path_start.into(),
                             self.path_end.into(),
                         )
@@ -134,12 +134,12 @@ impl RenderableMutWithContext<&mut GameState> for NavigationDebugWindow {
                 }
 
                 if ui.collapsing_header("Polyanya", TreeNodeFlags::empty()) {
-                    let polyanya_mesh = &mut game_state.geometry.polyanya_mesh;
+                    let polyanya_mesh = &mut engine_state.geometry.polyanya_mesh;
                     ui.input_scalar("Search Delta", &mut polyanya_mesh.search_delta)
                         .build();
                     ui.input_scalar("Search Steps", &mut polyanya_mesh.search_steps)
                         .build();
-                    for (i, _layer) in game_state.geometry.polyanya_mesh.layers.iter().enumerate() {
+                    for (i, _layer) in engine_state.geometry.polyanya_mesh.layers.iter().enumerate() {
                         ui.tree_node_config(format!("Layer {}", i)).build(|| {
                             // ui.text(format!("Polygons: {}", layer.polygons.len()));
                             // ui.text(format!("Nodes: {}", layer.nodes.len()));

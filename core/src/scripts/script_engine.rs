@@ -2,7 +2,7 @@
 //! shared via the [`SCRIPT_ENGINE`] static.
 //!
 //! Each hook closure runs inside [`mlua::Lua::scope`] so any `UserData` we
-//! pass in (especially `&mut GameState` and other mutable data) is
+//! pass in (especially `&mut EngineState` and other mutable data) is
 //! destroyed when the scope exits, releasing all script-side borrows before
 //! the caller reclaims ownership.
 
@@ -57,7 +57,7 @@ use crate::{
         resource::ResourceAmountMap,
         speed::Speed,
     },
-    engine::{action_prompt::ActionData, event::Event, game_state::GameState},
+    engine::{action_prompt::ActionData, event::Event, engine_state::EngineState},
     registry::registry::REGISTRY_ROOT,
     scripts::{
         script::{Script, ScriptError, ScriptFunction},
@@ -163,7 +163,7 @@ impl ScriptEngine {
     pub fn evaluate_reaction_trigger(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         reactor: Entity,
         event: &Event,
     ) -> Result<bool, ScriptError> {
@@ -176,7 +176,7 @@ impl ScriptEngine {
             .lua
             .scope(|scope| {
                 func.call::<bool>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     reactor,
                     scope.create_userdata_ref(event)?,
                 ))
@@ -188,7 +188,7 @@ impl ScriptEngine {
     pub fn evaluate_reaction_body(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         reaction: &ActionData,
         event: &mut Event,
     ) -> Result<(), ScriptError> {
@@ -196,7 +196,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref_mut(engine_state)?,
                     scope.create_userdata_ref(reaction)?,
                     scope.create_userdata_ref_mut(event)?,
                 ))
@@ -207,7 +207,7 @@ impl ScriptEngine {
     pub fn evaluate_resource_cost_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         action_id: &ActionId,
         action_context: &ActionContext,
@@ -215,7 +215,7 @@ impl ScriptEngine {
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ResourceCostHook)?;
         let action_view = ActionData::new(
-            EntityIdentifier::from_world(&game_state.world, entity),
+            EntityIdentifier::from_world(&engine_state.world, entity),
             action_id.clone(),
             action_context.clone(),
             resource_cost.clone(),
@@ -230,7 +230,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     entity,
                     scope.create_userdata_ref(&action_view)?,
                     scope.create_userdata_ref_mut(resource_cost)?,
@@ -242,14 +242,14 @@ impl ScriptEngine {
     pub fn evaluate_action_hook(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::ActionHook)?;
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref_mut(engine_state)?,
                     scope.create_userdata_ref(action)?,
                 ))
             })
@@ -259,7 +259,7 @@ impl ScriptEngine {
     pub fn evaluate_action_result_hook(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         action: &ActionData,
         results: &ActionResult,
     ) -> Result<(), ScriptError> {
@@ -267,7 +267,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref_mut(engine_state)?,
                     scope.create_userdata_ref(action)?,
                     results.clone(),
                 ))
@@ -278,7 +278,7 @@ impl ScriptEngine {
     pub fn evaluate_armor_class_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         armor_class: &mut ArmorClass,
     ) -> Result<(), ScriptError> {
@@ -290,7 +290,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(armor_class.modifiers_mut())?,
                 ))
@@ -301,7 +301,7 @@ impl ScriptEngine {
     pub fn evaluate_speed_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         speed: &mut Speed,
     ) -> Result<(), ScriptError> {
@@ -313,7 +313,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(speed)?,
                 ))
@@ -324,7 +324,7 @@ impl ScriptEngine {
     pub fn evaluate_effect_lifetime_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         applier: Entity,
         target: Entity,
         effect_id: &EffectId,
@@ -342,7 +342,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     applier,
                     target,
                     effect_id.to_string(),
@@ -355,7 +355,7 @@ impl ScriptEngine {
     pub fn evaluate_d20_ability_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         check: &D20Check,
     ) -> Result<Option<Ability>, ScriptError> {
@@ -368,7 +368,7 @@ impl ScriptEngine {
             .lua
             .scope(|scope| {
                 func.call::<Option<String>>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref(check)?,
                 ))
@@ -392,7 +392,7 @@ impl ScriptEngine {
     pub fn evaluate_d20_check_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         check: &mut D20Check,
     ) -> Result<(), ScriptError> {
@@ -404,7 +404,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(check)?,
                 ))
@@ -415,7 +415,7 @@ impl ScriptEngine {
     pub fn evaluate_d20_result_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         result: &mut D20CheckResult,
     ) -> Result<(), ScriptError> {
@@ -427,7 +427,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(result)?,
                 ))
@@ -438,7 +438,7 @@ impl ScriptEngine {
     pub fn evaluate_damage_roll_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         damage_roll: &mut DamageRoll,
         action: &ActionData,
@@ -452,7 +452,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(damage_roll)?,
                     scope.create_userdata_ref(action)?,
@@ -465,7 +465,7 @@ impl ScriptEngine {
     pub fn evaluate_damage_roll_result_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         damage_roll_result: &mut DamageRollResult,
         action: &ActionData,
@@ -479,7 +479,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(damage_roll_result)?,
                     scope.create_userdata_ref(action)?,
@@ -492,7 +492,7 @@ impl ScriptEngine {
     pub fn evaluate_pre_damage_mitigation_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         effect: &EffectInstance,
         damage_roll_result: &mut DamageRollResult,
@@ -511,7 +511,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     ef,
                     scope.create_userdata_ref_mut(damage_roll_result)?,
@@ -527,7 +527,7 @@ impl ScriptEngine {
     pub fn evaluate_post_damage_mitigation_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         damage_mitigation_result: &mut DamageMitigationResult,
         action: Option<&ActionData>,
@@ -541,7 +541,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     scope.create_userdata_ref_mut(damage_mitigation_result)?,
                     action.map(|a| scope.create_userdata_ref(a)).transpose()?,
@@ -556,7 +556,7 @@ impl ScriptEngine {
     pub fn evaluate_death_hook(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         victim: Entity,
         killer: Option<Entity>,
         applier: Option<Entity>,
@@ -569,7 +569,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref_mut(engine_state)?,
                     victim,
                     killer.map(ScriptEntity::from),
                     applier.map(ScriptEntity::from),
@@ -581,7 +581,7 @@ impl ScriptEngine {
     pub fn evaluate_pre_death_hook(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         victim: Entity,
         killer: Option<Entity>,
         applier: Option<Entity>,
@@ -594,7 +594,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref_mut(engine_state)?,
                     victim,
                     killer.map(ScriptEntity::from),
                     applier.map(ScriptEntity::from),
@@ -606,7 +606,7 @@ impl ScriptEngine {
     pub fn evaluate_rest_hook(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         entity: Entity,
         kind: &RestKind,
     ) -> Result<(), ScriptError> {
@@ -618,7 +618,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref_mut(game_state)?,
+                    scope.create_userdata_ref_mut(engine_state)?,
                     ent,
                     kind.as_str(),
                 ))
@@ -629,7 +629,7 @@ impl ScriptEngine {
     pub fn evaluate_turn_start_hook(
         &self,
         script: &Script,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         entity: Entity,
     ) -> Result<(), ScriptError> {
         let func = self.get_function(script, ScriptFunction::TurnStartHook)?;
@@ -639,7 +639,7 @@ impl ScriptEngine {
             .map_err(Self::runtime_error)?;
         self.lua
             .scope(|scope| {
-                let gs = scope.create_userdata_ref_mut(game_state)?;
+                let gs = scope.create_userdata_ref_mut(engine_state)?;
                 func.call::<()>((gs, ent))
             })
             .map_err(Self::runtime_error)
@@ -671,7 +671,7 @@ impl ScriptEngine {
     pub fn evaluate_action_usability(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         action_id: &ActionId,
         context: &ActionContext,
@@ -685,7 +685,7 @@ impl ScriptEngine {
             .lua
             .scope(|scope| {
                 func.call::<Value>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     action_id.to_string(),
                     scope.create_userdata_ref(context)?,
@@ -699,7 +699,7 @@ impl ScriptEngine {
     pub fn evaluate_action_usability_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         action_id: &ActionId,
         context: &ActionContext,
@@ -713,7 +713,7 @@ impl ScriptEngine {
             .lua
             .scope(|scope| {
                 func.call::<Value>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     action_id.to_string(),
                     scope.create_userdata_ref(context)?,
@@ -727,7 +727,7 @@ impl ScriptEngine {
     pub fn evaluate_target_usability(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         target: Entity,
         action_id: &ActionId,
@@ -746,7 +746,7 @@ impl ScriptEngine {
             .lua
             .scope(|scope| {
                 func.call::<Value>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     ent,
                     target,
                     action_id.to_string(),
@@ -780,7 +780,7 @@ impl ScriptEngine {
     pub fn evaluate_attacked_hook(
         &self,
         script: &Script,
-        game_state: &GameState,
+        engine_state: &EngineState,
         effect: &EffectInstance,
         victim: Entity,
         attacker: Entity,
@@ -802,7 +802,7 @@ impl ScriptEngine {
         self.lua
             .scope(|scope| {
                 func.call::<()>((
-                    scope.create_userdata_ref(game_state)?,
+                    scope.create_userdata_ref(engine_state)?,
                     effect,
                     victim,
                     attacker,

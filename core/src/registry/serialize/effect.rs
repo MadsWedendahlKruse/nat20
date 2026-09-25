@@ -41,7 +41,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{CallbackResult, EventCallback, EventKind, EventKindTag, ListenerSource},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::{
         registry::ScriptsRegistry,
@@ -179,12 +179,12 @@ impl From<EffectDefinition> for Effect {
             let modifiers = definition.modifiers.clone();
             if !modifiers.is_empty() {
                 effect.on_apply = Some(Arc::new(
-                    move |game_state: &mut GameState,
+                    move |engine_state: &mut EngineState,
                           entity: Entity,
                           context: Option<&ActionContext>| {
                         for modifier in &modifiers {
                             modifier.evaluate(
-                                game_state,
+                                engine_state,
                                 entity,
                                 &effect_id,
                                 EffectPhase::Apply,
@@ -202,10 +202,10 @@ impl From<EffectDefinition> for Effect {
             let modifiers_for_unapply = definition.modifiers;
             if !modifiers_for_unapply.is_empty() {
                 effect.on_unapply = Some(Arc::new(
-                    move |game_state: &mut GameState, entity: Entity| {
+                    move |engine_state: &mut EngineState, entity: Entity| {
                         for modifier in &modifiers_for_unapply {
                             modifier.evaluate(
-                                game_state,
+                                engine_state,
                                 entity,
                                 &effect_id,
                                 EffectPhase::Unapply,
@@ -598,7 +598,7 @@ pub enum EffectPhase {
 impl EffectModifier {
     pub fn evaluate(
         &self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         entity: Entity,
         effect_id: &EffectId,
         phase: EffectPhase,
@@ -608,7 +608,7 @@ impl EffectModifier {
         match self {
             EffectModifier::Ability { ability: modifier } => {
                 let abilities = systems::helpers::get_component_mut::<AbilityScoreMap>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     entity,
                 );
                 match phase {
@@ -623,7 +623,7 @@ impl EffectModifier {
 
             EffectModifier::Skill { skill: modifier } => {
                 let skills =
-                    systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity);
+                    systems::helpers::get_component_mut::<SkillSet>(&mut engine_state.world, entity);
                 Self::apply_d20_check_modifier(&mut *skills, modifier, source, phase);
             }
 
@@ -631,7 +631,7 @@ impl EffectModifier {
                 saving_throw: modifier,
             } => {
                 let saves = systems::helpers::get_component_mut::<SavingThrowSet>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     entity,
                 );
                 Self::apply_d20_check_modifier(&mut *saves, modifier, source, phase);
@@ -652,7 +652,7 @@ impl EffectModifier {
                     match attack_source {
                         AttackSource::Weapon(weapon_kind) => {
                             let loadout = systems::helpers::get_component_mut::<Loadout>(
-                                &mut game_state.world,
+                                &mut engine_state.world,
                                 entity,
                             );
                             Self::apply_attack_roll_modifier(
@@ -665,7 +665,7 @@ impl EffectModifier {
 
                         AttackSource::Spell => {
                             let spellbook = systems::helpers::get_component_mut::<Spellbook>(
-                                &mut game_state.world,
+                                &mut engine_state.world,
                                 entity,
                             );
                             Self::apply_attack_roll_modifier(
@@ -683,7 +683,7 @@ impl EffectModifier {
                 resistance: modifier,
             } => {
                 let res = systems::helpers::get_component_mut::<DamageResistances>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     entity,
                 );
                 let mitigation_effect = DamageMitigationEffect {
@@ -706,7 +706,7 @@ impl EffectModifier {
                 disable,
             } => {
                 let resources = systems::helpers::get_component_mut::<ResourceMap>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     entity,
                 );
                 match phase {
@@ -731,7 +731,7 @@ impl EffectModifier {
 
             EffectModifier::Speed { speed: modifier } => {
                 let speed =
-                    systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
+                    systems::helpers::get_component_mut::<Speed>(&mut engine_state.world, entity);
                 match phase {
                     EffectPhase::Apply => match &modifier.modifier {
                         SpeedModifier::Flat(bonus) => {
@@ -757,7 +757,7 @@ impl EffectModifier {
 
             EffectModifier::FreeMovement { free_movement } => {
                 let speed =
-                    systems::helpers::get_component_mut::<Speed>(&mut game_state.world, entity);
+                    systems::helpers::get_component_mut::<Speed>(&mut engine_state.world, entity);
                 match phase {
                     EffectPhase::Apply => {
                         speed.add_free_movement_multiplier(source, *free_movement);
@@ -773,11 +773,11 @@ impl EffectModifier {
             } => {
                 if let Some(context) = context {
                     let amount =
-                        (temporary_hit_points.function)(&mut game_state.world, entity, context)
+                        (temporary_hit_points.function)(&mut engine_state.world, entity, context)
                             .evaluate()
                             .total() as u32;
                     let hit_points = systems::helpers::get_component_mut::<HitPoints>(
-                        &mut game_state.world,
+                        &mut engine_state.world,
                         entity,
                     );
                     let source = ModifierSource::Effect(effect_id.clone());
@@ -797,11 +797,11 @@ impl EffectModifier {
                 block_concentration,
             } => {
                 if *break_concentration && phase == EffectPhase::Apply {
-                    systems::spells::break_concentration(game_state, entity);
+                    systems::spells::break_concentration(engine_state, entity);
                 }
                 if *block_concentration {
                     let spellbook = systems::helpers::get_component_mut::<Spellbook>(
-                        &mut game_state.world,
+                        &mut engine_state.world,
                         entity,
                     );
                     match phase {
@@ -909,9 +909,9 @@ fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
     D20CheckHooks {
         ability_hook: Arc::new({
             let script = script.clone();
-            move |game_state, entity, check| {
+            move |engine_state, entity, check| {
                 if script_defines(&script, ScriptFunction::D20AbilityHook) {
-                    systems::scripts::evaluate_d20_ability_hook(&script, game_state, entity, check)
+                    systems::scripts::evaluate_d20_ability_hook(&script, engine_state, entity, check)
                 } else {
                     None
                 }
@@ -919,17 +919,17 @@ fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
         }),
         check_hook: Arc::new({
             let script = script.clone();
-            move |game_state, entity, check| {
+            move |engine_state, entity, check| {
                 if script_defines(&script, ScriptFunction::D20CheckHook) {
-                    systems::scripts::evaluate_d20_check_hook(&script, game_state, entity, check);
+                    systems::scripts::evaluate_d20_check_hook(&script, engine_state, entity, check);
                 }
             }
         }),
         result_hook: Arc::new({
             let script = script.clone();
-            move |game_state, entity, result| {
+            move |engine_state, entity, result| {
                 if script_defines(&script, ScriptFunction::D20CheckResultHook) {
-                    systems::scripts::evaluate_d20_result_hook(&script, game_state, entity, result);
+                    systems::scripts::evaluate_d20_result_hook(&script, engine_state, entity, result);
                 }
             }
         }),
@@ -975,13 +975,13 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
             AttackedHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           effect: &EffectInstance,
                           victim: Entity,
                           attacker: Entity,
                           check: &mut D20Check| {
                         systems::scripts::evaluate_attacked_hook(
-                            &script_id, game_state, effect, victim, attacker, check,
+                            &script_id, engine_state, effect, victim, attacker, check,
                         );
                     },
                 )
@@ -998,14 +998,14 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                     let attacked_by = *attacked_by;
                     let distance = distance.clone();
 
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           effect: &EffectInstance,
                           victim: Entity,
                           attacker: Entity,
                           check: &mut D20Check| {
                         if let Some(distance_expression) = &distance {
                             let distance_between = systems::geometry::distance_between_entities(
-                                &game_state.world,
+                                &engine_state.world,
                                 victim,
                                 attacker,
                             )
@@ -1059,14 +1059,14 @@ impl HookEffect<DamageRollHook> for DamageRollHookDefinition {
             DamageRollHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           entity: Entity,
                           damage_roll: &mut DamageRoll,
                           action: &ActionData,
                           resolution: &ActionConditionResolution| {
                         systems::scripts::evaluate_damage_roll_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             entity,
                             damage_roll,
                             action,
@@ -1080,13 +1080,13 @@ impl HookEffect<DamageRollHook> for DamageRollHookDefinition {
 
     fn combine_hooks(hooks: Vec<DamageRollHook>) -> DamageRollHook {
         Arc::new(
-            move |game_state: &GameState,
+            move |engine_state: &EngineState,
                   entity: Entity,
                   damage_roll: &mut DamageRoll,
                   action,
                   resolution| {
                 for hook in &hooks {
-                    hook(game_state, entity, damage_roll, action, resolution);
+                    hook(engine_state, entity, damage_roll, action, resolution);
                 }
             },
         )
@@ -1105,14 +1105,14 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
             DamageRollResultHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           entity: Entity,
                           damage_roll_result: &mut DamageRollResult,
                           action: &ActionData,
                           resolution: &ActionConditionResolution| {
                         systems::scripts::evaluate_damage_roll_result_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             entity,
                             damage_roll_result,
                             action,
@@ -1126,13 +1126,13 @@ impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
 
     fn combine_hooks(hooks: Vec<DamageRollResultHook>) -> DamageRollResultHook {
         Arc::new(
-            move |game_state: &GameState,
+            move |engine_state: &EngineState,
                   entity: Entity,
                   damage_roll_result: &mut DamageRollResult,
                   action: &ActionData,
                   resolution: &ActionConditionResolution| {
                 for hook in &hooks {
-                    hook(game_state, entity, damage_roll_result, action, resolution);
+                    hook(engine_state, entity, damage_roll_result, action, resolution);
                 }
             },
         )
@@ -1156,7 +1156,7 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
             ArmorClassHookDefinition::Modifier { modifier } => Arc::new({
                 let modifier = modifier.clone();
                 let effect = effect.clone();
-                move |_game_state, _entity, armor_class| {
+                move |_engine_state, _entity, armor_class| {
                     armor_class
                         .add_modifier(ModifierSource::Effect(effect.clone()), modifier.delta);
                 }
@@ -1165,10 +1165,10 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
             ArmorClassHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState, entity: Entity, armor_class: &mut ArmorClass| {
+                    move |engine_state: &EngineState, entity: Entity, armor_class: &mut ArmorClass| {
                         systems::scripts::evaluate_armor_class_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             entity,
                             armor_class,
                         );
@@ -1179,9 +1179,9 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
     }
 
     fn combine_hooks(hooks: Vec<ArmorClassHook>) -> ArmorClassHook {
-        Arc::new(move |game_state, entity, armor_class| {
+        Arc::new(move |engine_state, entity, armor_class| {
             for hook in &hooks {
-                hook(game_state, entity, armor_class);
+                hook(engine_state, entity, armor_class);
             }
         })
     }
@@ -1199,8 +1199,8 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
             ActionHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &mut GameState, action_data: &ActionData| {
-                        systems::scripts::evaluate_action_hook(&script_id, game_state, action_data);
+                    move |engine_state: &mut EngineState, action_data: &ActionData| {
+                        systems::scripts::evaluate_action_hook(&script_id, engine_state, action_data);
                     },
                 )
             }
@@ -1209,9 +1209,9 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
 
     fn combine_hooks(hooks: Vec<ActionHook>) -> ActionHook {
         Arc::new(
-            move |game_state: &mut GameState, action_data: &ActionData| {
+            move |engine_state: &mut EngineState, action_data: &ActionData| {
                 for hook in &hooks {
-                    hook(game_state, action_data);
+                    hook(engine_state, action_data);
                 }
             },
         )
@@ -1240,12 +1240,12 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
             ActionResultHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &mut GameState,
+                    move |engine_state: &mut EngineState,
                           action_data: &ActionData,
                           results: &ActionResult| {
                         systems::scripts::evaluate_action_result_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             action_data,
                             results,
                         );
@@ -1257,9 +1257,9 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
 
     fn combine_hooks(hooks: Vec<ActionResultHook>) -> ActionResultHook {
         Arc::new(
-            move |game_state: &mut GameState, action_data: &ActionData, results: &ActionResult| {
+            move |engine_state: &mut EngineState, action_data: &ActionData, results: &ActionResult| {
                 for hook in &hooks {
-                    hook(game_state, action_data, results);
+                    hook(engine_state, action_data, results);
                 }
             },
         )
@@ -1278,14 +1278,14 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
             ResourceCostHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           entity: Entity,
                           action: &ActionId,
                           context: &ActionContext,
                           resource_costs: &mut ResourceAmountMap| {
                         systems::scripts::evaluate_resource_cost_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             entity,
                             action,
                             context,
@@ -1299,13 +1299,13 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
 
     fn combine_hooks(hooks: Vec<ResourceCostHook>) -> ResourceCostHook {
         Arc::new(
-            move |game_state: &GameState,
+            move |engine_state: &EngineState,
                   entity: Entity,
                   action: &ActionId,
                   context: &ActionContext,
                   resource_costs: &mut ResourceAmountMap| {
                 for hook in &hooks {
-                    hook(game_state, entity, action, context, resource_costs);
+                    hook(engine_state, entity, action, context, resource_costs);
                 }
             },
         )
@@ -1324,12 +1324,12 @@ impl HookEffect<ActionUsabilityHook> for ActionUsabilityHookDefinition {
             ActionUsabilityHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           entity: Entity,
                           action: &ActionId,
                           context: &ActionContext| {
                         systems::scripts::evaluate_action_usability_hook(
-                            &script_id, game_state, entity, action, context,
+                            &script_id, engine_state, entity, action, context,
                         )
                     },
                 )
@@ -1340,13 +1340,13 @@ impl HookEffect<ActionUsabilityHook> for ActionUsabilityHookDefinition {
     /// The first hook to object wins
     fn combine_hooks(hooks: Vec<ActionUsabilityHook>) -> ActionUsabilityHook {
         Arc::new(
-            move |game_state: &GameState,
+            move |engine_state: &EngineState,
                   entity: Entity,
                   action: &ActionId,
                   context: &ActionContext| {
                 hooks
                     .iter()
-                    .find_map(|hook| hook(game_state, entity, action, context))
+                    .find_map(|hook| hook(engine_state, entity, action, context))
             },
         )
     }
@@ -1364,7 +1364,7 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
             PreDamageMitigationHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           effect: &EffectInstance,
                           entity: Entity,
                           damage_roll_result: &mut DamageRollResult,
@@ -1372,7 +1372,7 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
                           resolution: Option<&ActionConditionResolution>| {
                         systems::scripts::evaluate_pre_damage_mitigation_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             entity,
                             effect,
                             damage_roll_result,
@@ -1387,7 +1387,7 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
 
     fn combine_hooks(hooks: Vec<PreDamageMitigationHook>) -> PreDamageMitigationHook {
         Arc::new(
-            move |game_state: &GameState,
+            move |engine_state: &EngineState,
                   effect: &EffectInstance,
                   entity: Entity,
                   damage_roll_result: &mut DamageRollResult,
@@ -1395,7 +1395,7 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
                   resolution: Option<&ActionConditionResolution>| {
                 for hook in &hooks {
                     hook(
-                        game_state,
+                        engine_state,
                         effect,
                         entity,
                         damage_roll_result,
@@ -1420,14 +1420,14 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
             PostDamageMitigationHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           entity: Entity,
                           damage_mitigation_result: &mut DamageMitigationResult,
                           action: Option<&ActionData>,
                           resolution: Option<&ActionConditionResolution>| {
                         systems::scripts::evaluate_post_damage_mitigation_hook(
                             &script_id,
-                            game_state,
+                            engine_state,
                             entity,
                             damage_mitigation_result,
                             action,
@@ -1441,14 +1441,14 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
 
     fn combine_hooks(hooks: Vec<PostDamageMitigationHook>) -> PostDamageMitigationHook {
         Arc::new(
-            move |game_state: &GameState,
+            move |engine_state: &EngineState,
                   entity: Entity,
                   damage_mitigation_result: &mut DamageMitigationResult,
                   action: Option<&ActionData>,
                   resolution: Option<&ActionConditionResolution>| {
                 for hook in &hooks {
                     hook(
-                        game_state,
+                        engine_state,
                         entity,
                         damage_mitigation_result,
                         action,
@@ -1472,12 +1472,12 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
             DeathHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &mut GameState,
+                    move |engine_state: &mut EngineState,
                           victim: Entity,
                           killer: Option<Entity>,
                           applier: Option<Entity>| {
                         systems::scripts::evaluate_death_hook(
-                            &script_id, game_state, victim, killer, applier,
+                            &script_id, engine_state, victim, killer, applier,
                         );
                     },
                 )
@@ -1487,12 +1487,12 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
 
     fn combine_hooks(hooks: Vec<DeathHook>) -> DeathHook {
         Arc::new(
-            move |game_state: &mut GameState,
+            move |engine_state: &mut EngineState,
                   victim: Entity,
                   killer: Option<Entity>,
                   applier: Option<Entity>| {
                 for hook in &hooks {
-                    hook(game_state, victim, killer, applier);
+                    hook(engine_state, victim, killer, applier);
                 }
             },
         )
@@ -1511,12 +1511,12 @@ impl HookEffect<PreDeathHook> for PreDeathHookDefinition {
             PreDeathHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &mut GameState,
+                    move |engine_state: &mut EngineState,
                           victim: Entity,
                           killer: Option<Entity>,
                           applier: Option<Entity>| {
                         systems::scripts::evaluate_pre_death_hook(
-                            &script_id, game_state, victim, killer, applier,
+                            &script_id, engine_state, victim, killer, applier,
                         );
                     },
                 )
@@ -1526,12 +1526,12 @@ impl HookEffect<PreDeathHook> for PreDeathHookDefinition {
 
     fn combine_hooks(hooks: Vec<PreDeathHook>) -> PreDeathHook {
         Arc::new(
-            move |game_state: &mut GameState,
+            move |engine_state: &mut EngineState,
                   victim: Entity,
                   killer: Option<Entity>,
                   applier: Option<Entity>| {
                 for hook in &hooks {
-                    hook(game_state, victim, killer, applier);
+                    hook(engine_state, victim, killer, applier);
                 }
             },
         )
@@ -1550,8 +1550,8 @@ impl HookEffect<RestHook> for RestHookDefinition {
             RestHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &mut GameState, entity: Entity, kind: &RestKind| {
-                        systems::scripts::evaluate_rest_hook(&script_id, game_state, entity, kind);
+                    move |engine_state: &mut EngineState, entity: Entity, kind: &RestKind| {
+                        systems::scripts::evaluate_rest_hook(&script_id, engine_state, entity, kind);
                     },
                 )
             }
@@ -1560,9 +1560,9 @@ impl HookEffect<RestHook> for RestHookDefinition {
 
     fn combine_hooks(hooks: Vec<RestHook>) -> RestHook {
         Arc::new(
-            move |game_state: &mut GameState, entity: Entity, kind: &RestKind| {
+            move |engine_state: &mut EngineState, entity: Entity, kind: &RestKind| {
                 for hook in &hooks {
-                    hook(game_state, entity, kind);
+                    hook(engine_state, entity, kind);
                 }
             },
         )
@@ -1580,17 +1580,17 @@ impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
         match self {
             TurnStartHookDefinition::Script { script } => {
                 let script_id = script.clone();
-                Arc::new(move |game_state: &mut GameState, entity: Entity| {
-                    systems::scripts::evaluate_turn_start_hook(&script_id, game_state, entity);
+                Arc::new(move |engine_state: &mut EngineState, entity: Entity| {
+                    systems::scripts::evaluate_turn_start_hook(&script_id, engine_state, entity);
                 })
             }
         }
     }
 
     fn combine_hooks(hooks: Vec<TurnStartHook>) -> TurnStartHook {
-        Arc::new(move |game_state, entity| {
+        Arc::new(move |engine_state, entity| {
             for hook in &hooks {
-                hook(game_state, entity);
+                hook(engine_state, entity);
             }
         })
     }
@@ -1608,9 +1608,9 @@ impl HookEffect<SpeedHook> for SpeedHookDefinition {
             SpeedHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState, entity: Entity, speed: &mut Speed| {
+                    move |engine_state: &EngineState, entity: Entity, speed: &mut Speed| {
                         systems::scripts::evaluate_speed_hook(
-                            &script_id, game_state, entity, speed,
+                            &script_id, engine_state, entity, speed,
                         );
                     },
                 )
@@ -1619,9 +1619,9 @@ impl HookEffect<SpeedHook> for SpeedHookDefinition {
     }
 
     fn combine_hooks(hooks: Vec<SpeedHook>) -> SpeedHook {
-        Arc::new(move |game_state, entity, speed| {
+        Arc::new(move |engine_state, entity, speed| {
             for hook in &hooks {
-                hook(game_state, entity, speed);
+                hook(engine_state, entity, speed);
             }
         })
     }
@@ -1639,13 +1639,13 @@ impl HookEffect<EffectLifetimeHook> for EffectLifetimeHookDefinition {
             EffectLifetimeHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |game_state: &GameState,
+                    move |engine_state: &EngineState,
                           applier: Entity,
                           target: Entity,
                           effect_id: &EffectId,
                           lifetime: &mut EffectLifetime| {
                         systems::scripts::evaluate_effect_lifetime_hook(
-                            &script_id, game_state, applier, target, effect_id, lifetime,
+                            &script_id, engine_state, applier, target, effect_id, lifetime,
                         );
                     },
                 )
@@ -1654,9 +1654,9 @@ impl HookEffect<EffectLifetimeHook> for EffectLifetimeHookDefinition {
     }
 
     fn combine_hooks(hooks: Vec<EffectLifetimeHook>) -> EffectLifetimeHook {
-        Arc::new(move |game_state, applier, target, effect_id, lifetime| {
+        Arc::new(move |engine_state, applier, target, effect_id, lifetime| {
             for hook in &hooks {
-                hook(game_state, applier, target, effect_id, lifetime);
+                hook(engine_state, applier, target, effect_id, lifetime);
             }
         })
     }
@@ -1751,17 +1751,17 @@ impl From<EffectEndConditionDefinition> for EffectEndConditionTemplate {
 }
 
 fn remove_effect_callback() -> EventCallback {
-    EventCallback::new(|game_state, _event, source| {
+    EventCallback::new(|engine_state, _event, source| {
         let ListenerSource::EffectInstance { id, entity } = source else {
             return CallbackResult::None;
         };
-        systems::effects::remove_effect(game_state, *entity, id);
+        systems::effects::remove_effect(engine_state, *entity, id);
         CallbackResult::None
     })
 }
 
 fn repeat_apply_condition_callback() -> EventCallback {
-    EventCallback::new(move |game_state, event, source| {
+    EventCallback::new(move |engine_state, event, source| {
         let ListenerSource::EffectInstance { id, entity } = source.clone() else {
             return CallbackResult::None;
         };
@@ -1771,7 +1771,7 @@ fn repeat_apply_condition_callback() -> EventCallback {
             id, entity, event
         );
 
-        let instance = systems::effects::effects(&game_state.world, entity)
+        let instance = systems::effects::effects(&engine_state.world, entity)
             .get(&id)
             .unwrap()
             .clone();
@@ -1794,14 +1794,14 @@ fn repeat_apply_condition_callback() -> EventCallback {
                 dc: dc @ D20CheckDC::SavingThrow { .. },
                 ..
             } => {
-                let event = systems::d20::check(game_state, entity, dc);
-                game_state.process_event_with_response_callback(
+                let event = systems::d20::check(engine_state, entity, dc);
+                engine_state.process_event_with_response_callback(
                     event,
-                    EventCallback::new(move |game_state, event, _| {
+                    EventCallback::new(move |engine_state, event, _| {
                         if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind
                             && result.is_success(dc)
                         {
-                            systems::effects::remove_effect(game_state, entity, &instance_id);
+                            systems::effects::remove_effect(engine_state, entity, &instance_id);
                         }
                         CallbackResult::None
                     }),

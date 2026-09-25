@@ -12,7 +12,7 @@ use nat20_core::{
         skill::Skill,
         time::{EntityClock, TimeStep, TurnBoundary},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems::{self, geometry::Pose, time::RestKind},
 };
 use parry3d::na::UnitQuaternion;
@@ -59,8 +59,8 @@ impl CreatureDebugWindow {
     }
 }
 
-impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
-    fn render_mut_with_context(&mut self, ui: &imgui::Ui, game_state: &mut GameState) {
+impl ImguiRenderableMutWithContext<&mut EngineState> for CreatureDebugWindow {
+    fn render_mut_with_context(&mut self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         match &mut self.state {
             CreatureDebugState::MainMenu => {
                 if let Some(index) = render_uniform_buttons_with_padding(
@@ -79,7 +79,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                 ) {
                     match index {
                         0 => {
-                            game_state.despawn(self.creature).ok();
+                            engine_state.despawn(self.creature).ok();
                             ui.close_current_popup();
                         }
                         1 => {
@@ -90,7 +90,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                         }
                         2 => {
                             systems::resources::recharge(
-                                &mut game_state.world,
+                                &mut engine_state.world,
                                 self.creature,
                                 &RechargeRule::Daily,
                             );
@@ -115,7 +115,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                             };
                         }
                         7 => {
-                            let starting_pose = game_state
+                            let starting_pose = engine_state
                                 .world
                                 .get::<&Pose>(self.creature)
                                 .map(|p| *p)
@@ -142,7 +142,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     .build();
                 ui.same_line();
                 if ui.button("Heal") {
-                    systems::health::heal(&mut game_state.world, self.creature, *healing_amount);
+                    systems::health::heal(&mut engine_state.world, self.creature, *healing_amount);
                 }
 
                 ui.input_int("Damage Amount", damage_amount)
@@ -158,7 +158,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     );
                     damage_roll_result.recalculate_total();
                     systems::health::damage(
-                        game_state,
+                        engine_state,
                         self.creature,
                         &mut damage_roll_result,
                         None,
@@ -197,8 +197,8 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                                 ModifierKindResult::Flat(*dc_value),
                             )]),
                         };
-                        let event = systems::d20::check(game_state, self.creature, &dc);
-                        game_state.process_event(event);
+                        let event = systems::d20::check(engine_state, self.creature, &dc);
+                        engine_state.process_event(event);
                         ui.close_current_popup();
                     }
                 }
@@ -228,8 +228,8 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                                 ModifierKindResult::Flat(*dc_value),
                             )]),
                         };
-                        let event = systems::d20::check(game_state, self.creature, &dc);
-                        game_state.process_event(event);
+                        let event = systems::d20::check(engine_state, self.creature, &dc);
+                        engine_state.process_event(event);
                         ui.close_current_popup();
                     }
                 }
@@ -238,7 +238,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
             CreatureDebugState::Clock => {
                 {
                     let clock = systems::helpers::get_component::<EntityClock>(
-                        &game_state.world,
+                        &engine_state.world,
                         self.creature,
                     );
                     ui.separator_with_text("Creature Clock");
@@ -258,7 +258,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                     match index {
                         0 => {
                             systems::time::advance_time(
-                                game_state,
+                                engine_state,
                                 self.creature,
                                 TimeStep::TurnBoundary {
                                     entity: self.creature,
@@ -272,10 +272,10 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                                 2 => RestKind::Long,
                                 _ => unreachable!(),
                             };
-                            systems::time::start_rest(game_state, vec![self.creature], &rest_kind)
+                            systems::time::start_rest(engine_state, vec![self.creature], &rest_kind)
                                 .unwrap();
                             // For debugging, immediately finish the rest
-                            systems::time::finish_rest(game_state, vec![self.creature]).unwrap();
+                            systems::time::finish_rest(engine_state, vec![self.creature]).unwrap();
                         }
                         _ => unreachable!(),
                     };
@@ -292,13 +292,13 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                 ) {
                     match index {
                         0 => {
-                            game_state
+                            engine_state
                                 .world
                                 .insert_one(self.creature, PlayerControlledTag)
                                 .ok();
                         }
                         1 => {
-                            game_state
+                            engine_state
                                 .world
                                 .remove_one::<PlayerControlledTag>(self.creature)
                                 .ok();
@@ -347,7 +347,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
 
                 ui.separator();
                 if ui.button("Set Position") {
-                    game_state
+                    engine_state
                         .world
                         .insert_one(self.creature, *target_pose)
                         .ok();
@@ -355,7 +355,7 @@ impl ImguiRenderableMutWithContext<&mut GameState> for CreatureDebugWindow {
                 ui.same_line();
                 if ui.button("Reset Position") {
                     // Revert to starting pose
-                    game_state
+                    engine_state
                         .world
                         .insert_one(self.creature, *starting_pose)
                         .ok();

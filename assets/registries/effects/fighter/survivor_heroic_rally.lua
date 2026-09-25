@@ -1,13 +1,13 @@
 ---@type TurnStartHookFn
-local function turn_start_hook(game_state, entity)
-    local current_hp = game_state:hp_current(entity)
-    local max_hp = game_state:hp_max(entity)
+local function turn_start_hook(engine_state, entity)
+    local current_hp = engine_state:hp_current(entity)
+    local max_hp = engine_state:hp_max(entity)
     if current_hp > 0 and current_hp <= max_hp / 2 then
-        game_state:heal(
+        engine_state:heal(
             entity,
             {
                 ["base"] = "5",
-                ["constitution"] = game_state:ability_modifier(entity, "constitution").total,
+                ["constitution"] = engine_state:ability_modifier(entity, "constitution").total,
             }
         )
     end

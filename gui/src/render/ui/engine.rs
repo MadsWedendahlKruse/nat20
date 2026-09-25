@@ -11,7 +11,7 @@ use nat20_core::{
     engine::{
         action_prompt::ActionData,
         event::{EncounterEvent, Event, EventKind, EventLog},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems,
 };
@@ -141,11 +141,11 @@ pub fn filter_matching_events(events: Vec<&Event>) -> Vec<&Event> {
     filtered_events
 }
 
-impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for EventLog {
+impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for EventLog {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (game_state, log_level): &(&GameState, &LogLevel),
+        (engine_state, log_level): &(&EngineState, &LogLevel),
     ) {
         let mut log_level_events = self
             .events
@@ -168,7 +168,7 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for EventLog {
                 ui.indent();
             }
 
-            event.render_with_context(ui, &(game_state, log_level));
+            event.render_with_context(ui, &(engine_state, log_level));
 
             if indent {
                 ui.unindent();
@@ -197,11 +197,11 @@ fn should_indent(event: &Event, prev_event: Option<&Event>) -> bool {
     false
 }
 
-impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
+impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for Event {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (game_state, log_level): &(&GameState, &LogLevel),
+        (engine_state, log_level): &(&EngineState, &LogLevel),
     ) {
         if event_log_level(self) > **log_level {
             return;
@@ -217,7 +217,7 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
                 EncounterEvent::EncounterEnded(encounter_id, combat_log) => {
                     if ui.collapsing_header(format!("Log##{}", encounter_id), TreeNodeFlags::FRAMED)
                     {
-                        combat_log.render_with_context(ui, &(game_state, log_level));
+                        combat_log.render_with_context(ui, &(engine_state, log_level));
                     }
                     ui.separator();
                 }
@@ -253,7 +253,7 @@ impl ImguiRenderableWithContext<&(&GameState, &LogLevel)> for Event {
                 .render(ui);
             }
             EventKind::ActionRequested { action } => {
-                action.render_with_context(ui, *game_state);
+                action.render_with_context(ui, *engine_state);
 
                 if let Some(trigger_event) = action.trigger_event.as_ref() {
                     TextSegment::new("as a response to".to_string(), TextKind::Normal).render(ui);
@@ -446,8 +446,8 @@ fn get_dc_description(dc_kind: &D20CheckDC) -> Vec<(String, TextKind)> {
     }
 }
 
-impl ImguiRenderableWithContext<&GameState> for ActionData {
-    fn render_with_context(&self, ui: &imgui::Ui, game_state: &GameState) {
+impl ImguiRenderableWithContext<&EngineState> for ActionData {
+    fn render_with_context(&self, ui: &imgui::Ui, engine_state: &EngineState) {
         TextSegments::new(vec![
             (self.actor.name().as_str(), TextKind::Actor),
             ("is using", TextKind::Normal),
@@ -456,9 +456,9 @@ impl ImguiRenderableWithContext<&GameState> for ActionData {
         .render(ui);
 
         if !self.is_self_target() && !self.targets.is_empty() {
-            let targets = systems::actions::get_targeted_entities(game_state, self, None)
+            let targets = systems::actions::get_targeted_entities(engine_state, self, None)
                 .iter()
-                .map(|entity| EntityIdentifier::from_world(&game_state.world, *entity))
+                .map(|entity| EntityIdentifier::from_world(&engine_state.world, *entity))
                 .collect::<Vec<_>>();
 
             if !targets.is_empty() {

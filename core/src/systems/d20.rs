@@ -12,7 +12,7 @@ use crate::{
     },
     engine::{
         event::{Event, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems,
 };
@@ -67,7 +67,7 @@ pub fn get_mut(world: &mut World, entity: Entity, kind: D20CheckKind) -> &mut D2
 }
 
 pub fn check_no_event(
-    game_state: &GameState,
+    engine_state: &EngineState,
     entity: Entity,
     dc: &D20CheckDC,
     action: Option<&ActionId>,
@@ -77,69 +77,69 @@ pub fn check_no_event(
         panic!("check_no_event cannot be used for attack rolls; use check_attack instead");
     }
 
-    let mut check = (*get(&game_state.world, entity, dc.kind())).clone();
+    let mut check = (*get(&engine_state.world, entity, dc.kind())).clone();
     if let Some(action) = action {
         check.set_action(action.clone());
     }
 
-    check.roll_dc(game_state, entity, dc).unwrap()
+    check.roll_dc(engine_state, entity, dc).unwrap()
 }
 
 #[must_use]
-pub fn check(game_state: &mut GameState, entity: Entity, dc: &D20CheckDC) -> Event {
-    check_with_action(game_state, entity, dc, None)
+pub fn check(engine_state: &mut EngineState, entity: Entity, dc: &D20CheckDC) -> Event {
+    check_with_action(engine_state, entity, dc, None)
 }
 
 #[must_use]
 pub fn check_with_action(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     dc: &D20CheckDC,
     action: Option<&ActionId>,
 ) -> Event {
     Event::new(EventKind::D20CheckPerformed {
-        actor: EntityIdentifier::from_world(&game_state.world, entity),
-        result: check_no_event(game_state, entity, dc, action),
+        actor: EntityIdentifier::from_world(&engine_state.world, entity),
+        result: check_no_event(engine_state, entity, dc, action),
         dc: dc.clone(),
     })
 }
 
 pub fn preview_attack_roll(
-    game_state: &GameState,
+    engine_state: &EngineState,
     attacker: Entity,
     target: Entity,
     check: &mut D20Check,
 ) {
-    systems::effects::effects(&game_state.world, target)
-        .on_attacked(game_state, target, attacker, check);
+    systems::effects::effects(&engine_state.world, target)
+        .on_attacked(engine_state, target, attacker, check);
 
-    check.apply_pre_roll_hooks(game_state, attacker);
+    check.apply_pre_roll_hooks(engine_state, attacker);
 }
 
 #[must_use]
 pub fn check_attack(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     attacker: Entity,
     target: Entity,
     source: AttackSource,
     mut check: D20Check,
 ) -> Event {
-    preview_attack_roll(game_state, attacker, target, &mut check);
+    preview_attack_roll(engine_state, attacker, target, &mut check);
 
     let mut result = check.roll();
-    systems::effects::effects(&game_state.world, attacker).post_d20_check(
-        game_state,
+    systems::effects::effects(&engine_state.world, attacker).post_d20_check(
+        engine_state,
         attacker,
         &mut result,
     );
 
-    let armor_class = systems::loadout::armor_class(game_state, target);
+    let armor_class = systems::loadout::armor_class(engine_state, target);
 
     Event::new(EventKind::D20CheckPerformed {
-        actor: EntityIdentifier::from_world(&game_state.world, attacker),
+        actor: EntityIdentifier::from_world(&engine_state.world, attacker),
         result,
         dc: D20CheckDC::AttackRoll {
-            target: EntityIdentifier::from_world(&game_state.world, target),
+            target: EntityIdentifier::from_world(&engine_state.world, target),
             source,
             armor_class,
         },

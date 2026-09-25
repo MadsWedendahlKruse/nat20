@@ -23,7 +23,7 @@ use crate::{
     engine::{
         action_prompt::{ActionData, ActionExecutionInstanceId},
         encounter::EncounterId,
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems::time::RestKind,
 };
@@ -315,25 +315,25 @@ impl EventFilter {
 
 #[derive(Clone)]
 pub struct EventCallback(
-    Arc<dyn Fn(&mut GameState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static>,
+    Arc<dyn Fn(&mut EngineState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static>,
 );
 
 impl EventCallback {
     pub fn new<F>(callback: F) -> Self
     where
-        F: Fn(&mut GameState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static,
+        F: Fn(&mut EngineState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static,
     {
         Self(Arc::new(callback))
     }
 
-    pub fn run(&self, game_state: &mut GameState, event: &Event, source: &ListenerSource) {
-        let result = (self.0)(game_state, event, source);
+    pub fn run(&self, engine_state: &mut EngineState, event: &Event, source: &ListenerSource) {
+        let result = (self.0)(engine_state, event, source);
         match result {
             CallbackResult::Event(event) => {
-                game_state.process_event(event);
+                engine_state.process_event(event);
             }
             CallbackResult::EventWithCallback(event, callback) => {
-                game_state.process_event_with_response_callback(event, callback);
+                engine_state.process_event_with_response_callback(event, callback);
             }
             CallbackResult::None => {}
         }

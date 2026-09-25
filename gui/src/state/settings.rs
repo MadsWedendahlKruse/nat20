@@ -236,11 +236,11 @@ impl Default for GuiSettings {
                 ScratchValue::Bool(false),
             ),
             (
-                state::parameters::RENDER_GAME_STATE_DEBUG.to_string(),
+                state::parameters::RENDER_ENGINE_STATE_DEBUG.to_string(),
                 ScratchValue::Bool(false),
             ),
             (
-                state::parameters::UPDATE_GAME_STATE.to_string(),
+                state::parameters::UPDATE_ENGINE_STATE.to_string(),
                 ScratchValue::Bool(true),
             ),
         ]))

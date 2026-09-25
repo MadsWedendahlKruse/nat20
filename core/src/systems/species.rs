@@ -8,7 +8,7 @@ use crate::{
         species::{CreatureSize, CreatureType, SpeciesBase},
         speed::Speed,
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     registry::registry::{SpeciesRegistry, SubspeciesRegistry},
     systems,
 };
@@ -28,7 +28,7 @@ impl SpeciesIdentifier {
 }
 
 pub fn set_species(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     species: &SpeciesId,
 ) -> Vec<LevelUpPrompt> {
@@ -37,11 +37,11 @@ pub fn set_species(
     let species = SpeciesRegistry::get(species)
         .unwrap_or_else(|| panic!("Species with ID `{}` not found in the registry", species));
 
-    systems::helpers::set_component::<SpeciesId>(&mut game_state.world, entity, species.id.clone());
+    systems::helpers::set_component::<SpeciesId>(&mut engine_state.world, entity, species.id.clone());
 
     // TODO: The species is presumably always set at level 1?
     apply_species_base(
-        game_state,
+        engine_state,
         entity,
         &species.base,
         SpeciesIdentifier::Species(species.id.clone()),
@@ -53,22 +53,22 @@ pub fn set_species(
     }
 
     systems::helpers::set_component::<CreatureSize>(
-        &mut game_state.world,
+        &mut engine_state.world,
         entity,
         species.size.clone(),
     );
     systems::helpers::set_component::<CreatureType>(
-        &mut game_state.world,
+        &mut engine_state.world,
         entity,
         species.creature_type.clone(),
     );
-    systems::helpers::set_component::<Speed>(&mut game_state.world, entity, species.speed.clone());
+    systems::helpers::set_component::<Speed>(&mut engine_state.world, entity, species.speed.clone());
 
     prompts
 }
 
-pub fn set_subspecies(game_state: &mut GameState, entity: Entity, subspecies: &SubspeciesId) {
-    let species_id = systems::helpers::get_component_clone::<SpeciesId>(&game_state.world, entity);
+pub fn set_subspecies(engine_state: &mut EngineState, entity: Entity, subspecies: &SubspeciesId) {
+    let species_id = systems::helpers::get_component_clone::<SpeciesId>(&engine_state.world, entity);
 
     let _species = SpeciesRegistry::get(&species_id)
         .unwrap_or_else(|| panic!("Species with ID `{}` not found in the registry", species_id));
@@ -81,14 +81,14 @@ pub fn set_subspecies(game_state: &mut GameState, entity: Entity, subspecies: &S
     });
 
     systems::helpers::set_component::<Option<SubspeciesId>>(
-        &mut game_state.world,
+        &mut engine_state.world,
         entity,
         Some(subspecies.id.clone()),
     );
 
     // TODO: Always level 1?
     apply_species_base(
-        game_state,
+        engine_state,
         entity,
         &subspecies.base,
         SpeciesIdentifier::Subspecies(subspecies.id.clone()),
@@ -97,7 +97,7 @@ pub fn set_subspecies(game_state: &mut GameState, entity: Entity, subspecies: &S
 }
 
 fn apply_species_base(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     base: &SpeciesBase,
     id: SpeciesIdentifier,
@@ -105,7 +105,7 @@ fn apply_species_base(
 ) {
     if let Some(effects) = base.effects_by_level.get(&level) {
         systems::effects::add_permanent_effects(
-            game_state,
+            engine_state,
             entity,
             effects.clone(),
             &id.modifier_source(),
@@ -114,7 +114,7 @@ fn apply_species_base(
     }
     if let Some(actions) = base.actions_by_level.get(&level) {
         for action in actions {
-            systems::actions::add_action(&mut game_state.world, entity, action);
+            systems::actions::add_action(&mut engine_state.world, entity, action);
         }
     }
 }

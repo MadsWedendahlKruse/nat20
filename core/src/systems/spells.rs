@@ -21,7 +21,7 @@ use crate::{
     engine::{
         action_prompt::{ActionData, ActionExecutionInstanceId},
         event::{Event, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::registry::{ClassesRegistry, SpellsRegistry},
     systems,
@@ -78,12 +78,12 @@ static SPELL_SLOTS_PER_LEVEL: LazyLock<HashMap<u8, Vec<u8>>> = LazyLock::new(|| 
 });
 
 pub fn add_spell(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     spell_id: &SpellId,
     source: &SpellSource,
 ) -> Result<(), SpellbookError> {
-    if let Ok((spellbook, resources)) = game_state
+    if let Ok((spellbook, resources)) = engine_state
         .world
         .query_one_mut::<(&mut Spellbook, &ResourceMap)>(entity)
     {
@@ -101,12 +101,12 @@ pub fn add_spell(
 }
 
 pub fn remove_spell(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     spell_id: &SpellId,
     source: &SpellSource,
 ) -> Result<(), SpellbookError> {
-    systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, entity)
+    systems::helpers::get_component_mut::<Spellbook>(&mut engine_state.world, entity)
         .remove_spell(spell_id, source)
         .inspect_err(|err| {
             error!(
@@ -257,7 +257,7 @@ pub fn can_concentrate(world: &World, entity: Entity) -> Result<(), Concentratio
 }
 
 pub fn add_concentration_instance(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     caster: Entity,
     instance: ConcentrationInstance,
     action_instance: &ActionExecutionInstanceId,
@@ -269,7 +269,7 @@ pub fn add_concentration_instance(
 
     let current_action = {
         let spellbook =
-            systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, caster);
+            systems::helpers::get_component_mut::<Spellbook>(&mut engine_state.world, caster);
         let tracker = spellbook.concentration_tracker_mut();
         tracker.action_instance().cloned()
     };
@@ -281,22 +281,22 @@ pub fn add_concentration_instance(
             "Existing concentration instance: {:?}. New instance: {:?}. Breaking concentration.",
             existing_action_instance, action_instance
         );
-        break_concentration(game_state, caster);
+        break_concentration(engine_state, caster);
     }
 
     {
         let spellbook =
-            systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, caster);
+            systems::helpers::get_component_mut::<Spellbook>(&mut engine_state.world, caster);
         spellbook
             .concentration_tracker_mut()
             .add_instance(instance, action_instance);
     }
 }
 
-pub fn break_concentration(game_state: &mut GameState, target: Entity) {
+pub fn break_concentration(engine_state: &mut EngineState, target: Entity) {
     let instances_to_break: Vec<ConcentrationInstance> = {
         let spellbook =
-            systems::helpers::get_component_mut::<Spellbook>(&mut game_state.world, target);
+            systems::helpers::get_component_mut::<Spellbook>(&mut engine_state.world, target);
         spellbook.concentration_tracker_mut().take_instances()
     };
 
@@ -306,21 +306,21 @@ pub fn break_concentration(game_state: &mut GameState, target: Entity) {
 
     debug!("Breaking concentration for entity {:?}", target);
 
-    game_state.process_event(Event::new(EventKind::LostConcentration {
-        entity: EntityIdentifier::from_world(&game_state.world, target),
+    engine_state.process_event(Event::new(EventKind::LostConcentration {
+        entity: EntityIdentifier::from_world(&engine_state.world, target),
         instances: instances_to_break.clone(),
     }));
 
     for instance in &instances_to_break {
-        instance.break_concentration(game_state);
+        instance.break_concentration(engine_state);
     }
 }
 
-pub fn break_concentration_if_spell(game_state: &mut GameState, action: &ActionData) {
+pub fn break_concentration_if_spell(engine_state: &mut EngineState, action: &ActionData) {
     let spell_id = action.action_id.clone().into();
     if let Some(spell) = SpellsRegistry::get(&spell_id)
         && spell.has_flag(SpellFlag::Concentration)
     {
-        systems::spells::break_concentration(game_state, action.actor.id());
+        systems::spells::break_concentration(engine_state, action.actor.id());
     }
 }

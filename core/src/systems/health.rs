@@ -21,7 +21,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{CallbackResult, EventCallback, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     registry::registry::ClassesRegistry,
     systems,
@@ -56,21 +56,21 @@ pub fn heal_full(world: &mut World, target: Entity) -> Option<LifeState> {
 }
 
 pub fn damage(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     target: Entity,
     damage_roll_result: &mut DamageRollResult,
     action: Option<&ActionData>,
     resolution: Option<&ActionConditionResolution>,
 ) -> (Option<DamageMitigationResult>, Option<LifeState>) {
     let resistances =
-        if let Ok(resistances) = game_state.world.get::<&mut DamageResistances>(target) {
+        if let Ok(resistances) = engine_state.world.get::<&mut DamageResistances>(target) {
             resistances.deref().clone()
         } else {
             DamageResistances::new()
         };
 
-    systems::effects::effects(&game_state.world, target).pre_damage_mitigation(
-        game_state,
+    systems::effects::effects(&engine_state.world, target).pre_damage_mitigation(
+        engine_state,
         target,
         damage_roll_result,
         action,
@@ -79,8 +79,8 @@ pub fn damage(
 
     let mut mitigation_result = resistances.apply(damage_roll_result);
 
-    systems::effects::effects(&game_state.world, target).post_damage_mitigation(
-        game_state,
+    systems::effects::effects(&engine_state.world, target).post_damage_mitigation(
+        engine_state,
         target,
         &mut mitigation_result,
         action,
@@ -88,7 +88,7 @@ pub fn damage(
     );
 
     let (damage_taken, killed_by_damage, mut new_life_state, removed_temp_hp_source) =
-        if let Ok((hit_points, life_state)) = game_state
+        if let Ok((hit_points, life_state)) = engine_state
             .world
             .query_one_mut::<(&mut HitPoints, &mut LifeState)>(target)
         {
@@ -148,29 +148,29 @@ pub fn damage(
     let killer = action.map(|action| action.actor.id());
 
     if killed_by_damage {
-        let pre_death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
+        let pre_death_hooks: Vec<_> = systems::effects::effects(&engine_state.world, target)
             .collect_hooks_with_applier(|effect| effect.pre_death.as_ref());
         for (hook, applier) in pre_death_hooks {
-            hook(game_state, target, killer, applier);
+            hook(engine_state, target, killer, applier);
         }
     }
 
     // Check if they actually died after applying pre-death hooks
-    let died = killed_by_damage && !is_alive(&game_state.world, target);
+    let died = killed_by_damage && !is_alive(&engine_state.world, target);
 
     if died {
-        if let Ok(death_policy) = game_state.world.get::<&DeathPolicy>(target) {
+        if let Ok(death_policy) = engine_state.world.get::<&DeathPolicy>(target) {
             new_life_state = Some(death_policy.state_when_killed());
         }
 
         // Trigger death hooks and remove effects that are not permanent
-        let death_hooks: Vec<_> = systems::effects::effects(&game_state.world, target)
+        let death_hooks: Vec<_> = systems::effects::effects(&engine_state.world, target)
             .collect_hooks_with_applier(|effect| effect.on_death.as_ref());
         for (hook, applier) in death_hooks {
-            hook(game_state, target, killer, applier);
+            hook(engine_state, target, killer, applier);
         }
 
-        let temporary_effects = systems::effects::remove_temporary_effects(game_state, target);
+        let temporary_effects = systems::effects::remove_temporary_effects(engine_state, target);
 
         for effect in temporary_effects {
             if let Some(applier) = effect.applier
@@ -178,7 +178,7 @@ pub fn damage(
             {
                 // Check if the applier is concentrating on the target and break concentration if so
                 let spellbook = systems::helpers::get_component_mut::<Spellbook>(
-                    &mut game_state.world,
+                    &mut engine_state.world,
                     applier,
                 );
                 spellbook
@@ -190,13 +190,13 @@ pub fn damage(
         // Unblock pending events waiting for the entity to act (if any)
         // TODO: I can't think of a scenario where this would happen, but I've got
         // a feeling that this might be necessary in some edge cases.
-        for pending_event in game_state.scope_for_entity_mut(target).pending_events_mut() {
+        for pending_event in engine_state.scope_for_entity_mut(target).pending_events_mut() {
             pending_event.blocked_by.remove(&target);
         }
     }
 
     if let Some(new_life_state) = new_life_state
-        && let Ok(mut life_state) = game_state.world.get::<&mut LifeState>(target)
+        && let Ok(mut life_state) = engine_state.world.get::<&mut LifeState>(target)
     {
         *life_state = new_life_state;
     }
@@ -209,14 +209,14 @@ pub fn damage(
         match source {
             ModifierSource::Effect(effect_id) => {
                 // TODO: Source should be EffectInstanceId?
-                systems::effects::remove_effects_by_id(game_state, target, effect_id);
+                systems::effects::remove_effects_by_id(engine_state, target, effect_id);
             }
             _ => { /* Other sources don't need to be removed? */ }
         }
     }
 
     let is_concentrating = {
-        let spellbook = systems::helpers::get_component::<Spellbook>(&game_state.world, target);
+        let spellbook = systems::helpers::get_component::<Spellbook>(&engine_state.world, target);
         spellbook.concentration_tracker().is_concentrating()
     };
 
@@ -228,10 +228,10 @@ pub fn damage(
 
         if died {
             debug!("Entity {:?} is dead; breaking concentration", target);
-            systems::spells::break_concentration(game_state, target);
+            systems::spells::break_concentration(engine_state, target);
         } else {
             let saving_throw_event = systems::d20::check(
-                game_state,
+                engine_state,
                 target,
                 &D20CheckDC::SavingThrow {
                     saving_throw: SavingThrowKind::Concentration,
@@ -246,16 +246,16 @@ pub fn damage(
                 },
             );
             let callback = EventCallback::new({
-                move |game_state, event, _| {
+                move |engine_state, event, _| {
                     if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind
                         && !result.is_success(dc)
                     {
-                        systems::spells::break_concentration(game_state, target);
+                        systems::spells::break_concentration(engine_state, target);
                     }
                     CallbackResult::None
                 }
             });
-            game_state.process_event_with_response_callback(saving_throw_event, callback);
+            engine_state.process_event_with_response_callback(saving_throw_event, callback);
         }
     }
 

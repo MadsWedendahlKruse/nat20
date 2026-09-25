@@ -8,13 +8,13 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{Event, EventKindTag},
-        game_state::GameState,
+        engine_state::EngineState,
     },
 };
 
-pub type ReactionTriggerFunction = dyn Fn(&GameState, &Entity, &Event) -> bool + Send + Sync;
+pub type ReactionTriggerFunction = dyn Fn(&EngineState, &Entity, &Event) -> bool + Send + Sync;
 pub type ReactionBodyFunction =
-    dyn Fn(&mut GameState, &ActionData, &mut Event) -> Option<ReactionResult> + Send + Sync;
+    dyn Fn(&mut EngineState, &ActionData, &mut Event) -> Option<ReactionResult> + Send + Sync;
 
 #[derive(Clone)]
 pub struct ReactionTrigger {
@@ -34,7 +34,7 @@ impl ReactionBody {
         Self { function }
     }
 
-    pub fn execute(&self, game_state: &mut GameState, action: &ActionData) -> ReactionResult {
+    pub fn execute(&self, engine_state: &mut EngineState, action: &ActionData) -> ReactionResult {
         let Some(trigger_event) = action.trigger_event.as_ref() else {
             panic!(
                 "Attempted to execute a reaction without a trigger event: {:#?}",
@@ -43,7 +43,7 @@ impl ReactionBody {
         };
 
         // Take out the pending event to prevent double mutable borrow
-        let scope = game_state.scope_for_entity_mut(action.actor.id());
+        let scope = engine_state.scope_for_entity_mut(action.actor.id());
         let Some(mut pending) = scope.pending_events_mut().pop_front() else {
             panic!("No pending events found for action: {:#?}", action);
         };
@@ -55,7 +55,7 @@ impl ReactionBody {
             );
         }
 
-        let result = (self.function)(game_state, action, &mut pending.event);
+        let result = (self.function)(engine_state, action, &mut pending.event);
 
         let result = result.unwrap_or_else(|| {
             // TODO: Not sure if this check actually works
@@ -86,7 +86,7 @@ impl ReactionBody {
         }
 
         // Put the event back in
-        let scope = game_state.scope_for_entity_mut(action.actor.id());
+        let scope = engine_state.scope_for_entity_mut(action.actor.id());
         scope.queue_pending_event(pending, true);
 
         result

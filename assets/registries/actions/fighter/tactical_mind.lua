@@ -1,5 +1,5 @@
 ---@type ReactionTriggerFn
-local function reaction_trigger(game_state, reactor, event)
+local function reaction_trigger(engine_state, reactor, event)
     local actor, d20_result, d20_dc = event:as_d20_check_performed()
     if actor and d20_result and d20_dc then
         if actor ~= reactor then
@@ -17,7 +17,7 @@ local function reaction_trigger(game_state, reactor, event)
 end
 
 ---@type ReactionBodyFn
-local function reaction_body(game_state, reaction, event)
+local function reaction_body(engine_state, reaction, event)
     event:with_d20_check(function(result, dc)
         result:add_modifier("1d10", "nat20_core::action.fighter.tactical_mind")
     end)

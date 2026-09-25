@@ -24,7 +24,7 @@ use crate::{
         skill::{Skill, SkillSet},
         spells::spellbook::{SpellSource, Spellbook},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     registry::registry::{ClassesRegistry, ItemsRegistry},
     systems,
 };
@@ -154,7 +154,7 @@ impl LevelUpSession {
 
     pub fn advance(
         &mut self,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         decision: &LevelUpDecision,
     ) -> Result<(), LevelUpError> {
         let mut new_prompts = Vec::new();
@@ -167,7 +167,7 @@ impl LevelUpSession {
             }
 
             let next_prompts = resolve_level_up_prompt(
-                game_state,
+                engine_state,
                 self.character,
                 prompt.clone(),
                 decision.clone(),
@@ -209,7 +209,7 @@ impl LevelUpSession {
 }
 
 fn resolve_level_up_prompt(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     prompt: LevelUpPrompt,
     decision: LevelUpDecision,
@@ -264,7 +264,7 @@ fn resolve_level_up_prompt(
                 match item {
                     ChoiceItem::Effect(effect_id) => {
                         systems::effects::add_permanent_effect(
-                            game_state,
+                            engine_state,
                             entity,
                             effect_id.clone(),
                             // TODO: Determine proper source
@@ -273,7 +273,7 @@ fn resolve_level_up_prompt(
                         );
                     }
                     ChoiceItem::Feat(feat_id) => {
-                        let result = systems::feats::add_feat(game_state, entity, feat_id);
+                        let result = systems::feats::add_feat(engine_state, entity, feat_id);
                         if let Ok(new_prompts) = result {
                             prompts.extend(new_prompts);
                         } else {
@@ -285,11 +285,11 @@ fn resolve_level_up_prompt(
                         }
                     }
                     ChoiceItem::Action(action_id) => {
-                        systems::actions::add_action(&mut game_state.world, entity, action_id);
+                        systems::actions::add_action(&mut engine_state.world, entity, action_id);
                     }
                     ChoiceItem::Background(background_id) => {
                         prompts.extend(systems::backgrounds::set_background(
-                            game_state,
+                            engine_state,
                             entity,
                             background_id,
                         ));
@@ -297,7 +297,7 @@ fn resolve_level_up_prompt(
                     ChoiceItem::Class(class_id) => {
                         // Special prompt when creating a new character
                         if systems::helpers::get_component::<CharacterLevels>(
-                            &game_state.world,
+                            &engine_state.world,
                             entity,
                         )
                         .total_level()
@@ -307,19 +307,19 @@ fn resolve_level_up_prompt(
                         }
 
                         prompts.extend(systems::class::increment_class_level(
-                            game_state, entity, class_id,
+                            engine_state, entity, class_id,
                         ));
                     }
                     ChoiceItem::Subclass(subclass_id) => {
-                        systems::class::set_subclass(game_state, entity, subclass_id);
+                        systems::class::set_subclass(engine_state, entity, subclass_id);
                     }
                     ChoiceItem::Species(species_id) => {
                         prompts.extend(systems::species::set_species(
-                            game_state, entity, species_id,
+                            engine_state, entity, species_id,
                         ));
                     }
                     ChoiceItem::Subspecies(subspecies_id) => {
-                        systems::species::set_subspecies(game_state, entity, subspecies_id);
+                        systems::species::set_subspecies(engine_state, entity, subspecies_id);
                     }
                     ChoiceItem::Equipment { items, money } => {
                         for (count, item_id) in items {
@@ -329,12 +329,12 @@ fn resolve_level_up_prompt(
                                 if item.equipable() {
                                     let equipment: EquipmentInstance = item.clone().into();
                                     if systems::loadout::can_equip(
-                                        &game_state.world,
+                                        &engine_state.world,
                                         entity,
                                         &equipment,
                                     ) {
                                         let result =
-                                            systems::loadout::equip(game_state, entity, equipment);
+                                            systems::loadout::equip(engine_state, entity, equipment);
                                         if let Err(e) = result {
                                             error!("Failed to equip item {}: {:?}", item_id, e);
                                         } else {
@@ -344,17 +344,17 @@ fn resolve_level_up_prompt(
                                         }
                                     }
                                 }
-                                systems::inventory::add_item(&mut game_state.world, entity, item);
+                                systems::inventory::add_item(&mut engine_state.world, entity, item);
                             }
                         }
                         if !money.is_empty() {
                             let money = MonetaryValue::from_str(money).unwrap();
-                            systems::inventory::add_money(&mut game_state.world, entity, money);
+                            systems::inventory::add_money(&mut engine_state.world, entity, money);
                         }
                     }
                     ChoiceItem::Spell(spell_id, source) => {
                         if let Ok((spellbook, resources)) =
-                            game_state
+                            engine_state
                                 .world
                                 .query_one_mut::<(&mut Spellbook, &ResourceMap)>(entity)
                         {
@@ -409,7 +409,7 @@ fn resolve_level_up_prompt(
                     });
                 }
                 // TODO: Expertise handling
-                systems::helpers::get_component_mut::<SkillSet>(&mut game_state.world, entity)
+                systems::helpers::get_component_mut::<SkillSet>(&mut engine_state.world, entity)
                     .set_proficiency(
                         skill,
                         Proficiency::new(ProficiencyLevel::Proficient, source.clone()),
@@ -455,7 +455,7 @@ fn resolve_level_up_prompt(
             }
 
             let ability_score_set = systems::helpers::get_component_mut::<AbilityScoreMap>(
-                &mut game_state.world,
+                &mut engine_state.world,
                 entity,
             );
             for (ability, score) in &distribution.scores {
@@ -487,7 +487,7 @@ fn resolve_level_up_prompt(
             }
 
             let ability_score_set = systems::helpers::get_component_mut::<AbilityScoreMap>(
-                &mut game_state.world,
+                &mut engine_state.world,
                 entity,
             );
 
@@ -564,7 +564,7 @@ fn resolve_level_up_prompt(
                     });
                 }
 
-                if let Ok((spellbook, resources)) = game_state
+                if let Ok((spellbook, resources)) = engine_state
                     .world
                     .query_one_mut::<(&mut Spellbook, &ResourceMap)>(entity)
                 {
@@ -622,7 +622,7 @@ fn resolve_level_up_prompt(
 }
 
 pub fn apply_level_up_decision(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     entity: Entity,
     levels: u8,
     decisions: Vec<LevelUpDecision>,
@@ -630,15 +630,15 @@ pub fn apply_level_up_decision(
     let mut decisions = decisions;
 
     for level in 1..=levels {
-        let name = systems::helpers::get_component_clone::<Name>(&game_state.world, entity);
-        let mut level_up_session = LevelUpSession::new(&game_state.world, entity);
+        let name = systems::helpers::get_component_clone::<Name>(&engine_state.world, entity);
+        let mut level_up_session = LevelUpSession::new(&engine_state.world, entity);
 
         // Some of the responses are identical, e.g. selecting the same class
         // multiple times. Using retain would therefore remove all of them,
         // so we need to track the indices of the used responses.
         let mut used_indices = Vec::new();
         for (i, decision) in decisions.iter().enumerate() {
-            let result = level_up_session.advance(game_state, decision);
+            let result = level_up_session.advance(engine_state, decision);
             match result {
                 Ok(_) | Err(LevelUpError::MissingChoiceForDecision { .. }) => {
                     // This is expected to happen since the responses cover all

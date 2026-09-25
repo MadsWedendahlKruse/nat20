@@ -4,7 +4,7 @@ use hecs::{Entity, World};
 use imgui::MouseButton;
 use nat20_core::{
     components::id::{EntityIdentifier, Name},
-    engine::{game_state::GameState, geometry::WorldGeometry},
+    engine::{engine_state::EngineState, geometry::WorldGeometry},
     entities::creature::{Character, Monster},
     systems::{self, entities::EntityKind, time::RestKind},
     test_utils::fixtures::{self},
@@ -23,7 +23,7 @@ use crate::{
 };
 
 struct Spawner {
-    spawn_fn: Box<dyn Fn(&mut GameState, u8, Option<Entity>) -> EntityIdentifier>,
+    spawn_fn: Box<dyn Fn(&mut EngineState, u8, Option<Entity>) -> EntityIdentifier>,
     max_level: u8,
     current_level: u8,
     spawned_entity: Option<Entity>,
@@ -32,7 +32,7 @@ struct Spawner {
 impl Spawner {
     fn new<F>(spawn_fn: F, max_level: u8) -> Self
     where
-        F: Fn(&mut GameState, u8, Option<Entity>) -> EntityIdentifier + 'static,
+        F: Fn(&mut EngineState, u8, Option<Entity>) -> EntityIdentifier + 'static,
     {
         Self {
             spawn_fn: Box::new(spawn_fn),
@@ -42,11 +42,11 @@ impl Spawner {
         }
     }
 
-    fn spawn(&mut self, game_state: &mut GameState, id: Option<Entity>) -> EntityIdentifier {
-        let entity = (self.spawn_fn)(game_state, self.current_level, id);
+    fn spawn(&mut self, engine_state: &mut EngineState, id: Option<Entity>) -> EntityIdentifier {
+        let entity = (self.spawn_fn)(engine_state, self.current_level, id);
         self.spawned_entity = Some(entity.id());
         // Ensure all resources are fully recharged
-        systems::time::on_rest_end(game_state, &[entity.id()], &RestKind::Long);
+        systems::time::on_rest_end(engine_state, &[entity.id()], &RestKind::Long);
         entity
     }
 }
@@ -54,7 +54,7 @@ impl Spawner {
 pub struct SpawnPredefinedWindow {
     /// Dummy World used to store the predefined entities. Once an entity has been
     /// selected from this window, it will be spawned into the actual game world.
-    game_state: GameState,
+    engine_state: EngineState,
     entity_to_spawn: Option<Entity>,
     current_entity: Option<Entity>,
     spawning_completed: bool,
@@ -63,8 +63,8 @@ pub struct SpawnPredefinedWindow {
 
 impl SpawnPredefinedWindow {
     pub fn new() -> Self {
-        // TODO: Seems pretty scuffed to construct an entire new GameState here?
-        let mut game_state = GameState::new(WorldGeometry::from_obj_path(
+        // TODO: Seems pretty scuffed to construct an entire new EngineState here?
+        let mut engine_state = EngineState::new(WorldGeometry::from_obj_path(
             "assets/models/geometry/test_terrain.obj",
             &ConfigBuilder::default().build(),
         ));
@@ -78,12 +78,12 @@ impl SpawnPredefinedWindow {
         ];
 
         for spawner in &mut spawners {
-            let entity = spawner.spawn(&mut game_state, None);
+            let entity = spawner.spawn(&mut engine_state, None);
             info!("Spawned predefined entity: {:?}", entity);
         }
 
         Self {
-            game_state,
+            engine_state,
             entity_to_spawn: None,
             current_entity: None,
             spawning_completed: false,
@@ -96,12 +96,12 @@ impl SpawnPredefinedWindow {
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
+impl RenderableMutWithContext<&mut EngineState> for SpawnPredefinedWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let mut opened = !self.spawning_completed;
 
@@ -122,7 +122,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                             format!(
                                 "{}##{:?}",
                                 systems::helpers::get_component::<Name>(
-                                    &self.game_state.world,
+                                    &self.engine_state.world,
                                     entity
                                 )
                                 .as_str(),
@@ -134,7 +134,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                         if ui.button(format!("Spawn##{:?}", entity)) {
                             self.entity_to_spawn = Some(entity);
                             if let Some(entity) = self.current_entity {
-                                game_state.world.despawn(entity).unwrap();
+                                engine_state.world.despawn(entity).unwrap();
                                 self.current_entity = None;
                             }
                         }
@@ -144,7 +144,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                         let mut updated_level = false;
 
                         // TODO: Level slider probably doesn't make sense for monsters?
-                        if let Ok(entity_kind) = self.game_state.world.get::<&EntityKind>(entity)
+                        if let Ok(entity_kind) = self.engine_state.world.get::<&EntityKind>(entity)
                             && *entity_kind == EntityKind::Character
                         {
                             ui.set_next_item_width(150.0);
@@ -161,11 +161,11 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                         }
 
                         entity
-                            .render_with_context(ui, (&self.game_state, &CreatureRenderMode::Full));
+                            .render_with_context(ui, (&self.engine_state, &CreatureRenderMode::Full));
 
                         if updated_level {
-                            self.game_state.world.despawn(entity).unwrap();
-                            spawner.spawn(&mut self.game_state, Some(entity));
+                            self.engine_state.world.despawn(entity).unwrap();
+                            spawner.spawn(&mut self.engine_state, Some(entity));
                         }
                     }
                 }
@@ -173,20 +173,20 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                 if let Some(entity) = self.entity_to_spawn {
                     if self.current_entity.is_none() {
                         let spawned_entity = if let Ok(entity_kind) =
-                            self.game_state.world.get::<&EntityKind>(entity)
+                            self.engine_state.world.get::<&EntityKind>(entity)
                         {
                             match *entity_kind {
                                 EntityKind::Projectile => {
                                     panic!("Cannot spawn a projectile directly")
                                 }
 
-                                EntityKind::Character => game_state
+                                EntityKind::Character => engine_state
                                     .world
-                                    .spawn(Character::from_world(&self.game_state.world, entity)),
+                                    .spawn(Character::from_world(&self.engine_state.world, entity)),
 
-                                EntityKind::Monster => game_state
+                                EntityKind::Monster => engine_state
                                     .world
-                                    .spawn(Monster::from_world(&self.game_state.world, entity)),
+                                    .spawn(Monster::from_world(&self.engine_state.world, entity)),
                             }
                         } else {
                             panic!("Entity {:?} does not have an EntityKind component", entity);
@@ -194,14 +194,14 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 
                         // Spawn it somewhere we can't see it, we'll move it later
                         systems::geometry::teleport_to(
-                            &mut game_state.world,
+                            &mut engine_state.world,
                             spawned_entity,
                             &Point3::new(f32::MAX, f32::MAX, f32::MAX),
                         );
 
                         // Ensure the spawned entity has a unique name in the main world
                         // (much easier to debug this way)
-                        set_unique_name(&mut game_state.world, spawned_entity);
+                        set_unique_name(&mut engine_state.world, spawned_entity);
 
                         self.current_entity = Some(spawned_entity);
                     }
@@ -214,7 +214,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 
                         if ui.is_mouse_clicked(MouseButton::Right) {
                             gui_state.cursor_ray_result.take();
-                            game_state.world.despawn(entity).unwrap();
+                            engine_state.world.despawn(entity).unwrap();
                             self.current_entity = None;
                             self.entity_to_spawn = None;
                         }
@@ -222,13 +222,13 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
                         if let Some(raycast) = gui_state.cursor_ray_result.take()
                             && let Some(raycast_world) = raycast.world_hit()
                             && let Some(navmesh_point) = systems::geometry::navmesh_nearest_point(
-                                &game_state.geometry,
+                                &engine_state.geometry,
                                 raycast_world.poi,
                             )
                         {
                             systems::geometry::teleport_to_ground(
-                                &mut game_state.world,
-                                &game_state.geometry,
+                                &mut engine_state.world,
+                                &engine_state.geometry,
                                 entity,
                                 &navmesh_point,
                             );
@@ -249,7 +249,7 @@ impl RenderableMutWithContext<&mut GameState> for SpawnPredefinedWindow {
 
         if self.spawning_completed {
             if let Some(entity) = self.current_entity {
-                game_state.world.despawn(entity).unwrap();
+                engine_state.world.despawn(entity).unwrap();
                 self.current_entity = None;
                 self.entity_to_spawn = None;
             }

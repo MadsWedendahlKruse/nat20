@@ -304,71 +304,71 @@ local ModifierResult = {}
 function ModifierResult:get_modifier(source) end
 
 ------------------------------------------------------------
--- GameState
+-- EngineState
 -- Functions for interacting with the world and entities
 ------------------------------------------------------------
 
----@class GameState
-local GameState = {}
+---@class EngineState
+local EngineState = {}
 
 ---@param entity ScriptEntity
 ---@param class_id string
 ---@return integer
-function GameState:class_level(entity, class_id) end
+function EngineState:class_level(entity, class_id) end
 
 ---@param entity ScriptEntity
 ---@param resource_id string
 ---@param amount string|integer
 ---@return boolean
-function GameState:can_afford_resource(entity, resource_id, amount) end
+function EngineState:can_afford_resource(entity, resource_id, amount) end
 
 ---@param entity ScriptEntity
 ---@param resource_id string
 ---@param amount string|integer
-function GameState:add_resource(entity, resource_id, amount) end
+function EngineState:add_resource(entity, resource_id, amount) end
 
 --- Note that the callback runs immediately and inline, before this function returns.
 ---@param entity ScriptEntity
 ---@param saving_throw string  -- "constitution" | "dexterity" | "death" | ...
 ---@param dc table
----@param callback fun(game_state: GameState, success: boolean, result: D20CheckResult)
-function GameState:saving_throw(entity, saving_throw, dc, callback) end
+---@param callback fun(engine_state: EngineState, success: boolean, result: D20CheckResult)
+function EngineState:saving_throw(entity, saving_throw, dc, callback) end
 
 ---@param entity ScriptEntity
 ---@param key string
 ---@return boolean|integer|number|string|nil
-function GameState:scratchpad_get(entity, key) end
+function EngineState:scratchpad_get(entity, key) end
 
 ---@param entity ScriptEntity
 ---@param key string
 ---@param value boolean|integer|number|string
-function GameState:scratchpad_set(entity, key, value) end
+function EngineState:scratchpad_set(entity, key, value) end
 
 ---@param entity ScriptEntity
 ---@param key string
-function GameState:scratchpad_clear(entity, key) end
+function EngineState:scratchpad_clear(entity, key) end
 
 ---@param entity ScriptEntity
 ---@return integer
-function GameState:hp_current(entity) end
+function EngineState:hp_current(entity) end
 
 ---@param entity ScriptEntity
 ---@return integer
-function GameState:hp_max(entity) end
+function EngineState:hp_max(entity) end
 
 ---@param entity ScriptEntity
 ---@param ability_name string  -- "strength" | "dexterity" | ...
 ---@return FlatModifierMap
-function GameState:ability_modifier(entity, ability_name) end
+function EngineState:ability_modifier(entity, ability_name) end
 
 ---@param entity ScriptEntity
 ---@return string  -- "None" | "Clothing" | "Light" | "Medium" | "Heavy" | "Shield"
-function GameState:armor_type(entity) end
+function EngineState:armor_type(entity) end
 
 ---@param entity ScriptEntity
 ---@param weapon_kind string  -- "Melee" | "Ranged"
 ---@return boolean
-function GameState:wielding_with_both_hands(entity, weapon_kind) end
+function EngineState:wielding_with_both_hands(entity, weapon_kind) end
 
 --- Apply Attack Roll hooks, but without making the actual roll
 ---@param entity ScriptEntity
@@ -376,14 +376,14 @@ function GameState:wielding_with_both_hands(entity, weapon_kind) end
 ---@param context ActionContext
 ---@param action_id string?
 ---@return D20Check
-function GameState:preview_attack_roll(entity, target, context, action_id) end
+function EngineState:preview_attack_roll(entity, target, context, action_id) end
 
 ---@param applier ScriptEntity
 ---@param target ScriptEntity
 ---@param effect_id string
 ---@param source_effect string
 ---@param context ActionContext?
-function GameState:apply_effect(applier, target, effect_id, source_effect, context) end
+function EngineState:apply_effect(applier, target, effect_id, source_effect, context) end
 
 ---@param applier ScriptEntity
 ---@param target ScriptEntity
@@ -392,7 +392,7 @@ function GameState:apply_effect(applier, target, effect_id, source_effect, conte
 ---@param source_effect string
 ---@param context ActionContext?
 ---@param resolution ActionConditionResolution?
-function GameState:apply_effect_for_turns(
+function EngineState:apply_effect_for_turns(
     applier, target, effect_id, turns, source_effect, context, resolution
 )
 end
@@ -400,25 +400,25 @@ end
 --- @param target ScriptEntity
 --- @param effect_id string
 --- @return boolean
-function GameState:has_effect(target, effect_id) end
+function EngineState:has_effect(target, effect_id) end
 
 ---@param target ScriptEntity
 ---@param effect_id string
-function GameState:remove_effect(target, effect_id) end
+function EngineState:remove_effect(target, effect_id) end
 
 ---@param entity ScriptEntity
 ---@param effect_id string
 ---@return TimeDuration?
-function GameState:effect_remaining_duration(entity, effect_id) end
+function EngineState:effect_remaining_duration(entity, effect_id) end
 
 ---@param entity ScriptEntity
 ---@param effect_id string
 ---@param turns integer
-function GameState:extend_effect_duration(entity, effect_id, turns) end
+function EngineState:extend_effect_duration(entity, effect_id, turns) end
 
 ---@param target ScriptEntity
 ---@param amount table
-function GameState:heal(target, amount) end
+function EngineState:heal(target, amount) end
 
 ------------------------------------------------------------
 -- Misc
@@ -442,27 +442,27 @@ function EffectLifetime:set_duration(duration) end
 -- to get parameter type inference and nil checks.
 ------------------------------------------------------------
 
----@alias ActionHookFn fun(game_state: GameState, action: ActionData)
----@alias ActionResultHookFn fun(game_state: GameState, action: ActionData, result: ActionResult)
----@alias ActionUsabilityFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
----@alias ActionUsabilityHookFn fun(game_state: GameState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
----@alias ArmorClassHookFn fun(game_state: GameState, entity: ScriptEntity, armor_class: FlatModifierMap)
----@alias AttackedHookFn fun(game_state: GameState, effect: EffectInstance, victim: ScriptEntity, attacker: ScriptEntity, check: D20Check)
----@alias D20AbilityHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check): string|nil
----@alias D20CheckHookFn fun(game_state: GameState, entity: ScriptEntity, d20_check: D20Check)
----@alias D20CheckResultHookFn fun(game_state: GameState, entity: ScriptEntity, result: D20CheckResult)
----@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
----@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
----@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
----@alias EffectLifetimeHookFn fun(game_state: GameState, applier: ScriptEntity, target: ScriptEntity, effect_id: string, lifetime: EffectLifetime)
+---@alias ActionHookFn fun(engine_state: EngineState, action: ActionData)
+---@alias ActionResultHookFn fun(engine_state: EngineState, action: ActionData, result: ActionResult)
+---@alias ActionUsabilityFn fun(engine_state: EngineState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
+---@alias ActionUsabilityHookFn fun(engine_state: EngineState, entity: ScriptEntity, action_id: string, context: ActionContext): string?
+---@alias ArmorClassHookFn fun(engine_state: EngineState, entity: ScriptEntity, armor_class: FlatModifierMap)
+---@alias AttackedHookFn fun(engine_state: EngineState, effect: EffectInstance, victim: ScriptEntity, attacker: ScriptEntity, check: D20Check)
+---@alias D20AbilityHookFn fun(engine_state: EngineState, entity: ScriptEntity, d20_check: D20Check): string|nil
+---@alias D20CheckHookFn fun(engine_state: EngineState, entity: ScriptEntity, d20_check: D20Check)
+---@alias D20CheckResultHookFn fun(engine_state: EngineState, entity: ScriptEntity, result: D20CheckResult)
+---@alias DamageRollHookFn fun(engine_state: EngineState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
+---@alias DamageRollResultHookFn fun(engine_state: EngineState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
+---@alias DeathHookFn fun(engine_state: EngineState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
+---@alias EffectLifetimeHookFn fun(engine_state: EngineState, applier: ScriptEntity, target: ScriptEntity, effect_id: string, lifetime: EffectLifetime)
 ---@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
----@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
----@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)
----@alias PreDeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
----@alias ReactionBodyFn fun(game_state: GameState, reaction: ActionData, event: Event)
----@alias ReactionTriggerFn fun(game_state: GameState, reactor: ScriptEntity, event: Event): boolean
----@alias ResourceCostHookFn fun(game_state: GameState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
----@alias RestHookFn fun(game_state: GameState, entity: ScriptEntity, kind: "short"|"long")
----@alias SpeedHookFn fun(game_state: GameState, entity: ScriptEntity, speed: Speed)
----@alias TargetUsabilityFn fun(game_state: GameState, entity: ScriptEntity, target: ScriptEntity, action_id: string, context: ActionContext): string?
----@alias TurnStartHookFn fun(game_state: GameState, entity: ScriptEntity)
+---@alias PostDamageMitigationHookFn fun(engine_state: EngineState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
+---@alias PreDamageMitigationHookFn fun(engine_state: EngineState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)
+---@alias PreDeathHookFn fun(engine_state: EngineState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
+---@alias ReactionBodyFn fun(engine_state: EngineState, reaction: ActionData, event: Event)
+---@alias ReactionTriggerFn fun(engine_state: EngineState, reactor: ScriptEntity, event: Event): boolean
+---@alias ResourceCostHookFn fun(engine_state: EngineState, entity: ScriptEntity, action: ActionData, cost: ResourceAmountMap)
+---@alias RestHookFn fun(engine_state: EngineState, entity: ScriptEntity, kind: "short"|"long")
+---@alias SpeedHookFn fun(engine_state: EngineState, entity: ScriptEntity, speed: Speed)
+---@alias TargetUsabilityFn fun(engine_state: EngineState, entity: ScriptEntity, target: ScriptEntity, action_id: string, context: ActionContext): string?
+---@alias TurnStartHookFn fun(engine_state: EngineState, entity: ScriptEntity)

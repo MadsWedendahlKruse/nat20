@@ -1,5 +1,5 @@
 use nat20_core::{
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems::{self, geometry::RaycastFilter},
 };
 use parry3d::{
@@ -221,11 +221,11 @@ impl OrbitCamera {
     }
 }
 
-impl ImguiRenderableMutWithContext<(&GameState, &mut bool, &mut WindowManager)> for OrbitCamera {
+impl ImguiRenderableMutWithContext<(&EngineState, &mut bool, &mut WindowManager)> for OrbitCamera {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
-        (game_state, opened, window_manager): (&GameState, &mut bool, &mut WindowManager),
+        (engine_state, opened, window_manager): (&EngineState, &mut bool, &mut WindowManager),
     ) {
         window_manager.render_window(
             ui,
@@ -271,8 +271,8 @@ impl ImguiRenderableMutWithContext<(&GameState, &mut bool, &mut WindowManager)> 
                         ui.text(format!(
                             "Hit: {:#?}",
                             systems::geometry::raycast_with_toi(
-                                &game_state.world,
-                                &game_state.geometry,
+                                &engine_state.world,
+                                &engine_state.geometry,
                                 &ray,
                                 1000.0,
                                 &RaycastFilter::All

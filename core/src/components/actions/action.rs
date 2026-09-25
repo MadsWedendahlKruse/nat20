@@ -30,7 +30,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         event::{Event, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     entities::projectile::ProjectileTemplate,
     registry::{
@@ -55,11 +55,11 @@ pub type DisplacementFunction =
 pub type AreaShapeFunction = dyn Fn(&World, Entity, &ActionContext) -> AreaShape + Send + Sync;
 /// Return an optional string describing why the action is not usable, or None if the action is usable.
 pub type ActionUsabilityFunction =
-    dyn Fn(&GameState, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync;
+    dyn Fn(&EngineState, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync;
 /// Same, but for conditions that depend on who is being targeted, e.g. Brutal Strike
 /// needs Advantage on the attack roll against *this* target.
 pub type TargetUsabilityFunction =
-    dyn Fn(&GameState, Entity, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync;
+    dyn Fn(&EngineState, Entity, Entity, &ActionId, &ActionContext) -> Option<String> + Send + Sync;
 
 #[derive(Clone, Deserialize)]
 #[serde(from = "ActionDefinition")]
@@ -92,14 +92,14 @@ pub struct Action {
 }
 
 impl Action {
-    pub fn perform(&self, game_state: &mut GameState, action_data: &ActionData) -> Vec<PhaseState> {
-        let hooks = systems::effects::effects(&game_state.world, action_data.actor.id())
+    pub fn perform(&self, engine_state: &mut EngineState, action_data: &ActionData) -> Vec<PhaseState> {
+        let hooks = systems::effects::effects(&engine_state.world, action_data.actor.id())
             .collect_hooks(|effect| effect.on_action.as_ref());
         for hook in hooks {
-            hook(game_state, action_data);
+            hook(engine_state, action_data);
         }
 
-        self.kind.perform(game_state, action_data)
+        self.kind.perform(engine_state, action_data)
     }
 
     pub fn id(&self) -> &ActionId {
@@ -169,7 +169,7 @@ pub enum ActionKind {
 }
 
 impl ActionKind {
-    pub fn perform(&self, game_state: &mut GameState, action_data: &ActionData) -> Vec<PhaseState> {
+    pub fn perform(&self, engine_state: &mut EngineState, action_data: &ActionData) -> Vec<PhaseState> {
         let mut phases = Vec::new();
 
         match self {
@@ -179,7 +179,7 @@ impl ActionKind {
                 for (phase_index, spec) in specs.iter().enumerate() {
                     for (target_index, target) in action_data.targets.iter().enumerate() {
                         phases.push(PhaseState::new(
-                            game_state,
+                            engine_state,
                             action_data,
                             spec,
                             target.clone(),
@@ -196,7 +196,7 @@ impl ActionKind {
                 // their own event in the middle of an action, then the execution
                 // pipeline will overwrite the current action with the new reaction
 
-                let result = body.execute(game_state, action_data);
+                let result = body.execute(engine_state, action_data);
 
                 let entity_targets = action_data
                     .targets
@@ -208,7 +208,7 @@ impl ActionKind {
                     .collect::<Vec<_>>();
 
                 let target = entity_targets.first().unwrap_or(&action_data.actor);
-                game_state.process_event(Event::new(EventKind::ActionResult {
+                engine_state.process_event(Event::new(EventKind::ActionResult {
                     result: ActionResult {
                         target: target.clone(),
                         components: vec![ActionResultComponent::Reaction(result)],
@@ -217,16 +217,16 @@ impl ActionKind {
                     action: Some(action_data.action_id.clone()),
                 }));
 
-                let scope = game_state.scope_id_for_entity(action_data.actor.id());
+                let scope = engine_state.scope_id_for_entity(action_data.actor.id());
 
                 if let Some(trigger_event) = action_data.trigger_event.as_ref() {
-                    game_state
+                    engine_state
                         .prompts
                         .scope_mut(scope)
                         .clear_blocker(&trigger_event.id, action_data.actor.id());
                 }
 
-                game_state.resume_pending_events_if_ready(scope);
+                engine_state.resume_pending_events_if_ready(scope);
             }
         }
 

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{effects::effect::EffectInstanceId, id::EffectId, modifier::ModifierSource},
-    engine::{action_prompt::ActionExecutionInstanceId, game_state::GameState},
+    engine::{action_prompt::ActionExecutionInstanceId, engine_state::EngineState},
     systems::{self},
 };
 
@@ -23,12 +23,12 @@ pub enum ConcentrationInstance {
 }
 
 impl ConcentrationInstance {
-    pub fn break_concentration(&self, game_state: &mut GameState) {
+    pub fn break_concentration(&self, engine_state: &mut EngineState) {
         match self {
             ConcentrationInstance::Effect {
                 entity, instance, ..
             } => {
-                systems::effects::remove_effect(game_state, *entity, instance);
+                systems::effects::remove_effect(engine_state, *entity, instance);
             }
         }
     }

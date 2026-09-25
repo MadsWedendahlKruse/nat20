@@ -6,7 +6,7 @@ use nat20_core::{
     engine::{
         action_prompt::{ActionData, ActionDecision, ActionDecisionKind, ActionPromptId},
         event::Event,
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems,
 };
@@ -63,12 +63,12 @@ impl ReactionsWindow {
     }
 }
 
-impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
+impl RenderableMutWithContext<&mut EngineState> for ReactionsWindow {
     fn render_mut_with_context(
         &mut self,
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
     ) {
         let mut new_state = None;
 
@@ -89,24 +89,24 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                         ui.text("No reactions available.");
                     }
 
-                    event.render_with_context(ui, &(game_state, &LogLevel::Debug));
+                    event.render_with_context(ui, &(engine_state, &LogLevel::Debug));
 
                     ui.text("Choose how to react:");
 
-                    let decisions = game_state
+                    let decisions = engine_state
                         .scope_for_entity(*options.keys().next().unwrap())
                         .and_then(|scope| scope.decisions_for_prompt(prompt_id));
 
                     let (mut button_clicked, mut entity, mut choice) = (false, None, None);
 
                     for (reactor, options) in options {
-                        if !systems::ai::is_player_controlled(&game_state.world, *reactor) {
+                        if !systems::ai::is_player_controlled(&engine_state.world, *reactor) {
                             continue;
                         }
 
                         ui.separator_with_text(
                             systems::helpers::get_component_clone::<Name>(
-                                &game_state.world,
+                                &engine_state.world,
                                 *reactor,
                             )
                             .as_str(),
@@ -145,7 +145,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                                         .render_with_context(
                                             ui,
                                             (
-                                                &game_state.world,
+                                                &engine_state.world,
                                                 *reactor,
                                                 None,
                                                 option.variant.as_ref(),
@@ -171,7 +171,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                     if button_clicked && let Some(reactor) = entity {
                         info!("Submitting reaction decision for reactor {:?}...", reactor);
 
-                        let result = game_state.submit_activity(Activity::Act {
+                        let result = engine_state.submit_activity(Activity::Act {
                             action: ActionDecision {
                                 response_to: *prompt_id,
                                 kind: ActionDecisionKind::Reaction {
@@ -196,7 +196,7 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
 
                     if let Some(decisions) = decision_keys
                         && options.keys().all(|entity| {
-                            !systems::ai::is_player_controlled(&game_state.world, *entity)
+                            !systems::ai::is_player_controlled(&engine_state.world, *entity)
                                 || decisions.contains(entity)
                         })
                     {

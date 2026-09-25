@@ -15,8 +15,8 @@ use crate::{
     },
     engine::{
         action_prompt::{ActionPrompt, ActionPromptKind},
+        engine_state::EngineState,
         event::{CallbackResult, EncounterEvent, Event, EventCallback, EventKind, EventLog},
-        game_state::GameState,
         prompt::PromptScopeId,
     },
     systems::{self},
@@ -35,7 +35,11 @@ pub struct Encounter {
 }
 
 impl Encounter {
-    pub fn new(game_state: &mut GameState, participants: HashSet<Entity>, id: EncounterId) -> Self {
+    pub fn new(
+        engine_state: &mut EngineState,
+        participants: HashSet<Entity>,
+        id: EncounterId,
+    ) -> Self {
         let mut encounter = Self {
             id,
             participants,
@@ -44,8 +48,8 @@ impl Encounter {
             initiative_order: Vec::new(),
             event_log: EventLog::new(),
         };
-        encounter.roll_initiative(game_state);
-        encounter.start_turn(game_state);
+        encounter.roll_initiative(engine_state);
+        encounter.start_turn(engine_state);
         encounter
             .event_log
             .push(Event::encounter_event(EncounterEvent::NewRound(
@@ -55,13 +59,14 @@ impl Encounter {
         encounter
     }
 
-    fn roll_initiative(&mut self, game_state: &GameState) {
+    fn roll_initiative(&mut self, engine_state: &EngineState) {
         let mut indexed_rolls: Vec<(Entity, D20CheckResult)> = self
             .participants
             .iter()
             .map(|entity| {
-                let roll = systems::helpers::get_component::<SkillSet>(&game_state.world, *entity)
-                    .check(&Skill::Initiative, game_state, *entity);
+                let roll =
+                    systems::helpers::get_component::<SkillSet>(&engine_state.world, *entity)
+                        .check(&Skill::Initiative, engine_state, *entity);
                 (*entity, roll)
             })
             .collect();
@@ -95,15 +100,15 @@ impl Encounter {
             .collect()
     }
 
-    fn start_turn(&mut self, game_state: &mut GameState) {
-        self.advance_time(game_state, TurnBoundary::Start);
+    fn start_turn(&mut self, engine_state: &mut EngineState) {
+        self.advance_time(engine_state, TurnBoundary::Start);
 
-        if self.should_skip_turn(game_state) {
-            self.end_turn(game_state, self.current_entity());
+        if self.should_skip_turn(engine_state) {
+            self.end_turn(engine_state, self.current_entity());
             return;
         }
 
-        let scope = game_state
+        let scope = engine_state
             .prompts
             .scope_mut(PromptScopeId::Encounter(self.id));
 
@@ -115,14 +120,14 @@ impl Encounter {
         );
     }
 
-    pub fn end_turn(&mut self, game_state: &mut GameState, entity: Entity) {
+    pub fn end_turn(&mut self, engine_state: &mut EngineState, entity: Entity) {
         if entity != self.current_entity() {
             panic!("Cannot end turn for entity that is not the current entity");
         }
 
-        self.advance_time(game_state, TurnBoundary::End);
+        self.advance_time(engine_state, TurnBoundary::End);
 
-        let scope = game_state
+        let scope = engine_state
             .prompts
             .scope_mut(PromptScopeId::Encounter(self.id));
 
@@ -149,21 +154,21 @@ impl Encounter {
                 )));
         }
 
-        self.start_turn(game_state);
+        self.start_turn(engine_state);
     }
 
     // TODO: Some of this feels like it should belong somewhere else?
-    fn should_skip_turn(&mut self, game_state: &mut GameState) -> bool {
+    fn should_skip_turn(&mut self, engine_state: &mut EngineState) -> bool {
         let current_entity = self.current_entity();
 
         let is_unconscious = matches!(
-            *systems::helpers::get_component::<LifeState>(&game_state.world, current_entity),
+            *systems::helpers::get_component::<LifeState>(&engine_state.world, current_entity),
             LifeState::Unconscious(_)
         );
 
         if is_unconscious {
             let death_saving_throw_event = systems::d20::check(
-                game_state,
+                engine_state,
                 current_entity,
                 &D20CheckDC::SavingThrow {
                     saving_throw: SavingThrowKind::Death,
@@ -175,17 +180,17 @@ impl Encounter {
                 },
             );
 
-            game_state.process_event_with_response_callback(
+            engine_state.process_event_with_response_callback(
                 death_saving_throw_event,
                 EventCallback::new({
-                    move |game_state, event, _source| match &event.kind {
+                    move |engine_state, event, _source| match &event.kind {
                         EventKind::D20CheckResolved {
                             actor,
                             result,
                             dc: _,
                         } => {
                             let life_state = systems::helpers::get_component_mut::<LifeState>(
-                                &mut game_state.world,
+                                &mut engine_state.world,
                                 actor.id(),
                             );
 
@@ -219,10 +224,10 @@ impl Encounter {
         }
 
         if matches!(
-            *systems::helpers::get_component::<LifeState>(&game_state.world, current_entity),
+            *systems::helpers::get_component::<LifeState>(&engine_state.world, current_entity),
             LifeState::Normal
         ) {
-            return systems::resources::can_act(&game_state.world, current_entity).is_err();
+            return systems::resources::can_act(&engine_state.world, current_entity).is_err();
         }
 
         // Normal / other states => decide if they can act
@@ -241,10 +246,10 @@ impl Encounter {
         &mut self.event_log
     }
 
-    fn advance_time(&mut self, game_state: &mut GameState, boundary: TurnBoundary) {
+    fn advance_time(&mut self, engine_state: &mut EngineState, boundary: TurnBoundary) {
         for entity in self.participants.iter() {
             systems::time::advance_time(
-                game_state,
+                engine_state,
                 *entity,
                 TimeStep::TurnBoundary {
                     entity: self.current_entity(),
@@ -262,7 +267,7 @@ impl Encounter {
         std::mem::take(&mut self.event_log)
     }
 
-    pub fn remove_participant(&mut self, game_state: &mut GameState, entity: Entity) {
+    pub fn remove_participant(&mut self, engine_state: &mut EngineState, entity: Entity) {
         self.participants.remove(&entity);
         let current_entity = self.current_entity();
         self.initiative_order.retain(|(e, _)| *e != entity);
@@ -273,7 +278,7 @@ impl Encounter {
             .unwrap_or(0);
         if current_entity == entity {
             // If the current participant was removed, end their turn to move to the next one
-            self.end_turn(game_state, entity);
+            self.end_turn(engine_state, entity);
         }
     }
 }

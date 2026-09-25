@@ -22,7 +22,7 @@ use crate::{
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems::{self},
 };
 
@@ -305,8 +305,8 @@ impl D20Check {
         }
     }
 
-    pub fn apply_pre_roll_hooks(&mut self, game_state: &GameState, entity: Entity) {
-        let proficiency_bonus = systems::helpers::level(&game_state.world, entity)
+    pub fn apply_pre_roll_hooks(&mut self, engine_state: &EngineState, entity: Entity) {
+        let proficiency_bonus = systems::helpers::level(&engine_state.world, entity)
             .unwrap()
             .proficiency_bonus();
 
@@ -315,18 +315,18 @@ impl D20Check {
             self.proficiency.bonus(proficiency_bonus) as i32,
         );
 
-        systems::effects::effects(&game_state.world, entity)
-            .pre_d20_check(game_state, entity, self);
+        systems::effects::effects(&engine_state.world, entity)
+            .pre_d20_check(engine_state, entity, self);
     }
 
-    pub fn roll_hooks(&self, game_state: &GameState, entity: Entity) -> D20CheckResult {
+    pub fn roll_hooks(&self, engine_state: &EngineState, entity: Entity) -> D20CheckResult {
         let mut check = self.clone();
-        check.apply_pre_roll_hooks(game_state, entity);
+        check.apply_pre_roll_hooks(engine_state, entity);
 
         let mut result = check.roll();
 
-        systems::effects::effects(&game_state.world, entity).post_d20_check(
-            game_state,
+        systems::effects::effects(&engine_state.world, entity).post_d20_check(
+            engine_state,
             entity,
             &mut result,
         );
@@ -336,7 +336,7 @@ impl D20Check {
 
     pub fn roll_dc(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         entity: Entity,
         dc: &D20CheckDC,
     ) -> Result<D20CheckResult, D20Error> {
@@ -347,7 +347,7 @@ impl D20Check {
             });
         }
 
-        let mut result = self.roll_hooks(game_state, entity);
+        let mut result = self.roll_hooks(engine_state, entity);
 
         if result.outcome.is_none() {
             result.outcome = if result.total() >= dc.total() {
@@ -643,8 +643,8 @@ where
         self.get_mut(key).remove_crit_threshold_reduction(source);
     }
 
-    pub fn check(&self, key: &K, game_state: &GameState, entity: Entity) -> D20CheckResult {
-        self.get(key).clone().roll_hooks(game_state, entity)
+    pub fn check(&self, key: &K, engine_state: &EngineState, entity: Entity) -> D20CheckResult {
+        self.get(key).clone().roll_hooks(engine_state, entity)
     }
 }
 
@@ -870,7 +870,7 @@ mod tests {
         let target_dc = 15;
 
         // Proficiency reaches the modifier map in `apply_pre_roll_hooks`, which needs
-        // a GameState, so add it here manually for the test
+        // a EngineState, so add it here manually for the test
         check.modifiers.add_modifier(
             ModifierSource::Proficiency(check.proficiency.level().clone()),
             check.proficiency.bonus(proficiency_bonus) as i32,

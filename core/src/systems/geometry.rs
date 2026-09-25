@@ -25,7 +25,7 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        game_state::GameState,
+        engine_state::EngineState,
         geometry::{WorldGeometry, WorldPath},
     },
     systems,
@@ -1043,7 +1043,7 @@ pub enum DisplacementTemplate {
 impl DisplacementTemplate {
     pub fn instantiate(
         &self,
-        game_state: &GameState,
+        engine_state: &EngineState,
         action: &ActionData,
         target: Entity,
     ) -> Option<Displacement> {
@@ -1051,26 +1051,26 @@ impl DisplacementTemplate {
             DisplacementTemplate::Teleport => Some(Displacement::Teleport),
 
             DisplacementTemplate::Push { distance } => Some(Displacement::Push {
-                trajectory: Self::get_trajectory(game_state, action, target, distance, true)?,
+                trajectory: Self::get_trajectory(engine_state, action, target, distance, true)?,
             }),
 
             DisplacementTemplate::Pull { distance } => Some(Displacement::Pull {
-                trajectory: Self::get_trajectory(game_state, action, target, distance, false)?,
+                trajectory: Self::get_trajectory(engine_state, action, target, distance, false)?,
             }),
         }
     }
 
     fn get_trajectory(
-        game_state: &GameState,
+        engine_state: &EngineState,
         action: &ActionData,
         target: Entity,
         distance: &Length,
         push: bool,
     ) -> Option<Parabola> {
         let actor_position =
-            systems::geometry::get_foot_position(&game_state.world, action.actor.id())?;
+            systems::geometry::get_foot_position(&engine_state.world, action.actor.id())?;
         let target_start_position =
-            systems::geometry::get_foot_position(&game_state.world, target)?;
+            systems::geometry::get_foot_position(&engine_state.world, target)?;
 
         let distance = distance.get::<meter>();
 
@@ -1097,8 +1097,8 @@ impl DisplacementTemplate {
         trajectory.max_time = 30.0;
 
         if let Some(raycast_result) = systems::geometry::raycast_parabola(
-            &game_state.world,
-            &game_state.geometry,
+            &engine_state.world,
+            &engine_state.geometry,
             &trajectory,
             &RaycastFilter::WorldOnly,
         ) && let Some(closest) = raycast_result.closest()

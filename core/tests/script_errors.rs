@@ -24,7 +24,7 @@ fn usability_script_error_blocks_action() {
 
     let reason = systems::scripts::evaluate_action_usability(
         &script,
-        &scenario.game_state,
+        &scenario.engine_state,
         entity,
         &ActionId::new("nat20_core", "action.melee_attack"),
         &ActionContext::empty(),

@@ -134,7 +134,7 @@ As shown above, you've got quite a lot of freedom when defining stuff like the d
 Some rules require unique logic to determine how they work, which can be implemented using [Lua](https://www.lua.org/) scripts. Similar to the JSON schemas, there are also type stubs for Lua (see [`assets/registries/.luastubs/nat20.lua`](assets/registries/.luastubs/nat20.lua)). Here's an example of the script which checks if Counterspell can be used as a reaction:
 ```lua
 ---@type ReactionTriggerFn
-local function reaction_trigger(game_state, reactor, event)
+local function reaction_trigger(engine_state, reactor, event)
     local action = event:as_action_requested()
     if not action then
         return false
@@ -165,7 +165,7 @@ The payload of each event tracks every dice roll and bonus modifier that went in
 <img width="714" height="161" alt="event_log_dice_breakdown" src="https://github.com/user-attachments/assets/9ed466d9-3823-43d6-b00e-aa9748ef66fb" />
 
 ### Engine orchestration
-The [`GameState`](core/src/engine/game_state.rs) is the judge, jury, and executioner of the engine. The game state includes the ECS world, combat [`Encounter`](core/src/engine/encounter.rs)s, and event/interaction state. Whenever a creature wants to do basically anything, a request is sent to the game state, which will then validate, e.g. that it's the creature's turn if they're in combat or that they have enough resources to perform an action.
+The [`EngineState`](core/src/engine/engine_state.rs) is the judge, jury, and executioner of the engine. The engine state includes the ECS world, combat [`Encounter`](core/src/engine/encounter.rs)s, and event/interaction state. Whenever a creature wants to do basically anything, a request is sent to the engine state, which will then validate, e.g. that it's the creature's turn if they're in combat or that they have enough resources to perform an action.
 
 ### Auxiliary systems
 - **Geometry & movement**: collision, line-of-sight, and navigation/pathing use [`parry3d`](https://crates.io/crates/parry3d), [`rerecast`](https://crates.io/crates/rerecast), and [`polyanya`](https://crates.io/crates/polyanya).

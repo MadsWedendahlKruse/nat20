@@ -3,13 +3,13 @@ local common = require("effects.extra_attack_common")
 local extra_attack_action_hook = common.action_hook(3)
 
 ---@type ActionHookFn
-local function action_hook(game_state, action)
-    extra_attack_action_hook(game_state, action)
+local function action_hook(engine_state, action)
+    extra_attack_action_hook(engine_state, action)
 end
 
 ---@type ResourceCostHookFn
-local function resource_cost_hook(game_state, entity, action, cost)
-    common.resource_cost_hook(game_state, entity, action, cost)
+local function resource_cost_hook(engine_state, entity, action, cost)
+    common.resource_cost_hook(engine_state, entity, action, cost)
 end
 
 return {

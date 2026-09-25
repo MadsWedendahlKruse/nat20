@@ -1,5 +1,5 @@
 ---@type AttackedHookFn
-local function attacked_hook(game_state, effect, victim, attacker, check)
+local function attacked_hook(engine_state, effect, victim, attacker, check)
     if not check.kind:attack_roll() then
         return
     end

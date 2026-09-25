@@ -4,20 +4,20 @@ pub mod creatures {
 
     use crate::{
         components::{ability::Ability, modifier::ModifierSource, skill::Skill},
-        engine::game_state::GameState,
+        engine::engine_state::EngineState,
         systems::{self, level_up::LevelUpDecision},
     };
 
     fn spawn_entity(
-        game_state: &mut GameState,
+        engine_state: &mut EngineState,
         components: impl DynamicBundle,
         id: Option<Entity>,
     ) -> Entity {
         if let Some(id) = id {
-            game_state.world.spawn_at(id, components);
+            engine_state.world.spawn_at(id, components);
             id
         } else {
-            game_state.world.spawn(components)
+            engine_state.world.spawn(components)
         }
     }
 
@@ -34,7 +34,7 @@ pub mod creatures {
                 modifier::KeyedModifiable,
                 skill::SkillSet,
             },
-            engine::game_state::GameState,
+            engine::engine_state::EngineState,
             entities::creature::Character,
             registry::registry::{ClassesRegistry, ItemsRegistry},
         };
@@ -50,15 +50,15 @@ pub mod creatures {
         }
 
         pub fn barbarian(
-            game_state: &mut GameState,
+            engine_state: &mut EngineState,
             levels: u8,
             id: Option<Entity>,
         ) -> EntityIdentifier {
             let name = Name::new("Conan the Barbarian");
             let character = Character::new(name.clone());
-            let entity = spawn_entity(game_state, character, id);
+            let entity = spawn_entity(engine_state, character, id);
             systems::level_up::apply_level_up_decision(
-                game_state,
+                engine_state,
                 entity,
                 levels,
                 vec![
@@ -226,19 +226,19 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::from_world(&game_state.world, entity)
+            EntityIdentifier::from_world(&engine_state.world, entity)
         }
 
         pub fn fighter(
-            game_state: &mut GameState,
+            engine_state: &mut EngineState,
             levels: u8,
             id: Option<Entity>,
         ) -> EntityIdentifier {
             let name = Name::new("Johnny Fighter");
             let character = Character::new(name.clone());
-            let entity = spawn_entity(game_state, character, id);
+            let entity = spawn_entity(engine_state, character, id);
             systems::level_up::apply_level_up_decision(
-                game_state,
+                engine_state,
                 entity,
                 levels,
                 vec![
@@ -446,33 +446,33 @@ pub mod creatures {
             );
 
             let _ = systems::loadout::equip(
-                game_state,
+                engine_state,
                 entity,
                 ItemsRegistry::get(&ItemId::new("nat20_core", "item.crossbow"))
                     .unwrap()
                     .clone(),
             );
             systems::inventory::add_item(
-                &mut game_state.world,
+                &mut engine_state.world,
                 entity,
                 ItemsRegistry::get(&ItemId::new("nat20_core", "item.admin_dagger"))
                     .unwrap()
                     .clone(),
             );
 
-            EntityIdentifier::from_world(&game_state.world, entity)
+            EntityIdentifier::from_world(&engine_state.world, entity)
         }
 
         pub fn wizard(
-            game_state: &mut GameState,
+            engine_state: &mut EngineState,
             levels: u8,
             id: Option<Entity>,
         ) -> EntityIdentifier {
             let name = Name::new("Jimmy Wizard");
             let character = Character::new(name.clone());
-            let entity = spawn_entity(game_state, character, id);
+            let entity = spawn_entity(engine_state, character, id);
             systems::level_up::apply_level_up_decision(
-                game_state,
+                engine_state,
                 entity,
                 levels,
                 vec![
@@ -625,19 +625,19 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::from_world(&game_state.world, entity)
+            EntityIdentifier::from_world(&engine_state.world, entity)
         }
 
         pub fn warlock(
-            game_state: &mut GameState,
+            engine_state: &mut EngineState,
             levels: u8,
             id: Option<Entity>,
         ) -> EntityIdentifier {
             let name = Name::new("Bobby Warlock");
             let character = Character::new(name.clone());
-            let entity = spawn_entity(game_state, character, id);
+            let entity = spawn_entity(engine_state, character, id);
             systems::level_up::apply_level_up_decision(
-                game_state,
+                engine_state,
                 entity,
                 levels,
                 vec![
@@ -752,7 +752,7 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::from_world(&game_state.world, entity)
+            EntityIdentifier::from_world(&engine_state.world, entity)
         }
     }
 
@@ -778,7 +778,7 @@ pub mod creatures {
                 species::{CreatureSize, CreatureType},
                 speed::Speed,
             },
-            engine::game_state::GameState,
+            engine::engine_state::EngineState,
             entities::creature::Monster,
             registry::{self, registry::ItemsRegistry},
         };
@@ -786,7 +786,7 @@ pub mod creatures {
         use super::*;
 
         pub fn goblin_warrior(
-            game_state: &mut GameState,
+            engine_state: &mut EngineState,
             challenge_rating: u8,
             id: Option<Entity>,
         ) -> EntityIdentifier {
@@ -810,9 +810,9 @@ pub mod creatures {
                 ]),
                 FactionSet::from([FactionId::new("nat20_core", "faction.goblins")]),
             );
-            let entity = spawn_entity(game_state, monster, id);
+            let entity = spawn_entity(engine_state, monster, id);
             let _ = monster_equipment(
-                game_state,
+                engine_state,
                 entity,
                 &[
                     // TODO: Should be LEATHER_ARMOR_ID
@@ -823,11 +823,11 @@ pub mod creatures {
                 ],
             );
 
-            EntityIdentifier::from_world(&game_state.world, entity)
+            EntityIdentifier::from_world(&engine_state.world, entity)
         }
 
         fn monster_equipment(
-            game_state: &mut GameState,
+            engine_state: &mut EngineState,
             entity: Entity,
             item_ids: &[ItemId],
         ) -> Result<(), TryEquipError> {
@@ -838,14 +838,14 @@ pub mod creatures {
                 match &item {
                     ItemInstance::Armor(armor) => {
                         systems::helpers::get_component_mut::<ArmorTrainingSet>(
-                            &mut game_state.world,
+                            &mut engine_state.world,
                             entity,
                         )
                         .insert(armor.armor_type.clone());
                     }
                     ItemInstance::Weapon(weapon) => {
                         systems::helpers::get_component_mut::<WeaponProficiencyMap>(
-                            &mut game_state.world,
+                            &mut engine_state.world,
                             entity,
                         )
                         .set_proficiency(
@@ -856,7 +856,7 @@ pub mod creatures {
                     _ => {}
                 }
 
-                systems::loadout::equip(game_state, entity, item)?;
+                systems::loadout::equip(engine_state, entity, item)?;
             }
             Ok(())
         }
@@ -866,10 +866,10 @@ pub mod creatures {
 pub mod engine {
     use rerecast::ConfigBuilder;
 
-    use crate::engine::{game_state::GameState, geometry::WorldGeometry};
+    use crate::engine::{engine_state::EngineState, geometry::WorldGeometry};
 
-    pub fn game_state() -> GameState {
-        GameState::new(WorldGeometry::from_obj_path(
+    pub fn engine_state() -> EngineState {
+        EngineState::new(WorldGeometry::from_obj_path(
             "../assets/models/geometry/scenario_terrain.obj",
             &ConfigBuilder::default().build(),
         ))

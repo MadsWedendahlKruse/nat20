@@ -13,7 +13,7 @@ use crate::{
     },
     engine::{
         event::{Event, EventKind},
-        game_state::GameState,
+        engine_state::EngineState,
     },
     systems,
 };
@@ -23,11 +23,11 @@ pub fn set_time_mode(world: &mut World, entity: Entity, mode: TimeMode) {
     clock.set_mode(mode);
 }
 
-pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeStep) {
+pub fn advance_time(engine_state: &mut EngineState, entity: Entity, time_step: TimeStep) {
     // TODO: Recharge resources on time advance?
     {
         let clock =
-            systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, entity);
+            systems::helpers::get_component_mut::<EntityClock>(&mut engine_state.world, entity);
 
         match (clock.mode(), time_step) {
             (TimeMode::Paused, _) | (TimeMode::TurnBased { .. }, TimeStep::RealTime { .. }) => {
@@ -50,21 +50,21 @@ pub fn advance_time(game_state: &mut GameState, entity: Entity, time_step: TimeS
             );
 
             if turn_entity == entity {
-                game_state.process_event(Event::new(EventKind::TurnBoundary {
-                    entity: EntityIdentifier::from_world(&game_state.world, entity),
+                engine_state.process_event(Event::new(EventKind::TurnBoundary {
+                    entity: EntityIdentifier::from_world(&engine_state.world, entity),
                     boundary,
                 }));
 
                 match boundary {
-                    TurnBoundary::Start => systems::time::on_turn_start(game_state, entity),
-                    TurnBoundary::End => systems::time::on_turn_end(&mut game_state.world, entity),
+                    TurnBoundary::Start => systems::time::on_turn_start(engine_state, entity),
+                    TurnBoundary::End => systems::time::on_turn_end(&mut engine_state.world, entity),
                 }
             }
         }
         _ => { /* no special logging for other time steps */ }
     }
 
-    systems::effects::effects_mut(&mut game_state.world, entity).advance_time(time_step);
+    systems::effects::effects_mut(&mut engine_state.world, entity).advance_time(time_step);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -90,15 +90,15 @@ pub enum RestError {
     DifferentRestKinds { entities: HashMap<Entity, RestKind> },
 }
 
-pub fn on_turn_start(game_state: &mut GameState, entity: Entity) {
+pub fn on_turn_start(engine_state: &mut EngineState, entity: Entity) {
     debug!("Starting turn for entity {:?}", entity);
-    systems::resources::recharge(&mut game_state.world, entity, &RechargeRule::Turn);
-    systems::movement::recharge_movement(&mut game_state.world, entity);
+    systems::resources::recharge(&mut engine_state.world, entity, &RechargeRule::Turn);
+    systems::movement::recharge_movement(&mut engine_state.world, entity);
 
-    let hooks = systems::effects::effects(&game_state.world, entity)
+    let hooks = systems::effects::effects(&engine_state.world, entity)
         .collect_hooks(|effect| effect.on_turn_start.as_ref());
     for hook in hooks {
-        hook(game_state, entity);
+        hook(engine_state, entity);
     }
 }
 
@@ -108,13 +108,13 @@ pub fn on_turn_end(_world: &mut World, _entity: Entity) {
 }
 
 pub fn start_rest(
-    game_state: &mut GameState,
+    engine_state: &mut EngineState,
     participants: Vec<Entity>,
     kind: &RestKind,
 ) -> Result<(), RestError> {
     info!("Starting {:?} rest for entities {:?}", kind, participants);
 
-    let entities_in_combat = entities_in_combat(game_state, &participants);
+    let entities_in_combat = entities_in_combat(engine_state, &participants);
     if !entities_in_combat.is_empty() {
         error!("Entities in combat cannot rest: {:?}", entities_in_combat);
         return Err(RestError::InCombat {
@@ -126,26 +126,26 @@ pub fn start_rest(
         kind: *kind,
         participants: participants
             .iter()
-            .map(|&entity| EntityIdentifier::from_world(&game_state.world, entity))
+            .map(|&entity| EntityIdentifier::from_world(&engine_state.world, entity))
             .collect(),
     });
-    game_state.process_event(event);
+    engine_state.process_event(event);
 
     participants.iter().for_each(|&entity| {
-        game_state.resting.insert(entity, *kind);
+        engine_state.resting.insert(entity, *kind);
     });
 
     Ok(())
 }
 
-pub fn finish_rest(game_state: &mut GameState, participants: Vec<Entity>) -> Result<(), RestError> {
+pub fn finish_rest(engine_state: &mut EngineState, participants: Vec<Entity>) -> Result<(), RestError> {
     info!("Finishing rest for entities {:?}", participants);
 
     // Check that all participants are actually resting and of the same kind
     let mut not_resting_entities: Vec<Entity> = Vec::new();
     let mut rest_kinds = HashMap::new();
     for &entity in &participants {
-        if let Some(kind) = game_state.resting.remove(&entity) {
+        if let Some(kind) = engine_state.resting.remove(&entity) {
             rest_kinds.insert(entity, kind);
         } else {
             not_resting_entities.push(entity);
@@ -175,28 +175,28 @@ pub fn finish_rest(game_state: &mut GameState, participants: Vec<Entity>) -> Res
         kind: *first_kind,
         participants: participants
             .iter()
-            .map(|&entity| EntityIdentifier::from_world(&game_state.world, entity))
+            .map(|&entity| EntityIdentifier::from_world(&engine_state.world, entity))
             .collect(),
     });
-    game_state.process_event(event);
+    engine_state.process_event(event);
 
-    on_rest_end(game_state, &participants, first_kind);
+    on_rest_end(engine_state, &participants, first_kind);
 
     Ok(())
 }
 
-fn entities_in_combat(game_state: &GameState, participants: &[Entity]) -> Vec<Entity> {
+fn entities_in_combat(engine_state: &EngineState, participants: &[Entity]) -> Vec<Entity> {
     // Can only rest if no one is in combat
     participants
         .iter()
         .cloned()
-        .filter(|entity| systems::combat::is_in_combat(&game_state, *entity))
+        .filter(|entity| systems::combat::is_in_combat(&engine_state, *entity))
         .collect()
 }
 
-pub fn on_rest_end(game_state: &mut GameState, participants: &[Entity], kind: &RestKind) {
+pub fn on_rest_end(engine_state: &mut EngineState, participants: &[Entity], kind: &RestKind) {
     for &entity in participants {
-        let world = &mut game_state.world;
+        let world = &mut engine_state.world;
         match kind {
             RestKind::Short => {
                 systems::resources::recharge(world, entity, &RechargeRule::Rest(RestKind::Short));
@@ -215,10 +215,10 @@ pub fn on_rest_end(game_state: &mut GameState, participants: &[Entity], kind: &R
         }
 
         // Hooks run last so they see the recharged, healed-up creature
-        let rest_hooks = systems::effects::effects(&game_state.world, entity)
+        let rest_hooks = systems::effects::effects(&engine_state.world, entity)
             .collect_hooks(|effect| effect.on_rest.as_ref());
         for hook in rest_hooks {
-            hook(game_state, entity, kind);
+            hook(engine_state, entity, kind);
         }
     }
 }

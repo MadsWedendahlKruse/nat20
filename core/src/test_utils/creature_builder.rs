@@ -9,13 +9,13 @@ use crate::{
         resource::RechargeRule,
         time::{EntityClock, TimeMode},
     },
-    engine::game_state::GameState,
+    engine::engine_state::EngineState,
     systems,
     test_utils::fixtures::creatures::{heroes, monsters},
 };
 
-/// `(game_state, level/challenge_rating, optional_entity_to_spawn_at) -> spawned`
-pub type CreatureTemplateFunction = fn(&mut GameState, u8, Option<Entity>) -> EntityIdentifier;
+/// `(engine_state, level/challenge_rating, optional_entity_to_spawn_at) -> spawned`
+pub type CreatureTemplateFunction = fn(&mut EngineState, u8, Option<Entity>) -> EntityIdentifier;
 
 pub static CREATURE_TEMPLATES: LazyLock<BTreeMap<&'static str, CreatureTemplateFunction>> =
     LazyLock::new(|| {
@@ -76,29 +76,29 @@ impl CreatureBuilder {
         self
     }
 
-    pub fn spawn(&mut self, game_state: &mut GameState) -> EntityIdentifier {
-        let entity_id = (self.template)(game_state, self.level, self.entity_id);
+    pub fn spawn(&mut self, engine_state: &mut EngineState) -> EntityIdentifier {
+        let entity_id = (self.template)(engine_state, self.level, self.entity_id);
         let entity = entity_id.id();
 
         if let Some((position, on_ground)) = self.position {
             if on_ground {
                 systems::geometry::teleport_to_ground(
-                    &mut game_state.world,
-                    &game_state.geometry,
+                    &mut engine_state.world,
+                    &engine_state.geometry,
                     entity,
                     &position,
                 );
             } else {
-                systems::geometry::teleport_to(&mut game_state.world, entity, &position);
+                systems::geometry::teleport_to(&mut engine_state.world, entity, &position);
             }
         }
 
-        systems::helpers::get_component_mut::<EntityClock>(&mut game_state.world, entity)
+        systems::helpers::get_component_mut::<EntityClock>(&mut engine_state.world, entity)
             .set_mode(self.time_mode);
 
-        let _ = systems::health::heal_full(&mut game_state.world, entity);
+        let _ = systems::health::heal_full(&mut engine_state.world, entity);
 
-        systems::resources::recharge(&mut game_state.world, entity, &RechargeRule::Daily);
+        systems::resources::recharge(&mut engine_state.world, entity, &RechargeRule::Daily);
 
         entity_id
     }

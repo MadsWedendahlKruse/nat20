@@ -21,26 +21,26 @@ end
 ---@param max_extra_attacks string|integer
 ---@return ActionHookFn
 function M.action_hook(max_extra_attacks)
-    return function(game_state, action)
+    return function(engine_state, action)
         if not should_apply(action) then
             return
         end
         -- First trigger of Extra Attack consumes the action; subsequent
         -- attacks come from the extra-attack resource. If we don't already
         -- have extra-attack charges, hand some out.
-        if not game_state:can_afford_resource(action.actor, M.EXTRA_ATTACK_RESOURCE_ID, "1") then
-            game_state:add_resource(action.actor, M.EXTRA_ATTACK_RESOURCE_ID, max_extra_attacks)
+        if not engine_state:can_afford_resource(action.actor, M.EXTRA_ATTACK_RESOURCE_ID, "1") then
+            engine_state:add_resource(action.actor, M.EXTRA_ATTACK_RESOURCE_ID, max_extra_attacks)
         end
     end
 end
 
 ---@type ResourceCostHookFn
-function M.resource_cost_hook(game_state, entity, action, cost)
+function M.resource_cost_hook(engine_state, entity, action, cost)
     if not should_apply(action) then
         return
     end
     -- If the entity has any extra-attack charges, spend one instead of the action.
-    if game_state:can_afford_resource(entity, M.EXTRA_ATTACK_RESOURCE_ID, "1") then
+    if engine_state:can_afford_resource(entity, M.EXTRA_ATTACK_RESOURCE_ID, "1") then
         cost:replace_resource(
             M.ACTION_RESOURCE_ID,
             M.EXTRA_ATTACK_RESOURCE_ID,
