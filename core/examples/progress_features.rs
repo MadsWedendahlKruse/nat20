@@ -296,7 +296,13 @@ fn main() {
 
     println!(
         "{} up to date, {} incomplete, {} without registry files, {} untested, {} broken link(s), {} stale anchor(s), {} fixed",
-        up_to_date, incomplete, unimplemented, untested, broken_links, stale_anchors, fixes.len()
+        up_to_date,
+        incomplete,
+        unimplemented,
+        untested,
+        broken_links,
+        stale_anchors,
+        fixes.len()
     );
     if !show_all {
         println!("(pass --all to also list the rows that are already complete)");
