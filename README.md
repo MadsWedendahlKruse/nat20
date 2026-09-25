@@ -165,7 +165,7 @@ The payload of each event tracks every dice roll and bonus modifier that went in
 <img width="714" height="161" alt="event_log_dice_breakdown" src="https://github.com/user-attachments/assets/9ed466d9-3823-43d6-b00e-aa9748ef66fb" />
 
 ### Engine orchestration
-The [`EngineState`](core/src/engine/engine_state.rs) is the judge, jury, and executioner of the engine. The engine state includes the ECS world, combat [`Encounter`](core/src/engine/encounter.rs)s, and event/interaction state. Whenever a creature wants to do basically anything, a request is sent to the engine state, which will then validate, e.g. that it's the creature's turn if they're in combat or that they have enough resources to perform an action.
+The [`EngineState`](core/src/engine/engine_state.rs) is the judge, jury, and executioner of the engine. The engine state includes the ECS world, combat [`Encounter`](core/src/engine/encounter.rs)s, and event/prompt state. Whenever a creature wants to do basically anything, a request is sent to the engine state, which will then validate, e.g. that it's the creature's turn if they're in combat or that they have enough resources to perform an action.
 
 ### Auxiliary systems
 - **Geometry & movement**: collision, line-of-sight, and navigation/pathing use [`parry3d`](https://crates.io/crates/parry3d), [`rerecast`](https://crates.io/crates/rerecast), and [`polyanya`](https://crates.io/crates/polyanya).
