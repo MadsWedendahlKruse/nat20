@@ -18,11 +18,11 @@ use crate::{
             effect::{
                 Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
                 EffectGrantedAction, EffectInstance, EffectInstanceTemplate, EffectKind,
-                EffectLifetimeTemplate, EffectStackingPolicy,
+                EffectLifetime, EffectLifetimeTemplate, EffectStackingPolicy,
             },
             hooks::{
                 ActionHook, ActionResultHook, ActionUsabilityHook, ArmorClassHook, AttackedHook,
-                D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
+                D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook, EffectLifetimeHook,
                 PostDamageMitigationHook, PreDamageMitigationHook, PreDeathHook, ResourceCostHook,
                 RestHook, SpeedHook, TurnStartHook,
             },
@@ -152,6 +152,8 @@ pub struct EffectDefinition {
     pub on_turn_start: Vec<TurnStartHookDefinition>,
     #[serde(default)]
     pub on_speed: Vec<SpeedHookDefinition>,
+    #[serde(default)]
+    pub on_effect_lifetime: Vec<EffectLifetimeHookDefinition>,
 }
 
 impl From<EffectDefinition> for Effect {
@@ -376,6 +378,15 @@ impl From<EffectDefinition> for Effect {
             }
         }
 
+        // Build effect lifetime hooks
+        {
+            if !definition.on_effect_lifetime.is_empty() {
+                let hooks = collect_effect_hooks(&definition.on_effect_lifetime, &effect_id);
+                effect.on_effect_lifetime =
+                    Some(EffectLifetimeHookDefinition::combine_hooks(hooks));
+            }
+        }
+
         effect
     }
 }
@@ -517,6 +528,16 @@ impl RegistryReferenceCollector for EffectDefinition {
                     collector.add(RegistryReference::Script(
                         script.clone(),
                         ScriptFunction::SpeedHook,
+                    ));
+                }
+            }
+        }
+        for hook in &self.on_effect_lifetime {
+            match hook {
+                EffectLifetimeHookDefinition::Script { script } => {
+                    collector.add(RegistryReference::Script(
+                        script.clone(),
+                        ScriptFunction::EffectLifetimeHook,
                     ));
                 }
             }
@@ -1601,6 +1622,41 @@ impl HookEffect<SpeedHook> for SpeedHookDefinition {
         Arc::new(move |game_state, entity, speed| {
             for hook in &hooks {
                 hook(game_state, entity, speed);
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum EffectLifetimeHookDefinition {
+    Script { script: ScriptId },
+}
+
+impl HookEffect<EffectLifetimeHook> for EffectLifetimeHookDefinition {
+    fn build_hook(&self, _effect: &EffectId) -> EffectLifetimeHook {
+        match self {
+            EffectLifetimeHookDefinition::Script { script } => {
+                let script_id = script.clone();
+                Arc::new(
+                    move |game_state: &GameState,
+                          applier: Entity,
+                          target: Entity,
+                          effect_id: &EffectId,
+                          lifetime: &mut EffectLifetime| {
+                        systems::scripts::evaluate_effect_lifetime_hook(
+                            &script_id, game_state, applier, target, effect_id, lifetime,
+                        );
+                    },
+                )
+            }
+        }
+    }
+
+    fn combine_hooks(hooks: Vec<EffectLifetimeHook>) -> EffectLifetimeHook {
+        Arc::new(move |game_state, applier, target, effect_id, lifetime| {
+            for hook in &hooks {
+                hook(game_state, applier, target, effect_id, lifetime);
             }
         })
     }

@@ -1042,3 +1042,17 @@ fn relentless_rage_dc_reset(#[values(RestKind::Short, RestKind::Long)] kind: Res
     assert_saves_at_dc(&scenario, 10, 2);
     assert_saves_at_dc(&scenario, 15, 0);
 }
+
+#[rstest]
+fn persistent_rage_duration() {
+    let mut scenario = barbarian_scenario(15);
+    enter_rage(&mut scenario);
+
+    let remaining_turns = scenario
+        .probe("barbarian")
+        .effect_remaining_turns("effect.barbarian.rage")
+        .expect("Expected barbarian to be raging");
+
+    // 10 minutes = 100 turns
+    assert_eq!(remaining_turns, 100);
+}

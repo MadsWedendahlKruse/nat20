@@ -7,8 +7,8 @@ use crate::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
-        effects::effect::EffectInstance,
-        id::{ActionId, ScriptId},
+        effects::effect::{EffectInstance, EffectLifetime},
+        id::{ActionId, EffectId, ScriptId},
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
         speed::Speed,
@@ -191,6 +191,30 @@ pub fn evaluate_speed_hook(
         error!(
             "Error evaluating speed hook script {:?} for entity {:?}: {:?}",
             speed_hook, entity, err
+        );
+    }
+}
+
+pub fn evaluate_effect_lifetime_hook(
+    effect_lifetime_hook: &ScriptId,
+    game_state: &GameState,
+    applier: Entity,
+    target: Entity,
+    effect_id: &EffectId,
+    lifetime: &mut EffectLifetime,
+) {
+    let script = ScriptsRegistry::get(effect_lifetime_hook).unwrap_or_else(|| {
+        panic!(
+            "Effect lifetime hook script not found in registry: {:?}",
+            effect_lifetime_hook
+        )
+    });
+    if let Err(err) = SCRIPT_ENGINE.evaluate_effect_lifetime_hook(
+        script, game_state, applier, target, effect_id, lifetime,
+    ) {
+        error!(
+            "Error evaluating effect lifetime hook script {:?} for effect {:?} on entity {:?}: {:?}",
+            effect_lifetime_hook, effect_id, target, err
         );
     }
 }

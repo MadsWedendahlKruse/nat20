@@ -50,8 +50,8 @@ use crate::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
-        effects::effect::EffectInstance,
-        id::{ActionId, EntityIdentifier, ScriptId},
+        effects::effect::{EffectInstance, EffectLifetime},
+        id::{ActionId, EffectId, EntityIdentifier, ScriptId},
         items::equipment::armor::ArmorClass,
         modifier::FlatModifiable,
         resource::ResourceAmountMap,
@@ -316,6 +316,37 @@ impl ScriptEngine {
                     scope.create_userdata_ref(game_state)?,
                     ent,
                     scope.create_userdata_ref_mut(speed)?,
+                ))
+            })
+            .map_err(Self::runtime_error)
+    }
+
+    pub fn evaluate_effect_lifetime_hook(
+        &self,
+        script: &Script,
+        game_state: &GameState,
+        applier: Entity,
+        target: Entity,
+        effect_id: &EffectId,
+        lifetime: &mut EffectLifetime,
+    ) -> Result<(), ScriptError> {
+        let func = self.get_function(script, ScriptFunction::EffectLifetimeHook)?;
+        let applier = self
+            .lua
+            .create_userdata(ScriptEntity::from(applier))
+            .map_err(Self::runtime_error)?;
+        let target = self
+            .lua
+            .create_userdata(ScriptEntity::from(target))
+            .map_err(Self::runtime_error)?;
+        self.lua
+            .scope(|scope| {
+                func.call::<()>((
+                    scope.create_userdata_ref(game_state)?,
+                    applier,
+                    target,
+                    effect_id.to_string(),
+                    scope.create_userdata_ref_mut(lifetime)?,
                 ))
             })
             .map_err(Self::runtime_error)

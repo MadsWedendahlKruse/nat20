@@ -429,6 +429,13 @@ function GameState:heal(target, amount) end
 ---@field turns integer
 local TimeDuration = {}
 
+---@class EffectLifetime
+---@field duration TimeDuration
+---@field permanent boolean
+local EffectLifetime = {}
+---@param duration string e.g. "5 turns" or "10 minutes"
+function EffectLifetime:set_duration(duration) end
+
 ------------------------------------------------------------
 -- Hook function signatures. Annotate script-side functions with
 -- ---@type <HookName>Fn
@@ -447,6 +454,7 @@ local TimeDuration = {}
 ---@alias DamageRollHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRoll, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DamageRollResultHookFn fun(game_state: GameState, entity: ScriptEntity, damage_roll: DamageRollResult, action: ActionData, resolution: ActionConditionResolution)
 ---@alias DeathHookFn fun(game_state: GameState, victim: ScriptEntity, killer: ScriptEntity?, applier: ScriptEntity?)
+---@alias EffectLifetimeHookFn fun(game_state: GameState, applier: ScriptEntity, target: ScriptEntity, effect_id: string, lifetime: EffectLifetime)
 ---@alias EventFilterFn fun(event: Event, applier: ScriptEntity, target: ScriptEntity): boolean
 ---@alias PostDamageMitigationHookFn fun(game_state: GameState, entity: ScriptEntity, damage_taken: DamageMitigationResult, action: ActionData?, resolution: ActionConditionResolution?)
 ---@alias PreDamageMitigationHookFn fun(game_state: GameState, victim: ScriptEntity, effect: EffectInstance, damage_roll: DamageRollResult, action: ActionData?, resolution: ActionConditionResolution?)

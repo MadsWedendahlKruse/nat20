@@ -6,7 +6,11 @@
 //! already link everything are only summarized, and links pointing at files that
 //! don't exist are reported.
 //!
-//! `cargo run -p nat20_core --example progress_features -- [filter] [--all]`
+//! A `#L42` anchor pointing at a test that has merely moved is rewritten in
+//! place — the link text names the test, so there's nothing to guess. Pass
+//! `--check` to report those instead of fixing them.
+//!
+//! `cargo run -p nat20_core --example progress_features -- [filter] [--all] [--check]`
 
 use std::{
     collections::BTreeSet,
@@ -51,6 +55,23 @@ struct Row {
     feature: String,
     /// Every markdown link in the row, so the Test column gets checked too.
     links: Vec<Link>,
+    /// Which line of `progress.md` the row sits on, so an anchor can be rewritten.
+    line_index: usize,
+}
+
+/// A `#L42` anchor that no longer lands on the test its link text names.
+struct StaleAnchor<'a> {
+    link: &'a Link,
+    description: String,
+    /// The target pointing at where the test actually sits, if it could be found.
+    fixed_target: Option<String>,
+}
+
+/// One link to rewrite, matched as text on the row's own line.
+struct Fix {
+    line_index: usize,
+    old: String,
+    new: String,
 }
 
 fn main() {
@@ -60,6 +81,7 @@ fn main() {
 
     let args: Vec<String> = env::args().skip(1).collect();
     let show_all = args.iter().any(|arg| arg == "--all");
+    let check_only = args.iter().any(|arg| arg == "--check");
     let filter = args
         .iter()
         .find(|arg| !arg.starts_with("--"))
@@ -82,6 +104,7 @@ fn main() {
     let mut untested = 0;
     let mut broken_links = 0;
     let mut stale_anchors = 0;
+    let mut fixes: Vec<Fix> = Vec::new();
 
     for row in parse_rows(&markdown) {
         if let Some(filter) = &filter {
@@ -132,12 +155,26 @@ fn main() {
             .collect();
         broken_links += dangling.len();
 
-        let stale: Vec<String> = row
+        let stale: Vec<StaleAnchor> = row
             .links
             .iter()
             .filter_map(|link| stale_anchor(link, &test_functions))
             .collect();
         stale_anchors += stale.len();
+
+        // A test that only moved is rewritten in place; one that was renamed or
+        // deleted still needs a human to decide what the row should point at.
+        let (fixed, unresolved): (Vec<&StaleAnchor>, Vec<&StaleAnchor>) = stale
+            .iter()
+            .partition(|anchor| !check_only && anchor.fixed_target.is_some());
+        for anchor in &fixed {
+            let target = anchor.fixed_target.as_ref().expect("fixable anchor");
+            fixes.push(Fix {
+                line_index: row.line_index,
+                old: format!("[{}]({})", anchor.link.text, anchor.link.target),
+                new: format!("[{}]({})", anchor.link.text, target),
+            });
+        }
 
         // A link that doesn't resolve is already reported as broken, no need to
         // also point out that it doesn't match the feature name.
@@ -199,7 +236,7 @@ fn main() {
                 header(&mut printed);
                 println!("  tests: none match `{}`", snake);
             }
-        } else if missing_test_files.is_empty() && stale.is_empty() {
+        } else if missing_test_files.is_empty() && unresolved.is_empty() {
             if show_all {
                 header(&mut printed);
                 println!(
@@ -214,18 +251,22 @@ fn main() {
                 "  tests: {} matching, {} file(s) not linked, {} stale anchor(s):",
                 matched_tests.len(),
                 missing_test_files.len(),
-                stale.len()
+                unresolved.len()
             );
             for test in &matched_tests {
                 println!("    + {}::{}", test.relative, test.name);
             }
-            for issue in &stale {
-                println!("    ! {}", issue);
+            for anchor in &unresolved {
+                println!("    ! {}", anchor.description);
             }
             println!("  paste into Test:");
             println!("    {}", test_cell(&matched_tests));
         }
 
+        for anchor in &fixed {
+            header(&mut printed);
+            println!("  ~ anchor fixed: {}", anchor.description);
+        }
         for link in &dangling {
             header(&mut printed);
             println!("  ! link target does not exist: {}", link.target);
@@ -240,12 +281,28 @@ fn main() {
         }
     }
 
+    if !fixes.is_empty() {
+        // `split_inclusive` keeps the line terminators, so a CRLF file stays CRLF.
+        let mut lines: Vec<String> = markdown
+            .split_inclusive('\n')
+            .map(|line| line.to_string())
+            .collect();
+        for fix in &fixes {
+            lines[fix.line_index] = lines[fix.line_index].replace(&fix.old, &fix.new);
+        }
+        fs::write(&progress_path, lines.concat())
+            .unwrap_or_else(|error| panic!("failed to write {:?}: {}", progress_path, error));
+    }
+
     println!(
-        "{} up to date, {} incomplete, {} without registry files, {} untested, {} broken link(s), {} stale anchor(s)",
-        up_to_date, incomplete, unimplemented, untested, broken_links, stale_anchors
+        "{} up to date, {} incomplete, {} without registry files, {} untested, {} broken link(s), {} stale anchor(s), {} fixed",
+        up_to_date, incomplete, unimplemented, untested, broken_links, stale_anchors, fixes.len()
     );
     if !show_all {
         println!("(pass --all to also list the rows that are already complete)");
+    }
+    if check_only && stale_anchors > 0 {
+        println!("(drop --check to rewrite the anchors that point at a test that only moved)");
     }
 }
 
@@ -385,8 +442,9 @@ fn function_name(line: &str) -> Option<String> {
 
 /// Checks a `file.rs#L42` link against where the test actually sits now. The link
 /// text carries the name (`class_barbarian.rs::rage_blocks_spellcasting`), so a
-/// test that moved can be told apart from one that was renamed or deleted.
-fn stale_anchor(link: &Link, tests: &[TestFunction]) -> Option<String> {
+/// test that moved can be told apart from one that was renamed or deleted — and
+/// the moved one is the case the anchor can simply be pointed at the new line.
+fn stale_anchor<'a>(link: &'a Link, tests: &[TestFunction]) -> Option<StaleAnchor<'a>> {
     let anchor = link.target.split_once("#L")?.1;
     let line: usize = anchor.parse().ok()?;
 
@@ -400,25 +458,38 @@ fn stale_anchor(link: &Link, tests: &[TestFunction]) -> Option<String> {
         .find(|test| test.relative == relative && test.line == line);
 
     let Some((_, name)) = link.text.split_once("::") else {
-        return at_line
-            .is_none()
-            .then(|| format!("{} has no test at L{}", relative, line));
+        // Nothing names the test, so there's nothing to look it up by either.
+        return at_line.is_none().then(|| StaleAnchor {
+            link,
+            description: format!("{} has no test at L{}", relative, line),
+            fixed_target: None,
+        });
     };
 
     if at_line.is_some_and(|test| test.name == name) {
         return None;
     }
 
-    match tests
-        .iter()
-        .find(|test| test.relative == relative && test.name == name)
-    {
-        Some(test) => Some(format!(
-            "{}::{} is at L{}, linked as L{}",
-            relative, name, test.line, line
-        )),
-        None => Some(format!("{} has no test named {}", relative, name)),
-    }
+    Some(
+        match tests
+            .iter()
+            .find(|test| test.relative == relative && test.name == name)
+        {
+            Some(test) => StaleAnchor {
+                link,
+                description: format!(
+                    "{}::{} is at L{}, linked as L{}",
+                    relative, name, test.line, line
+                ),
+                fixed_target: Some(format!("{}#L{}", link_path(&link.target), test.line)),
+            },
+            None => StaleAnchor {
+                link,
+                description: format!("{} has no test named {}", relative, name),
+                fixed_target: None,
+            },
+        },
+    )
 }
 
 fn unique_test_files<'a>(tests: &[&'a TestFunction]) -> Vec<&'a str> {
@@ -445,7 +516,7 @@ fn parse_rows(markdown: &str) -> Vec<Row> {
     let mut heading = String::new();
     let mut columns: Option<Vec<String>> = None;
 
-    for line in markdown.lines() {
+    for (line_index, line) in markdown.lines().enumerate() {
         let trimmed = line.trim();
 
         if let Some(text) = trimmed.strip_prefix('#') {
@@ -505,6 +576,7 @@ fn parse_rows(markdown: &str) -> Vec<Row> {
             level,
             feature,
             links,
+            line_index,
         });
     }
 

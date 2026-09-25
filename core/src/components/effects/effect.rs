@@ -19,8 +19,8 @@ use crate::{
         effects::hooks::{
             ActionHook, ActionResultHook, ActionUsabilityHook, ApplyEffectHook, ArmorClassHook,
             AttackedHook, D20CheckHooks, DamageRollHook, DamageRollResultHook, DeathHook,
-            PostDamageMitigationHook, PreDamageMitigationHook, PreDeathHook, ResourceCostHook,
-            RestHook, SpeedHook, TurnStartHook, UnapplyEffectHook,
+            EffectLifetimeHook, PostDamageMitigationHook, PreDamageMitigationHook, PreDeathHook,
+            ResourceCostHook, RestHook, SpeedHook, TurnStartHook, UnapplyEffectHook,
         },
         id::{ActionId, EffectId, IdProvider, ScriptId, SpellId},
         modifier::ModifierSource,
@@ -63,6 +63,7 @@ pub struct Effect {
     // pub on_expire: EffectHook,
     pub on_apply: Option<ApplyEffectHook>,
     pub on_unapply: Option<UnapplyEffectHook>,
+    pub on_effect_lifetime: Option<EffectLifetimeHook>,
     pub on_turn_start: Option<TurnStartHook>,
     pub on_skill_check: HashMap<Skill, D20CheckHooks>,
     pub on_saving_throw: HashMap<SavingThrowKind, D20CheckHooks>,
@@ -98,6 +99,7 @@ impl Effect {
 
             on_apply: None,
             on_unapply: None,
+            on_effect_lifetime: None,
             on_turn_start: None,
             on_skill_check: HashMap::new(),
             on_saving_throw: HashMap::new(),

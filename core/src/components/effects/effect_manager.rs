@@ -9,10 +9,10 @@ use crate::{
         d20::{D20Check, D20CheckKind, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
         effects::{
-            effect::{Effect, EffectInstance, EffectInstanceId, EffectsMap},
+            effect::{Effect, EffectInstance, EffectInstanceId, EffectLifetime, EffectsMap},
             hooks::D20CheckHooks,
         },
-        id::ActionId,
+        id::{ActionId, EffectId},
         items::equipment::armor::ArmorClass,
         modifier::{Modifiable, ModifierSource},
         resource::ResourceAmountMap,
@@ -135,6 +135,20 @@ impl EffectManager {
         self.for_each(
             |effect| effect.on_armor_class.as_ref(),
             |hook| hook(game_state, entity, ac),
+        );
+    }
+
+    pub fn effect_lifetime(
+        &self,
+        game_state: &GameState,
+        applier: Entity,
+        target: Entity,
+        effect_id: &EffectId,
+        lifetime: &mut EffectLifetime,
+    ) {
+        self.for_each(
+            |effect| effect.on_effect_lifetime.as_ref(),
+            |hook| hook(game_state, applier, target, effect_id, lifetime),
         );
     }
 

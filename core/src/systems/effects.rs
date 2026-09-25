@@ -65,6 +65,19 @@ pub fn add_effect_template(
     let (parent_id, mut effect_instances) =
         template.instantiate(applier, target, source, action_resolution);
 
+    {
+        let applier_effects = effects(&game_state.world, applier);
+        for instance in effect_instances.values_mut() {
+            applier_effects.effect_lifetime(
+                game_state,
+                applier,
+                target,
+                &instance.effect_id,
+                &mut instance.lifetime,
+            );
+        }
+    }
+
     debug!(
         "Instantiated effect instances from template {:?} -> {:?}",
         template, effect_instances

@@ -8,8 +8,8 @@ use crate::{
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
         d20::{D20Check, D20CheckResult},
         damage::{DamageMitigationResult, DamageRoll, DamageRollResult},
-        effects::effect::EffectInstance,
-        id::ActionId,
+        effects::effect::{EffectInstance, EffectLifetime},
+        id::{ActionId, EffectId},
         items::equipment::armor::ArmorClass,
         resource::ResourceAmountMap,
         speed::Speed,
@@ -20,6 +20,10 @@ use crate::{
 
 pub type ApplyEffectHook =
     Arc<dyn Fn(&mut GameState, Entity, Option<&ActionContext>) + Send + Sync>;
+/// Hook for how long an effect lasts. Parameters are: applier,
+/// target, the effect about to be applied, its lifetime.
+pub type EffectLifetimeHook =
+    Arc<dyn Fn(&GameState, Entity, Entity, &EffectId, &mut EffectLifetime) + Send + Sync>;
 pub type UnapplyEffectHook = Arc<dyn Fn(&mut GameState, Entity) + Send + Sync>;
 /// Hook for when an entity is attacked. Parameters are: world, effect instance,
 /// victim, attacker, the attacker's (not yet rolled) check.

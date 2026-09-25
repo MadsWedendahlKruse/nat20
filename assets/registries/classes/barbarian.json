@@ -72,6 +72,9 @@
         ],
         "13": [
             "nat20_core::effect.barbarian.improved_brutal_strike"
+        ],
+        "15": [
+            "nat20_core::effect.barbarian.persistent_rage"
         ]
     },
     "resources_by_level": {

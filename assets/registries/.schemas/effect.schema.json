@@ -92,6 +92,13 @@
                 "$ref": "#/definitions/DeathHookDefinition"
             }
         },
+        "on_effect_lifetime": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/definitions/EffectLifetimeHookDefinition"
+            }
+        },
         "on_resource_cost": {
             "type": "array",
             "default": [],
@@ -588,6 +595,21 @@
             "enum": [
                 "buff",
                 "debuff"
+            ]
+        },
+        "EffectLifetimeHookDefinition": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "script": {
+                            "$ref": "#/definitions/ScriptId"
+                        }
+                    },
+                    "required": [
+                        "script"
+                    ]
+                }
             ]
         },
         "EffectModifier": {

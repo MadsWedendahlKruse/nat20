@@ -25,7 +25,8 @@ use crate::{
             MitigationOperation,
         },
         effects::effect::{
-            EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetimeTemplate,
+            EffectEntiyReference, EffectInstance, EffectInstanceTemplate, EffectLifetime,
+            EffectLifetimeTemplate,
         },
         health::hit_points::HitPoints,
         id::{ClassId, EffectId, EntityIdentifier, ResourceId},
@@ -53,6 +54,7 @@ use crate::{
             parser::{
                 Evaluable, EvaluableWithoutVariables, EvaluationError, ModifierExpression, Parser,
             },
+            quantity::TimeExpressionDefinition,
             variables::{PARSER_VARIABLES, VariableMap},
         },
     },
@@ -1283,5 +1285,38 @@ impl UserData for TimeDuration {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("seconds", |_, this| Ok(this.as_seconds()));
         fields.add_field_method_get("turns", |_, this| Ok(this.as_turns()));
+    }
+}
+
+impl UserData for EffectLifetime {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("duration", |_, this| Ok(this.duration()));
+        fields.add_field_method_get("permanent", |_, this| {
+            Ok(matches!(this, EffectLifetime::Permanent))
+        });
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method_mut("set_duration", |_, this, value: String| {
+            let expression: TimeExpressionDefinition =
+                value.parse().map_err(LuaError::RuntimeError)?;
+            let time = expression.evaluate_without_variables().map_err(|e| {
+                LuaError::RuntimeError(format!("Failed to evaluate time expression: {e}"))
+            })?;
+            match this {
+                EffectLifetime::TurnBoundary {
+                    duration,
+                    remaining,
+                    ..
+                } => {
+                    *duration = TimeDuration::from_seconds(time.value);
+                    *remaining = *duration;
+                    Ok(())
+                }
+                EffectLifetime::Permanent => Err(LuaError::RuntimeError(
+                    "Cannot set a duration on a permanent effect lifetime".into(),
+                )),
+            }
+        });
     }
 }
