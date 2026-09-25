@@ -94,8 +94,8 @@ impl RenderableMutWithContext<&mut GameState> for ReactionsWindow {
                     ui.text("Choose how to react:");
 
                     let decisions = game_state
-                        .session_for_entity(*options.keys().next().unwrap())
-                        .and_then(|session| session.decisions_for_prompt(prompt_id));
+                        .scope_for_entity(*options.keys().next().unwrap())
+                        .and_then(|scope| scope.decisions_for_prompt(prompt_id));
 
                     let (mut button_clicked, mut entity, mut choice) = (false, None, None);
 

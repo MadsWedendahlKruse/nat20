@@ -92,12 +92,12 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
 
                 if ui.collapsing_header("Interaction Engine", TreeNodeFlags::empty()) {
                     ui.indent();
-                    for (id, session) in &game_state.interaction_engine.sessions {
+                    for (id, scope) in game_state.prompts.scopes() {
                         if ui.collapsing_header(format!("Session {:?}", id), TreeNodeFlags::empty())
                         {
                             ui.indent();
                             if ui.collapsing_header("Pending Prompts", TreeNodeFlags::empty()) {
-                                for prompt in session.pending_prompts() {
+                                for prompt in scope.pending_prompts() {
                                     ui.indent();
                                     if ui.collapsing_header(
                                         format!("Prompt {:?}", prompt.id),
@@ -110,14 +110,14 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                             }
 
                             if ui.collapsing_header("Decisions", TreeNodeFlags::empty()) {
-                                for prompt in session.pending_prompts() {
+                                for prompt in scope.pending_prompts() {
                                     ui.indent();
                                     if ui.collapsing_header(
                                         format!("Decisions for prompt {:?}", prompt.id),
                                         TreeNodeFlags::empty(),
                                     ) {
                                         while let Some(decisions) =
-                                            session.decisions_for_prompt(&prompt.id)
+                                            scope.decisions_for_prompt(&prompt.id)
                                         {
                                             ui.text(format!("{:#?}", decisions));
                                         }
@@ -127,7 +127,7 @@ impl RenderableMutWithContext<&mut GameState> for GameStateDebugWindow {
                             }
 
                             if ui.collapsing_header("Pending Events", TreeNodeFlags::empty()) {
-                                for (i, event) in session.pending_events().iter().enumerate() {
+                                for (i, event) in scope.pending_events().iter().enumerate() {
                                     ui.indent();
                                     if ui.collapsing_header(
                                         format!("Event {}: {:?}", i, event.event.id),

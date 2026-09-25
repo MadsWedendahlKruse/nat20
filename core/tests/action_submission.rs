@@ -486,7 +486,7 @@ fn reaction_no_pending_event(mut scenario: Scenario) {
         D20CheckOutcome::CriticalSuccess,
     );
 
-    // Get the scope's interaction session going, and let it run dry again
+    // Get the scenario's prompt scope going, and let it run dry again
     let melee_attack = ActionData::new(
         scenario.entity_identifier("barbarian"),
         "action.melee_attack".into(),

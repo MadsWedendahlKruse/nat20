@@ -25,7 +25,7 @@ use crate::{
         action_prompt::ActionData,
         event::{Event, EventKindTag},
         game_state::GameState,
-        interaction::InteractionScopeId,
+        interaction::PromptScopeId,
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
     systems,
@@ -282,8 +282,8 @@ pub fn reaction_usable(
         return Err(ReactionUsabilityError::NoTriggerEvent);
     }
 
-    if let Some(session) = game_state.session_for_entity(actor)
-        && session.pending_events().is_empty()
+    if let Some(scope) = game_state.scope_for_entity(actor)
+        && scope.pending_events().is_empty()
     {
         return Err(ReactionUsabilityError::NoPendingEvent);
     }
@@ -514,7 +514,7 @@ pub fn projectile_impact(game_state: &mut GameState, entity: Entity) {
 /// Re-run executions in this scope that are waiting on an event resolution.
 /// Safe to call speculatively: an execution whose result hasn't arrived yet
 /// simply parks again.
-pub fn resume_waiting_executions(game_state: &mut GameState, scope: InteractionScopeId) {
+pub fn resume_waiting_executions(game_state: &mut GameState, scope: PromptScopeId) {
     let waiting: Vec<Entity> = game_state
         .world
         .query::<&Option<ActionExecution>>()
@@ -525,7 +525,7 @@ pub fn resume_waiting_executions(game_state: &mut GameState, scope: InteractionS
             };
 
             execution.status() == ExecutionStatus::Waiting(WaitReason::EventResolution)
-                && game_state.scope_for_entity(*entity) == scope
+                && game_state.scope_id_for_entity(*entity) == scope
         })
         .map(|(entity, _)| entity)
         .collect();

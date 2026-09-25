@@ -17,7 +17,7 @@ use crate::{
         action_prompt::{ActionPrompt, ActionPromptKind},
         event::{CallbackResult, EncounterEvent, Event, EventCallback, EventKind, EventLog},
         game_state::GameState,
-        interaction::InteractionScopeId,
+        interaction::PromptScopeId,
     },
     systems::{self},
 };
@@ -103,11 +103,11 @@ impl Encounter {
             return;
         }
 
-        let session = game_state
-            .interaction_engine
-            .session_mut(InteractionScopeId::Encounter(self.id));
+        let scope = game_state
+            .prompts
+            .scope_mut(PromptScopeId::Encounter(self.id));
 
-        session.queue_prompt(
+        scope.queue_prompt(
             ActionPrompt::new(ActionPromptKind::Action {
                 actor: self.current_entity(),
             }),
@@ -122,11 +122,11 @@ impl Encounter {
 
         self.advance_time(game_state, TurnBoundary::End);
 
-        let session = game_state
-            .interaction_engine
-            .session_mut(InteractionScopeId::Encounter(self.id));
+        let scope = game_state
+            .prompts
+            .scope_mut(PromptScopeId::Encounter(self.id));
 
-        for prompt in session.pending_prompts().iter() {
+        for prompt in scope.pending_prompts().iter() {
             for respondent in prompt.actors() {
                 if respondent != entity {
                     panic!(
@@ -137,7 +137,7 @@ impl Encounter {
             }
         }
 
-        session.clear_prompts();
+        scope.clear_prompts();
 
         self.turn_index = (self.turn_index + 1) % self.participants.len();
         if self.turn_index == 0 {

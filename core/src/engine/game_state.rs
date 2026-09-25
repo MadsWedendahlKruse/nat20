@@ -23,7 +23,7 @@ use crate::{
             EventListener, EventLog, ListenerSource,
         },
         geometry::WorldGeometry,
-        interaction::{InteractionEngine, InteractionScopeId, InteractionSession, PendingEvent},
+        interaction::{PendingEvent, PromptManager, PromptScope, PromptScopeId},
     },
     systems::{
         self, actions::ActionUsabilityError, combat::CombatState, movement::MovementError,
@@ -38,7 +38,7 @@ pub struct GameState {
 
     pub encounters: HashMap<EncounterId, Encounter>,
     pub resting: HashMap<Entity, RestKind>,
-    pub interaction_engine: InteractionEngine,
+    pub prompts: PromptManager,
     pub event_log: EventLog,
     pub event_dispatcher: EventDispatcher,
 }
@@ -50,7 +50,7 @@ impl GameState {
             geometry,
             encounters: HashMap::new(),
             resting: HashMap::new(),
-            interaction_engine: InteractionEngine::default(),
+            prompts: PromptManager::default(),
             event_log: EventLog::new(),
             event_dispatcher: EventDispatcher::new(),
         }
@@ -119,13 +119,13 @@ impl GameState {
     }
 
     pub fn end_turn(&mut self, entity: Entity) {
-        if let Some(session) = self.session_for_entity(entity)
-            && !session.pending_events().is_empty()
+        if let Some(scope) = self.scope_for_entity(entity)
+            && !scope.pending_events().is_empty()
         {
             warn!(
                 "Ending turn for {:?} while there are pending events: {:#?}",
                 entity,
-                session.pending_events()
+                scope.pending_events()
             );
         }
 
@@ -191,36 +191,34 @@ impl GameState {
         Ok(())
     }
 
-    pub(crate) fn scope_for_entity(&self, entity: Entity) -> InteractionScopeId {
+    pub(crate) fn scope_id_for_entity(&self, entity: Entity) -> PromptScopeId {
         if let Some(encounter) = self.encounter_for_entity(entity) {
-            InteractionScopeId::Encounter(*encounter.id())
+            PromptScopeId::Encounter(*encounter.id())
         } else {
-            InteractionScopeId::Global
+            PromptScopeId::Global
         }
     }
 
-    pub fn session_for_entity(&self, entity: Entity) -> Option<&InteractionSession> {
-        let scope = self.scope_for_entity(entity);
-        self.interaction_engine.session(scope)
+    pub fn scope_for_entity(&self, entity: Entity) -> Option<&PromptScope> {
+        let scope = self.scope_id_for_entity(entity);
+        self.prompts.scope(&scope)
     }
 
-    pub fn session_for_entity_mut(&mut self, entity: Entity) -> &mut InteractionSession {
-        let scope = self.scope_for_entity(entity);
-        self.interaction_engine.session_mut(scope)
+    pub fn scope_for_entity_mut(&mut self, entity: Entity) -> &mut PromptScope {
+        let scope = self.scope_id_for_entity(entity);
+        self.prompts.scope_mut(scope)
     }
 
-    pub fn next_prompt(&self, scope: InteractionScopeId) -> Option<&ActionPrompt> {
-        self.interaction_engine
-            .session(scope)
-            .and_then(|s| s.next_prompt())
+    pub fn next_prompt(&self, scope: PromptScopeId) -> Option<&ActionPrompt> {
+        self.prompts.scope(&scope).and_then(|s| s.next_prompt())
     }
 
     pub fn next_promt_encounter(&self, encounter_id: &EncounterId) -> Option<&ActionPrompt> {
-        self.next_prompt(InteractionScopeId::Encounter(*encounter_id))
+        self.next_prompt(PromptScopeId::Encounter(*encounter_id))
     }
 
     pub fn next_prompt_entity(&self, entity: Entity) -> Option<&ActionPrompt> {
-        self.next_prompt(self.scope_for_entity(entity))
+        self.next_prompt(self.scope_id_for_entity(entity))
     }
 
     pub(crate) fn submit_decision(&mut self, decision: ActionDecision) -> Result<(), ActionError> {
@@ -243,7 +241,7 @@ impl GameState {
             }
         }
 
-        let scope = self.scope_for_entity(decision.actor());
+        let scope = self.scope_id_for_entity(decision.actor());
 
         let prompt_id = self.validate_against_prompt(decision, scope)?;
 
@@ -253,36 +251,36 @@ impl GameState {
     fn validate_against_prompt(
         &mut self,
         mut decision: ActionDecision,
-        scope: InteractionScopeId,
+        scope_id: PromptScopeId,
     ) -> Result<ActionPromptId, ActionError> {
-        let session = self.interaction_engine.session_mut(scope);
+        let scope = self.prompts.scope_mut(scope_id);
 
         // Ensure there is a prompt to respond to; lazily create one for Global.
-        if session
+        if scope
             .pending_prompts()
             .iter()
             .all(|p| p.id != decision.response_to)
         {
-            if matches!(scope, InteractionScopeId::Global) {
+            if matches!(scope_id, PromptScopeId::Global) {
                 // "Open world" behavior, allow ad-hoc Action prompts.
-                session.queue_prompt(
+                scope.queue_prompt(
                     ActionPrompt::new(ActionPromptKind::Action {
                         actor: decision.actor(),
                     }),
                     false,
                 );
-                decision.response_to = session.pending_prompts().back().unwrap().id;
+                decision.response_to = scope.pending_prompts().back().unwrap().id;
             } else {
                 // In encounter scope, a missing prompt is a hard error.
                 return Err(ActionError::MissingPrompt {
                     decision: decision.clone(),
-                    prompts: session.pending_prompts().iter().cloned().collect(),
+                    prompts: scope.pending_prompts().iter().cloned().collect(),
                 });
             }
         }
 
         // Validate against the found prompt.
-        let prompt = session
+        let prompt = scope
             .find_prompt(&decision.response_to)
             .expect("Prompt must exist at this point");
 
@@ -292,23 +290,23 @@ impl GameState {
 
         let id = prompt.id;
 
-        session.record_decision(decision);
+        scope.record_decision(decision);
 
         Ok(id)
     }
 
     fn try_process_prompt_decisions(
         &mut self,
-        scope: InteractionScopeId,
+        scope_id: PromptScopeId,
         prompt_id: ActionPromptId,
     ) -> Result<(), ActionError> {
-        let session = self.interaction_engine.session_mut(scope);
+        let scope = self.prompts.scope_mut(scope_id);
 
-        if !session.all_actors_submitted(&prompt_id) {
+        if !scope.all_actors_submitted(&prompt_id) {
             return Ok(());
         }
 
-        let decisions = session
+        let decisions = scope
             .take_decisions_for_prompt(&prompt_id)
             .ok_or_else(|| panic!("Decisions not found for prompt id {:?}", prompt_id))?;
 
@@ -317,7 +315,7 @@ impl GameState {
             match &decision.kind {
                 ActionDecisionKind::Action { action } => {
                     self.process_event_scoped(
-                        scope,
+                        scope_id,
                         Event::new(EventKind::ActionRequested {
                             action: action.clone(),
                         }),
@@ -338,14 +336,14 @@ impl GameState {
                             "Clearing blocker for {:?} on prompt {:?} (reaction declined)",
                             entity, prompt_id
                         );
-                        self.interaction_engine
-                            .session_mut(scope)
+                        self.prompts
+                            .scope_mut(scope_id)
                             .clear_blocker(&event.id, *entity);
                         continue;
                     };
 
                     self.process_event_scoped(
-                        scope,
+                        scope_id,
                         Event::new(EventKind::ActionRequested {
                             action: reaction_data.clone(),
                         }),
@@ -356,29 +354,29 @@ impl GameState {
 
         // Pop prompt & clear decisions
         {
-            let session = self.interaction_engine.session_mut(scope);
-            session.pop_prompt_by_id(&prompt_id);
+            let scope = self.prompts.scope_mut(scope_id);
+            scope.pop_prompt_by_id(&prompt_id);
         }
 
         // If we are in encounter scope, validate the next prompt (reactions may prune options)
-        self.validate_or_refill_prompt_queue(scope);
+        self.validate_or_refill_prompt_queue(scope_id);
 
         // If no reactions are pending, resume paused events.
-        self.resume_pending_events_if_ready(scope);
+        self.resume_pending_events_if_ready(scope_id);
 
         Ok(())
     }
 
     pub fn process_event(&mut self, event: Event) {
         if let Some(actor) = event.actor() {
-            self.process_event_scoped(self.scope_for_entity(actor), event)
+            self.process_event_scoped(self.scope_id_for_entity(actor), event)
         } else {
             panic!("Cannot process event without actor: {:#?}", event);
         }
     }
 
-    pub(crate) fn process_event_scoped(&mut self, scope: InteractionScopeId, event: Event) {
-        self.log_event(&scope, event.clone());
+    pub(crate) fn process_event_scoped(&mut self, scope_id: PromptScopeId, event: Event) {
+        self.log_event(&scope_id, event.clone());
 
         let triggerd_listeners = self.event_dispatcher.dispatch(&event);
         for listener_id in &triggerd_listeners {
@@ -402,8 +400,8 @@ impl GameState {
             // decision resolves (cleared if decline / instant) or their chosen
             // reaction activity completes.
             let blocked_by: HashSet<Entity> = reaction_options.keys().copied().collect();
-            let session = self.interaction_engine.session_mut(scope);
-            session.queue_prompt(
+            let scope = self.prompts.scope_mut(scope_id);
+            scope.queue_prompt(
                 ActionPrompt::new(ActionPromptKind::Reactions {
                     event: event.clone(),
                     options: reaction_options,
@@ -411,7 +409,7 @@ impl GameState {
                 true,
             );
 
-            session.queue_pending_event(PendingEvent::new(event, blocked_by), true);
+            scope.queue_pending_event(PendingEvent::new(event, blocked_by), true);
 
             return;
         }
@@ -420,9 +418,9 @@ impl GameState {
         self.advance_event(event, false);
     }
 
-    fn validate_or_refill_prompt_queue(&mut self, scope: InteractionScopeId) {
-        let new_options = if let Some(session) = self.interaction_engine.session(scope)
-            && let Some(front) = session.next_prompt()
+    fn validate_or_refill_prompt_queue(&mut self, scope_id: PromptScopeId) {
+        let new_options = if let Some(scope) = self.prompts.scope(&scope_id)
+            && let Some(front) = scope.next_prompt()
         {
             match &front.kind {
                 ActionPromptKind::Reactions { event, options } => {
@@ -446,15 +444,15 @@ impl GameState {
             None
         };
 
-        let session = self.interaction_engine.session_mut(scope);
+        let scope = self.prompts.scope_mut(scope_id);
 
         if let Some(new_options) = new_options {
             if new_options.is_empty() {
                 // No valid reactions remain; clear the prompt to skip the reaction window.
-                session.pop_prompt();
+                scope.pop_prompt();
             } else {
                 // Update the prompt with the new options.
-                if let Some(front) = session.next_prompt_mut()
+                if let Some(front) = scope.next_prompt_mut()
                     && let ActionPromptKind::Reactions { options, .. } = &mut front.kind
                 {
                     *options = new_options;
@@ -462,17 +460,17 @@ impl GameState {
             }
         }
 
-        match scope {
-            InteractionScopeId::Global => { /* don't auto-refill */ }
-            InteractionScopeId::Encounter(encounter_id) => {
+        match scope_id {
+            PromptScopeId::Global => { /* don't auto-refill */ }
+            PromptScopeId::Encounter(encounter_id) => {
                 let current_entity = self
                     .encounters
                     .get(&encounter_id)
                     .expect("Inconsistent state: encounter not found")
                     .current_entity();
 
-                if session.pending_prompts().is_empty() {
-                    session.queue_prompt(
+                if scope.pending_prompts().is_empty() {
+                    scope.queue_prompt(
                         ActionPrompt::new(ActionPromptKind::Action {
                             actor: current_entity,
                         }),
@@ -483,12 +481,8 @@ impl GameState {
         }
     }
 
-    pub(crate) fn resume_pending_events_if_ready(&mut self, scope: InteractionScopeId) {
-        let Some(pending_event) = self
-            .interaction_engine
-            .session_mut(scope)
-            .pop_front_if_ready()
-        else {
+    pub(crate) fn resume_pending_events_if_ready(&mut self, scope: PromptScopeId) {
+        let Some(pending_event) = self.prompts.scope_mut(scope).pop_front_if_ready() else {
             return;
         };
 
@@ -498,8 +492,8 @@ impl GameState {
             // of the canceled event to unblock it, in which case we should remove
             // the actor manually from the next pending event.
             if let Some(next_pending) = self
-                .interaction_engine
-                .session_mut(scope)
+                .prompts
+                .scope_mut(scope)
                 .pending_events_mut()
                 .front_mut()
                 && let Some(actor) = pending_event.event.actor()
@@ -658,7 +652,7 @@ impl GameState {
                 };
 
                 self.process_event_scoped(
-                    self.scope_for_entity(actor.id()),
+                    self.scope_id_for_entity(actor.id()),
                     Event::new(EventKind::D20CheckResolved {
                         actor: actor.clone(),
                         result: result.clone(),
@@ -671,7 +665,7 @@ impl GameState {
 
             EventKind::DamageRollPerformed { actor, result } => {
                 self.process_event_scoped(
-                    self.scope_for_entity(actor.id()),
+                    self.scope_id_for_entity(actor.id()),
                     Event::new(EventKind::DamageRollResolved {
                         actor: actor.clone(),
                         result: result.clone(),
@@ -686,7 +680,7 @@ impl GameState {
 
         if process_pending_events {
             self.resume_pending_events_if_ready(
-                self.scope_for_entity(
+                self.scope_id_for_entity(
                     event
                         .actor()
                         .expect("Event must have an actor to resume pending events"),
@@ -695,10 +689,10 @@ impl GameState {
         }
     }
 
-    fn log_event(&mut self, scope: &InteractionScopeId, event: Event) {
+    fn log_event(&mut self, scope: &PromptScopeId, event: Event) {
         let event_log = match scope {
-            InteractionScopeId::Global => &mut self.event_log,
-            InteractionScopeId::Encounter(encounter_id) => {
+            PromptScopeId::Global => &mut self.event_log,
+            PromptScopeId::Encounter(encounter_id) => {
                 if let Some(encounter) = self.encounters.get_mut(encounter_id) {
                     encounter.event_log_mut()
                 } else {
@@ -744,7 +738,7 @@ impl GameState {
                 true,
             ));
 
-            self.process_event_scoped(self.scope_for_entity(actor), event);
+            self.process_event_scoped(self.scope_id_for_entity(actor), event);
         } else {
             panic!(
                 "Cannot process event with callback for event without actor: {:#?}",

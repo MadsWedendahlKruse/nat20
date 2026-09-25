@@ -217,12 +217,12 @@ impl ActionKind {
                     action: Some(action_data.action_id.clone()),
                 }));
 
-                let scope = game_state.scope_for_entity(action_data.actor.id());
+                let scope = game_state.scope_id_for_entity(action_data.actor.id());
 
                 if let Some(trigger_event) = action_data.trigger_event.as_ref() {
                     game_state
-                        .interaction_engine
-                        .session_mut(scope)
+                        .prompts
+                        .scope_mut(scope)
                         .clear_blocker(&trigger_event.id, action_data.actor.id());
                 }
 

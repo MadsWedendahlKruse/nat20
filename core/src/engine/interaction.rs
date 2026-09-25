@@ -9,7 +9,7 @@ use crate::engine::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InteractionScopeId {
+pub enum PromptScopeId {
     Global,
     Encounter(EncounterId),
 }
@@ -39,13 +39,13 @@ impl PendingEvent {
 
 /// One place for prompts, decisions, and paused events.
 #[derive(Debug, Default)]
-pub struct InteractionSession {
+pub struct PromptScope {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
     pending_events: VecDeque<PendingEvent>,
 }
 
-impl InteractionSession {
+impl PromptScope {
     pub fn pending_prompts(&self) -> &VecDeque<ActionPrompt> {
         &self.pending_prompts
     }
@@ -179,20 +179,24 @@ impl InteractionSession {
 }
 
 #[derive(Debug, Default)]
-pub struct InteractionEngine {
-    pub sessions: HashMap<InteractionScopeId, InteractionSession>,
+pub struct PromptManager {
+    pub scopes: HashMap<PromptScopeId, PromptScope>,
 }
 
-impl InteractionEngine {
-    pub fn session_mut(&mut self, id: InteractionScopeId) -> &mut InteractionSession {
-        self.sessions.entry(id).or_default()
+impl PromptManager {
+    pub fn scope_mut(&mut self, id: PromptScopeId) -> &mut PromptScope {
+        self.scopes.entry(id).or_default()
     }
 
-    pub fn session(&self, id: InteractionScopeId) -> Option<&InteractionSession> {
-        self.sessions.get(&id)
+    pub fn scope(&self, id: &PromptScopeId) -> Option<&PromptScope> {
+        self.scopes.get(id)
     }
 
-    pub fn remove_session(&mut self, id: InteractionScopeId) {
-        self.sessions.remove(&id);
+    pub fn remove_scope(&mut self, id: &PromptScopeId) {
+        self.scopes.remove(id);
+    }
+
+    pub fn scopes(&self) -> &HashMap<PromptScopeId, PromptScope> {
+        &self.scopes
     }
 }

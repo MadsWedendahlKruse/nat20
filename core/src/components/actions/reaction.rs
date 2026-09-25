@@ -43,8 +43,8 @@ impl ReactionBody {
         };
 
         // Take out the pending event to prevent double mutable borrow
-        let session = game_state.session_for_entity_mut(action.actor.id());
-        let Some(mut pending) = session.pending_events_mut().pop_front() else {
+        let scope = game_state.scope_for_entity_mut(action.actor.id());
+        let Some(mut pending) = scope.pending_events_mut().pop_front() else {
             panic!("No pending events found for action: {:#?}", action);
         };
 
@@ -86,8 +86,8 @@ impl ReactionBody {
         }
 
         // Put the event back in
-        let session = game_state.session_for_entity_mut(action.actor.id());
-        session.queue_pending_event(pending, true);
+        let scope = game_state.scope_for_entity_mut(action.actor.id());
+        scope.queue_pending_event(pending, true);
 
         result
     }

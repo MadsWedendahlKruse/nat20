@@ -232,8 +232,8 @@ impl Monster {
 }
 
 pub fn should_update(game_state: &GameState, entity: Entity) -> bool {
-    if let Some(session) = game_state.session_for_entity(entity)
-        && let Some(pending_event) = session.pending_events().front()
+    if let Some(scope) = game_state.scope_for_entity(entity)
+        && let Some(pending_event) = scope.pending_events().front()
     {
         pending_event.blocked_by.contains(&entity)
     } else {
@@ -443,11 +443,11 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
                 entity, total_duration
             );
 
-            let scope = game_state.scope_for_entity(entity);
+            let scope = game_state.scope_id_for_entity(entity);
             if let Some(blocking_event) = blocking_event {
                 game_state
-                    .interaction_engine
-                    .session_mut(scope)
+                    .prompts
+                    .scope_mut(scope)
                     .clear_blocker(blocking_event, entity);
             }
 
@@ -473,7 +473,7 @@ fn update_acting(game_state: &mut GameState, delta_time: f32, entity: Entity) {
     systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut game_state.world, entity)
         .take();
 
-    let scope = game_state.scope_for_entity(entity);
+    let scope = game_state.scope_id_for_entity(entity);
     game_state.resume_pending_events_if_ready(scope);
 }
 
