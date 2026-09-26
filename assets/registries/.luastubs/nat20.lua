@@ -100,7 +100,6 @@ function ActionContext:is_ranged_attack() end
 ---@field actor ScriptEntity
 ---@field action_context ActionContext
 ---@field conditions ActionCondition[]
----@field trigger_event Event?
 local ActionData = {}
 ---@param resource_id string
 ---@return boolean

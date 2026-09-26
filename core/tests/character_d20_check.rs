@@ -13,7 +13,6 @@ mod tests {
             skill::{Skill, SkillSet},
         },
         entities::creature::Character,
-        registry::registry::ItemsRegistry,
         systems::{self},
         test_utils::fixtures,
     };
@@ -25,7 +24,7 @@ mod tests {
         let entity = engine_state.world.spawn(Character::default());
 
         {
-            let mut ability_scores = systems::helpers::get_component_mut::<AbilityScoreMap>(
+            let ability_scores = systems::helpers::get_component_mut::<AbilityScoreMap>(
                 &mut engine_state.world,
                 entity,
             );
@@ -107,9 +106,7 @@ mod tests {
         let _ = systems::loadout::equip(
             &mut engine_state,
             character,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.chainmail"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.chainmail"),
         );
 
         let result = systems::helpers::get_component::<SkillSet>(&engine_state.world, character)

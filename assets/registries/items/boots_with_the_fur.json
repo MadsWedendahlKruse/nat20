@@ -1,0 +1,12 @@
+{
+    "item": {
+        "id": "nat20_core::item.boots_with_the_fur",
+        "name": "Boots with the Fur",
+        "description": "Stylish boots that keep your feet warm and cozy.",
+        "weight": "1 lb",
+        "value": "1 GP",
+        "rarity": "common"
+    },
+    "kind": "boots",
+    "effects": []
+}

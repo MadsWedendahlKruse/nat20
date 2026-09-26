@@ -111,16 +111,18 @@ pub fn render_inventory(
     for i in 0..total_items {
         let slot = ContainerSlot::Inventory(i);
 
-        if i < items.len() {
-            let item_name = items[i].item().name.clone();
-            if render_item_button(ui, items[i].item(), i) {
+        if i < items.len()
+            && let Some(item) = ItemsRegistry::get(&items[i])
+        {
+            let item_name = item.item().name.clone();
+            if render_item_button(ui, item.item(), i) {
                 // Handle item click (don't think we need to do anything here)
                 debug!("Clicked on item: {}", item_name);
             }
 
             if ui.is_item_hovered() {
                 ui.tooltip(|| {
-                    items[i].render_with_context(ui, (world, entity));
+                    item.render_with_context(ui, (world, entity));
                 });
             }
         } else {
@@ -152,7 +154,9 @@ pub fn render_loadout(ui: &imgui::Ui, world: &World, entity: Entity) -> Option<I
             // Item column
             ui.table_next_column();
             let item = loadout.item_in_slot(&slot);
-            if let Some(item) = item {
+            if let Some(item) = item
+                && let Some(item) = ItemsRegistry::get(item)
+            {
                 if render_item_button(ui, item.item(), i) {
                     // Handle item click (don't think we need to do anything here)
                     debug!("Clicked on loadout item: {}", item.item().name);
@@ -160,9 +164,7 @@ pub fn render_loadout(ui: &imgui::Ui, world: &World, entity: Entity) -> Option<I
 
                 if ui.is_item_hovered() {
                     ui.tooltip(|| {
-                        // TODO: Consider implementing a dedicated render method for EquipmentInstance
-                        let item_instance: ItemInstance = item.clone().into();
-                        item_instance.render_with_context(ui, (world, entity));
+                        item.render_with_context(ui, (world, entity));
                     });
                 }
 
@@ -230,17 +232,16 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, engine_state: &mut EngineState, 
             match event.mode {
                 InteractMode::RightClick => {
                     // Handle right-click on inventory item
-                    debug!("Right-clicked on inventory item: {:?}", item.item().name);
+                    debug!("Right-clicked on inventory item: {:?}", item);
                 }
 
                 InteractMode::DoubleClick => {
                     // Try to equip the item
-                    let item_name = item.item().name.clone();
-                    debug!("Double-clicked on inventory item: {:?}", item_name);
-                    let result = systems::inventory::equip(engine_state, entity, item);
+                    debug!("Double-clicked on inventory item: {:?}", item);
+                    let result = systems::inventory::equip(engine_state, entity, &item);
                     match result {
                         Ok(unequipped_items) => {
-                            info!("Equipped item: {:?}", item_name);
+                            info!("Equipped item: {:?}", item);
                             // Remove the item that was equipped from the inventory
                             systems::inventory::remove_item(&mut engine_state.world, entity, index);
                             for unequipped_item in unequipped_items {
@@ -261,7 +262,7 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, engine_state: &mut EngineState, 
 
                 InteractMode::Drag => {
                     // Handle drag on inventory item
-                    debug!("Dragging inventory item: {:?}", item.item().name);
+                    debug!("Dragging inventory item: {:?}", item);
                 }
             }
         } else {
@@ -289,9 +290,11 @@ pub fn render_loadout_inventory(ui: &imgui::Ui, engine_state: &mut EngineState, 
             .collect::<Vec<_>>();
 
         if let Some(selected_item) = render_uniform_buttons(ui, strings) {
-            let item =
-                ItemsRegistry::get(items[selected_item]).expect("Item should exist in registry");
-            systems::inventory::add_item(&mut engine_state.world, entity, item.clone());
+            systems::inventory::add_item(
+                &mut engine_state.world,
+                entity,
+                items[selected_item].clone(),
+            );
             ui.close_current_popup();
         }
     });

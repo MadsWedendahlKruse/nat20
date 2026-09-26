@@ -1,26 +1,26 @@
 use hecs::{Entity, Ref, World};
 
 use crate::{
-    components::id::{EntityIdentifier, ItemId},
     components::{
-        actions::action::{ActionAttackKind, ActionContext},
-        actions::targeting::TargetingRange,
+        actions::{
+            action::{ActionAttackKind, ActionContext},
+            targeting::TargetingRange,
+        },
         damage::DamageRoll,
-        items::{
-            equipment::{
-                armor::ArmorClass,
-                loadout::{EquipmentInstance, Loadout, TryEquipError},
-                slots::EquipmentSlot,
-                weapon::MELEE_RANGE_DEFAULT,
-            },
-            inventory::ItemContainer,
+        id::{EntityIdentifier, ItemId},
+        items::equipment::{
+            armor::ArmorClass,
+            loadout::{Loadout, TryEquipError},
+            slots::EquipmentSlot,
+            weapon::MELEE_RANGE_DEFAULT,
         },
         modifier::ModifierSource,
     },
     engine::{
-        event::{Event, EventKind},
         engine_state::EngineState,
+        event::{Event, EventKind},
     },
+    registry::registry::ItemsRegistry,
     systems,
 };
 
@@ -32,77 +32,53 @@ pub fn loadout_mut(world: &mut World, entity: Entity) -> &mut Loadout {
     systems::helpers::get_component_mut::<Loadout>(world, entity)
 }
 
-pub fn equip_in_slot<T>(
+pub fn equip_in_slot(
     engine_state: &mut EngineState,
     entity: Entity,
     slot: &EquipmentSlot,
-    equipment: T,
-) -> Result<Vec<EquipmentInstance>, TryEquipError>
-where
-    T: Into<EquipmentInstance>,
-{
-    let equipment = equipment.into();
-    let item_id = equipment.item().id.clone();
-
+    item_id: &ItemId,
+) -> Result<Vec<ItemId>, TryEquipError> {
     let unequipped_items =
-        loadout_mut(&mut engine_state.world, entity).equip_in_slot(slot, equipment)?;
-    for unequipped_item in &unequipped_items {
-        systems::effects::remove_effects_by_source(
-            engine_state,
-            entity,
-            &ModifierSource::Item(unequipped_item.item().id.clone()),
-        );
-        equipment_changed_event(engine_state, entity, unequipped_item.item().id.clone(), false);
-    }
+        loadout_mut(&mut engine_state.world, entity).equip_in_slot(slot, item_id)?;
 
-    let effects = loadout(&engine_state.world, entity)
-        .item_in_slot(slot)
-        .unwrap()
-        .effects()
-        .clone();
-    systems::effects::add_permanent_effects(
-        engine_state,
-        entity,
-        effects,
-        &ModifierSource::Item(item_id.clone()),
-        None,
-    );
-    equipment_changed_event(engine_state, entity, item_id, true);
-
-    Ok(unequipped_items)
+    update_equipment_effects(engine_state, entity, item_id, unequipped_items)
 }
 
-pub fn equip<T>(
+pub fn equip(
     engine_state: &mut EngineState,
     entity: Entity,
-    equipment: T,
-) -> Result<Vec<EquipmentInstance>, TryEquipError>
-where
-    T: Into<EquipmentInstance>,
-{
-    let equipment = equipment.into();
-    let item_id = equipment.item().id.clone();
-    // TODO: Slightly less performant than calling `equip_in_slot` directly
-    let effects = equipment.effects().clone();
+    item_id: &ItemId,
+) -> Result<Vec<ItemId>, TryEquipError> {
+    let unequipped_items = loadout_mut(&mut engine_state.world, entity).equip(item_id)?;
 
-    let unequipped_items = loadout_mut(&mut engine_state.world, entity).equip(equipment)?;
+    update_equipment_effects(engine_state, entity, item_id, unequipped_items)
+}
+
+fn update_equipment_effects(
+    engine_state: &mut EngineState,
+    entity: Entity,
+    equipped_item_id: &ItemId,
+    unequipped_items: Vec<ItemId>,
+) -> Result<Vec<ItemId>, TryEquipError> {
     for unequipped_item in &unequipped_items {
         systems::effects::remove_effects_by_source(
             engine_state,
             entity,
-            &ModifierSource::Item(unequipped_item.item().id.clone()),
+            &ModifierSource::Item(unequipped_item.clone()),
         );
-        equipment_changed_event(engine_state, entity, unequipped_item.item().id.clone(), false);
+        equipment_changed_event(engine_state, entity, unequipped_item.clone(), false);
     }
 
-    systems::effects::add_permanent_effects(
-        engine_state,
-        entity,
-        effects,
-        &ModifierSource::Item(item_id.clone()),
-        None,
-    );
-    equipment_changed_event(engine_state, entity, item_id, true);
+    if let Some(equipped_item) = ItemsRegistry::get(&equipped_item_id) {
+        systems::effects::add_permanent_effects(
+            engine_state,
+            entity,
+            equipped_item.effects(),
+            &ModifierSource::Item(equipped_item_id.clone()),
+            None,
+        );
+        equipment_changed_event(engine_state, entity, equipped_item_id.clone(), true);
+    }
 
     Ok(unequipped_items)
 }
@@ -111,15 +87,15 @@ pub fn unequip(
     engine_state: &mut EngineState,
     entity: Entity,
     slot: &EquipmentSlot,
-) -> Option<EquipmentInstance> {
+) -> Option<ItemId> {
     let unequipped_item = loadout_mut(&mut engine_state.world, entity).unequip(slot);
     if let Some(item) = &unequipped_item {
         systems::effects::remove_effects_by_source(
             engine_state,
             entity,
-            &ModifierSource::Item(item.item().id.clone()),
+            &ModifierSource::Item(item.clone()),
         );
-        equipment_changed_event(engine_state, entity, item.item().id.clone(), false);
+        equipment_changed_event(engine_state, entity, item.clone(), false);
     }
     unequipped_item
 }
@@ -141,8 +117,8 @@ pub fn armor_class(engine_state: &EngineState, entity: Entity) -> ArmorClass {
     loadout(&engine_state.world, entity).armor_class(engine_state, entity)
 }
 
-pub fn can_equip(world: &World, entity: Entity, equipment: &EquipmentInstance) -> bool {
-    loadout(world, entity).can_equip(equipment)
+pub fn can_equip(world: &World, entity: Entity, item: &ItemId) -> bool {
+    loadout(world, entity).can_equip(item)
 }
 
 pub fn weapon_damage_roll(world: &World, entity: Entity, slot: &EquipmentSlot) -> DamageRoll {

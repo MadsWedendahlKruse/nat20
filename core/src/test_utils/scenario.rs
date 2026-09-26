@@ -552,10 +552,7 @@ impl ScenarioProbe<'_> {
         let entity = self.entity();
         let creature = self.creature();
         let item_id = item.into();
-        let item = ItemsRegistry::get(&item_id)
-            .unwrap_or_else(|| panic!("No item with id {item_id} in registry"))
-            .clone();
-        if systems::loadout::equip(&mut self.scenario.engine_state, entity, item).is_err() {
+        if systems::loadout::equip(&mut self.scenario.engine_state, entity, &item_id).is_err() {
             panic!("Failed to equip {item_id} on {:?}", creature);
         }
         self

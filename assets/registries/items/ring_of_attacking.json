@@ -1,0 +1,14 @@
+{
+    "item": {
+        "id": "nat20_core::item.ring_of_attacking",
+        "name": "Ring of Attacking",
+        "description": "A magical ring that grants advantage on attack rolls.",
+        "weight": "1 lb",
+        "value": "1000 GP",
+        "rarity": "rare"
+    },
+    "kind": "ring",
+    "effects": [
+        "nat20_core::effect.item.ring_of_attacking"
+    ]
+}

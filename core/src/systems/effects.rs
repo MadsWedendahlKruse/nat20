@@ -20,8 +20,8 @@ use crate::{
         time::TimeDuration,
     },
     engine::{
-        event::{Event, EventListener, ListenerSource},
         engine_state::EngineState,
+        event::{Event, EventListener, ListenerSource},
     },
     registry::registry::EffectsRegistry,
     systems,
@@ -172,12 +172,12 @@ pub fn add_permanent_effect(
 pub fn add_permanent_effects(
     engine_state: &mut EngineState,
     entity: Entity,
-    effects: Vec<EffectId>,
+    effects: &[EffectId],
     source: &ModifierSource,
     context: Option<&ActionContext>,
 ) {
     for effect_id in effects {
-        add_permanent_effect(engine_state, entity, effect_id, source, context);
+        add_permanent_effect(engine_state, entity, effect_id.clone(), source, context);
     }
 }
 
@@ -188,7 +188,7 @@ fn add_effect_instance(
     effect_instances: &mut EffectsMap,
     context: Option<&ActionContext>,
 ) -> EffectApplicationResult {
-    if let Some(instance) = effect_instances.remove(&instance_id) {
+    if let Some(instance) = effect_instances.shift_remove(&instance_id) {
         let effect = instance.effect();
 
         match instance.effect().stacking_policy {
@@ -294,7 +294,9 @@ pub fn remove_effect(
 
     let mut removed_effects = Vec::new();
 
-    if let Ok(effects) = engine_state.world.query_one_mut::<&mut EffectManager>(entity)
+    if let Ok(effects) = engine_state
+        .world
+        .query_one_mut::<&mut EffectManager>(entity)
         && let Some(effect_instance) = effects.remove(instance_id)
     {
         let effect = effect_instance.effect();
@@ -386,7 +388,10 @@ pub fn remove_effects_by_id(
     })
 }
 
-pub fn remove_temporary_effects(engine_state: &mut EngineState, entity: Entity) -> Vec<EffectInstance> {
+pub fn remove_temporary_effects(
+    engine_state: &mut EngineState,
+    entity: Entity,
+) -> Vec<EffectInstance> {
     remove_effects_by_filter(engine_state, entity, |effect_instance| {
         !effect_instance.is_permanent()
     })
@@ -508,7 +513,11 @@ pub fn extend_effect_duration(
     }
 }
 
-pub fn refresh_effect_duration(engine_state: &mut EngineState, entity: Entity, effect_id: &EffectId) {
+pub fn refresh_effect_duration(
+    engine_state: &mut EngineState,
+    entity: Entity,
+    effect_id: &EffectId,
+) {
     let instance_ids = instances_and_children_by_id(engine_state, entity, effect_id);
 
     let effects = effects_mut(&mut engine_state.world, entity);

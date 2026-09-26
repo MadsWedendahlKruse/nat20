@@ -163,7 +163,7 @@ fn apply_class_base(
         systems::effects::add_permanent_effects(
             engine_state,
             entity,
-            effects_for_level.clone(),
+            effects_for_level,
             &id.modifier_source(),
             None,
         );
@@ -208,8 +208,10 @@ fn apply_class_base(
 
     // Armor training
     {
-        let armor_training =
-            systems::helpers::get_component_mut::<ArmorTrainingSet>(&mut engine_state.world, entity);
+        let armor_training = systems::helpers::get_component_mut::<ArmorTrainingSet>(
+            &mut engine_state.world,
+            entity,
+        );
         for armor_type in class_base.armor_proficiencies.iter() {
             armor_training.insert(armor_type.clone());
         }

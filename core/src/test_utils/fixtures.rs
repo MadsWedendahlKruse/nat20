@@ -36,7 +36,7 @@ pub mod creatures {
             },
             engine::engine_state::EngineState,
             entities::creature::Character,
-            registry::registry::{ClassesRegistry, ItemsRegistry},
+            registry::registry::ClassesRegistry,
         };
 
         use super::*;
@@ -448,16 +448,12 @@ pub mod creatures {
             let _ = systems::loadout::equip(
                 engine_state,
                 entity,
-                ItemsRegistry::get(&ItemId::new("nat20_core", "item.crossbow"))
-                    .unwrap()
-                    .clone(),
+                &ItemId::new("nat20_core", "item.crossbow"),
             );
             systems::inventory::add_item(
                 &mut engine_state.world,
                 entity,
-                ItemsRegistry::get(&ItemId::new("nat20_core", "item.admin_dagger"))
-                    .unwrap()
-                    .clone(),
+                ItemId::new("nat20_core", "item.admin_dagger"),
             );
 
             EntityIdentifier::from_world(&engine_state.world, entity)
@@ -832,10 +828,9 @@ pub mod creatures {
             item_ids: &[ItemId],
         ) -> Result<(), TryEquipError> {
             for item_id in item_ids {
-                let item = ItemsRegistry::get(item_id).unwrap().clone();
                 // Monsters are considered proficient with all their equipment
                 // so we can add proficiency for what they equip
-                match &item {
+                match ItemsRegistry::get(item_id).unwrap() {
                     ItemInstance::Armor(armor) => {
                         systems::helpers::get_component_mut::<ArmorTrainingSet>(
                             &mut engine_state.world,
@@ -856,7 +851,7 @@ pub mod creatures {
                     _ => {}
                 }
 
-                systems::loadout::equip(engine_state, entity, item)?;
+                systems::loadout::equip(engine_state, entity, item_id)?;
             }
             Ok(())
         }

@@ -9,7 +9,6 @@ mod tests {
             modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
         },
         entities::creature::Character,
-        registry::registry::ItemsRegistry,
         systems,
         test_utils::fixtures,
     };
@@ -22,9 +21,7 @@ mod tests {
         let _ = systems::loadout::equip(
             &mut engine_state,
             character,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.chainmail"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.chainmail"),
         );
 
         let armor_class = systems::loadout::armor_class(&engine_state, character);
@@ -49,7 +46,7 @@ mod tests {
         let character = engine_state.world.spawn(Character::default());
 
         {
-            let mut ability_scores = systems::helpers::get_component_mut::<AbilityScoreMap>(
+            let ability_scores = systems::helpers::get_component_mut::<AbilityScoreMap>(
                 &mut engine_state.world,
                 character,
             );
@@ -67,9 +64,7 @@ mod tests {
         let _ = systems::loadout::equip(
             &mut engine_state,
             character,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.studded_leather_armor"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.studded_leather_armor"),
         );
 
         {

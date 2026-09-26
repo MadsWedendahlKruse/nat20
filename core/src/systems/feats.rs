@@ -60,7 +60,7 @@ pub fn add_feat(
     systems::effects::add_permanent_effects(
         engine_state,
         entity,
-        feat.effects().clone(),
+        feat.effects(),
         &ModifierSource::Feat(feat.id().clone()),
         None,
     );

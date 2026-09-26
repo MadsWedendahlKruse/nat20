@@ -1,24 +1,16 @@
 extern crate nat20_core;
 
 mod tests {
-    use std::{collections::HashSet, str::FromStr};
 
     use nat20_core::{
         components::{
             ability::{Ability, AbilityScore, AbilityScoreMap},
             actions::action::{ActionConditionResolution, ActionContext, AttackRollProvider},
-            damage::DamageType,
             dice::{DiceSet, DieSize},
             id::{ActionId, EntityIdentifier, ItemId},
             items::{
-                equipment::{
-                    loadout::Loadout,
-                    slots::EquipmentSlot,
-                    weapon::{Weapon, WeaponCategory, WeaponKind, WeaponProperties},
-                },
+                equipment::{loadout::Loadout, slots::EquipmentSlot},
                 inventory::ItemInstance,
-                item::{Item, ItemRarity},
-                money::MonetaryValue,
             },
             modifier::{Modifiable, ModifierMap, ModifierSource},
             proficiency::ProficiencyLevel,
@@ -30,7 +22,6 @@ mod tests {
         systems::{self, helpers},
         test_utils::fixtures,
     };
-    use uom::si::{f32::Mass, mass::pound};
 
     #[test]
     fn character_weapon_finesse_modifier() {
@@ -39,7 +30,7 @@ mod tests {
 
         // Set Strength 14, Dexterity 16
         {
-            let mut scores =
+            let scores =
                 helpers::get_component_mut::<AbilityScoreMap>(&mut engine_state.world, entity);
             scores.set(Ability::Strength, AbilityScore::new(Ability::Strength, 14));
             scores.set(
@@ -102,9 +93,7 @@ mod tests {
         let entity = engine_state.world.spawn(Character::default());
 
         // Equip longsword
-        let longsword = ItemsRegistry::get(&ItemId::new("nat20_core", "item.longsword"))
-            .unwrap()
-            .clone();
+        let longsword = &ItemId::new("nat20_core", "item.longsword");
         let _ = systems::loadout::equip(&mut engine_state, entity, longsword);
 
         // Longsword used with two hands
@@ -122,9 +111,7 @@ mod tests {
             &mut engine_state,
             entity,
             &EquipmentSlot::MeleeOffHand,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.dagger"),
         )
         .unwrap();
 
@@ -164,26 +151,20 @@ mod tests {
             &mut engine_state,
             entity,
             &EquipmentSlot::MeleeOffHand,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.dagger"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.dagger"),
         )
         .unwrap();
         let _ = systems::loadout::equip_in_slot(
             &mut engine_state,
             entity,
             &EquipmentSlot::MeleeMainHand,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.longsword"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.longsword"),
         );
 
         let unequipped = systems::loadout::equip(
             &mut engine_state,
             entity,
-            ItemsRegistry::get(&ItemId::new("nat20_core", "item.greatsword"))
-                .unwrap()
-                .clone(),
+            &ItemId::new("nat20_core", "item.greatsword"),
         )
         .unwrap();
         assert_eq!(unequipped.len(), 2);
@@ -200,7 +181,7 @@ mod tests {
         let entity = engine_state.world.spawn(Character::default());
 
         {
-            let mut scores =
+            let scores =
                 helpers::get_component_mut::<AbilityScoreMap>(&mut engine_state.world, entity);
             scores.set(Ability::Strength, AbilityScore::new(Ability::Strength, 14));
             scores.set(
@@ -209,24 +190,12 @@ mod tests {
             );
         }
 
-        let longsword = Weapon::new(
-            Item {
-                id: ItemId::new("nat20_core", "item.longsword"),
-                name: "Longsword".to_string(),
-                description: "A longsword.".to_string(),
-                weight: Mass::new::<pound>(3.0),
-                value: MonetaryValue::from_str("15 GP").unwrap(),
-                rarity: ItemRarity::Common,
-            },
-            WeaponKind::Melee,
-            WeaponCategory::Martial,
-            HashSet::from([WeaponProperties::Finesse]),
-            vec![("1d8".parse().unwrap(), DamageType::Slashing)],
-            vec![],
-            vec![],
-        );
-
-        systems::loadout::equip(&mut engine_state, entity, longsword).unwrap();
+        systems::loadout::equip(
+            &mut engine_state,
+            entity,
+            &ItemId::new("nat20_core", "item.scimitar"),
+        )
+        .unwrap();
 
         let (_, roll) = systems::loadout::loadout(&engine_state.world, entity).attack_roll(
             &engine_state.world,

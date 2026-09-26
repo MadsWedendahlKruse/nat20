@@ -1,54 +1,39 @@
 use hecs::{Entity, World};
 
 use crate::{
-    components::items::{
-        equipment::{
-            loadout::{EquipmentInstance, TryEquipError},
-            slots::EquipmentSlot,
+    components::{
+        id::ItemId,
+        items::{
+            equipment::{loadout::TryEquipError, slots::EquipmentSlot},
+            inventory::Inventory,
+            money::{MonetaryValue, MonetaryValueError},
         },
-        inventory::{Inventory, ItemInstance},
-        money::{MonetaryValue, MonetaryValueError},
     },
     engine::engine_state::EngineState,
     systems,
 };
 
-pub fn equip<T>(
+pub fn equip(
     engine_state: &mut EngineState,
     entity: Entity,
-    item: T,
-) -> Result<Vec<ItemInstance>, TryEquipError>
-where
-    T: Into<ItemInstance>,
-{
-    let item: ItemInstance = item.into();
-    let equipment: EquipmentInstance = item.into();
-
-    let unequippped_items = systems::loadout::equip(engine_state, entity, equipment)?;
-
-    Ok(unequippped_items
-        .iter()
-        .map(|item| <EquipmentInstance as Into<ItemInstance>>::into(item.clone()))
-        .collect::<Vec<ItemInstance>>())
+    item_id: &ItemId,
+) -> Result<Vec<ItemId>, TryEquipError> {
+    systems::loadout::equip(engine_state, entity, item_id)
 }
 
 pub fn unequip(
     engine_state: &mut EngineState,
     entity: Entity,
     slot: &EquipmentSlot,
-) -> Option<ItemInstance> {
-    let unequipped_item = systems::loadout::unequip(engine_state, entity, slot);
-    unequipped_item.map(|item| item.into())
+) -> Option<ItemId> {
+    systems::loadout::unequip(engine_state, entity, slot)
 }
 
-pub fn add_item<T>(world: &mut World, entity: Entity, item: T)
-where
-    T: Into<ItemInstance>,
-{
-    systems::helpers::get_component_mut::<Inventory>(world, entity).add_item(item.into());
+pub fn add_item(world: &mut World, entity: Entity, item: ItemId) {
+    systems::helpers::get_component_mut::<Inventory>(world, entity).add_item(item);
 }
 
-pub fn remove_item(world: &mut World, entity: Entity, index: usize) -> Option<ItemInstance> {
+pub fn remove_item(world: &mut World, entity: Entity, index: usize) -> Option<ItemId> {
     systems::helpers::get_component_mut::<Inventory>(world, entity).remove_item(index)
 }
 

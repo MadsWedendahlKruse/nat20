@@ -15,7 +15,7 @@ use crate::{
         class::ClassAndSubclass,
         health::hit_points::HitPoints,
         id::{ActionId, ClassId, EffectId, Name, ResourceId, SpellId, SubclassId},
-        items::{equipment::loadout::EquipmentInstance, money::MonetaryValue},
+        items::money::MonetaryValue,
         level::CharacterLevels,
         level_up::{ChoiceItem, LevelUpPrompt},
         modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
@@ -25,7 +25,7 @@ use crate::{
         spells::spellbook::{SpellSource, Spellbook},
     },
     engine::engine_state::EngineState,
-    registry::registry::{ClassesRegistry, ItemsRegistry},
+    registry::registry::ClassesRegistry,
     systems,
 };
 
@@ -307,7 +307,9 @@ fn resolve_level_up_prompt(
                         }
 
                         prompts.extend(systems::class::increment_class_level(
-                            engine_state, entity, class_id,
+                            engine_state,
+                            entity,
+                            class_id,
                         ));
                     }
                     ChoiceItem::Subclass(subclass_id) => {
@@ -315,7 +317,9 @@ fn resolve_level_up_prompt(
                     }
                     ChoiceItem::Species(species_id) => {
                         prompts.extend(systems::species::set_species(
-                            engine_state, entity, species_id,
+                            engine_state,
+                            entity,
+                            species_id,
                         ));
                     }
                     ChoiceItem::Subspecies(subspecies_id) => {
@@ -325,26 +329,31 @@ fn resolve_level_up_prompt(
                         for (count, item_id) in items {
                             // TODO: Not the most elegant solution
                             for _ in 0..*count {
-                                let item = ItemsRegistry::get(item_id).unwrap().clone();
-                                if item.equipable() {
-                                    let equipment: EquipmentInstance = item.clone().into();
-                                    if systems::loadout::can_equip(
-                                        &engine_state.world,
-                                        entity,
-                                        &equipment,
-                                    ) {
-                                        let result =
-                                            systems::loadout::equip(engine_state, entity, equipment);
-                                        if let Err(e) = result {
-                                            error!("Failed to equip item {}: {:?}", item_id, e);
-                                        } else {
-                                            // If the item is successfully equipped,
-                                            // we don't need to add it to inventory
+                                let loadout =
+                                    systems::loadout::loadout_mut(&mut engine_state.world, entity);
+
+                                if loadout.can_equip(item_id) {
+                                    match systems::loadout::equip(engine_state, entity, item_id) {
+                                        Ok(unequipped) => {
+                                            for item in unequipped {
+                                                systems::inventory::add_item(
+                                                    &mut engine_state.world,
+                                                    entity,
+                                                    item,
+                                                );
+                                            }
                                             continue;
                                         }
+                                        _ => {}
                                     }
                                 }
-                                systems::inventory::add_item(&mut engine_state.world, entity, item);
+
+                                // Failed to equip the item, so we add it back to the inventory
+                                systems::inventory::add_item(
+                                    &mut engine_state.world,
+                                    entity,
+                                    item_id.clone(),
+                                );
                             }
                         }
                         if !money.is_empty() {

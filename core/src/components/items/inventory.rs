@@ -2,10 +2,13 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::components::{
-    id::{IdProvider, ItemId},
+    id::{EffectId, IdProvider, ItemId},
     items::{
         equipment::{
-            armor::Armor, equipment::EquipmentItem, loadout::EquipmentInstance, weapon::Weapon,
+            armor::Armor,
+            equipment::EquipmentItem,
+            slots::{EquipmentSlot, SlotProvider},
+            weapon::Weapon,
         },
         item::Item,
         money::{MonetaryValue, MonetaryValueError},
@@ -22,11 +25,40 @@ pub enum ItemInstance {
 }
 
 impl ItemInstance {
-    pub fn equipable(&self) -> bool {
+    pub fn is_equippable(&self) -> bool {
         matches!(
             self,
             ItemInstance::Armor(_) | ItemInstance::Weapon(_) | ItemInstance::Equipment(_)
         )
+    }
+
+    pub fn effects(&self) -> &[EffectId] {
+        match self {
+            ItemInstance::Armor(armor) => armor.effects(),
+            ItemInstance::Weapon(weapon) => weapon.effects(),
+            ItemInstance::Equipment(equipment) => &equipment.effects,
+            _ => &[],
+        }
+    }
+}
+
+impl SlotProvider for ItemInstance {
+    fn valid_slots(&self) -> &'static [EquipmentSlot] {
+        match self {
+            ItemInstance::Armor(armor) => armor.valid_slots(),
+            ItemInstance::Weapon(weapon) => weapon.valid_slots(),
+            ItemInstance::Equipment(equipment) => equipment.valid_slots(),
+            _ => &[],
+        }
+    }
+
+    fn required_slots(&self) -> &'static [EquipmentSlot] {
+        match self {
+            ItemInstance::Armor(armor) => armor.required_slots(),
+            ItemInstance::Weapon(weapon) => weapon.required_slots(),
+            ItemInstance::Equipment(equipment) => equipment.required_slots(),
+            _ => &[],
+        }
     }
 }
 
@@ -77,30 +109,9 @@ impl_into_item_instance! {
     EquipmentItem => Equipment,
 }
 
-impl From<ItemInstance> for EquipmentInstance {
-    fn from(item: ItemInstance) -> EquipmentInstance {
-        match item {
-            ItemInstance::Armor(armor) => EquipmentInstance::Armor(armor),
-            ItemInstance::Weapon(weapon) => EquipmentInstance::Weapon(weapon),
-            ItemInstance::Equipment(equipment) => EquipmentInstance::Equipment(equipment),
-            _ => panic!("Cannot convert ItemInstance::Item to EquipmentInstance"),
-        }
-    }
-}
-
-impl From<EquipmentInstance> for ItemInstance {
-    fn from(val: EquipmentInstance) -> Self {
-        match val {
-            EquipmentInstance::Armor(armor) => ItemInstance::Armor(armor),
-            EquipmentInstance::Weapon(weapon) => ItemInstance::Weapon(weapon),
-            EquipmentInstance::Equipment(equipment) => ItemInstance::Equipment(equipment),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Inventory {
-    items: Vec<ItemInstance>,
+    items: Vec<ItemId>,
     money: MonetaryValue,
 }
 
@@ -118,11 +129,11 @@ impl Inventory {
         }
     }
 
-    pub fn add_item(&mut self, item: ItemInstance) {
+    pub fn add_item(&mut self, item: ItemId) {
         self.items.push(item);
     }
 
-    pub fn remove_item(&mut self, index: usize) -> Option<ItemInstance> {
+    pub fn remove_item(&mut self, index: usize) -> Option<ItemId> {
         if index < self.items.len() {
             Some(self.items.remove(index))
         } else {
@@ -130,14 +141,14 @@ impl Inventory {
         }
     }
 
-    pub fn items(&self) -> &[ItemInstance] {
+    pub fn items(&self) -> &[ItemId] {
         &self.items
     }
 
     /// Optional: find by name
-    pub fn find_by_name(&self, name: &str) -> Option<&ItemInstance> {
-        self.items.iter().find(|i| i.item().name == name)
-    }
+    // pub fn find_by_name(&self, name: &str) -> Option<&ItemInstance> {
+    //     self.items.iter().find(|i| i.item().name == name)
+    // }
 
     pub fn money(&self) -> &MonetaryValue {
         &self.money

@@ -1,0 +1,16 @@
+{
+    "item": {
+        "id": "nat20_core::item.armor_of_sneaking",
+        "description": "A magical armor that grants a bonus to Stealth.",
+        "name": "Armor of Sneaking",
+        "weight": "10 lb",
+        "value": "500 GP",
+        "rarity": "rare"
+    },
+    "armor_class": 12,
+    "armor_type": "light",
+    "dexterity_bonus": "unlimited",
+    "effects": [
+        "nat20_core::effect.item.armor_of_sneaking"
+    ]
+}

@@ -1,0 +1,19 @@
+{
+    "item": {
+        "id": "nat20_core::item.armor_of_constitution_saving_throws",
+        "name": "Armor of Sneaking",
+        "description": "A magical armor that grants advantage on Constitution saving throws.",
+        "weight": "60 lb",
+        "value": "500 GP",
+        "rarity": "rare"
+    },
+    "armor_class": 18,
+    "armor_type": "heavy",
+    "dexterity_bonus": {
+        "limited": 0
+    },
+    "effects": [
+        "nat20_core::effect.item.armor_of_constitution_saving_throws",
+        "nat20_core::effect.item.armor_stealth_disadvantage"
+    ]
+}

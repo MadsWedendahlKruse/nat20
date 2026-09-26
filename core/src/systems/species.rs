@@ -37,7 +37,11 @@ pub fn set_species(
     let species = SpeciesRegistry::get(species)
         .unwrap_or_else(|| panic!("Species with ID `{}` not found in the registry", species));
 
-    systems::helpers::set_component::<SpeciesId>(&mut engine_state.world, entity, species.id.clone());
+    systems::helpers::set_component::<SpeciesId>(
+        &mut engine_state.world,
+        entity,
+        species.id.clone(),
+    );
 
     // TODO: The species is presumably always set at level 1?
     apply_species_base(
@@ -62,13 +66,18 @@ pub fn set_species(
         entity,
         species.creature_type.clone(),
     );
-    systems::helpers::set_component::<Speed>(&mut engine_state.world, entity, species.speed.clone());
+    systems::helpers::set_component::<Speed>(
+        &mut engine_state.world,
+        entity,
+        species.speed.clone(),
+    );
 
     prompts
 }
 
 pub fn set_subspecies(engine_state: &mut EngineState, entity: Entity, subspecies: &SubspeciesId) {
-    let species_id = systems::helpers::get_component_clone::<SpeciesId>(&engine_state.world, entity);
+    let species_id =
+        systems::helpers::get_component_clone::<SpeciesId>(&engine_state.world, entity);
 
     let _species = SpeciesRegistry::get(&species_id)
         .unwrap_or_else(|| panic!("Species with ID `{}` not found in the registry", species_id));
@@ -107,7 +116,7 @@ fn apply_species_base(
         systems::effects::add_permanent_effects(
             engine_state,
             entity,
-            effects.clone(),
+            effects,
             &id.modifier_source(),
             None,
         );
