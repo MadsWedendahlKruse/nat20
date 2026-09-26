@@ -531,7 +531,7 @@ fn reaction_no_pending_event(mut scenario: Scenario) {
         ]),
         vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
     )
-    .with_trigger_event(trigger);
+    .with_trigger_event(trigger.id);
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Reaction {
         // Make a random event just to have something in the `event` field

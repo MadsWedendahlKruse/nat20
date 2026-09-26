@@ -44,8 +44,8 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{Event, EventKind},
         engine_state::EngineState,
+        event::{Event, EventKind},
     },
     registry::{
         registry::{ActionsRegistry, ItemsRegistry},
@@ -684,9 +684,6 @@ impl UserData for ActionData {
         });
         fields.add_field_method_get("variant", |_, this| {
             Ok(this.variant.as_ref().map(|variant| variant.to_string()))
-        });
-        fields.add_field_method_get("trigger_event", |_, this| {
-            Ok(this.trigger_event.as_ref().map(|e| e.as_ref().clone()))
         });
     }
 

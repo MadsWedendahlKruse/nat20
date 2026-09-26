@@ -24,12 +24,11 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         engine_state::EngineState,
-        event::{Event, EventKindTag},
+        event::{Event, EventId, EventKindTag},
         prompt::PromptScopeId,
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
-    systems,
-    systems::geometry::RaycastFilter,
+    systems::{self, geometry::RaycastFilter},
 };
 
 pub fn get_action(action_id: &ActionId) -> Option<&Action> {
@@ -277,7 +276,7 @@ pub enum ReactionUsabilityError {
 pub fn reaction_usable(
     engine_state: &EngineState,
     actor: Entity,
-    trigger_event: Option<&Event>,
+    trigger_event: Option<&EventId>,
 ) -> Result<(), ReactionUsabilityError> {
     if trigger_event.is_none() {
         return Err(ReactionUsabilityError::NoTriggerEvent);
@@ -467,10 +466,7 @@ pub fn start_execution(
     systems::helpers::get_component_mut::<Option<ActionExecution>>(&mut engine_state.world, actor)
         .replace(ActionExecution::new(action_data.clone(), phases));
     systems::helpers::get_component_mut::<ActivityState>(&mut engine_state.world, actor)
-        .set_acting(
-            action,
-            action_data.trigger_event.as_deref().map(|event| event.id),
-        );
+        .set_acting(action, action_data.trigger_event);
 }
 
 pub fn execution_status(engine_state: &EngineState, entity: Entity) -> Option<ExecutionStatus> {
@@ -785,7 +781,7 @@ pub fn available_reactions_to_event(
                                 resource_cost.clone(),
                                 vec![target],
                             )
-                            .with_trigger_event(event.clone()),
+                            .with_trigger_event(event.id),
                         );
                     }
                 }

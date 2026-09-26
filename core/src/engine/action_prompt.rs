@@ -9,7 +9,7 @@ use crate::{
         id::{ActionId, ActionVariantId, EntityIdentifier},
         resource::{ResourceAmountMap, ResourceError},
     },
-    engine::event::Event,
+    engine::event::{Event, EventId},
     systems::{self, actions::ActionUsabilityError},
 };
 
@@ -277,7 +277,7 @@ pub struct ActionData {
     pub resource_cost: ResourceAmountMap,
     pub targets: Vec<TargetInstance>,
     /// In the case of a reaction, this will be the event that triggered the reaction
-    pub trigger_event: Option<Box<Event>>,
+    pub trigger_event: Option<EventId>,
     // In the case of a variant action, this will be set to the chosen variant's ID
     pub variant: Option<ActionVariantId>,
 }
@@ -302,8 +302,8 @@ impl ActionData {
         }
     }
 
-    pub fn with_trigger_event(mut self, event: Event) -> Self {
-        self.trigger_event = Some(Box::new(event));
+    pub fn with_trigger_event(mut self, event: EventId) -> Self {
+        self.trigger_event = Some(event);
         self
     }
 

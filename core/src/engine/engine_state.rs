@@ -134,6 +134,8 @@ impl EngineState {
             .map(|encounter| *encounter.id())
             && let Some(mut encounter) = self.encounters.remove(&encounter_id)
         {
+            // TODO: Since we've taken out the encounter the TurnBoundary event
+            // ends up in the global combat log
             encounter.end_turn(self, entity);
             self.encounters.insert(*encounter.id(), encounter);
         }
@@ -234,7 +236,7 @@ impl EngineState {
                     systems::actions::reaction_usable(
                         &self,
                         decision.actor(),
-                        choice.trigger_event.as_ref().map(|event| event.as_ref()),
+                        choice.trigger_event.as_ref(),
                     )
                     .map_err(|e| ActionError::Usability(ActionUsabilityError::ReactionError(e)))?;
                 }

@@ -7,8 +7,8 @@ use crate::{
     components::resource::ResourceAmountMap,
     engine::{
         action_prompt::ActionData,
-        event::{Event, EventKindTag},
         engine_state::EngineState,
+        event::{Event, EventKindTag},
     },
 };
 
@@ -35,7 +35,7 @@ impl ReactionBody {
     }
 
     pub fn execute(&self, engine_state: &mut EngineState, action: &ActionData) -> ReactionResult {
-        let Some(trigger_event) = action.trigger_event.as_ref() else {
+        let Some(trigger_event) = action.trigger_event else {
             panic!(
                 "Attempted to execute a reaction without a trigger event: {:#?}",
                 action
@@ -48,7 +48,7 @@ impl ReactionBody {
             panic!("No pending events found for action: {:#?}", action);
         };
 
-        if pending.event.id != trigger_event.id {
+        if pending.event.id != trigger_event {
             panic!(
                 "Front pending event does not match trigger event for action: {:#?}",
                 action
@@ -59,9 +59,13 @@ impl ReactionBody {
 
         let result = result.unwrap_or_else(|| {
             // TODO: Not sure if this check actually works
-            if **trigger_event != pending.event {
+            if let Some(trigger_event) = engine_state
+                .event_log(action.actor.id())
+                .get(&trigger_event)
+                && *trigger_event != pending.event
+            {
                 ReactionResult::ModifyEvent {
-                    before: trigger_event.as_ref().clone(),
+                    before: trigger_event.clone(),
                     after: pending.event.clone(),
                 }
             } else {

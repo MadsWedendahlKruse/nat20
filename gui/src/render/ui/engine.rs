@@ -10,8 +10,8 @@ use nat20_core::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{EncounterEvent, Event, EventKind, EventLog},
         engine_state::EngineState,
+        event::{EncounterEvent, Event, EventKind, EventLog},
     },
     systems,
 };
@@ -255,7 +255,11 @@ impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for Event {
             EventKind::ActionRequested { action } => {
                 action.render_with_context(ui, *engine_state);
 
-                if let Some(trigger_event) = action.trigger_event.as_ref() {
+                if let Some(trigger_event_id) = &action.trigger_event
+                    && let Some(trigger_event) = engine_state
+                        .event_log(action.actor.id())
+                        .get(trigger_event_id)
+                {
                     TextSegment::new("as a response to".to_string(), TextKind::Normal).render(ui);
                     ui.same_line();
                     render_event_description(ui, trigger_event);

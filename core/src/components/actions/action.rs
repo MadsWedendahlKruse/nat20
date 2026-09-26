@@ -29,8 +29,8 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{Event, EventKind},
         engine_state::EngineState,
+        event::{Event, EventKind},
     },
     entities::projectile::ProjectileTemplate,
     registry::{
@@ -92,7 +92,11 @@ pub struct Action {
 }
 
 impl Action {
-    pub fn perform(&self, engine_state: &mut EngineState, action_data: &ActionData) -> Vec<PhaseState> {
+    pub fn perform(
+        &self,
+        engine_state: &mut EngineState,
+        action_data: &ActionData,
+    ) -> Vec<PhaseState> {
         let hooks = systems::effects::effects(&engine_state.world, action_data.actor.id())
             .collect_hooks(|effect| effect.on_action.as_ref());
         for hook in hooks {
@@ -169,7 +173,11 @@ pub enum ActionKind {
 }
 
 impl ActionKind {
-    pub fn perform(&self, engine_state: &mut EngineState, action_data: &ActionData) -> Vec<PhaseState> {
+    pub fn perform(
+        &self,
+        engine_state: &mut EngineState,
+        action_data: &ActionData,
+    ) -> Vec<PhaseState> {
         let mut phases = Vec::new();
 
         match self {
@@ -219,11 +227,11 @@ impl ActionKind {
 
                 let scope = engine_state.scope_id_for_entity(action_data.actor.id());
 
-                if let Some(trigger_event) = action_data.trigger_event.as_ref() {
+                if let Some(trigger_event) = &action_data.trigger_event {
                     engine_state
                         .prompts
                         .scope_mut(scope)
-                        .clear_blocker(&trigger_event.id, action_data.actor.id());
+                        .clear_blocker(trigger_event, action_data.actor.id());
                 }
 
                 engine_state.resume_pending_events_if_ready(scope);
