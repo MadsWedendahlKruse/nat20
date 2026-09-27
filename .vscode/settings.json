@@ -51,6 +51,10 @@
         {
             "fileMatch": ["/assets/registries/action_variants/**/*.json"],
             "url": "./assets/registries/.schemas/action_variant.schema.json"
+        },
+        {
+            "fileMatch": ["/assets/registries/rules.json"],
+            "url": "./assets/registries/.schemas/rules.schema.json"
         }
     ]
 }

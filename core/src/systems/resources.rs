@@ -4,12 +4,9 @@ use crate::{
     components::{
         actions::action::ActionCooldownMap,
         id::ResourceId,
-        resource::{
-            DEFAULT_RESOURCES, RechargeRule, ResourceAmount, ResourceAmountMap, ResourceError,
-            ResourceMap,
-        },
+        resource::{RechargeRule, ResourceAmountMap, ResourceError, ResourceMap},
     },
-    registry::registry::ResourcesRegistry,
+    registry::registry::{ResourcesRegistry, rules},
     systems,
 };
 
@@ -60,15 +57,6 @@ pub fn restore(
 }
 
 pub fn can_act(world: &World, entity: Entity) -> Result<(), Vec<ResourceId>> {
-    // Presumably the entity can't act if they don't have any action, bonus action,
-    // or reaction resources left
-    can_afford(
-        world,
-        entity,
-        &ResourceAmountMap::from_iter(
-            DEFAULT_RESOURCES
-                .iter()
-                .map(|res_id| (res_id.clone(), ResourceAmount::Flat(1))),
-        ),
-    )
+    // Presumably the entity can't act if they don't have any of the default resources left
+    can_afford(world, entity, &rules().default_resources)
 }

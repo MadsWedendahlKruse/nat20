@@ -15,14 +15,14 @@ use crate::{
             ReactionTriggerFunction,
         },
         id::ScriptId,
-        resource::{DEFAULT_RESOURCES, ResourceAmountMap},
+        resource::ResourceAmountMap,
     },
     engine::{
         action_prompt::ActionData,
-        event::{Event, EventKind, EventKindTag},
         engine_state::EngineState,
+        event::{Event, EventKind, EventKindTag},
     },
-    registry::serialize::schema::impl_string_schema,
+    registry::{registry::rules, serialize::schema::impl_string_schema},
     systems,
 };
 
@@ -60,7 +60,7 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                                 action
                             );
                             let mut resources_to_refund = action.resource_cost.clone();
-                            for resource in &*DEFAULT_RESOURCES {
+                            for resource in rules().default_resources.map.keys() {
                                 resources_to_refund.map.remove(&resource);
                             }
                             let _ = systems::resources::restore(
@@ -113,7 +113,12 @@ impl FromStr for ReactionTriggerScript {
         Ok(ReactionTriggerScript {
             raw: s.to_string(),
             function: Arc::new(move |engine_state, reactor, event| {
-                systems::scripts::evaluate_reaction_trigger(&script_id, engine_state, *reactor, event)
+                systems::scripts::evaluate_reaction_trigger(
+                    &script_id,
+                    engine_state,
+                    *reactor,
+                    event,
+                )
             }),
             script,
         })

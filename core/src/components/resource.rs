@@ -4,7 +4,6 @@ use std::{
     hash::Hash,
     ops::{Add, AddAssign, Sub, SubAssign},
     str::FromStr,
-    sync::LazyLock,
 };
 
 use schemars::JsonSchema;
@@ -15,28 +14,12 @@ use crate::{
         id::{IdProvider, ResourceId},
         modifier::ModifierSource,
     },
-    registry::serialize::schema::{impl_schema_via, impl_string_schema},
+    registry::{
+        registry::rules,
+        serialize::schema::{impl_schema_via, impl_string_schema},
+    },
     systems::time::RestKind,
 };
-
-// TODO: Find a better place for these
-// Technically this contradicts the idea of resources being defined in the registry,
-// but these three are so fundamental that everything would break without them, so
-// they're probably not going to be removed ;)
-pub static RESOURCE_ACTION: LazyLock<ResourceId> =
-    LazyLock::new(|| ResourceId::new("nat20_core", "resource.action"));
-pub static RESOURCE_BONUS_ACTION: LazyLock<ResourceId> =
-    LazyLock::new(|| ResourceId::new("nat20_core", "resource.bonus_action"));
-pub static RESOURCE_REACTION: LazyLock<ResourceId> =
-    LazyLock::new(|| ResourceId::new("nat20_core", "resource.reaction"));
-
-pub static DEFAULT_RESOURCES: LazyLock<Vec<ResourceId>> = LazyLock::new(|| {
-    vec![
-        RESOURCE_ACTION.clone(),
-        RESOURCE_BONUS_ACTION.clone(),
-        RESOURCE_REACTION.clone(),
-    ]
-});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -909,14 +892,11 @@ impl ResourceMap {
 impl Default for ResourceMap {
     fn default() -> Self {
         let mut map = ResourceMap::new();
-        map.resources = DEFAULT_RESOURCES
+        map.resources = rules()
+            .default_resources
+            .map
             .iter()
-            .map(|id| {
-                (
-                    id.clone(),
-                    ResourceBudgetKind::Flat(ResourceBudget::with_max_uses(1).unwrap()),
-                )
-            })
+            .map(|(id, amount)| (id.clone(), amount.clone().into()))
             .collect();
         map
     }

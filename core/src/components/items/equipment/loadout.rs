@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::LazyLock};
+use std::collections::HashMap;
 
 use hecs::{Entity, World};
 
@@ -14,7 +14,7 @@ use crate::{
         },
         d20::{AdvantageType, D20Check, D20CheckDC, D20CheckKind, D20CheckMap},
         damage::{AttackSource, DamageRoll, DamageType},
-        id::{ActionId, ItemId},
+        id::ItemId,
         items::{
             equipment::{
                 armor::{Armor, ArmorClass, ArmorDexterityBonus},
@@ -30,19 +30,9 @@ use crate::{
         saving_throw::SavingThrowKind,
     },
     engine::engine_state::EngineState,
-    registry::registry::ItemsRegistry,
+    registry::registry::{self, ItemsRegistry},
     systems::{self},
 };
-
-// TODO: Probably shouldn't hardcode these :)
-static ATTACK_ACTIONS: LazyLock<Vec<ActionId>> = LazyLock::new(|| {
-    vec![
-        ActionId::new("nat20_core", "action.melee_attack"),
-        ActionId::new("nat20_core", "action.ranged_attack"),
-        ActionId::new("nat20_core", "action.opportunity_attack"),
-        ActionId::new("nat20_core", "action.unarmed_attack"),
-    ]
-});
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TryEquipError {
@@ -501,7 +491,7 @@ impl ActionProvider for Loadout {
     fn actions(&self, world: &World, entity: Entity) -> ActionMap {
         let mut action_map = ActionMap::new();
 
-        for action_id in ATTACK_ACTIONS.iter() {
+        for action_id in &registry::rules().loadout_attack_actions {
             let Some(action) = systems::actions::get_action(action_id) else {
                 continue;
             };
@@ -526,6 +516,8 @@ impl ActionProvider for Loadout {
 
 #[cfg(test)]
 mod tests {
+    use crate::components::id::ActionId;
+
     use super::*;
 
     #[test]
@@ -775,8 +767,11 @@ mod tests {
             println!("{:?}", action);
         }
 
-        assert_eq!(actions.len(), ATTACK_ACTIONS.len());
-        for action_id in ATTACK_ACTIONS.iter() {
+        assert_eq!(
+            actions.len(),
+            registry::rules().loadout_attack_actions.len()
+        );
+        for action_id in registry::rules().loadout_attack_actions.iter() {
             assert!(actions.contains_key(action_id));
             assert!(!actions[action_id].is_empty());
             for (context, _) in &actions[action_id] {

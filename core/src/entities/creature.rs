@@ -11,7 +11,7 @@ use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::{
-            action::{ActionCooldownMap, ActionMap, ActionTimeline, default_actions},
+            action::{ActionCooldownMap, ActionMap, ActionTimeline, DEFAULT_ACTIONS},
             execution::{ActionExecution, ExecutionMailbox, ExecutionStatus},
         },
         activity::{ActivityState, ActivityStateTag},
@@ -23,7 +23,7 @@ use crate::{
             hit_points::HitPoints,
             life_state::{DeathPolicy, LifeState},
         },
-        id::{AIControllerId, BackgroundId, FactionId, FeatId, Name, SpeciesId, SubspeciesId},
+        id::{AIControllerId, BackgroundId, FeatId, Name, SpeciesId, SubspeciesId},
         items::{
             equipment::{armor::ArmorTrainingSet, loadout::Loadout, weapon::WeaponProficiencyMap},
             inventory::Inventory,
@@ -39,7 +39,8 @@ use crate::{
         time::{EntityClock, TimeStep},
     },
     engine::engine_state::EngineState,
-    from_world, registry,
+    from_world,
+    registry::{self, registry::rules},
     systems::{
         self,
         combat::CombatState,
@@ -129,11 +130,11 @@ impl Character {
             resources: ResourceMap::default(),
             effects: EffectManager::new(),
             feats: Vec::new(),
-            actions: default_actions(),
+            actions: DEFAULT_ACTIONS.clone(),
             action_execution: None,
             execution_mailbox: None,
             cooldowns: HashMap::new(),
-            factions: FactionSet::from([FactionId::new("nat20_core", "faction.players")]),
+            factions: FactionSet::from([rules().default_character_faction.clone()]),
             scratchpad: Scratchpad::default(),
         }
     }
@@ -219,7 +220,7 @@ impl Monster {
             spellbook: Spellbook::new(),
             resources: ResourceMap::default(),
             effects: EffectManager::new(),
-            actions: default_actions(),
+            actions: DEFAULT_ACTIONS.clone(),
             action_execution: None,
             execution_mailbox: None,
             cooldowns: ActionCooldownMap::default(),
@@ -295,7 +296,8 @@ fn update_activity(engine_state: &mut EngineState, delta_time: f32, entity: Enti
 
 fn update_moving(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
     let target_point = {
-        let activity = systems::helpers::get_component::<ActivityState>(&engine_state.world, entity);
+        let activity =
+            systems::helpers::get_component::<ActivityState>(&engine_state.world, entity);
         let ActivityState::Moving {
             path,
             current_target,

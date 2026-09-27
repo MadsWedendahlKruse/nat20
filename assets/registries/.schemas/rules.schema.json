@@ -1,0 +1,67 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Rules",
+    "type": "object",
+    "properties": {
+        "default_actions": {
+            "description": "The actions which are available to all creatures by default, and which\ndon't require any special conditions to be used. Usually something like\nDash or Disengage",
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/ActionId"
+            }
+        },
+        "default_character_faction": {
+            "description": "The default faction assigned to all (player) characters.",
+            "allOf": [
+                {
+                    "$ref": "#/definitions/FactionId"
+                }
+            ]
+        },
+        "default_resources": {
+            "description": "The default resources available to all creatures.",
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$": {
+                    "description": "A flat amount (`1`) or a tiered amount `<tier>:<amount>` (e.g. `2:1` for one level-2 spell slot).",
+                    "anyOf": [
+                        {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^[0-9]+:[0-9]+$"
+                        }
+                    ]
+                }
+            }
+        },
+        "loadout_attack_actions": {
+            "description": "The underlying actions which are actually performed when making an attack,\ni.e. melee_attack, ranged_attack, unarmed_attack, etc.\nThese are granted to all creatures with a `Loadout`.",
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/ActionId"
+            }
+        }
+    },
+    "required": [
+        "default_actions",
+        "loadout_attack_actions",
+        "default_character_faction",
+        "default_resources"
+    ],
+    "definitions": {
+        "ActionId": {
+            "description": "Registry id `[namespace::]action.<name>`, e.g. `nat20_core::action.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
+        },
+        "FactionId": {
+            "description": "Registry id `[namespace::]faction.<name>`, e.g. `nat20_core::faction.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?faction[A-Za-z0-9_.]*$"
+        }
+    }
+}

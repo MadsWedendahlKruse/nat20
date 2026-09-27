@@ -1,0 +1,18 @@
+{
+    "default_actions": [
+        "nat20_core::action.dash",
+        "nat20_core::action.disengage"
+    ],
+    "loadout_attack_actions": [
+        "nat20_core::action.melee_attack",
+        "nat20_core::action.ranged_attack",
+        "nat20_core::action.unarmed_attack",
+        "nat20_core::action.opportunity_attack"
+    ],
+    "default_character_faction": "nat20_core::faction.players",
+    "default_resources": {
+        "nat20_core::resource.action": 1,
+        "nat20_core::resource.bonus_action": 1,
+        "nat20_core::resource.reaction": 1
+    }
+}

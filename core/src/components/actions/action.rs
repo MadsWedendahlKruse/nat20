@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use hecs::{Entity, World};
@@ -34,7 +34,7 @@ use crate::{
     },
     entities::projectile::ProjectileTemplate,
     registry::{
-        registry::{ActionVariantsRegistry, ActionsRegistry},
+        registry::{self, ActionVariantsRegistry, ActionsRegistry},
         serialize::action::ActionDefinition,
     },
     systems::{
@@ -768,21 +768,26 @@ pub type ActionMap = BTreeMap<ActionId, Vec<(ActionContext, ResourceAmountMap)>>
 
 pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
 
-// TODO: Not sure if this is the best solution
-pub fn default_actions() -> ActionMap {
+pub const DEFAULT_ACTIONS: LazyLock<ActionMap> = LazyLock::new(|| {
     let mut actions = ActionMap::new();
-    for (action, context) in [
-        (
-            ActionId::new("nat20_core", "action.dash"),
-            ActionContext::default(),
-        ),
-        (
-            ActionId::new("nat20_core", "action.disengage"),
-            ActionContext::default(),
-        ),
-    ] {
-        let resource_cost = ActionsRegistry::get(&action).unwrap().resource_cost.clone();
-        actions.insert(action.clone(), vec![(context, resource_cost)]);
+
+    for action in &registry::rules().default_actions {
+        let Some(action) = ActionsRegistry::get(action) else {
+            continue;
+        };
+
+        let mut contexts = action.contexts.clone();
+        if contexts.is_empty() {
+            contexts.push(ActionContext::default());
+        }
+
+        for context in contexts {
+            actions
+                .entry(action.id.clone())
+                .or_default()
+                .push((context, action.resource_cost.clone()));
+        }
     }
+
     actions
-}
+});

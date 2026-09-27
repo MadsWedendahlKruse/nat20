@@ -12,7 +12,7 @@ use crate::{
 
 pub const LUA_FILE_EXTENSION: &str = "lua";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ScriptError {
     MissingFileExtension,
     InvalidFileExtension(String),

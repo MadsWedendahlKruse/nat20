@@ -13,13 +13,16 @@ use crate::{
         background::Background, class::Subclass, faction::Faction, items::inventory::ItemInstance,
         resource::Resource,
     },
-    registry::serialize::{
-        action::{ActionDefinition, ActionVariantDefinition},
-        class::ClassDefinition,
-        effect::EffectDefinition,
-        feat::FeatDefinition,
-        species::{SpeciesDefinition, SubspeciesDefinition},
-        spell::SpellDefinition,
+    registry::{
+        rules::Rules,
+        serialize::{
+            action::{ActionDefinition, ActionVariantDefinition},
+            class::ClassDefinition,
+            effect::EffectDefinition,
+            feat::FeatDefinition,
+            species::{SpeciesDefinition, SubspeciesDefinition},
+            spell::SpellDefinition,
+        },
     },
 };
 
@@ -65,6 +68,7 @@ pub fn registry_schemas() -> Vec<RegistrySchema> {
         schema_for::<Subclass>("subclasses"),
         schema_for::<SubspeciesDefinition>("subspecies"),
         schema_for::<ActionVariantDefinition>("action_variants"),
+        schema_for::<Rules>("rules"),
     ]
 }
 
@@ -76,6 +80,7 @@ pub fn schema_file_name(registry: &str) -> String {
         "subspecies" => "subspecies",
         "classes" => "class",
         "subclasses" => "subclass",
+        "rules" => "rules",
         other => other.trim_end_matches('s'),
     };
     format!("{}.schema.json", singular)
