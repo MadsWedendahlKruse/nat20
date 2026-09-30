@@ -9,6 +9,7 @@ use nat20_core::{
     },
     engine::{action_prompt::ActionPromptKind, engine_state::EngineState, geometry::WorldGeometry},
     entities::projectile::ProjectileData,
+    persistence,
     systems::{
         self,
         geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
@@ -202,7 +203,7 @@ impl MainMenuWindow {
                     AUTO_RESIZE,
                     &mut true,
                     || {
-                        Self::render_character_menu(
+                        Self::render_creature_menu(
                             ui,
                             gui_state,
                             engine_state,
@@ -314,7 +315,7 @@ impl MainMenuWindow {
         }
     }
 
-    fn render_character_menu(
+    fn render_creature_menu(
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
         engine_state: &mut EngineState,
@@ -324,7 +325,7 @@ impl MainMenuWindow {
         debug_window: &mut Option<CreatureDebugWindow>,
         log_source: &mut usize,
     ) {
-        ui.child_window("Characters")
+        ui.child_window("Creatures")
             .child_flags(
                 ChildFlags::ALWAYS_AUTO_RESIZE
                     | ChildFlags::AUTO_RESIZE_X
@@ -386,6 +387,16 @@ impl MainMenuWindow {
                     let window = EncounterWindow::new();
                     encounters.push(window);
                     *log_source = encounters.len(); // Select the new encounter as log source
+                }
+
+                // TEMP
+                ui.separator_with_text("Save & Load");
+                if ui.button("Save World") {
+                    persistence::world::save_world(engine_state);
+                }
+
+                if ui.button("Load World") {
+                    persistence::world::load_world(engine_state, &"world.json");
                 }
             });
     }

@@ -1,5 +1,6 @@
 ﻿use hecs::Entity;
 use parry3d::na::Point3;
+use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 use tracing::{debug, warn};
 
@@ -47,9 +48,9 @@ impl From<ActionError> for ActivityError {
     }
 }
 
-#[derive(Debug, Clone, EnumDiscriminants)]
+#[derive(Debug, Clone, Default, EnumDiscriminants, Serialize, Deserialize)]
 #[strum_discriminants(name(ActivityStateTag))]
-#[derive(Default)]
+#[serde(rename_all = "snake_case")]
 pub enum ActivityState {
     #[default]
     Idle,

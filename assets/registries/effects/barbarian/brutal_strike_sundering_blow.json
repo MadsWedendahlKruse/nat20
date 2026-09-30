@@ -10,7 +10,7 @@
     ],
     "end_conditions": [
         {
-            "event": {
+            "event_filter": {
                 "script": {
                     "events": [
                         "d20_check_performed"

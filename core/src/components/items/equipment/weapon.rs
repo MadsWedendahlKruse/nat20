@@ -178,7 +178,7 @@ impl_string_schema!(
 //     Vex,
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeaponProficiencyMap {
     map: HashMap<WeaponCategory, Proficiency>,
 }

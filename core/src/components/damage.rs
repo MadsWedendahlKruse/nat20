@@ -76,7 +76,7 @@ impl Modifiable for DamageComponent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DamageComponentResult {
     pub result: ModifierResult,
     pub damage_type: DamageType,
@@ -171,7 +171,7 @@ fn evaluate_modifier_dice_multiplier(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DamageRollResult {
     pub components: Vec<DamageComponentResult>,
     pub total: i32,
@@ -297,13 +297,13 @@ impl From<MitigationOperation> for String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DamageMitigationEffect {
     pub source: ModifierSource,
     pub operation: MitigationOperation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DamageResistances {
     pub effects: HashMap<DamageType, Vec<DamageMitigationEffect>>,
 }

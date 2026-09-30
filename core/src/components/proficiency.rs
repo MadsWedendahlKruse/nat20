@@ -16,7 +16,7 @@ pub enum ProficiencyLevel {
     Half, // Optional: for features like Bard’s Jack of All Trades
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Proficiency {
     level: ProficiencyLevel,
     source: ModifierSource,

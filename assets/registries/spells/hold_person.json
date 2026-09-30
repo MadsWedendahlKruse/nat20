@@ -30,7 +30,7 @@
                                         }
                                     },
                                     "end_condition": {
-                                        "event": {
+                                        "event_filter": {
                                             "turn_boundary": {
                                                 "entity": "target",
                                                 "boundary": "end"

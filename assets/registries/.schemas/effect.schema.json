@@ -25,7 +25,7 @@
             "type": "array",
             "default": [],
             "items": {
-                "$ref": "#/definitions/EffectEndConditionDefinition"
+                "$ref": "#/definitions/EffectEndCondition"
             }
         },
         "id": {
@@ -415,18 +415,28 @@
                 }
             ]
         },
-        "EffectEndConditionDefinition": {
+        "EffectEndCondition": {
             "type": "object",
             "properties": {
-                "event": {
-                    "$ref": "#/definitions/EffectEventFilterDefinition"
+                "event_filter": {
+                    "description": "The filter that determines when this end condition is triggered.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/EffectEventFilter"
+                        }
+                    ]
                 },
                 "on_trigger": {
-                    "$ref": "#/definitions/EffectEndVerb"
+                    "description": "The action to perform when this end condition is triggered.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/EffectEndVerb"
+                        }
+                    ]
                 }
             },
             "required": [
-                "event",
+                "event_filter",
                 "on_trigger"
             ]
         },
@@ -451,7 +461,7 @@
                 "target"
             ]
         },
-        "EffectEventFilterDefinition": {
+        "EffectEventFilter": {
             "oneOf": [
                 {
                     "type": "object",
@@ -478,6 +488,7 @@
                     ]
                 },
                 {
+                    "description": "A d20 roll of a given flavor was made, optionally by and/or against a\nspecific entity. The bread and butter of \"until the next roll\" effects\n(Studied Attacks, Vex/Sap, Sundering Blow).",
                     "type": "object",
                     "properties": {
                         "d20_check": {
@@ -499,7 +510,7 @@
                                     "$ref": "#/definitions/D20CheckKindTag"
                                 },
                                 "roller": {
-                                    "description": "Who makes the roll. Omit to match any roller.",
+                                    "description": "Who makes the roll. `None` matches any roller.",
                                     "anyOf": [
                                         {
                                             "$ref": "#/definitions/EffectEntiyReference"

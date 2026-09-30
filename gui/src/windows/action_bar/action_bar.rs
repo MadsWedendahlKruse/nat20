@@ -26,11 +26,11 @@ use nat20_core::{
     },
     engine::{
         action_prompt::{ActionData, ActionPromptKind},
+        engine_state::EngineState,
         event::{
             CallbackResult, EventCallback, EventFilter, EventKind, EventKindTag, EventListener,
             EventListenerId, ListenerSource,
         },
-        engine_state::EngineState,
     },
     registry::registry::EffectsRegistry,
     systems::{
@@ -187,6 +187,7 @@ impl RenderableMutWithContext<&mut EngineState> for ActionBarWindow {
 
         disabled_token.end();
 
+        // TODO: Only works if you close the Action Bar, not if you just switch to another entity
         if !opened {
             gui_state.selected_entity.take();
             engine_state
@@ -395,8 +396,13 @@ impl ActionBarWindow {
 
             if ui.is_item_hovered_with_flags(HoveredFlags::ALLOW_WHEN_DISABLED) {
                 ui.tooltip(|| {
-                    let (contexts_usability, first_usable_context) =
-                        usable_contexts(engine_state, self.actor(), action, None, contexts_and_costs);
+                    let (contexts_usability, first_usable_context) = usable_contexts(
+                        engine_state,
+                        self.actor(),
+                        action,
+                        None,
+                        contexts_and_costs,
+                    );
 
                     let context_index = first_usable_context.unwrap_or(0);
                     let (context, cost) = &contexts_and_costs[context_index];
@@ -526,7 +532,8 @@ impl ActionBarWindow {
         ui.separator();
 
         if let Some(context_index) = selected_context {
-            self.builder.context_index(&engine_state.world, context_index);
+            self.builder
+                .context_index(&engine_state.world, context_index);
         }
 
         self.right_click_cancel(ui, gui_state, engine_state);
@@ -563,7 +570,8 @@ impl ActionBarWindow {
         };
         let num_targets = action.targets.len();
 
-        let targeting_context = systems::actions::targeting_context_data(&engine_state.world, action);
+        let targeting_context =
+            systems::actions::targeting_context_data(&engine_state.world, action);
 
         let mut submit = Self::render_targeting_ui(ui, action, &targeting_context);
 
@@ -797,7 +805,13 @@ impl ActionBarWindow {
                         *submit = true;
                     }
                 } else {
-                    self.handle_single_target(ui, gui_state, engine_state, submit, cursor_ray_result);
+                    self.handle_single_target(
+                        ui,
+                        gui_state,
+                        engine_state,
+                        submit,
+                        cursor_ray_result,
+                    );
                 }
             }
         }
@@ -1113,7 +1127,13 @@ fn render_target_chance_tooltips(
     for phase in action_def.kind().phases(action.variant.as_ref()) {
         match &phase.condition {
             ActionCondition::AttackRoll(attack_roll) => {
-                render_attack_hit_chance_tooltip(ui, engine_state, action, entity.id(), attack_roll);
+                render_attack_hit_chance_tooltip(
+                    ui,
+                    engine_state,
+                    action,
+                    entity.id(),
+                    attack_roll,
+                );
             }
             ActionCondition::SavingThrow(saving_throw) => {
                 render_save_success_chance_tooltip(

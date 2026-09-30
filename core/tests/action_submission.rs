@@ -20,11 +20,10 @@ use nat20_core::{
         items::equipment::{slots::EquipmentSlot, weapon::WeaponKind},
         resource::{RechargeRule, ResourceAmount, ResourceAmountMap},
         spells::{concentration::ConcentrationError, spellbook::SpellSource},
-        time::TurnBoundary,
     },
     engine::{
         action_prompt::{ActionData, ActionDecisionKind, ActionError},
-        event::{Event, EventKind},
+        event::{Event, EventId, EventKind},
     },
     systems::{
         actions::{ActionUsabilityError, ReactionUsabilityError, VariantUsabilityError},
@@ -454,11 +453,7 @@ fn reaction_no_trigger_event(mut scenario: Scenario) {
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Reaction {
-        // Make a random event just to have something in the `event` field
-        event: Event::new(EventKind::TurnBoundary {
-            entity: action.actor.clone(),
-            boundary: TurnBoundary::End,
-        }),
+        event: EventId::new_v4(),
         reactor: action.actor.id(),
         choice: Some(action),
     });
@@ -534,11 +529,7 @@ fn reaction_no_pending_event(mut scenario: Scenario) {
     .with_trigger_event(trigger.id);
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Reaction {
-        // Make a random event just to have something in the `event` field
-        event: Event::new(EventKind::TurnBoundary {
-            entity: action.actor.clone(),
-            boundary: TurnBoundary::End,
-        }),
+        event: EventId::new_v4(),
         reactor: action.actor.id(),
         choice: Some(action),
     });

@@ -1,4 +1,5 @@
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     engine::engine_state::EngineState,
@@ -11,7 +12,8 @@ use crate::{
 /// be updated each tick (see [`self::update`]). Note that the order of the variants
 /// is important, as it defines the order in which they will be updated, e.g. projectiles
 /// are updated before creatures, so that they can hit them in the same tick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EntityKind {
     Projectile,
     Character,

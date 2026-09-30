@@ -152,7 +152,8 @@ impl TargetingContext {
 
                     TargetInstance::Point(point) => {
                         let actor_position =
-                            systems::geometry::get_foot_position(&engine_state.world, actor).unwrap();
+                            systems::geometry::get_foot_position(&engine_state.world, actor)
+                                .unwrap();
                         Length::new::<meter>((point - actor_position).norm())
                     }
                 };
@@ -669,7 +670,8 @@ pub enum TargetFilter {
     Area(AreaFilter),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TargetInstance {
     Entity {
         entity: EntityIdentifier,

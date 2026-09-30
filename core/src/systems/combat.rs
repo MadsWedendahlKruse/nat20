@@ -1,9 +1,10 @@
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 
 use crate::engine::{encounter::EncounterId, engine_state::EngineState};
 
 // TODO: Not sure where this should live
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum CombatState {
     #[default]
     OutOfCombat,

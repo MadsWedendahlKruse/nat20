@@ -2,6 +2,7 @@
 
 use std::{collections::HashMap, ops::Deref};
 
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uom::si::{f32::Length, length::meter};
 
@@ -15,7 +16,7 @@ use crate::components::modifier::ModifierSource;
 /// and remaining movement is retrieved from [`EffectiveSpeed`] instead, which is
 /// a wrapper where all the effect hooks have been applied. This can be grabbed via
 /// [`crate::systems::movement::speed`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Speed {
     flat: HashMap<ModifierSource, f32>,
     multipliers: HashMap<ModifierSource, f32>,

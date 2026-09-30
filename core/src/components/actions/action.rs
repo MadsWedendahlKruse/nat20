@@ -597,7 +597,8 @@ impl PhaseOutcomes {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ActionConditionResolution {
     Unconditional,
     Conditional {

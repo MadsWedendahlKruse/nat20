@@ -10,7 +10,7 @@
     ],
     "end_conditions": [
         {
-            "event": {
+            "event_filter": {
                 "d20_check": {
                     "kind": "attack_roll",
                     "roller": "applier",

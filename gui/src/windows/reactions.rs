@@ -5,8 +5,8 @@ use nat20_core::{
     components::{activity::Activity, id::Name},
     engine::{
         action_prompt::{ActionData, ActionDecision, ActionDecisionKind, ActionPromptId},
-        event::Event,
         engine_state::EngineState,
+        event::Event,
     },
     systems,
 };
@@ -175,7 +175,7 @@ impl RenderableMutWithContext<&mut EngineState> for ReactionsWindow {
                             action: ActionDecision {
                                 response_to: *prompt_id,
                                 kind: ActionDecisionKind::Reaction {
-                                    event: event.clone(),
+                                    event: event.id,
                                     reactor: *reactor,
                                     choice,
                                 },

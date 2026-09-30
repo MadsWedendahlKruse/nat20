@@ -117,7 +117,7 @@ impl_string_schema!(
     "examples": ["1d8", "2d6"]
 );
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiceSetResult {
     dice: DiceSet,
     rolls: Vec<u32>,

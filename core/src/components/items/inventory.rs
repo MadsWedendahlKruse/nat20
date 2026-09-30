@@ -1,5 +1,5 @@
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::components::{
     id::{EffectId, IdProvider, ItemId},
@@ -109,7 +109,7 @@ impl_into_item_instance! {
     EquipmentItem => Equipment,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inventory {
     items: Vec<ItemId>,
     money: MonetaryValue,

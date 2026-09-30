@@ -117,31 +117,24 @@ fn register_end_conditions(
     if let Some(parent_instance) = effects(&engine_state.world, target).get(parent_instance) {
         // End conditions can come from the applying action (e.g. Hold Person's
         // save DC) or from the effect definition itself (e.g. Rage)
-        let end_conditions = parent_instance
+        let end_conditions = &parent_instance
             .end_condition
             .iter()
-            .cloned()
-            .chain(
-                parent_instance
-                    .effect()
-                    .end_conditions
-                    .iter()
-                    .map(|template| template.instantiate(applier, target)),
-            )
+            .chain(parent_instance.effect().end_conditions.iter())
             .collect::<Vec<_>>();
 
         for end_condition in end_conditions {
             engine_state.event_dispatcher.register_listener(
                 EventListener::new(
-                    end_condition.event_filter,
-                    end_condition.callback,
+                    end_condition.event_filter.instantiate(applier, target),
+                    end_condition.on_trigger.callback(),
                     ListenerSource::EffectInstance {
                         id: parent_instance.instance_id,
                         entity: target,
                     },
                     false,
                 )
-                .with_kinds(end_condition.kinds),
+                .with_kinds(end_condition.event_filter.kinds()),
             );
         }
     }

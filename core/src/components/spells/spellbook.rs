@@ -239,7 +239,7 @@ pub enum SpellbookError {
     NotFound,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spellbook {
     /// Per-class spellcasting state.
     class_states: HashMap<ClassAndSubclass, ClassSpellcastingState>,

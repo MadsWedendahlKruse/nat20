@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use hecs::{Entity, World};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
@@ -44,7 +45,7 @@ pub enum TryEquipError {
     NoSlotAvailable,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Loadout {
     equipment: HashMap<EquipmentSlot, ItemId>,
     /// Persistent per-weapon-kind attack roll checks, same structure as

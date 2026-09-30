@@ -93,7 +93,7 @@ impl_string_schema!(
     "examples": ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
 );
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AbilityScore {
     pub ability: Ability,
     pub base: i32,
@@ -156,7 +156,7 @@ pub struct AbilityScoreDistribution {
     pub plus_1_bonus: Ability,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AbilityScoreMap {
     pub scores: HashMap<Ability, AbilityScore>,
 }

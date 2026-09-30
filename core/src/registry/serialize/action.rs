@@ -12,6 +12,7 @@ use crate::{
             ActionVariant, DamageOnFailure, PayloadDelivery, PhaseRequirement, PhaseTargets,
             TargetUsabilityFunction,
         },
+        effects::effect::EffectInstanceTemplate,
         id::{ActionId, ActionVariantId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
     },
@@ -22,7 +23,6 @@ use crate::{
         serialize::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
-            effect::EffectInstanceDefinition,
             parser::{Evaluable, EvaluationError},
             quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
             reaction::{ReactionBodyDefinition, ReactionTriggerDefinition},
@@ -333,7 +333,7 @@ pub enum ActionPayloadComponentDefinition {
         damage: DamageEquation,
     },
     Effect {
-        effect: EffectInstanceDefinition,
+        effect: EffectInstanceTemplate,
     },
     Healing {
         healing: HealEquation,
@@ -361,7 +361,7 @@ impl From<ActionPayloadComponentDefinition> for ActionPayloadComponent {
                 damage_on_failure: damage_on_failure.map(Into::into),
             },
             ActionPayloadComponentDefinition::Effect { effect } => {
-                ActionPayloadComponent::Effect(effect.into())
+                ActionPayloadComponent::Effect(effect)
             }
             ActionPayloadComponentDefinition::Healing { healing } => {
                 ActionPayloadComponent::Healing(healing.function)

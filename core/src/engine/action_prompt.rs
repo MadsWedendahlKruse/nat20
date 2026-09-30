@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -59,21 +60,22 @@ impl ActionPrompt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ActionDecisionKind {
     Action {
         action: ActionData,
     },
     Reaction {
         /// The event that triggered the reaction
-        event: Event,
+        event: EventId,
         reactor: Entity,
         /// The chosen reaction. None if the entity chooses not to react
         choice: Option<ActionData>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionDecision {
     pub response_to: ActionPromptId,
     pub kind: ActionDecisionKind,
@@ -181,13 +183,7 @@ impl ActionPrompt {
                     choice,
                 },
             ) => {
-                compare_fields(
-                    prompt_event.id,
-                    decision_event.id,
-                    "event_id",
-                    self,
-                    decision,
-                )?;
+                compare_fields(prompt_event.id, *decision_event, "event_id", self, decision)?;
 
                 if let Some(options) = options.get(reactor) {
                     if let Some(choice) = choice
@@ -268,7 +264,7 @@ impl ActionDecision {
 pub type ActionExecutionInstanceId = Uuid;
 
 // TODO: struct name?
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionData {
     pub instance_id: ActionExecutionInstanceId,
     pub actor: EntityIdentifier,

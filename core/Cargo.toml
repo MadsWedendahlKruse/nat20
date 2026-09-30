@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 enum-iterator = "2.1.0"
-hecs = { version = "0.10.5", features = ["std", "macros", "serde"] }
+hecs = { version = "0.10.5", features = ["std", "macros", "serde", "row-serialize"] }
 rand = "0.9.1"
 rstest = "0.25.0"
 strum = { version = "0.27.1", features = ["derive"] }
@@ -29,7 +29,7 @@ strsim = "0.11.1"
 kinded = "0.5.0"
 enum_dispatch = "0.3.13"
 schemars = { version = "1.2.1", features = ["uuid1"] }
-indexmap = "2.14.0"
+indexmap = {version = "2.14.0", features = ["serde"] }
 
 [lib]
 name = "nat20_core"

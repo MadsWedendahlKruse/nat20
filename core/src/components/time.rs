@@ -82,7 +82,7 @@ impl TimeDuration {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityClock {
     mode: TimeMode,
     local_time_seconds: f32,

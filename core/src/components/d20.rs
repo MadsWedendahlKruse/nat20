@@ -55,7 +55,7 @@ pub enum AdvantageType {
     Disadvantage,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdvantageTracker {
     sources: IndexMap<ModifierSource, AdvantageType>,
     /// Set when the roll deliberately gives up Advantage (e.g. Brutal Strike).
@@ -134,12 +134,13 @@ impl D20CheckOutcome {
 }
 
 // TODO: Why do we call it SavingTHROW and AttackROLL, but not SkillCHECK?
-#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Serialize, Deserialize)]
 #[strum_discriminants(
     name(D20CheckKindTag),
     derive(Hash, Serialize, Deserialize, JsonSchema),
     serde(rename_all = "snake_case")
 )]
+#[serde(rename_all = "snake_case")]
 pub enum D20CheckKind {
     SavingThrow(SavingThrowKind),
     Skill(Skill),
@@ -156,7 +157,7 @@ impl D20CheckKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct D20Check {
     kind: D20CheckKind,
     action: Option<ActionId>,
@@ -315,8 +316,11 @@ impl D20Check {
             self.proficiency.bonus(proficiency_bonus) as i32,
         );
 
-        systems::effects::effects(&engine_state.world, entity)
-            .pre_d20_check(engine_state, entity, self);
+        systems::effects::effects(&engine_state.world, entity).pre_d20_check(
+            engine_state,
+            entity,
+            self,
+        );
     }
 
     pub fn roll_hooks(&self, engine_state: &EngineState, entity: Entity) -> D20CheckResult {
@@ -457,7 +461,7 @@ pub enum D20Error {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct D20CheckResult {
     pub check: D20Check,
     pub rolls: Vec<u8>,
@@ -582,7 +586,7 @@ pub trait D20CheckKey: Eq + Hash + IntoEnumIterator + Copy {}
 
 impl<T: Eq + Hash + IntoEnumIterator + Copy> D20CheckKey for T {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct D20CheckMap<K>
 where
     K: D20CheckKey,
@@ -659,7 +663,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum D20CheckDC {
     SavingThrow {
         saving_throw: SavingThrowKind,

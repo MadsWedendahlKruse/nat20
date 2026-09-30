@@ -62,134 +62,13 @@ impl RenderableMutWithContext<&mut EngineState> for EngineStateDebugWindow {
 
                 ui.separator();
 
-                if ui.collapsing_header("Entities", TreeNodeFlags::empty()) {
-                    let entities = engine_state
-                        .world
-                        .query::<&EntityKind>()
-                        .iter()
-                        .filter_map(|(entity, kind)| {
-                            if kind.is_creature() {
-                                Some(entity)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>();
+                render_entities(ui, engine_state);
 
-                    for entity in entities {
-                        ui.text(format!("Entity {:?}", entity));
+                render_prompt_manager(ui, engine_state);
 
-                        let activity_state = systems::helpers::get_component_mut::<ActivityState>(
-                            &mut engine_state.world,
-                            entity,
-                        );
+                render_event_log(ui, engine_state);
 
-                        ui.text(format!("Activity State: {:#?}", activity_state));
-
-                        ui.separator();
-                    }
-                }
-
-                if ui.collapsing_header("Interaction Engine", TreeNodeFlags::empty()) {
-                    ui.indent();
-                    for (id, scope) in engine_state.prompts.scopes() {
-                        if ui.collapsing_header(format!("Session {:?}", id), TreeNodeFlags::empty())
-                        {
-                            ui.indent();
-                            if ui.collapsing_header("Pending Prompts", TreeNodeFlags::empty()) {
-                                for prompt in scope.pending_prompts() {
-                                    ui.indent();
-                                    if ui.collapsing_header(
-                                        format!("Prompt {:?}", prompt.id),
-                                        TreeNodeFlags::empty(),
-                                    ) {
-                                        ui.text(format!("{:#?}", prompt));
-                                    }
-                                    ui.unindent();
-                                }
-                            }
-
-                            if ui.collapsing_header("Decisions", TreeNodeFlags::empty()) {
-                                for prompt in scope.pending_prompts() {
-                                    ui.indent();
-                                    if ui.collapsing_header(
-                                        format!("Decisions for prompt {:?}", prompt.id),
-                                        TreeNodeFlags::empty(),
-                                    ) {
-                                        while let Some(decisions) =
-                                            scope.decisions_for_prompt(&prompt.id)
-                                        {
-                                            ui.text(format!("{:#?}", decisions));
-                                        }
-                                    }
-                                    ui.unindent();
-                                }
-                            }
-
-                            if ui.collapsing_header("Pending Events", TreeNodeFlags::empty()) {
-                                for (i, event) in scope.pending_events().iter().enumerate() {
-                                    ui.indent();
-                                    if ui.collapsing_header(
-                                        format!("Event {}: {:?}", i, event.event.id),
-                                        TreeNodeFlags::empty(),
-                                    ) {
-                                        ui.text(format!("{:#?}", event));
-                                    }
-                                    ui.unindent();
-                                }
-                            }
-                            ui.unindent();
-                        }
-                    }
-                    ui.unindent();
-                }
-
-                if ui.collapsing_header("Event Log", TreeNodeFlags::empty()) {
-                    ui.indent();
-                    if ui.collapsing_header("Events", TreeNodeFlags::empty()) {
-                        for (i, event) in engine_state.event_log.events.iter().enumerate() {
-                            ui.indent();
-                            if ui.collapsing_header(
-                                format!("Event {}: {:?}", i, event.id),
-                                TreeNodeFlags::empty(),
-                            ) {
-                                ui.text(format!("{:#?}", event));
-                            }
-                            ui.unindent();
-                        }
-                    }
-                    ui.unindent();
-
-                    ui.indent();
-                    if ui.collapsing_header("Reactors", TreeNodeFlags::empty()) {
-                        for (event_id, reactors) in engine_state.event_log.reactors.iter() {
-                            ui.indent();
-                            if ui.collapsing_header(
-                                format!("Event {:?} Reactors", event_id),
-                                TreeNodeFlags::empty(),
-                            ) {
-                                for reactor in reactors {
-                                    ui.text(format!("{:?}", reactor));
-                                }
-                            }
-                            ui.unindent();
-                        }
-                    }
-                    ui.unindent();
-
-                    ui.indent();
-                    if ui.collapsing_header("Action Events", TreeNodeFlags::empty()) {
-                        for (action_instance_id, event_id) in
-                            engine_state.event_log.action_events.iter()
-                        {
-                            ui.text(format!(
-                                "Action Instance {:?} -> Event {:?}",
-                                action_instance_id, event_id
-                            ));
-                        }
-                    }
-                    ui.unindent();
-                }
+                render_event_dispatcher(ui, engine_state);
 
                 // TODO: Since these are no longer stored on the EngineState, should
                 // they live somewhere else?
@@ -224,5 +103,148 @@ impl RenderableMutWithContext<&mut EngineState> for EngineStateDebugWindow {
                 }
             },
         );
+    }
+}
+
+fn render_entities(ui: &imgui::Ui, engine_state: &mut EngineState) {
+    if ui.collapsing_header("Entities", TreeNodeFlags::empty()) {
+        let entities = engine_state
+            .world
+            .query::<&EntityKind>()
+            .iter()
+            .filter_map(|(entity, kind)| {
+                if kind.is_creature() {
+                    Some(entity)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for entity in entities {
+            ui.text(format!("Entity {:?}", entity));
+
+            let activity_state = systems::helpers::get_component_mut::<ActivityState>(
+                &mut engine_state.world,
+                entity,
+            );
+
+            ui.text(format!("Activity State: {:#?}", activity_state));
+
+            ui.separator();
+        }
+    }
+}
+
+fn render_prompt_manager(ui: &imgui::Ui, engine_state: &mut EngineState) {
+    if ui.collapsing_header("Prompt Manager", TreeNodeFlags::empty()) {
+        ui.indent();
+        for (id, scope) in engine_state.prompts.scopes() {
+            if ui.collapsing_header(format!("Scope {:?}", id), TreeNodeFlags::empty()) {
+                ui.indent();
+                if ui.collapsing_header("Pending Prompts", TreeNodeFlags::empty()) {
+                    for prompt in scope.pending_prompts() {
+                        ui.indent();
+                        if ui.collapsing_header(
+                            format!("Prompt {:?}", prompt.id),
+                            TreeNodeFlags::empty(),
+                        ) {
+                            ui.text(format!("{:#?}", prompt));
+                        }
+
+                        if ui.collapsing_header(
+                            format!("Decisions for prompt {:?}", prompt.id),
+                            TreeNodeFlags::empty(),
+                        ) {
+                            if let Some(decisions) = scope.decisions_for_prompt(&prompt.id) {
+                                ui.text(format!("{:#?}", decisions));
+                            }
+                        }
+                        ui.unindent();
+                    }
+                }
+
+                if ui.collapsing_header("Pending Events", TreeNodeFlags::empty()) {
+                    for (i, event) in scope.pending_events().iter().enumerate() {
+                        ui.indent();
+                        if ui.collapsing_header(
+                            format!("Event {}: {:?}", i, event.event.id),
+                            TreeNodeFlags::empty(),
+                        ) {
+                            ui.text(format!("{:#?}", event));
+                        }
+                        ui.unindent();
+                    }
+                }
+                ui.unindent();
+            }
+        }
+        ui.unindent();
+    }
+}
+
+fn render_event_log(ui: &imgui::Ui, engine_state: &mut EngineState) {
+    if ui.collapsing_header("Event Log", TreeNodeFlags::empty()) {
+        ui.indent();
+        if ui.collapsing_header("Events", TreeNodeFlags::empty()) {
+            for (i, event) in engine_state.event_log.events.iter().enumerate() {
+                ui.indent();
+                if ui.collapsing_header(
+                    format!("Event {}: {:?}", i, event.id),
+                    TreeNodeFlags::empty(),
+                ) {
+                    ui.text(format!("{:#?}", event));
+                }
+                ui.unindent();
+            }
+        }
+
+        if ui.collapsing_header("Reactors", TreeNodeFlags::empty()) {
+            for (event_id, reactors) in engine_state.event_log.reactors.iter() {
+                ui.indent();
+                if ui.collapsing_header(
+                    format!("Event {:?} Reactors", event_id),
+                    TreeNodeFlags::empty(),
+                ) {
+                    for reactor in reactors {
+                        ui.text(format!("{:?}", reactor));
+                    }
+                }
+                ui.unindent();
+            }
+        }
+
+        if ui.collapsing_header("Action Events", TreeNodeFlags::empty()) {
+            for (action_instance_id, event_id) in engine_state.event_log.action_events.iter() {
+                ui.text(format!(
+                    "Action Instance {:?} -> Event {:?}",
+                    action_instance_id, event_id
+                ));
+            }
+        }
+        ui.unindent();
+    }
+}
+
+fn render_event_dispatcher(ui: &imgui::Ui, engine_state: &mut EngineState) {
+    if ui.collapsing_header("Event Dispatcher", TreeNodeFlags::empty()) {
+        ui.indent();
+
+        if ui.collapsing_header("Listeners", TreeNodeFlags::empty()) {
+            for (listener_id, listener) in engine_state.event_dispatcher.listeners() {
+                ui.indent();
+                if ui.collapsing_header(
+                    format!("Listener {:?}:", listener_id),
+                    TreeNodeFlags::empty(),
+                ) {
+                    ui.text(format!("source: {:#?}", listener.source));
+                    ui.text(format!("kinds: {:#?}", listener.kinds));
+                    ui.text(format!("one_shot: {:#?}", listener.one_shot));
+                }
+                ui.unindent();
+            }
+        }
+
+        ui.unindent();
     }
 }

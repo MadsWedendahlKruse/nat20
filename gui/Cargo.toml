@@ -17,7 +17,7 @@ winit = { version = "0.30", features = ["rwh_06"] }
 nat20_core = { path = "../core" }
 strum = { version = "0.27.1", features = ["derive"] }
 bytemuck = { version = "1", features = ["derive"] }
-hecs = { version = "0.10.5", features = ["std", "macros", "serde"] }
+hecs = { version = "0.10.5", features = ["std", "macros", "serde", "row-serialize"] }
 glam = "0.30.8"
 parry3d = "0.24"
 obj-rs = "0.7.4"

@@ -1,7 +1,7 @@
 use std::{ops::Deref, vec};
 
 use hecs::{Entity, World};
-use imgui::TreeNodeFlags;
+use imgui::{MouseButton, TreeNodeFlags};
 use nat20_core::{
     components::{
         ability::{Ability, AbilityScore, AbilityScoreMap},
@@ -40,6 +40,7 @@ use nat20_core::{
     systems::{self, geometry::DisplacementTemplate},
 };
 use strum::IntoEnumIterator;
+use tracing::debug;
 use uom::si::{length::meter, mass::kilogram};
 
 use crate::{
@@ -553,12 +554,21 @@ impl ImguiRenderableMutWithContext<&ResourceMap> for Spellbook {
 pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &EffectsMap) {
     let _root_id = ui.push_id(effect.effect_id.to_string());
 
+    // Render every frame in case it has been opened
+    ui.popup("effect_tooltip_debug", || {
+        let debug_text = format!("{:#?}", effect);
+        let size = ui.calc_text_size(&debug_text);
+        ui.child_window("Effect Debug Info")
+            .size([size[0] + 10.0, f32::min(size[1], 400.0)])
+            .build(|| {
+                ui.text(debug_text);
+            });
+    });
+
     if effect.children.is_empty() {
         ui.text(effect.effect_id.to_string());
         if ui.is_item_hovered() {
-            ui.tooltip(|| {
-                render_effect_tooltip(ui, effect);
-            });
+            render_effect_tooltip(ui, effect);
         }
         return;
     }
@@ -574,17 +584,21 @@ pub fn render_effect(ui: &imgui::Ui, effect: &EffectInstance, all_effects: &Effe
         });
 
     if ui.is_item_hovered() {
-        ui.tooltip(|| {
-            render_effect_tooltip(ui, effect);
-        });
+        render_effect_tooltip(ui, effect);
     }
 }
 
 fn render_effect_tooltip(ui: &imgui::Ui, effect: &EffectInstance) {
-    ui.separator_with_text(effect.effect_id.to_string());
-    TextSegment::new(effect.effect().description.as_str(), TextKind::Details)
-        .wrap_text(true)
-        .render(ui);
+    if ui.is_mouse_clicked(MouseButton::Right) {
+        ui.open_popup("effect_tooltip_debug");
+    }
+
+    ui.tooltip(|| {
+        ui.separator_with_text(effect.effect_id.to_string());
+        TextSegment::new(effect.effect().description.as_str(), TextKind::Details)
+            .wrap_text(true)
+            .render(ui);
+    });
 }
 
 impl ImguiRenderableWithContext<&TimeMode> for EffectsMap {
@@ -1379,7 +1393,6 @@ impl ImguiRenderable for ModifierSource {
             ModifierSource::Background(_background_id) => todo!(),
             ModifierSource::Item(_item_id) => todo!(),
             ModifierSource::ClassFeature(_class_id) => todo!(),
-            ModifierSource::ClassLevel(_class_id) => todo!(),
             ModifierSource::SubclassFeature(_subclass_id) => todo!(),
             ModifierSource::Action(_action_id) => todo!(),
             ModifierSource::Effect(effect_id) => {

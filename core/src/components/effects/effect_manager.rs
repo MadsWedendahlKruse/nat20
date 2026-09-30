@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
@@ -23,7 +24,7 @@ use crate::{
     systems,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EffectManager {
     pub effects: EffectsMap,
     pub marked_for_removal: HashSet<EffectInstanceId>,

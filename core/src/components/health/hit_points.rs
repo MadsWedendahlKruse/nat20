@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::components::modifier::ModifierSource;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporaryHitPoints {
     amount: u32,
     source: ModifierSource,
@@ -32,7 +34,7 @@ impl Default for TemporaryHitPoints {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HitPoints {
     current: u32,
     max: u32,

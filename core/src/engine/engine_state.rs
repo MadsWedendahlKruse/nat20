@@ -330,7 +330,7 @@ impl EngineState {
                     choice,
                 } => {
                     self.event_log_mut(*reactor)
-                        .record_reaction(event.id, *reactor);
+                        .record_reaction(event.clone(), *reactor);
 
                     // Declined, reactor is no longer a blocker on the pending event
                     let Some(reaction_data) = choice else {
@@ -340,7 +340,7 @@ impl EngineState {
                         );
                         self.prompts
                             .scope_mut(scope_id)
-                            .clear_blocker(&event.id, *entity);
+                            .clear_blocker(&event, *entity);
                         continue;
                     };
 

@@ -1,4 +1,3 @@
-use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -9,6 +8,7 @@ use hecs::Entity;
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -28,13 +28,10 @@ use crate::{
         skill::Skill,
         time::{TimeDuration, TimeStep, TurnBoundary},
     },
-    engine::event::{EventCallback, EventFilter, EventKind, EventKindTag},
-    registry::{
-        registry::EffectsRegistry,
-        serialize::effect::{
-            EffectDefinition, EffectEventFilterDefinition, EffectInstanceDefinition,
-        },
+    engine::event::{
+        CallbackResult, EventCallback, EventFilter, EventKind, EventKindTag, ListenerSource,
     },
+    registry::{registry::EffectsRegistry, serialize::effect::EffectDefinition},
     systems,
 };
 
@@ -56,7 +53,7 @@ pub struct Effect {
     /// Heavy armor), instantiated for every application. Per-cast conditions
     /// (e.g. Hold Person's repeat save against the caster's DC) live on the
     /// `EffectInstanceTemplate` instead.
-    pub end_conditions: Vec<EffectEndConditionTemplate>,
+    pub end_conditions: Vec<EffectEndCondition>,
 
     // TODO: Do we need to differentiate between when an effect explicitly expires and when
     // the effect is removed from the character?
@@ -147,7 +144,7 @@ pub enum EffectStackingPolicy {
 
 pub type EffectInstanceId = Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectInstance {
     pub instance_id: EffectInstanceId,
     pub effect_id: EffectId,
@@ -264,13 +261,12 @@ impl EffectInstance {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(from = "EffectInstanceDefinition")]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EffectInstanceTemplate {
     pub effect_id: EffectId,
     pub lifetime: EffectLifetimeTemplate,
     #[serde(default)]
-    pub end_condition: Option<EffectEndConditionTemplate>,
+    pub end_condition: Option<EffectEndCondition>,
 }
 
 impl EffectInstanceTemplate {
@@ -289,9 +285,7 @@ impl EffectInstanceTemplate {
             parent_lifetime,
             Some(applier),
             action_resolution.clone(),
-            self.end_condition
-                .as_ref()
-                .map(|cond| cond.instantiate(applier, target)),
+            self.end_condition.clone(),
         );
         let parent_id = parent_instance.instance_id;
 
@@ -343,7 +337,8 @@ pub enum EffectKind {
     Debuff,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EffectLifetime {
     Permanent,
 
@@ -421,25 +416,16 @@ impl EffectLifetimeTemplate {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EffectEndCondition {
-    /// Event kinds the filter can match
-    pub kinds: Vec<EventKindTag>,
-    pub event_filter: EventFilter,
-    pub callback: EventCallback,
+    /// The filter that determines when this end condition is triggered.
+    pub event_filter: EffectEventFilter,
+    /// The action to perform when this end condition is triggered.
+    pub on_trigger: EffectEndVerb,
 }
 
-impl fmt::Debug for EffectEndCondition {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("EffectEndCondition")
-            .field("event_filter", &"...")
-            .field("callback", &"...")
-            .finish()
-    }
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(from = "EffectEventFilterDefinition")]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum EffectEventFilter {
     TurnBoundary {
         entity: EffectEntiyReference,
@@ -451,9 +437,11 @@ pub enum EffectEventFilter {
     D20Check {
         kind: D20CheckKindTag,
         /// Who makes the roll. `None` matches any roller.
+        #[serde(default)]
         roller: Option<EffectEntiyReference>,
         /// Who the roll is made against. Only attack rolls have a target, so a
         /// filter with `against` never matches saving throws or skill checks.
+        #[serde(default)]
         against: Option<EffectEntiyReference>,
     },
     Script {
@@ -536,29 +524,86 @@ impl EffectEventFilter {
     }
 }
 
-#[derive(Clone)]
-pub struct EffectEndConditionTemplate {
-    pub event_filter: EffectEventFilter,
-    pub callback: EventCallback,
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectEndVerb {
+    /// Remove the effect instance when the event fires
+    Remove,
+    /// Re-roll the applying action's condition and remove the effect on a
+    /// success (e.g. Hold Person's repeat save)
+    RepeatApplyCondition,
 }
 
-impl EffectEndConditionTemplate {
-    pub fn instantiate(&self, applier: Entity, target: Entity) -> EffectEndCondition {
-        EffectEndCondition {
-            kinds: self.event_filter.kinds(),
-            event_filter: self.event_filter.instantiate(applier, target),
-            callback: self.callback.clone(),
+impl EffectEndVerb {
+    pub fn callback(&self) -> EventCallback {
+        match self {
+            EffectEndVerb::Remove => remove_effect_callback(),
+            EffectEndVerb::RepeatApplyCondition => repeat_apply_condition_callback(),
         }
     }
 }
 
-impl fmt::Debug for EffectEndConditionTemplate {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("EffectEndConditionTemplate")
-            .field("event_filter", &"...")
-            .field("callback", &"...")
-            .finish()
-    }
+fn remove_effect_callback() -> EventCallback {
+    EventCallback::new(|engine_state, _event, source| {
+        let ListenerSource::EffectInstance { id, entity } = source else {
+            return CallbackResult::None;
+        };
+        systems::effects::remove_effect(engine_state, *entity, id);
+        CallbackResult::None
+    })
+}
+
+fn repeat_apply_condition_callback() -> EventCallback {
+    EventCallback::new(move |engine_state, event, source| {
+        let ListenerSource::EffectInstance { id, entity } = source.clone() else {
+            return CallbackResult::None;
+        };
+
+        debug!(
+            "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
+            id, entity, event
+        );
+
+        let instance = systems::effects::effects(&engine_state.world, entity)
+            .get(&id)
+            .unwrap()
+            .clone();
+        let instance_id = id;
+
+        match &instance.action_resolution {
+            ActionConditionResolution::Unconditional => { /* No check to repeat */ }
+
+            ActionConditionResolution::Conditional {
+                dc: _dc @ (D20CheckDC::AttackRoll { .. } | D20CheckDC::Skill { .. }),
+                ..
+            } => {
+                // TODO: Is this used anywhere?
+                todo!(
+                    "Repeat apply condition for attack roll or skill check DCs is not yet implemented"
+                );
+            }
+
+            ActionConditionResolution::Conditional {
+                dc: dc @ D20CheckDC::SavingThrow { .. },
+                ..
+            } => {
+                let event = systems::d20::check(engine_state, entity, dc);
+                engine_state.process_event_with_response_callback(
+                    event,
+                    EventCallback::new(move |engine_state, event, _| {
+                        if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind
+                            && result.is_success(dc)
+                        {
+                            systems::effects::remove_effect(engine_state, entity, &instance_id);
+                        }
+                        CallbackResult::None
+                    }),
+                );
+            }
+        }
+
+        CallbackResult::None
+    })
 }
 
 /// Represents an action that is granted by an effect, such as a spell or a special action.

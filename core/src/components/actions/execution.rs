@@ -2,6 +2,7 @@ use core::panic;
 use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
 use crate::{
@@ -25,8 +26,8 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{CallbackResult, Event, EventCallback, EventKind},
         engine_state::EngineState,
+        event::{CallbackResult, Event, EventCallback, EventKind},
     },
     registry::registry::SpellsRegistry,
     systems,
@@ -300,7 +301,8 @@ impl<T> Awaitable<T> {
 }
 
 /// A result delivered to a waiting execution by an event response callback.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ResumePayload {
     Condition(ActionConditionResolution),
     DamageRoll(DamageRollResult),
@@ -641,21 +643,22 @@ impl StepComponent {
                 );
 
                 let actor = action.actor.id();
-                let callback = EventCallback::new(move |engine_state, event, _| match &event.kind {
-                    EventKind::DamageRollResolved { result, .. } => {
-                        systems::helpers::get_component_mut::<ExecutionMailbox>(
-                            &mut engine_state.world,
-                            actor,
-                        )
-                        .replace(ResumePayload::DamageRoll(result.clone()));
+                let callback =
+                    EventCallback::new(move |engine_state, event, _| match &event.kind {
+                        EventKind::DamageRollResolved { result, .. } => {
+                            systems::helpers::get_component_mut::<ExecutionMailbox>(
+                                &mut engine_state.world,
+                                actor,
+                            )
+                            .replace(ResumePayload::DamageRoll(result.clone()));
 
-                        CallbackResult::None
-                    }
-                    _ => panic!(
-                        "Expected DamageRollResolved event in callback, got {:?}",
-                        event.kind
-                    ),
-                });
+                            CallbackResult::None
+                        }
+                        _ => panic!(
+                            "Expected DamageRollResolved event in callback, got {:?}",
+                            event.kind
+                        ),
+                    });
 
                 self.payload_result = Awaitable::Requested;
                 engine_state.process_event_with_response_callback(damage_event, callback);
@@ -779,8 +782,11 @@ impl StepComponent {
         target: Entity,
         healing_amount: ModifierResult,
     ) -> ActionResultComponent {
-        let new_life_state =
-            systems::health::heal(&mut engine_state.world, target, healing_amount.total() as u32);
+        let new_life_state = systems::health::heal(
+            &mut engine_state.world,
+            target,
+            healing_amount.total() as u32,
+        );
 
         ActionResultComponent::Healing(HealingResult {
             healing: healing_amount,
@@ -894,8 +900,11 @@ impl StepComponent {
             }
 
             Displacement::Push { trajectory } | Displacement::Pull { trajectory } => {
-                systems::helpers::get_component_mut::<ActivityState>(&mut engine_state.world, target)
-                    .set_displaced(trajectory.clone());
+                systems::helpers::get_component_mut::<ActivityState>(
+                    &mut engine_state.world,
+                    target,
+                )
+                .set_displaced(trajectory.clone());
 
                 Some(displacement)
             }

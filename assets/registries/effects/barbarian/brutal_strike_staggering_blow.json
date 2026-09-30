@@ -14,7 +14,7 @@
     ],
     "end_conditions": [
         {
-            "event": {
+            "event_filter": {
                 "d20_check": {
                     "kind": "saving_throw",
                     "roller": "target"

@@ -28,9 +28,8 @@ pub enum ArmorType {
     Heavy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-#[derive(Default)]
 pub enum ArmorDexterityBonus {
     #[default]
     Unlimited, // No limit on Dexterity bonus
@@ -46,7 +45,7 @@ impl ArmorDexterityBonus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArmorClass {
     value: FlatModifierMap,
     pub dexterity_bonus: ArmorDexterityBonus,

@@ -1,11 +1,12 @@
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     components::activity::Activity,
     engine::{action_prompt::ActionPrompt, engine_state::EngineState},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PlayerControlledTag;
 
 pub trait AIController: Send + Sync + 'static {

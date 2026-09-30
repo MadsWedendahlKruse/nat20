@@ -3,22 +3,21 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 use strum::IntoEnumIterator;
-use tracing::debug;
 
 use crate::{
     components::{
         ability::AbilityScoreMap,
         actions::action::{ActionConditionResolution, ActionContext, ActionResult},
-        d20::{D20Check, D20CheckDC, D20CheckKey, D20CheckKindTag, D20CheckMap},
+        d20::{D20Check, D20CheckKey, D20CheckMap},
         damage::{
             AttackSource, DamageMitigationEffect, DamageMitigationResult, DamageResistances,
             DamageRoll, DamageRollResult,
         },
         effects::{
             effect::{
-                Effect, EffectEndConditionTemplate, EffectEntiyReference, EffectEventFilter,
+                Effect, EffectEndCondition, EffectEntiyReference, EffectEventFilter,
                 EffectGrantedAction, EffectInstance, EffectInstanceTemplate, EffectKind,
-                EffectLifetime, EffectLifetimeTemplate, EffectStackingPolicy,
+                EffectLifetime, EffectStackingPolicy,
             },
             hooks::{
                 ActionHook, ActionResultHook, ActionUsabilityHook, ArmorClassHook, AttackedHook,
@@ -36,13 +35,9 @@ use crate::{
         skill::{Skill, SkillSet},
         speed::Speed,
         spells::spellbook::Spellbook,
-        time::{TimeDuration, TurnBoundary},
+        time::TimeDuration,
     },
-    engine::{
-        action_prompt::ActionData,
-        event::{CallbackResult, EventCallback, EventKind, EventKindTag, ListenerSource},
-        engine_state::EngineState,
-    },
+    engine::{action_prompt::ActionData, engine_state::EngineState},
     registry::{
         registry::ScriptsRegistry,
         registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
@@ -103,7 +98,7 @@ pub struct EffectDefinition {
     /// application (per-cast conditions live on the applying action's
     /// effect instance instead).
     #[serde(default)]
-    pub end_conditions: Vec<EffectEndConditionDefinition>,
+    pub end_conditions: Vec<EffectEndCondition>,
 
     /// Simple effect modifiers like:
     /// - Ability score changes
@@ -166,11 +161,7 @@ impl From<EffectDefinition> for Effect {
         effect.stacking_policy = definition.stacking_policy;
 
         effect.actions = definition.actions;
-        effect.end_conditions = definition
-            .end_conditions
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        effect.end_conditions = definition.end_conditions;
 
         // 1. Simple persistent modifiers
         // Build on_apply from all modifiers
@@ -408,7 +399,7 @@ impl RegistryReferenceCollector for EffectDefinition {
             }
         }
         for end_condition in &self.end_conditions {
-            if let EffectEventFilterDefinition::Script { script, .. } = &end_condition.event {
+            if let EffectEventFilter::Script { script, .. } = &end_condition.event_filter {
                 collector.add(RegistryReference::Script(
                     script.clone(),
                     ScriptFunction::EventFilter,
@@ -622,8 +613,10 @@ impl EffectModifier {
             }
 
             EffectModifier::Skill { skill: modifier } => {
-                let skills =
-                    systems::helpers::get_component_mut::<SkillSet>(&mut engine_state.world, entity);
+                let skills = systems::helpers::get_component_mut::<SkillSet>(
+                    &mut engine_state.world,
+                    entity,
+                );
                 Self::apply_d20_check_modifier(&mut *skills, modifier, source, phase);
             }
 
@@ -911,7 +904,12 @@ fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
             let script = script.clone();
             move |engine_state, entity, check| {
                 if script_defines(&script, ScriptFunction::D20AbilityHook) {
-                    systems::scripts::evaluate_d20_ability_hook(&script, engine_state, entity, check)
+                    systems::scripts::evaluate_d20_ability_hook(
+                        &script,
+                        engine_state,
+                        entity,
+                        check,
+                    )
                 } else {
                     None
                 }
@@ -929,7 +927,12 @@ fn build_d20_check_hooks(script: &ScriptId) -> D20CheckHooks {
             let script = script.clone();
             move |engine_state, entity, result| {
                 if script_defines(&script, ScriptFunction::D20CheckResultHook) {
-                    systems::scripts::evaluate_d20_result_hook(&script, engine_state, entity, result);
+                    systems::scripts::evaluate_d20_result_hook(
+                        &script,
+                        engine_state,
+                        entity,
+                        result,
+                    );
                 }
             }
         }),
@@ -981,7 +984,12 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
                           attacker: Entity,
                           check: &mut D20Check| {
                         systems::scripts::evaluate_attacked_hook(
-                            &script_id, engine_state, effect, victim, attacker, check,
+                            &script_id,
+                            engine_state,
+                            effect,
+                            victim,
+                            attacker,
+                            check,
                         );
                     },
                 )
@@ -1165,7 +1173,9 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
             ArmorClassHookDefinition::Script { script } => {
                 let script_id = script.clone();
                 Arc::new(
-                    move |engine_state: &EngineState, entity: Entity, armor_class: &mut ArmorClass| {
+                    move |engine_state: &EngineState,
+                          entity: Entity,
+                          armor_class: &mut ArmorClass| {
                         systems::scripts::evaluate_armor_class_hook(
                             &script_id,
                             engine_state,
@@ -1200,7 +1210,11 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
                 let script_id = script.clone();
                 Arc::new(
                     move |engine_state: &mut EngineState, action_data: &ActionData| {
-                        systems::scripts::evaluate_action_hook(&script_id, engine_state, action_data);
+                        systems::scripts::evaluate_action_hook(
+                            &script_id,
+                            engine_state,
+                            action_data,
+                        );
                     },
                 )
             }
@@ -1257,7 +1271,9 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
 
     fn combine_hooks(hooks: Vec<ActionResultHook>) -> ActionResultHook {
         Arc::new(
-            move |engine_state: &mut EngineState, action_data: &ActionData, results: &ActionResult| {
+            move |engine_state: &mut EngineState,
+                  action_data: &ActionData,
+                  results: &ActionResult| {
                 for hook in &hooks {
                     hook(engine_state, action_data, results);
                 }
@@ -1329,7 +1345,11 @@ impl HookEffect<ActionUsabilityHook> for ActionUsabilityHookDefinition {
                           action: &ActionId,
                           context: &ActionContext| {
                         systems::scripts::evaluate_action_usability_hook(
-                            &script_id, engine_state, entity, action, context,
+                            &script_id,
+                            engine_state,
+                            entity,
+                            action,
+                            context,
                         )
                     },
                 )
@@ -1477,7 +1497,11 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
                           killer: Option<Entity>,
                           applier: Option<Entity>| {
                         systems::scripts::evaluate_death_hook(
-                            &script_id, engine_state, victim, killer, applier,
+                            &script_id,
+                            engine_state,
+                            victim,
+                            killer,
+                            applier,
                         );
                     },
                 )
@@ -1516,7 +1540,11 @@ impl HookEffect<PreDeathHook> for PreDeathHookDefinition {
                           killer: Option<Entity>,
                           applier: Option<Entity>| {
                         systems::scripts::evaluate_pre_death_hook(
-                            &script_id, engine_state, victim, killer, applier,
+                            &script_id,
+                            engine_state,
+                            victim,
+                            killer,
+                            applier,
                         );
                     },
                 )
@@ -1551,7 +1579,12 @@ impl HookEffect<RestHook> for RestHookDefinition {
                 let script_id = script.clone();
                 Arc::new(
                     move |engine_state: &mut EngineState, entity: Entity, kind: &RestKind| {
-                        systems::scripts::evaluate_rest_hook(&script_id, engine_state, entity, kind);
+                        systems::scripts::evaluate_rest_hook(
+                            &script_id,
+                            engine_state,
+                            entity,
+                            kind,
+                        );
                     },
                 )
             }
@@ -1610,7 +1643,10 @@ impl HookEffect<SpeedHook> for SpeedHookDefinition {
                 Arc::new(
                     move |engine_state: &EngineState, entity: Entity, speed: &mut Speed| {
                         systems::scripts::evaluate_speed_hook(
-                            &script_id, engine_state, entity, speed,
+                            &script_id,
+                            engine_state,
+                            entity,
+                            speed,
                         );
                     },
                 )
@@ -1645,7 +1681,12 @@ impl HookEffect<EffectLifetimeHook> for EffectLifetimeHookDefinition {
                           effect_id: &EffectId,
                           lifetime: &mut EffectLifetime| {
                         systems::scripts::evaluate_effect_lifetime_hook(
-                            &script_id, engine_state, applier, target, effect_id, lifetime,
+                            &script_id,
+                            engine_state,
+                            applier,
+                            target,
+                            effect_id,
+                            lifetime,
                         );
                     },
                 )
@@ -1659,172 +1700,5 @@ impl HookEffect<EffectLifetimeHook> for EffectLifetimeHookDefinition {
                 hook(engine_state, applier, target, effect_id, lifetime);
             }
         })
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-pub struct EffectInstanceDefinition {
-    pub effect_id: EffectId,
-    pub lifetime: EffectLifetimeTemplate,
-    #[serde(default)]
-    pub end_condition: Option<EffectEndConditionDefinition>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum EffectEventFilterDefinition {
-    TurnBoundary {
-        entity: EffectEntiyReference,
-        boundary: TurnBoundary,
-    },
-    D20Check {
-        kind: D20CheckKindTag,
-        /// Who makes the roll. Omit to match any roller.
-        #[serde(default)]
-        roller: Option<EffectEntiyReference>,
-        /// Who the roll is made against. Only attack rolls have a target, so a
-        /// filter with `against` never matches saving throws or skill checks.
-        #[serde(default)]
-        against: Option<EffectEntiyReference>,
-    },
-    Script {
-        /// Event kinds this filter can match
-        events: Vec<EventKindTag>,
-        script: ScriptId,
-    },
-}
-
-impl From<EffectEventFilterDefinition> for EffectEventFilter {
-    fn from(def: EffectEventFilterDefinition) -> Self {
-        match def {
-            EffectEventFilterDefinition::TurnBoundary { entity, boundary } => {
-                EffectEventFilter::TurnBoundary { entity, boundary }
-            }
-            EffectEventFilterDefinition::D20Check {
-                kind,
-                roller,
-                against,
-            } => EffectEventFilter::D20Check {
-                kind,
-                roller,
-                against,
-            },
-            EffectEventFilterDefinition::Script { events, script } => {
-                EffectEventFilter::Script { events, script }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct EffectEndConditionDefinition {
-    pub event: EffectEventFilterDefinition,
-    pub on_trigger: EffectEndVerb,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum EffectEndVerb {
-    /// Remove the effect instance when the event fires
-    Remove,
-    /// Re-roll the applying action's condition and remove the effect on a
-    /// success (e.g. Hold Person's repeat save)
-    RepeatApplyCondition,
-}
-
-impl EffectEndVerb {
-    fn callback(&self) -> EventCallback {
-        match self {
-            EffectEndVerb::Remove => remove_effect_callback(),
-            EffectEndVerb::RepeatApplyCondition => repeat_apply_condition_callback(),
-        }
-    }
-}
-
-impl From<EffectEndConditionDefinition> for EffectEndConditionTemplate {
-    fn from(def: EffectEndConditionDefinition) -> Self {
-        EffectEndConditionTemplate {
-            event_filter: def.event.into(),
-            callback: def.on_trigger.callback(),
-        }
-    }
-}
-
-fn remove_effect_callback() -> EventCallback {
-    EventCallback::new(|engine_state, _event, source| {
-        let ListenerSource::EffectInstance { id, entity } = source else {
-            return CallbackResult::None;
-        };
-        systems::effects::remove_effect(engine_state, *entity, id);
-        CallbackResult::None
-    })
-}
-
-fn repeat_apply_condition_callback() -> EventCallback {
-    EventCallback::new(move |engine_state, event, source| {
-        let ListenerSource::EffectInstance { id, entity } = source.clone() else {
-            return CallbackResult::None;
-        };
-
-        debug!(
-            "Checking end condition for effect instance {:?} on entity {:?} in response to event {:?}",
-            id, entity, event
-        );
-
-        let instance = systems::effects::effects(&engine_state.world, entity)
-            .get(&id)
-            .unwrap()
-            .clone();
-        let instance_id = id;
-
-        match &instance.action_resolution {
-            ActionConditionResolution::Unconditional => { /* No check to repeat */ }
-
-            ActionConditionResolution::Conditional {
-                dc: _dc @ (D20CheckDC::AttackRoll { .. } | D20CheckDC::Skill { .. }),
-                ..
-            } => {
-                // TODO: Is this used anywhere?
-                todo!(
-                    "Repeat apply condition for attack roll or skill check DCs is not yet implemented"
-                );
-            }
-
-            ActionConditionResolution::Conditional {
-                dc: dc @ D20CheckDC::SavingThrow { .. },
-                ..
-            } => {
-                let event = systems::d20::check(engine_state, entity, dc);
-                engine_state.process_event_with_response_callback(
-                    event,
-                    EventCallback::new(move |engine_state, event, _| {
-                        if let EventKind::D20CheckResolved { result, dc, .. } = &event.kind
-                            && result.is_success(dc)
-                        {
-                            systems::effects::remove_effect(engine_state, entity, &instance_id);
-                        }
-                        CallbackResult::None
-                    }),
-                );
-            }
-        }
-
-        CallbackResult::None
-    })
-}
-
-impl From<EffectInstanceDefinition> for EffectInstanceTemplate {
-    fn from(def: EffectInstanceDefinition) -> Self {
-        let EffectInstanceDefinition {
-            effect_id,
-            lifetime,
-            end_condition,
-        } = def;
-
-        EffectInstanceTemplate {
-            effect_id,
-            lifetime,
-            end_condition: end_condition.map(Into::into),
-        }
     }
 }

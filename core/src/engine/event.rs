@@ -315,7 +315,9 @@ impl EventFilter {
 
 #[derive(Clone)]
 pub struct EventCallback(
-    Arc<dyn Fn(&mut EngineState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static>,
+    Arc<
+        dyn Fn(&mut EngineState, &Event, &ListenerSource) -> CallbackResult + Send + Sync + 'static,
+    >,
 );
 
 impl EventCallback {
@@ -519,5 +521,9 @@ impl EventDispatcher {
                 self.remove_listener_by_id(&listener_id);
             }
         }
+    }
+
+    pub fn listeners(&self) -> impl Iterator<Item = (&EventListenerId, &EventListener)> {
+        self.listeners.iter()
     }
 }

@@ -1,5 +1,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     components::id::{ClassId, SubclassId},
     registry::registry::ClassesRegistry,
@@ -109,7 +111,7 @@ static EXPERIENCE_PER_LEVEL: LazyLock<Vec<u32>> = LazyLock::new(|| {
 
 static MAX_LEVEL: u8 = 20;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassLevelProgression {
     level: u8,
     subclass: Option<SubclassId>,
@@ -132,7 +134,7 @@ impl ClassLevelProgression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterLevels {
     class_levels: HashMap<ClassId, ClassLevelProgression>,
     /// The class that was first leveled up. Occasionally this is relevant, e.g
