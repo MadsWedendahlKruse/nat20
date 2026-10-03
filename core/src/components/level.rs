@@ -58,9 +58,9 @@ static EXPERIENCE_BY_CHALLENGE_RATING: LazyLock<HashMap<u8, u32>> = LazyLock::ne
     ])
 });
 
-// The SRD supports fractional challenge ratings, but that's a bit more complex
-// to handle, so we'll stick with whole numbers for now
-#[derive(Debug, Clone)]
+/// The SRD supports fractional challenge ratings, but that's a bit more complex
+/// to handle, so we'll stick with whole numbers for now
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChallengeRating(u8);
 
 impl ChallengeRating {

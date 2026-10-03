@@ -1,6 +1,13 @@
-use std::{fs::File, path::Path};
+use std::{any::TypeId, fs::File, path::Path};
 
-use hecs::serialize::row::{DeserializeContext, SerializeContext, try_serialize};
+use hecs::{
+    EntityBuilder, EntityRef,
+    serialize::row::{DeserializeContext, SerializeContext, try_serialize},
+};
+use serde::{
+    de::{IgnoredAny, MapAccess},
+    ser::SerializeMap,
+};
 use serde_json::{Deserializer, Serializer};
 use tracing::warn;
 
@@ -25,7 +32,7 @@ use crate::{
             equipment::{armor::ArmorTrainingSet, loadout::Loadout, weapon::WeaponProficiencyMap},
             inventory::Inventory,
         },
-        level::CharacterLevels,
+        level::{ChallengeRating, CharacterLevels},
         resource::ResourceMap,
         saving_throw::SavingThrowSet,
         scratchpad::Scratchpad,
@@ -41,57 +48,111 @@ use crate::{
 
 struct WorldSaveContext;
 
-impl SerializeContext for WorldSaveContext {
-    fn serialize_entity<S>(
-        &mut self,
-        entity: hecs::EntityRef<'_>,
-        mut map: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::SerializeMap,
-    {
-        try_serialize::<EntityKind, _, _>(&entity, "entity_kind", &mut map)?;
-        try_serialize::<PlayerControlledTag, _, _>(&entity, "player_controlled", &mut map)?;
-        try_serialize::<AIControllerId, _, _>(&entity, "brain", &mut map)?;
-        try_serialize::<Pose, _, _>(&entity, "pose", &mut map)?;
-        try_serialize::<EntityClock, _, _>(&entity, "time", &mut map)?;
-        try_serialize::<ActivityState, _, _>(&entity, "activity_state", &mut map)?;
-        try_serialize::<CombatState, _, _>(&entity, "combat_state", &mut map)?;
-        try_serialize::<Name, _, _>(&entity, "name", &mut map)?;
-        try_serialize::<SpeciesId, _, _>(&entity, "species", &mut map)?;
-        try_serialize::<Option<SubspeciesId>, _, _>(&entity, "subspecies", &mut map)?;
-        try_serialize::<CreatureSize, _, _>(&entity, "size", &mut map)?;
-        try_serialize::<CreatureType, _, _>(&entity, "creature_type", &mut map)?;
-        try_serialize::<Speed, _, _>(&entity, "speed", &mut map)?;
-        try_serialize::<BackgroundId, _, _>(&entity, "background", &mut map)?;
-        try_serialize::<CharacterLevels, _, _>(&entity, "levels", &mut map)?;
-        try_serialize::<HitPoints, _, _>(&entity, "hit_points", &mut map)?;
-        try_serialize::<LifeState, _, _>(&entity, "life_state", &mut map)?;
-        try_serialize::<DeathPolicy, _, _>(&entity, "death_policy", &mut map)?;
-        try_serialize::<AbilityScoreMap, _, _>(&entity, "ability_scores", &mut map)?;
-        try_serialize::<SkillSet, _, _>(&entity, "skills", &mut map)?;
-        try_serialize::<SavingThrowSet, _, _>(&entity, "saving_throws", &mut map)?;
-        try_serialize::<DamageResistances, _, _>(&entity, "resistances", &mut map)?;
-        try_serialize::<WeaponProficiencyMap, _, _>(&entity, "weapon_proficiencies", &mut map)?;
-        try_serialize::<ArmorTrainingSet, _, _>(&entity, "armor_training", &mut map)?;
-        try_serialize::<Inventory, _, _>(&entity, "inventory", &mut map)?;
-        try_serialize::<Loadout, _, _>(&entity, "loadout", &mut map)?;
-        try_serialize::<Spellbook, _, _>(&entity, "spellbook", &mut map)?;
-        try_serialize::<ResourceMap, _, _>(&entity, "resources", &mut map)?;
-        // TODO: Remember to re-register end conditions when deserializing
-        try_serialize::<EffectManager, _, _>(&entity, "effects", &mut map)?;
-        try_serialize::<Vec<FeatId>, _, _>(&entity, "feats", &mut map)?;
-        try_serialize::<ActionMap, _, _>(&entity, "actions", &mut map)?;
-        // TODO: Can't serialize ActionExecution, so I guess we can't save if it's Some
-        // try_serialize::<Option<ActionExecution>, _, _>(&entity, "action_execution", &mut map)?;
-        try_serialize::<ExecutionMailbox, _, _>(&entity, "execution_mailbox", &mut map)?;
-        try_serialize::<ActionCooldownMap, _, _>(&entity, "cooldowns", &mut map)?;
-        try_serialize::<FactionSet, _, _>(&entity, "factions", &mut map)?;
-        try_serialize::<Scratchpad, _, _>(&entity, "scratchpad", &mut map)?;
-        try_serialize::<Option<RestKind>, _, _>(&entity, "resting", &mut map)?;
+/// Generate both the serialization and deserialization implementations at the same
+/// time so we don't forget one of them
+macro_rules! saved_components {
+    ($($key:literal => $ty:ty,)*) => {
+        impl SerializeContext for WorldSaveContext {
+            fn serialize_entity<S>(
+                &mut self,
+                entity: EntityRef<'_>,
+                mut map: S,
+            ) -> Result<S::Ok, S::Error>
+            where
+                S: SerializeMap,
+            {
+                $(try_serialize::<$ty, _, _>(&entity, $key, &mut map)?;)*
+                map.end()
+            }
+        }
 
-        map.end()
+        impl DeserializeContext for WorldSaveContext {
+            fn deserialize_entity<'de, M>(
+                &mut self,
+                mut map: M,
+                entity: &mut EntityBuilder,
+            ) -> Result<(), M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        $($key => {
+                            entity.add::<$ty>(map.next_value()?);
+                        })*
+                        other => {
+                            warn!("Entity has unknown field: {}", other);
+                            let _: IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+                rebuild_transient(entity);
+                Ok(())
+            }
+        }
+
+        /// Keep track of which components are saved by this macro
+        fn is_saved(type_id: TypeId) -> bool {
+            [$(TypeId::of::<$ty>()),*].contains(&type_id)
+        }
+    };
+}
+
+saved_components! {
+    "entity_kind" => EntityKind,
+    "player_controlled" => PlayerControlledTag,
+    "brain" => AIControllerId,
+    "pose" => Pose,
+    "time" => EntityClock,
+    "activity_state" => ActivityState,
+    "combat_state" => CombatState,
+    "name" => Name,
+    "species" => SpeciesId,
+    "subspecies" => Option<SubspeciesId>,
+    "challenge_rating" => ChallengeRating,
+    "size" => CreatureSize,
+    "creature_type" => CreatureType,
+    "speed" => Speed,
+    "background" => BackgroundId,
+    "levels" => CharacterLevels,
+    "hit_points" => HitPoints,
+    "life_state" => LifeState,
+    "death_policy" => DeathPolicy,
+    "ability_scores" => AbilityScoreMap,
+    "skills" => SkillSet,
+    "saving_throws" => SavingThrowSet,
+    "resistances" => DamageResistances,
+    "weapon_proficiencies" => WeaponProficiencyMap,
+    "armor_training" => ArmorTrainingSet,
+    "inventory" => Inventory,
+    "loadout" => Loadout,
+    "spellbook" => Spellbook,
+    "resources" => ResourceMap,
+    // TODO: Remember to re-register end conditions when deserializing
+    "effects" => EffectManager,
+    "feats" => Vec<FeatId>,
+    "actions" => ActionMap,
+    "execution_mailbox" => ExecutionMailbox,
+    "cooldowns" => ActionCooldownMap,
+    "factions" => FactionSet,
+    "scratchpad" => Scratchpad,
+    "resting" => Option<RestKind>,
+}
+
+/// Some components can't be saved, so we have to rebuild them on load
+fn rebuild_transient(entity: &mut EntityBuilder) {
+    if entity
+        .get::<&EntityKind>()
+        .is_some_and(|kind| kind.is_creature())
+        && entity.get::<&Option<ActionExecution>>().is_none()
+    {
+        entity.add::<Option<ActionExecution>>(None);
     }
+}
+
+/// Whether a component of the given type is expected to be saved
+pub fn should_save(type_id: TypeId) -> bool {
+    is_saved(type_id) || type_id == TypeId::of::<Option<ActionExecution>>()
 }
 
 pub fn save_world(engine_state: &EngineState) {
@@ -101,140 +162,6 @@ pub fn save_world(engine_state: &EngineState) {
     let result =
         hecs::serialize::row::serialize(&engine_state.world, &mut context, &mut serializer);
     print!("{:?}", result);
-}
-
-impl DeserializeContext for WorldSaveContext {
-    fn deserialize_entity<'de, M>(
-        &mut self,
-        mut map: M,
-        entity: &mut hecs::EntityBuilder,
-    ) -> Result<(), M::Error>
-    where
-        M: serde::de::MapAccess<'de>,
-    {
-        while let Some(key) = map.next_key::<String>()? {
-            match key.as_str() {
-                "entity_kind" => {
-                    let entity_kind = map.next_value::<EntityKind>()?;
-                    if entity_kind.is_creature() {
-                        entity.add::<Option<ActionExecution>>(None);
-                    }
-                    entity.add::<EntityKind>(entity_kind);
-                }
-                "player_controlled" => {
-                    entity.add::<PlayerControlledTag>(map.next_value()?);
-                }
-                "brain" => {
-                    entity.add::<AIControllerId>(map.next_value()?);
-                }
-                "pose" => {
-                    entity.add::<Pose>(map.next_value()?);
-                }
-                "time" => {
-                    entity.add::<EntityClock>(map.next_value()?);
-                }
-                "activity_state" => {
-                    entity.add::<ActivityState>(map.next_value()?);
-                }
-                "combat_state" => {
-                    entity.add::<CombatState>(map.next_value()?);
-                }
-                "name" => {
-                    entity.add::<Name>(map.next_value()?);
-                }
-                "species" => {
-                    entity.add::<SpeciesId>(map.next_value()?);
-                }
-                "subspecies" => {
-                    entity.add::<Option<SubspeciesId>>(map.next_value()?);
-                }
-                "size" => {
-                    entity.add::<CreatureSize>(map.next_value()?);
-                }
-                "creature_type" => {
-                    entity.add::<CreatureType>(map.next_value()?);
-                }
-                "speed" => {
-                    entity.add::<Speed>(map.next_value()?);
-                }
-                "background" => {
-                    entity.add::<BackgroundId>(map.next_value()?);
-                }
-                "levels" => {
-                    entity.add::<CharacterLevels>(map.next_value()?);
-                }
-                "hit_points" => {
-                    entity.add::<HitPoints>(map.next_value()?);
-                }
-                "life_state" => {
-                    entity.add::<LifeState>(map.next_value()?);
-                }
-                "death_policy" => {
-                    entity.add::<DeathPolicy>(map.next_value()?);
-                }
-                "ability_scores" => {
-                    entity.add::<AbilityScoreMap>(map.next_value()?);
-                }
-                "skills" => {
-                    entity.add::<SkillSet>(map.next_value()?);
-                }
-                "saving_throws" => {
-                    entity.add::<SavingThrowSet>(map.next_value()?);
-                }
-                "resistances" => {
-                    entity.add::<DamageResistances>(map.next_value()?);
-                }
-                "weapon_proficiencies" => {
-                    entity.add::<WeaponProficiencyMap>(map.next_value()?);
-                }
-                "armor_training" => {
-                    entity.add::<ArmorTrainingSet>(map.next_value()?);
-                }
-                "inventory" => {
-                    entity.add::<Inventory>(map.next_value()?);
-                }
-                "loadout" => {
-                    entity.add::<Loadout>(map.next_value()?);
-                }
-                "spellbook" => {
-                    entity.add::<Spellbook>(map.next_value()?);
-                }
-                "resources" => {
-                    entity.add::<ResourceMap>(map.next_value()?);
-                }
-                "effects" => {
-                    entity.add::<EffectManager>(map.next_value()?);
-                }
-                "feats" => {
-                    entity.add::<Vec<FeatId>>(map.next_value()?);
-                }
-                "actions" => {
-                    entity.add::<ActionMap>(map.next_value()?);
-                }
-                "execution_mailbox" => {
-                    entity.add::<ExecutionMailbox>(map.next_value()?);
-                }
-                "cooldowns" => {
-                    entity.add::<ActionCooldownMap>(map.next_value()?);
-                }
-                "factions" => {
-                    entity.add::<FactionSet>(map.next_value()?);
-                }
-                "scratchpad" => {
-                    entity.add::<Scratchpad>(map.next_value()?);
-                }
-                "resting" => {
-                    entity.add::<Option<RestKind>>(map.next_value()?);
-                }
-
-                other => {
-                    warn!("Entity has unknown field: {}", other);
-                    let _: serde::de::IgnoredAny = map.next_value()?;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 pub fn load_world<P>(engine_state: &mut EngineState, file_path: &P)
