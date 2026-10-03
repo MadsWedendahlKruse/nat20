@@ -47,6 +47,7 @@ use crate::{
         entities::EntityKind,
         geometry::Pose,
         movement::{MOVEMENT_SPEED, MoveMode},
+        time::RestKind,
     },
 };
 
@@ -93,6 +94,7 @@ from_world!(
         pub cooldowns: ActionCooldownMap,
         pub factions: FactionSet,
         pub scratchpad: Scratchpad,
+        pub resting: Option<RestKind>,
     }
 );
 
@@ -136,6 +138,7 @@ impl Character {
             cooldowns: HashMap::new(),
             factions: FactionSet::from([rules().default_character_faction.clone()]),
             scratchpad: Scratchpad::default(),
+            resting: None,
         }
     }
 }

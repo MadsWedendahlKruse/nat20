@@ -12,8 +12,8 @@ use crate::{
         time::{EntityClock, TimeMode, TimeStep, TurnBoundary},
     },
     engine::{
-        event::{Event, EventKind},
         engine_state::EngineState,
+        event::{Event, EventKind},
     },
     systems,
 };
@@ -57,7 +57,9 @@ pub fn advance_time(engine_state: &mut EngineState, entity: Entity, time_step: T
 
                 match boundary {
                     TurnBoundary::Start => systems::time::on_turn_start(engine_state, entity),
-                    TurnBoundary::End => systems::time::on_turn_end(&mut engine_state.world, entity),
+                    TurnBoundary::End => {
+                        systems::time::on_turn_end(&mut engine_state.world, entity)
+                    }
                 }
             }
         }
@@ -86,6 +88,7 @@ impl RestKind {
 #[derive(Debug, Clone)]
 pub enum RestError {
     InCombat { entities: Vec<Entity> },
+    AlreadyResting { entities: Vec<Entity> },
     NotResting { entities: Vec<Entity> },
     DifferentRestKinds { entities: HashMap<Entity, RestKind> },
 }
@@ -122,6 +125,26 @@ pub fn start_rest(
         });
     }
 
+    let already_resting_entities: Vec<Entity> = participants
+        .iter()
+        .cloned()
+        .filter(|entity| {
+            systems::helpers::get_component::<Option<RestKind>>(&engine_state.world, *entity)
+                .is_some()
+        })
+        .collect();
+    if !already_resting_entities.is_empty() {
+        error!("Entities already resting: {:?}", already_resting_entities);
+        return Err(RestError::AlreadyResting {
+            entities: already_resting_entities,
+        });
+    }
+
+    participants.iter().for_each(|&entity| {
+        systems::helpers::get_component_mut::<Option<RestKind>>(&mut engine_state.world, entity)
+            .replace(*kind);
+    });
+
     let event = Event::new(EventKind::RestStarted {
         kind: *kind,
         participants: participants
@@ -131,21 +154,23 @@ pub fn start_rest(
     });
     engine_state.process_event(event);
 
-    participants.iter().for_each(|&entity| {
-        engine_state.resting.insert(entity, *kind);
-    });
-
     Ok(())
 }
 
-pub fn finish_rest(engine_state: &mut EngineState, participants: Vec<Entity>) -> Result<(), RestError> {
+pub fn finish_rest(
+    engine_state: &mut EngineState,
+    participants: Vec<Entity>,
+) -> Result<(), RestError> {
     info!("Finishing rest for entities {:?}", participants);
 
     // Check that all participants are actually resting and of the same kind
     let mut not_resting_entities: Vec<Entity> = Vec::new();
     let mut rest_kinds = HashMap::new();
     for &entity in &participants {
-        if let Some(kind) = engine_state.resting.remove(&entity) {
+        if let Some(kind) =
+            systems::helpers::get_component_mut::<Option<RestKind>>(&mut engine_state.world, entity)
+                .take()
+        {
             rest_kinds.insert(entity, kind);
         } else {
             not_resting_entities.push(entity);

@@ -25,10 +25,7 @@ use crate::{
         geometry::WorldGeometry,
         prompt::{PendingEvent, PromptManager, PromptScope, PromptScopeId},
     },
-    systems::{
-        self, actions::ActionUsabilityError, combat::CombatState, movement::MovementError,
-        time::RestKind,
-    },
+    systems::{self, actions::ActionUsabilityError, combat::CombatState, movement::MovementError},
 };
 
 // TODO: WorldState instead?
@@ -37,7 +34,6 @@ pub struct EngineState {
     pub geometry: WorldGeometry,
 
     pub encounters: HashMap<EncounterId, Encounter>,
-    pub resting: HashMap<Entity, RestKind>,
     pub prompts: PromptManager,
     pub event_log: EventLog,
     pub event_dispatcher: EventDispatcher,
@@ -49,7 +45,6 @@ impl EngineState {
             world: World::new(),
             geometry,
             encounters: HashMap::new(),
-            resting: HashMap::new(),
             prompts: PromptManager::default(),
             event_log: EventLog::new(),
             event_dispatcher: EventDispatcher::new(),
@@ -774,7 +769,6 @@ impl EngineState {
             self.encounters.insert(*encounter.id(), encounter);
         }
 
-        self.resting.remove(&entity);
         Ok(())
     }
 }

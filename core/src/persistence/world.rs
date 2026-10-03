@@ -36,7 +36,7 @@ use crate::{
         time::EntityClock,
     },
     engine::engine_state::EngineState,
-    systems::{combat::CombatState, entities::EntityKind, geometry::Pose},
+    systems::{combat::CombatState, entities::EntityKind, geometry::Pose, time::RestKind},
 };
 
 struct WorldSaveContext;
@@ -88,6 +88,7 @@ impl SerializeContext for WorldSaveContext {
         try_serialize::<ActionCooldownMap, _, _>(&entity, "cooldowns", &mut map)?;
         try_serialize::<FactionSet, _, _>(&entity, "factions", &mut map)?;
         try_serialize::<Scratchpad, _, _>(&entity, "scratchpad", &mut map)?;
+        try_serialize::<Option<RestKind>, _, _>(&entity, "resting", &mut map)?;
 
         map.end()
     }
@@ -221,6 +222,9 @@ impl DeserializeContext for WorldSaveContext {
                 }
                 "scratchpad" => {
                     entity.add::<Scratchpad>(map.next_value()?);
+                }
+                "resting" => {
+                    entity.add::<Option<RestKind>>(map.next_value()?);
                 }
 
                 other => {
