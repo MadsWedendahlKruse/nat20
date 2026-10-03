@@ -262,7 +262,7 @@ impl IdProvider for Subclass {
 // up and choosing a subclass, it breaks the subsequent lookups (e.g. determining
 // how many spells to select in a level up prompt) because the subclass (and thus
 // the key) is now different.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, JsonSchema)]
 pub struct ClassAndSubclass {
     pub class: ClassId,
     pub subclass: Option<SubclassId>,
@@ -279,5 +279,42 @@ impl Eq for ClassAndSubclass {}
 impl Hash for ClassAndSubclass {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.class.hash(state);
+    }
+}
+
+/// More hacks to allow using ClassAndSubclass as a key in a HashMap
+impl Serialize for ClassAndSubclass {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!(
+            "{}{}",
+            self.class,
+            self.subclass
+                .as_ref()
+                .map(|subclass| format!("#{}", subclass))
+                .unwrap_or_default()
+        ))
+    }
+}
+
+impl<'de> Deserialize<'de> for ClassAndSubclass {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let mut parts = s.splitn(2, '#');
+        let class = parts
+            .next()
+            .ok_or_else(|| serde::de::Error::custom("Missing class"))?
+            .parse()
+            .map_err(serde::de::Error::custom)?;
+        let subclass = match parts.next() {
+            Some(subclass_str) => Some(subclass_str.parse().map_err(serde::de::Error::custom)?),
+            None => None,
+        };
+        Ok(ClassAndSubclass { class, subclass })
     }
 }

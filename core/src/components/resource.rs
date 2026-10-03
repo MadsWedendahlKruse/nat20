@@ -8,6 +8,7 @@ use std::{
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
     components::{
@@ -264,11 +265,18 @@ impl_string_schema!(
     "examples": ["2", "1/4"]
 );
 
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ResourceBudgetKind {
     Flat(ResourceBudget),
-    Tiered(BTreeMap<u8, ResourceBudget>),
+    // An untagged enum is buffered before a variant is picked, and the buffer
+    // keeps the map keys as strings, so the tier has to be parsed explicitly
+    Tiered(
+        #[serde_as(as = "BTreeMap<DisplayFromStr, _>")]
+        #[schemars(with = "BTreeMap<u8, ResourceBudget>")]
+        BTreeMap<u8, ResourceBudget>,
+    ),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -916,6 +924,17 @@ mod tests {
             map.insert(*tier, ResourceBudget::new(*current, *max).unwrap());
         }
         ResourceBudgetKind::Tiered(map)
+    }
+
+    #[test]
+    fn budget_kind_json_round_trip() {
+        for res in [
+            flat_resource(1, 3),
+            tiered_resource(&[(1, 4, 4), (2, 0, 3), (10, 1, 1)]),
+        ] {
+            let json = serde_json::to_string(&res).unwrap();
+            assert_eq!(serde_json::from_str::<ResourceBudgetKind>(&json).unwrap(), res);
+        }
     }
 
     #[test]

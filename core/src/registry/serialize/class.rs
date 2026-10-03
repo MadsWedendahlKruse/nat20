@@ -20,18 +20,9 @@ use crate::{
 };
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum ResourceBudgetKindDefinition {
-    Flat(ResourceBudget),
-    // Tier keys should be the level (u8), but serde only supports string keys in maps
-    // so we need this intermediate representation
-    Tiered(BTreeMap<String, ResourceBudget>),
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClassResourceDefinition {
     pub id: ResourceId,
-    pub budget: ResourceBudgetKindDefinition,
+    pub budget: ResourceBudgetKind,
     #[serde(default, rename(deserialize = "override"))]
     pub override_existing: bool,
 }
