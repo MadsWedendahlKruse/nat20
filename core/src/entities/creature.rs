@@ -281,7 +281,7 @@ fn handle_ai(engine_state: &mut EngineState, entity: Entity) {
             let result = engine_state.submit_activity(activity);
             info!("AI submitted activity: {:?}", result);
         } else {
-            engine_state.end_turn(entity);
+            systems::combat::end_turn(engine_state, entity);
         }
     }
 }

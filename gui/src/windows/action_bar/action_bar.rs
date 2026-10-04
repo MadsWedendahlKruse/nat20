@@ -428,7 +428,7 @@ impl ActionBarWindow {
     fn render_end_turn(&self, ui: &imgui::Ui, engine_state: &mut EngineState) {
         let entity = self.builder.actor().id();
         if systems::combat::is_in_combat(&engine_state, entity) && ui.button("End Turn") {
-            engine_state.end_turn(entity);
+            systems::combat::end_turn(engine_state, entity);
         }
     }
 

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use hecs::{Entity, NoSuchEntity, World};
 use parry3d::{na::Point3, shape::Ball};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use uom::si::{f32::Length, length::meter};
 
 use crate::{
@@ -10,7 +10,6 @@ use crate::{
         actions::targeting::EntityFilter,
         activity::{Activity, ActivityError, ActivityState},
         d20::D20CheckDC,
-        time::TimeMode,
     },
     engine::{
         action_prompt::{
@@ -19,8 +18,8 @@ use crate::{
         },
         encounter::{Encounter, EncounterId},
         event::{
-            EncounterEvent, Event, EventCallback, EventDispatcher, EventFilter, EventKind,
-            EventListener, EventLog, ListenerSource,
+            Event, EventCallback, EventDispatcher, EventFilter, EventKind, EventListener, EventLog,
+            ListenerSource,
         },
         geometry::WorldGeometry,
         prompt::{PendingEvent, PromptManager, PromptScope, PromptScopeId},
@@ -51,38 +50,6 @@ impl EngineState {
         }
     }
 
-    pub fn start_encounter_with_id(
-        &mut self,
-        participants: HashSet<Entity>,
-        encounter_id: EncounterId,
-    ) -> EncounterId {
-        for entity in &participants {
-            systems::helpers::get_component_mut::<CombatState>(&mut self.world, *entity)
-                .enter_combat(encounter_id);
-            systems::time::set_time_mode(
-                &mut self.world,
-                *entity,
-                TimeMode::TurnBased {
-                    encounter_id: Some(encounter_id),
-                },
-            );
-        }
-
-        self.event_log
-            .push(Event::encounter_event(EncounterEvent::EncounterStarted(
-                encounter_id,
-            )));
-
-        let encounter = Encounter::new(self, participants, encounter_id);
-
-        self.encounters.insert(encounter_id, encounter);
-        encounter_id
-    }
-
-    pub fn start_encounter(&mut self, participants: HashSet<Entity>) -> EncounterId {
-        self.start_encounter_with_id(participants, EncounterId::new_v4())
-    }
-
     pub fn encounter(&self, encounter_id: &EncounterId) -> Option<&Encounter> {
         self.encounters.get(encounter_id)
     }
@@ -95,44 +62,6 @@ impl EngineState {
         match &*systems::helpers::get_component::<CombatState>(&self.world, entity) {
             CombatState::InCombat(encounter_id) => self.encounters.get(encounter_id),
             _ => None,
-        }
-    }
-
-    pub fn end_encounter(&mut self, encounter_id: &EncounterId) {
-        if let Some(mut encounter) = self.encounters.remove(encounter_id) {
-            for entity in encounter.participants(&self.world, &[EntityFilter::All]) {
-                systems::helpers::get_component_mut::<CombatState>(&mut self.world, entity)
-                    .leave_combat();
-                systems::time::set_time_mode(&mut self.world, entity, TimeMode::RealTime);
-            }
-            self.event_log
-                .push(Event::encounter_event(EncounterEvent::EncounterEnded(
-                    *encounter_id,
-                    encounter.event_log_move(),
-                )));
-        }
-    }
-
-    pub fn end_turn(&mut self, entity: Entity) {
-        if let Some(scope) = self.scope_for_entity(entity)
-            && !scope.pending_events().is_empty()
-        {
-            warn!(
-                "Ending turn for {:?} while there are pending events: {:#?}",
-                entity,
-                scope.pending_events()
-            );
-        }
-
-        if let Some(encounter_id) = self
-            .encounter_for_entity(entity)
-            .map(|encounter| *encounter.id())
-            && let Some(mut encounter) = self.encounters.remove(&encounter_id)
-        {
-            // TODO: Since we've taken out the encounter the TurnBoundary event
-            // ends up in the global combat log
-            encounter.end_turn(self, entity);
-            self.encounters.insert(*encounter.id(), encounter);
         }
     }
 
@@ -189,10 +118,9 @@ impl EngineState {
     }
 
     pub(crate) fn scope_id_for_entity(&self, entity: Entity) -> PromptScopeId {
-        if let Some(encounter) = self.encounter_for_entity(entity) {
-            PromptScopeId::Encounter(*encounter.id())
-        } else {
-            PromptScopeId::Global
+        match *systems::helpers::get_component::<CombatState>(&self.world, entity) {
+            CombatState::InCombat(encounter_id) => PromptScopeId::Encounter(encounter_id),
+            CombatState::OutOfCombat => PromptScopeId::Global,
         }
     }
 
@@ -689,14 +617,11 @@ impl EngineState {
     fn log_event(&mut self, scope: &PromptScopeId, event: Event) {
         let event_log = match scope {
             PromptScopeId::Global => &mut self.event_log,
-            PromptScopeId::Encounter(encounter_id) => {
-                if let Some(encounter) = self.encounters.get_mut(encounter_id) {
-                    encounter.event_log_mut()
-                } else {
-                    // In case the encounter is gone or doesn't exist yet, log globally
-                    &mut self.event_log
-                }
-            }
+            PromptScopeId::Encounter(encounter_id) => self
+                .encounters
+                .get_mut(encounter_id)
+                .expect("Inconsistent state: encounter not found")
+                .event_log_mut(),
         };
 
         event_log.push(event);
@@ -750,7 +675,6 @@ impl EngineState {
 
     pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchEntity> {
         info!("Despawning entity {:?}", entity);
-        self.world.despawn(entity)?;
 
         // Despawn is called for *all* entities, so can't guarantee their components
         // e.g. projectiles don't have a CombatState component
@@ -762,11 +686,10 @@ impl EngineState {
             None
         };
 
-        if let Some(encounter_id) = encounter_id
-            && let Some(mut encounter) = self.encounters.remove(&encounter_id)
-        {
-            encounter.remove_participant(self, entity);
-            self.encounters.insert(*encounter.id(), encounter);
+        self.world.despawn(entity)?;
+
+        if let Some(encounter_id) = encounter_id {
+            systems::combat::remove_participant(self, encounter_id, entity);
         }
 
         Ok(())

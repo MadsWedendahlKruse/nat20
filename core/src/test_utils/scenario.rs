@@ -118,6 +118,15 @@ impl Scenario {
         ScenarioCreatureBuilder::new(self, handle, builder)
     }
 
+    #[track_caller]
+    pub fn despawn(&mut self, handle: &str) {
+        let entity = self.entity(handle);
+        self.creatures.remove(handle);
+        self.engine_state
+            .despawn(entity)
+            .unwrap_or_else(|err| panic!("Failed to despawn {handle}: {err:?}"));
+    }
+
     pub fn encounter<'s>(&'s mut self) -> ScenarioEncounterBuilder<'s> {
         ScenarioEncounterBuilder {
             scenario: self,
@@ -331,7 +340,10 @@ impl<'s> ScenarioEncounterBuilder<'s> {
                 );
         }
 
-        self.scenario.encounter_id = Some(self.scenario.engine_state.start_encounter(participants));
+        self.scenario.encounter_id = Some(systems::combat::start_encounter(
+            &mut self.scenario.engine_state,
+            participants,
+        ));
     }
 }
 
@@ -515,7 +527,7 @@ impl ScenarioProbe<'_> {
         let entity = self.entity();
         if systems::combat::is_in_combat(self.engine_state(), entity) {
             // The encounter fires both boundaries and moves initiative on
-            self.scenario.engine_state.end_turn(entity);
+            systems::combat::end_turn(&mut self.scenario.engine_state, entity);
             self.scenario.engine_state.update(0.0);
             self
         } else {

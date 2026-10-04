@@ -1071,7 +1071,7 @@ mod tests {
         let (mut engine_state, fighter) = engine_state_fighter;
 
         // Start encounter to queue an action prompt
-        engine_state.start_encounter(HashSet::from([fighter.id()]));
+        systems::combat::start_encounter(&mut engine_state, HashSet::from([fighter.id()]));
 
         let result = ReactionBuilder::new(&engine_state, fighter.id()).build();
 
