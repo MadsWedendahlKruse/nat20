@@ -4,10 +4,7 @@ use hecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    components::{actions::targeting::EntityFilter, d20::D20CheckResult},
-    engine::event::{Event, EventLog},
-};
+use crate::components::{actions::targeting::EntityFilter, d20::D20CheckResult};
 
 pub type EncounterId = Uuid;
 
@@ -20,7 +17,6 @@ pub struct Encounter {
     round: usize,
     turn_index: usize,
     initiative_order: Vec<(Entity, D20CheckResult)>,
-    event_log: EventLog,
 }
 
 impl Encounter {
@@ -35,7 +31,6 @@ impl Encounter {
             round: 1,
             turn_index: 0,
             initiative_order,
-            event_log: EventLog::new(),
         }
     }
 
@@ -93,21 +88,5 @@ impl Encounter {
             .iter()
             .position(|(e, _)| *e == current_entity)
             .unwrap_or(0);
-    }
-
-    pub(crate) fn log_event(&mut self, event: Event) {
-        self.event_log.push(event);
-    }
-
-    pub(crate) fn event_log_mut(&mut self) -> &mut EventLog {
-        &mut self.event_log
-    }
-
-    pub fn event_log(&self) -> &EventLog {
-        &self.event_log
-    }
-
-    pub fn event_log_move(&mut self) -> EventLog {
-        std::mem::take(&mut self.event_log)
     }
 }

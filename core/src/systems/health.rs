@@ -20,8 +20,8 @@ use crate::{
     },
     engine::{
         action_prompt::ActionData,
-        event::{CallbackResult, EventCallback, EventKind},
         engine_state::EngineState,
+        event::{CallbackResult, EventCallback, EventKind},
     },
     registry::registry::ClassesRegistry,
     systems,
@@ -190,7 +190,10 @@ pub fn damage(
         // Unblock pending events waiting for the entity to act (if any)
         // TODO: I can't think of a scenario where this would happen, but I've got
         // a feeling that this might be necessary in some edge cases.
-        for pending_event in engine_state.scope_for_entity_mut(target).pending_events_mut() {
+        for pending_event in engine_state
+            .scope_for_entity_mut(target)
+            .pending_events_mut()
+        {
             pending_event.blocked_by.remove(&target);
         }
     }

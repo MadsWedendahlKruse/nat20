@@ -113,7 +113,11 @@ fn potential_opportunity_attacks(
             .filter_map(|attacker| {
                 if let Some((_event, intersection)) =
                     systems::movement::calculate_opportunity_attack(
-                        engine_state, mover, &start, &end, *attacker,
+                        engine_state,
+                        mover,
+                        &start,
+                        &end,
+                        *attacker,
                     )
                 {
                     Some((*attacker, intersection))
@@ -137,7 +141,8 @@ impl RenderableWithContext<&mut EngineState> for MovementPreview {
         engine_state: &mut EngineState,
     ) {
         for (entity, point) in &self.opportunity_attacks {
-            if let Some(position) = systems::geometry::get_foot_position(&engine_state.world, *entity)
+            if let Some(position) =
+                systems::geometry::get_foot_position(&engine_state.world, *entity)
             {
                 let reach = (position - point).magnitude();
                 let mut reach_center: [f32; 3] = position.into();

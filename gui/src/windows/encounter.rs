@@ -73,66 +73,64 @@ impl RenderableMutWithContext<&mut EngineState> for EncounterWindow {
             &anchor::CENTER_LEFT,
             AUTO_RESIZE,
             &mut true,
-            || {
-                match &mut self.state {
-                    EncounterWindowState::EncounterCreation { participants } => {
-                        ui.separator_with_text("Encounter creation");
-                        ui.text("Select participants:");
+            || match &mut self.state {
+                EncounterWindowState::EncounterCreation { participants } => {
+                    ui.separator_with_text("Encounter creation");
+                    ui.text("Select participants:");
 
-                        engine_state
-                            .world
-                            .query::<&Name>()
-                            .into_iter()
-                            .for_each(|(entity, name)| {
-                                let is_selected = participants.contains(&entity);
-                                if render_button_selectable(
-                                    ui,
-                                    format!("{}##{:?}", name.as_str(), entity),
-                                    [100.0, 20.0],
-                                    is_selected,
-                                ) {
-                                    if is_selected {
-                                        participants.remove(&entity);
-                                    } else {
-                                        participants.insert(entity);
-                                    }
+                    engine_state
+                        .world
+                        .query::<&Name>()
+                        .into_iter()
+                        .for_each(|(entity, name)| {
+                            let is_selected = participants.contains(&entity);
+                            if render_button_selectable(
+                                ui,
+                                format!("{}##{:?}", name.as_str(), entity),
+                                [100.0, 20.0],
+                                is_selected,
+                            ) {
+                                if is_selected {
+                                    participants.remove(&entity);
+                                } else {
+                                    participants.insert(entity);
                                 }
-                            });
+                            }
+                        });
 
-                        ui.separator();
-                        if render_button_disabled_conditionally(
-                            ui,
-                            "Start Encounter",
-                            [0.0, 0.0],
-                            participants.len() < 2,
-                            "You must have at least two participants to start an encounter.",
-                        ) {
-                            systems::combat::start_encounter_with_id(
-                                engine_state,
-                                participants.clone(),
-                                self.id,
-                            );
-                            self.state = EncounterWindowState::EncounterRunning;
-                        }
+                    ui.separator();
+                    if render_button_disabled_conditionally(
+                        ui,
+                        "Start Encounter",
+                        [0.0, 0.0],
+                        participants.len() < 2,
+                        "You must have at least two participants to start an encounter.",
+                    ) {
+                        systems::combat::start_encounter_with_id(
+                            engine_state,
+                            participants.clone(),
+                            self.id,
+                        );
+                        self.state = EncounterWindowState::EncounterRunning;
+                    }
+                }
+
+                EncounterWindowState::EncounterRunning => {
+                    if let Some(encounter) = engine_state.encounter(&self.id) {
+                        encounter.render_with_context(ui, &*engine_state);
+                    } else {
+                        ui.text("Encounter not found!");
                     }
 
-                    EncounterWindowState::EncounterRunning => {
-                        if let Some(encounter) = engine_state.encounter(&self.id) {
-                            encounter.render_with_context(ui, &*engine_state);
-                        } else {
-                            ui.text("Encounter not found!");
-                        }
-
-                        ui.separator();
-                        if ui.button("End Encounter") {
-                            self.state = EncounterWindowState::EncounterFinished;
-                            systems::combat::end_encounter(engine_state, &self.id);
-                        }
+                    ui.separator();
+                    if ui.button("End Encounter") {
+                        self.state = EncounterWindowState::EncounterFinished;
+                        systems::combat::end_encounter(engine_state, &self.id);
                     }
+                }
 
-                    EncounterWindowState::EncounterFinished => {
-                        ui.text("Encounter finished!");
-                    }
+                EncounterWindowState::EncounterFinished => {
+                    ui.text("Encounter finished!");
                 }
             },
         );

@@ -142,7 +142,8 @@ mod tests {
         }
 
         {
-            let skills = systems::helpers::get_component::<SkillSet>(&engine_state.world, character);
+            let skills =
+                systems::helpers::get_component::<SkillSet>(&engine_state.world, character);
             for skill in [Skill::Athletics, Skill::Perception] {
                 assert_eq!(
                     skills.get(&skill).proficiency().level(),

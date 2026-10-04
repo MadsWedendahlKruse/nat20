@@ -36,7 +36,7 @@ fn despawned_participant_is_removed_from_the_turn_order(
 }
 
 #[test]
-fn turn_boundary_events_are_logged_in_the_encounter() {
+fn turn_boundary_events_belong_to_the_encounter() {
     let mut scenario = Scenario::new();
     scenario.spawn("warlock", "hero.warlock").level(4).spawn();
     scenario
@@ -50,10 +50,10 @@ fn turn_boundary_events_are_logged_in_the_encounter() {
         .initiative_order(vec!["warlock", "barbarian"])
         .build();
 
-    let wisdom_save = D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Wisdom));
-    scenario
-        .probe("barbarian")
-        .d20_force_outcome(wisdom_save.clone(), D20CheckOutcome::Failure);
+    scenario.probe("barbarian").d20_force_outcome(
+        D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Wisdom)),
+        D20CheckOutcome::Failure,
+    );
 
     scenario
         .act("warlock", "action.hold_person")
@@ -65,8 +65,12 @@ fn turn_boundary_events_are_logged_in_the_encounter() {
         .assert_effect("effect.spell.hold_person");
     scenario
         .event_filter()
+        .in_encounter()
         .actor("barbarian")
-        .d20_roll_mode(wisdom_save.clone(), RollMode::Normal)
+        .d20_roll_mode(
+            D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Wisdom)),
+            RollMode::Normal,
+        )
         .assert_event_count(1);
 
     // The barbarian is Paralyzed, so their turn is skipped, and Hold Person's
@@ -78,7 +82,11 @@ fn turn_boundary_events_are_logged_in_the_encounter() {
         .assert_effect("effect.spell.hold_person");
     scenario
         .event_filter()
+        .in_encounter()
         .actor("barbarian")
-        .d20_roll_mode(wisdom_save, RollMode::Normal)
+        .d20_roll_mode(
+            D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Wisdom)),
+            RollMode::Normal,
+        )
         .assert_event_count(2);
 }

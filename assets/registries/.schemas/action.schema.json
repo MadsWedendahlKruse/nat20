@@ -1639,6 +1639,19 @@
                     "required": [
                         "turns"
                     ]
+                },
+                {
+                    "description": "TODO: Bit of a hack to allow deserializing a `TimeDuration` which was serialized\ndirectly rather than through a `TimeDurationDefinition`",
+                    "type": "object",
+                    "properties": {
+                        "seconds": {
+                            "type": "number",
+                            "format": "float"
+                        }
+                    },
+                    "required": [
+                        "seconds"
+                    ]
                 }
             ]
         },

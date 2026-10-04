@@ -139,7 +139,13 @@ impl RenderableMutWithContext<&mut EngineState> for NavigationDebugWindow {
                         .build();
                     ui.input_scalar("Search Steps", &mut polyanya_mesh.search_steps)
                         .build();
-                    for (i, _layer) in engine_state.geometry.polyanya_mesh.layers.iter().enumerate() {
+                    for (i, _layer) in engine_state
+                        .geometry
+                        .polyanya_mesh
+                        .layers
+                        .iter()
+                        .enumerate()
+                    {
                         ui.tree_node_config(format!("Layer {}", i)).build(|| {
                             // ui.text(format!("Polygons: {}", layer.polygons.len()));
                             // ui.text(format!("Nodes: {}", layer.nodes.len()));

@@ -11,7 +11,7 @@ use nat20_core::{
     engine::{
         action_prompt::ActionData,
         engine_state::EngineState,
-        event::{EncounterEvent, Event, EventKind, EventLog},
+        event::{EncounterEvent, Event, EventKind, EventLog, EventScope},
     },
     systems,
 };
@@ -141,16 +141,16 @@ pub fn filter_matching_events(events: Vec<&Event>) -> Vec<&Event> {
     filtered_events
 }
 
-impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for EventLog {
+impl ImguiRenderableWithContext<&(&EngineState, &LogLevel, &EventScope)> for EventLog {
     fn render_with_context(
         &self,
         ui: &imgui::Ui,
-        (engine_state, log_level): &(&EngineState, &LogLevel),
+        (engine_state, log_level, scope): &(&EngineState, &LogLevel, &EventScope),
     ) {
         let mut log_level_events = self
             .events
             .iter()
-            .filter(|event| event_log_level(event) <= **log_level)
+            .filter(|event| event.scope == **scope && event_log_level(event) <= **log_level)
             .collect::<Vec<_>>();
 
         if **log_level == LogLevel::Info {
@@ -214,10 +214,17 @@ impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for Event {
                 EncounterEvent::EncounterStarted(encounter_id) => {
                     ui.separator_with_text(format!("Encounter {}", encounter_id));
                 }
-                EncounterEvent::EncounterEnded(encounter_id, combat_log) => {
+                EncounterEvent::EncounterEnded(encounter_id) => {
                     if ui.collapsing_header(format!("Log##{}", encounter_id), TreeNodeFlags::FRAMED)
                     {
-                        combat_log.render_with_context(ui, &(engine_state, log_level));
+                        engine_state.event_log.render_with_context(
+                            ui,
+                            &(
+                                *engine_state,
+                                *log_level,
+                                &EventScope::Encounter(*encounter_id),
+                            ),
+                        );
                     }
                     ui.separator();
                 }
@@ -256,9 +263,7 @@ impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for Event {
                 action.render_with_context(ui, *engine_state);
 
                 if let Some(trigger_event_id) = &action.trigger_event
-                    && let Some(trigger_event) = engine_state
-                        .event_log(action.actor.id())
-                        .get(trigger_event_id)
+                    && let Some(trigger_event) = engine_state.event_log.get(trigger_event_id)
                 {
                     TextSegment::new("as a response to".to_string(), TextKind::Normal).render(ui);
                     ui.same_line();
@@ -418,7 +423,6 @@ impl ImguiRenderableWithContext<&(&EngineState, &LogLevel)> for Event {
             ui.open_popup(self.id.to_string());
         }
 
-        // TODO: Event debug doesn't work for EncounterEnded (it just renders everything)
         ui.popup(self.id.to_string(), || {
             let debug_text = format!("{:#?}", self);
             let size = ui.calc_text_size(&debug_text);

@@ -35,9 +35,8 @@ use crate::{
         action_prompt::{ActionData, ActionDecision, ActionDecisionKind},
         encounter::EncounterId,
         engine_state::EngineState,
-        event::{Event, EventCallback, EventFilter, EventKind},
+        event::{Event, EventCallback, EventFilter, EventKind, EventScope},
     },
-    registry::registry::ItemsRegistry,
     systems,
     systems::time::RestKind,
     test_utils::{creature_builder::CreatureBuilder, fixtures},
@@ -207,17 +206,8 @@ impl Scenario {
     }
 
     pub fn filter_events(&self, event_filter: EventFilter) -> Vec<&Event> {
-        let event_log = if let Some(encounter_id) = &self.encounter_id {
-            self.engine_state
-                .encounters
-                .get(encounter_id)
-                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in engine state"))
-                .event_log()
-        } else {
-            &self.engine_state.event_log
-        };
-
-        event_log
+        self.engine_state
+            .event_log
             .events
             .iter()
             .rev()
@@ -229,6 +219,7 @@ impl Scenario {
         ScenarioEventFilterBuilder {
             scenario: self,
             actor: None,
+            scope: None,
             kind: None,
         }
     }
@@ -1255,6 +1246,7 @@ impl<T: PartialOrd + PartialEq> Operator<T> {
 pub struct ScenarioEventFilterBuilder<'s> {
     scenario: &'s Scenario,
     actor: Option<Entity>,
+    scope: Option<EventScope>,
     kind: Option<EventFilterKind>,
 }
 
@@ -1268,6 +1260,17 @@ impl ScenarioEventFilterBuilder<'_> {
                 .unwrap_or_else(|| panic!("No creature with handle {handle} in scenario"))
                 .id(),
         );
+        self
+    }
+
+    /// Only events that happened in the scenario's encounter
+    #[track_caller]
+    pub fn in_encounter(mut self) -> Self {
+        let encounter_id = self
+            .scenario
+            .encounter_id
+            .expect("Scenario has no encounter");
+        self.scope = Some(EventScope::Encounter(encounter_id));
         self
     }
 
@@ -1357,8 +1360,13 @@ impl ScenarioEventFilterBuilder<'_> {
     fn build(&self) -> EventFilter {
         EventFilter::new({
             let actor = self.actor;
+            let scope = self.scope;
             let kind = self.kind.clone();
             move |event| {
+                if scope.is_some_and(|scope| scope != event.scope) {
+                    return false;
+                }
+
                 if let Some(actor) = actor
                     && let Some(event_actor) = event.actor()
                     && actor != event_actor
@@ -1424,25 +1432,10 @@ impl ScenarioEventFilterBuilder<'_> {
             .join("event_logs");
         let path = dir.join(format!("{test_name}.log"));
 
-        let contents = format!("{:#?}", self.event_log());
+        let contents = format!("{:#?}", self.scenario.engine_state.event_log.events);
         match fs::create_dir_all(&dir).and_then(|_| fs::write(&path, contents)) {
             Ok(()) => path.display().to_string(),
             Err(err) => format!("<failed to write {}: {err}>", path.display()),
-        }
-    }
-
-    fn event_log(&self) -> &Vec<Event> {
-        if let Some(encounter_id) = &self.scenario.encounter_id {
-            &self
-                .scenario
-                .engine_state
-                .encounters
-                .get(encounter_id)
-                .unwrap_or_else(|| panic!("No encounter with id {encounter_id} in engine state"))
-                .event_log()
-                .events
-        } else {
-            &self.scenario.engine_state.event_log.events
         }
     }
 }
@@ -1451,6 +1444,7 @@ impl std::fmt::Debug for ScenarioEventFilterBuilder<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScenarioEventFilterBuilder")
             .field("actor", &self.actor)
+            .field("scope", &self.scope)
             .field("kind", &self.kind)
             .finish()
     }

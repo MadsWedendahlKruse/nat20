@@ -160,8 +160,10 @@ impl RenderableMutWithContext<&mut EngineState> for SpawnPredefinedWindow {
                             ui.separator();
                         }
 
-                        entity
-                            .render_with_context(ui, (&self.engine_state, &CreatureRenderMode::Full));
+                        entity.render_with_context(
+                            ui,
+                            (&self.engine_state, &CreatureRenderMode::Full),
+                        );
 
                         if updated_level {
                             self.engine_state.world.despawn(entity).unwrap();

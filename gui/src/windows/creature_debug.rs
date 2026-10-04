@@ -272,8 +272,12 @@ impl ImguiRenderableMutWithContext<&mut EngineState> for CreatureDebugWindow {
                                 2 => RestKind::Long,
                                 _ => unreachable!(),
                             };
-                            systems::time::start_rest(engine_state, vec![self.creature], &rest_kind)
-                                .unwrap();
+                            systems::time::start_rest(
+                                engine_state,
+                                vec![self.creature],
+                                &rest_kind,
+                            )
+                            .unwrap();
                             // For debugging, immediately finish the rest
                             systems::time::finish_rest(engine_state, vec![self.creature]).unwrap();
                         }

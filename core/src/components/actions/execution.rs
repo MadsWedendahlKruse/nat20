@@ -439,7 +439,7 @@ impl StepState {
         }
         .with_parent(
             engine_state
-                .event_log(actor)
+                .event_log
                 .action_event_id(&action.instance_id),
         );
 
@@ -511,7 +511,7 @@ impl StepState {
         })
         .with_parent(
             engine_state
-                .event_log(action.actor.id())
+                .event_log
                 .action_event_id(&action.instance_id),
         );
 
@@ -638,7 +638,7 @@ impl StepComponent {
                 })
                 .with_parent(
                     engine_state
-                        .event_log(action.actor.id())
+                        .event_log
                         .action_event_id(&action.instance_id),
                 );
 

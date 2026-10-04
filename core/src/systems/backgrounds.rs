@@ -42,7 +42,8 @@ pub fn set_background(
     }
     let mut prompts = feat_result.unwrap();
 
-    let skill_set = systems::helpers::get_component_mut::<SkillSet>(&mut engine_state.world, entity);
+    let skill_set =
+        systems::helpers::get_component_mut::<SkillSet>(&mut engine_state.world, entity);
     for skill in background.skill_proficiencies {
         skill_set.set_proficiency(
             &skill,

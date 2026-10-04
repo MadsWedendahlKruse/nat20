@@ -19,10 +19,10 @@ use crate::{
         encounter::{Encounter, EncounterId},
         event::{
             Event, EventCallback, EventDispatcher, EventFilter, EventKind, EventListener, EventLog,
-            ListenerSource,
+            EventScope, ListenerSource,
         },
         geometry::WorldGeometry,
-        prompt::{PendingEvent, PromptManager, PromptScope, PromptScopeId},
+        prompt::{PendingEvent, PromptManager, PromptScope},
     },
     systems::{self, actions::ActionUsabilityError, combat::CombatState, movement::MovementError},
 };
@@ -117,10 +117,10 @@ impl EngineState {
         Ok(())
     }
 
-    pub(crate) fn scope_id_for_entity(&self, entity: Entity) -> PromptScopeId {
+    pub(crate) fn scope_id_for_entity(&self, entity: Entity) -> EventScope {
         match *systems::helpers::get_component::<CombatState>(&self.world, entity) {
-            CombatState::InCombat(encounter_id) => PromptScopeId::Encounter(encounter_id),
-            CombatState::OutOfCombat => PromptScopeId::Global,
+            CombatState::InCombat(encounter_id) => EventScope::Encounter(encounter_id),
+            CombatState::OutOfCombat => EventScope::Global,
         }
     }
 
@@ -134,12 +134,12 @@ impl EngineState {
         self.prompts.scope_mut(scope)
     }
 
-    pub fn next_prompt(&self, scope: PromptScopeId) -> Option<&ActionPrompt> {
+    pub fn next_prompt(&self, scope: EventScope) -> Option<&ActionPrompt> {
         self.prompts.scope(&scope).and_then(|s| s.next_prompt())
     }
 
     pub fn next_promt_encounter(&self, encounter_id: &EncounterId) -> Option<&ActionPrompt> {
-        self.next_prompt(PromptScopeId::Encounter(*encounter_id))
+        self.next_prompt(EventScope::Encounter(*encounter_id))
     }
 
     pub fn next_prompt_entity(&self, entity: Entity) -> Option<&ActionPrompt> {
@@ -176,7 +176,7 @@ impl EngineState {
     fn validate_against_prompt(
         &mut self,
         mut decision: ActionDecision,
-        scope_id: PromptScopeId,
+        scope_id: EventScope,
     ) -> Result<ActionPromptId, ActionError> {
         let scope = self.prompts.scope_mut(scope_id);
 
@@ -186,7 +186,7 @@ impl EngineState {
             .iter()
             .all(|p| p.id != decision.response_to)
         {
-            if matches!(scope_id, PromptScopeId::Global) {
+            if matches!(scope_id, EventScope::Global) {
                 // "Open world" behavior, allow ad-hoc Action prompts.
                 scope.queue_prompt(
                     ActionPrompt::new(ActionPromptKind::Action {
@@ -222,7 +222,7 @@ impl EngineState {
 
     fn try_process_prompt_decisions(
         &mut self,
-        scope_id: PromptScopeId,
+        scope_id: EventScope,
         prompt_id: ActionPromptId,
     ) -> Result<(), ActionError> {
         let scope = self.prompts.scope_mut(scope_id);
@@ -252,8 +252,7 @@ impl EngineState {
                     reactor,
                     choice,
                 } => {
-                    self.event_log_mut(*reactor)
-                        .record_reaction(event.clone(), *reactor);
+                    self.event_log.record_reaction(event.clone(), *reactor);
 
                     // Declined, reactor is no longer a blocker on the pending event
                     let Some(reaction_data) = choice else {
@@ -300,8 +299,9 @@ impl EngineState {
         }
     }
 
-    pub(crate) fn process_event_scoped(&mut self, scope_id: PromptScopeId, event: Event) {
-        self.log_event(&scope_id, event.clone());
+    pub(crate) fn process_event_scoped(&mut self, scope_id: EventScope, event: Event) {
+        let event = event.with_scope(scope_id);
+        self.event_log.push(event.clone());
 
         let triggerd_listeners = self.event_dispatcher.dispatch(&event);
         for listener_id in &triggerd_listeners {
@@ -343,7 +343,7 @@ impl EngineState {
         self.advance_event(event, false);
     }
 
-    fn validate_or_refill_prompt_queue(&mut self, scope_id: PromptScopeId) {
+    fn validate_or_refill_prompt_queue(&mut self, scope_id: EventScope) {
         let new_options = if let Some(scope) = self.prompts.scope(&scope_id)
             && let Some(front) = scope.next_prompt()
         {
@@ -386,8 +386,8 @@ impl EngineState {
         }
 
         match scope_id {
-            PromptScopeId::Global => { /* don't auto-refill */ }
-            PromptScopeId::Encounter(encounter_id) => {
+            EventScope::Global => { /* don't auto-refill */ }
+            EventScope::Encounter(encounter_id) => {
                 let current_entity = self
                     .encounters
                     .get(&encounter_id)
@@ -406,7 +406,7 @@ impl EngineState {
         }
     }
 
-    pub(crate) fn resume_pending_events_if_ready(&mut self, scope: PromptScopeId) {
+    pub(crate) fn resume_pending_events_if_ready(&mut self, scope: EventScope) {
         let Some(pending_event) = self.prompts.scope_mut(scope).pop_front_if_ready() else {
             return;
         };
@@ -460,7 +460,7 @@ impl EngineState {
         let mut reaction_options = HashMap::new();
 
         for reactor in &reactors {
-            if self.event_log(*reactor).has_reacted(&event.id, reactor) {
+            if self.event_log.has_reacted(&event.id, reactor) {
                 continue;
             }
 
@@ -549,7 +549,7 @@ impl EngineState {
 
             EventKind::ActionResult { result, .. } => {
                 if let Some(parent) = event.parent.as_ref()
-                    && let Some(parent_event) = self.event_log(result.target.id()).get(parent)
+                    && let Some(parent_event) = self.event_log.get(parent)
                     && let EventKind::ActionRequested { action } = &parent_event.kind
                 {
                     let action = action.clone();
@@ -611,41 +611,6 @@ impl EngineState {
                         .expect("Event must have an actor to resume pending events"),
                 ),
             );
-        }
-    }
-
-    fn log_event(&mut self, scope: &PromptScopeId, event: Event) {
-        let event_log = match scope {
-            PromptScopeId::Global => &mut self.event_log,
-            PromptScopeId::Encounter(encounter_id) => self
-                .encounters
-                .get_mut(encounter_id)
-                .expect("Inconsistent state: encounter not found")
-                .event_log_mut(),
-        };
-
-        event_log.push(event);
-    }
-
-    pub fn event_log(&self, entity: Entity) -> &EventLog {
-        if let Some(encounter) = self.encounter_for_entity(entity) {
-            encounter.event_log()
-        } else {
-            &self.event_log
-        }
-    }
-
-    pub fn event_log_mut(&mut self, entity: Entity) -> &mut EventLog {
-        let encounter_id = self
-            .encounter_for_entity(entity)
-            .map(|encounter| *encounter.id());
-
-        if let Some(encounter_id) = encounter_id
-            && let Some(encounter) = self.encounters.get_mut(&encounter_id)
-        {
-            encounter.event_log_mut()
-        } else {
-            &mut self.event_log
         }
     }
 

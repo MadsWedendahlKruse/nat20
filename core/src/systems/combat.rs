@@ -18,8 +18,7 @@ use crate::{
         action_prompt::{ActionPrompt, ActionPromptKind},
         encounter::{Encounter, EncounterId},
         engine_state::EngineState,
-        event::{CallbackResult, EncounterEvent, Event, EventCallback, EventKind},
-        prompt::PromptScopeId,
+        event::{CallbackResult, EncounterEvent, Event, EventCallback, EventKind, EventScope},
     },
     systems,
 };
@@ -86,11 +85,8 @@ pub fn start_encounter_with_id(
         )));
 
     let initiative_order = roll_initiative(engine_state, &participants);
-    let mut encounter = Encounter::new(encounter_id, participants, initiative_order);
-    encounter.log_event(Event::encounter_event(EncounterEvent::NewRound(
-        encounter_id,
-        encounter.round(),
-    )));
+    let encounter = Encounter::new(encounter_id, participants, initiative_order);
+    log_new_round(engine_state, encounter_id, encounter.round());
 
     // The encounter has to be in the engine state before the first turn starts,
     // otherwise nothing that happens during that turn can find it
@@ -117,8 +113,15 @@ fn roll_initiative(
     rolls
 }
 
+fn log_new_round(engine_state: &mut EngineState, encounter_id: EncounterId, round: usize) {
+    engine_state.event_log.push(
+        Event::encounter_event(EncounterEvent::NewRound(encounter_id, round))
+            .with_scope(EventScope::Encounter(encounter_id)),
+    );
+}
+
 pub fn end_encounter(engine_state: &mut EngineState, encounter_id: &EncounterId) {
-    if let Some(mut encounter) = engine_state.encounters.remove(encounter_id) {
+    if let Some(encounter) = engine_state.encounters.remove(encounter_id) {
         for entity in encounter.participants(&engine_state.world, &[EntityFilter::All]) {
             systems::helpers::get_component_mut::<CombatState>(&mut engine_state.world, entity)
                 .leave_combat();
@@ -128,7 +131,6 @@ pub fn end_encounter(engine_state: &mut EngineState, encounter_id: &EncounterId)
             .event_log
             .push(Event::encounter_event(EncounterEvent::EncounterEnded(
                 *encounter_id,
-                encounter.event_log_move(),
             )));
     }
 }
@@ -166,7 +168,7 @@ pub fn end_turn(engine_state: &mut EngineState, entity: Entity) {
 
     let scope = engine_state
         .prompts
-        .scope_mut(PromptScopeId::Encounter(encounter_id));
+        .scope_mut(EventScope::Encounter(encounter_id));
 
     for prompt in scope.pending_prompts().iter() {
         for respondent in prompt.actors() {
@@ -187,7 +189,7 @@ pub fn end_turn(engine_state: &mut EngineState, entity: Entity) {
 fn advance_turn(engine_state: &mut EngineState, encounter_id: EncounterId) {
     engine_state
         .prompts
-        .scope_mut(PromptScopeId::Encounter(encounter_id))
+        .scope_mut(EventScope::Encounter(encounter_id))
         .clear_prompts();
 
     let encounter = engine_state
@@ -195,10 +197,8 @@ fn advance_turn(engine_state: &mut EngineState, encounter_id: EncounterId) {
         .expect("Inconsistent state: encounter not found");
 
     if encounter.advance_turn() {
-        encounter.log_event(Event::encounter_event(EncounterEvent::NewRound(
-            encounter_id,
-            encounter.round(),
-        )));
+        let round = encounter.round();
+        log_new_round(engine_state, encounter_id, round);
     }
 }
 
@@ -214,7 +214,7 @@ fn start_turn(engine_state: &mut EngineState, encounter_id: EncounterId) {
 
     engine_state
         .prompts
-        .scope_mut(PromptScopeId::Encounter(encounter_id))
+        .scope_mut(EventScope::Encounter(encounter_id))
         .queue_prompt(
             ActionPrompt::new(ActionPromptKind::Action {
                 actor: current_entity,

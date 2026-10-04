@@ -60,9 +60,7 @@ impl ReactionBody {
 
         let result = result.unwrap_or_else(|| {
             // TODO: Not sure if this check actually works
-            if let Some(trigger_event) = engine_state
-                .event_log(action.actor.id())
-                .get(&trigger_event)
+            if let Some(trigger_event) = engine_state.event_log.get(&trigger_event)
                 && *trigger_event != pending.event
             {
                 ReactionResult::ModifyEvent {

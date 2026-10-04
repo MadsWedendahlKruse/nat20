@@ -24,8 +24,7 @@ use crate::{
     engine::{
         action_prompt::ActionData,
         engine_state::EngineState,
-        event::{Event, EventId, EventKindTag},
-        prompt::PromptScopeId,
+        event::{Event, EventId, EventKindTag, EventScope},
     },
     registry::registry::{ActionsRegistry, SpellsRegistry},
     systems::{self, geometry::RaycastFilter},
@@ -512,7 +511,7 @@ pub fn projectile_impact(engine_state: &mut EngineState, entity: Entity) {
 /// Re-run executions in this scope that are waiting on an event resolution.
 /// Safe to call speculatively: an execution whose result hasn't arrived yet
 /// simply parks again.
-pub fn resume_waiting_executions(engine_state: &mut EngineState, scope: PromptScopeId) {
+pub fn resume_waiting_executions(engine_state: &mut EngineState, scope: EventScope) {
     let waiting: Vec<Entity> = engine_state
         .world
         .query::<&Option<ActionExecution>>()

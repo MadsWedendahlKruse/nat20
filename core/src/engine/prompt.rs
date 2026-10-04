@@ -5,62 +5,29 @@ use serde::{Deserialize, Serialize};
 
 use crate::engine::{
     action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
-    encounter::EncounterId,
-    event::{Event, EventId},
+    event::{Event, EventId, EventScope},
 };
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct PromptManager {
-    pub scopes: HashMap<PromptScopeId, PromptScope>,
+    pub scopes: HashMap<EventScope, PromptScope>,
 }
 
 impl PromptManager {
-    pub fn scope_mut(&mut self, id: PromptScopeId) -> &mut PromptScope {
+    pub fn scope_mut(&mut self, id: EventScope) -> &mut PromptScope {
         self.scopes.entry(id).or_default()
     }
 
-    pub fn scope(&self, id: &PromptScopeId) -> Option<&PromptScope> {
+    pub fn scope(&self, id: &EventScope) -> Option<&PromptScope> {
         self.scopes.get(id)
     }
 
-    pub fn remove_scope(&mut self, id: &PromptScopeId) {
+    pub fn remove_scope(&mut self, id: &EventScope) {
         self.scopes.remove(id);
     }
 
-    pub fn scopes(&self) -> &HashMap<PromptScopeId, PromptScope> {
+    pub fn scopes(&self) -> &HashMap<EventScope, PromptScope> {
         &self.scopes
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-/// Must be representable as a string to use as a key when serializing
-#[serde(try_from = "String", into = "String")]
-pub enum PromptScopeId {
-    Global,
-    Encounter(EncounterId),
-}
-
-impl From<PromptScopeId> for String {
-    fn from(value: PromptScopeId) -> Self {
-        match value {
-            PromptScopeId::Global => "global".to_string(),
-            PromptScopeId::Encounter(id) => id.to_string(),
-        }
-    }
-}
-
-impl TryFrom<String> for PromptScopeId {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value == "global" {
-            Ok(PromptScopeId::Global)
-        } else {
-            match value.parse::<EncounterId>() {
-                Ok(id) => Ok(PromptScopeId::Encounter(id)),
-                Err(error) => Err(error.to_string()),
-            }
-        }
     }
 }
 

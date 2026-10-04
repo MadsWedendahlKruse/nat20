@@ -7,13 +7,13 @@ use nat20_core::{
         health::{hit_points::HitPoints, life_state::LifeState},
         id::Name,
     },
-    engine::{action_prompt::ActionPromptKind, engine_state::EngineState, geometry::WorldGeometry},
-    entities::projectile::ProjectileData,
-    persistence,
-    systems::{
-        self,
-        geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
+    engine::{
+        action_prompt::ActionPromptKind, engine_state::EngineState, event::EventScope,
+        geometry::WorldGeometry,
     },
+    entities::projectile::ProjectileData,
+    persistence, systems,
+    systems::geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
 };
 use parry3d::na::{Matrix4, Point3};
 use strum::IntoEnumIterator;
@@ -470,15 +470,11 @@ impl MainMenuWindow {
                 });
                 width_token.end();
 
-                let event_log = if *log_source == 0 || encounters.len() < *log_source {
-                    &engine_state.event_log
+                let scope = if *log_source == 0 || encounters.len() < *log_source {
+                    EventScope::Global
                 } else {
                     let id = encounters.get(*log_source - 1).map(|e| e.id()).unwrap();
-                    engine_state
-                        .encounters
-                        .get(id)
-                        .map(|e| e.event_log())
-                        .unwrap_or(&engine_state.event_log)
+                    EventScope::Encounter(*id)
                 };
 
                 ui.child_window("Event Log Content")
@@ -489,7 +485,9 @@ impl MainMenuWindow {
                     )
                     .size([0.0, 200.0])
                     .build(|| {
-                        event_log.render_with_context(ui, &(engine_state, &*log_level));
+                        engine_state
+                            .event_log
+                            .render_with_context(ui, &(&*engine_state, &*log_level, &scope));
 
                         if *auto_scroll_event_log && ui.scroll_y() >= ui.scroll_max_y() - 5.0 {
                             ui.set_scroll_here_y_with_ratio(1.0);

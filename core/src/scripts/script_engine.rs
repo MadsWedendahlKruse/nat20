@@ -57,7 +57,7 @@ use crate::{
         resource::ResourceAmountMap,
         speed::Speed,
     },
-    engine::{action_prompt::ActionData, event::Event, engine_state::EngineState},
+    engine::{action_prompt::ActionData, engine_state::EngineState, event::Event},
     registry::registry::REGISTRY_ROOT,
     scripts::{
         script::{Script, ScriptError, ScriptFunction},
