@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use crate::{
         id::{ActionId, ClassId, EffectId, ResourceId, SubclassId},
         items::equipment::{armor::ArmorType, weapon::WeaponCategory},
         level_up::{ChoiceItem, ChoiceSpec, LevelUpPrompt},
-        resource::{ResourceBudget, ResourceBudgetKind},
+        resource::ResourceBudgetKind,
         skill::Skill,
     },
     registry::registry_validation::{
@@ -59,25 +59,7 @@ impl From<ClassDefinition> for Class {
                     level,
                     resources
                         .into_iter()
-                        .map(|res_def| {
-                            (
-                                res_def.id,
-                                match res_def.budget {
-                                    ResourceBudgetKindDefinition::Flat(resource_budget) => {
-                                        ResourceBudgetKind::Flat(resource_budget)
-                                    }
-                                    ResourceBudgetKindDefinition::Tiered(btree_map) => {
-                                        let mut tiered_map = BTreeMap::new();
-                                        for (tier_str, budget) in btree_map {
-                                            let tier: u8 = tier_str.parse().unwrap_or(0);
-                                            tiered_map.insert(tier, budget);
-                                        }
-                                        ResourceBudgetKind::Tiered(tiered_map)
-                                    }
-                                },
-                                res_def.override_existing,
-                            )
-                        })
+                        .map(|res_def| (res_def.id, res_def.budget, res_def.override_existing))
                         .collect(),
                 )
             })
