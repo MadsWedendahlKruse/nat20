@@ -74,7 +74,7 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                         };
 
                     Some(ReactionResult::CancelEvent {
-                        event: event.clone().into(),
+                        event: event.clone(),
                         resources_refunded,
                     })
                 },

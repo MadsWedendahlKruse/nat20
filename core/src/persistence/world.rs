@@ -1,14 +1,14 @@
-use std::{any::TypeId, fs::File, path::Path};
+use std::any::TypeId;
 
 use hecs::{
-    EntityBuilder, EntityRef,
-    serialize::row::{DeserializeContext, SerializeContext, try_serialize},
+    EntityBuilder, EntityRef, World,
+    serialize::row::{self, DeserializeContext, SerializeContext, try_serialize},
 };
 use serde::{
+    Deserializer, Serializer,
     de::{IgnoredAny, MapAccess},
     ser::SerializeMap,
 };
-use serde_json::{Deserializer, Serializer};
 use tracing::warn;
 
 use crate::{
@@ -42,7 +42,6 @@ use crate::{
         spells::spellbook::Spellbook,
         time::EntityClock,
     },
-    engine::engine_state::EngineState,
     systems::{combat::CombatState, entities::EntityKind, geometry::Pose, time::RestKind},
 };
 
@@ -155,23 +154,12 @@ pub fn should_save(type_id: TypeId) -> bool {
     is_saved(type_id) || type_id == TypeId::of::<Option<ActionExecution>>()
 }
 
-pub fn save_world(engine_state: &EngineState) {
-    let mut context = WorldSaveContext;
-    let writer = File::create("world.json").unwrap();
-    let mut serializer = Serializer::pretty(writer);
-    let result =
-        hecs::serialize::row::serialize(&engine_state.world, &mut context, &mut serializer);
-    print!("{:?}", result);
+/// These two are shaped for `#[serde(with = "world")]`
+
+pub(crate) fn serialize<S: Serializer>(world: &World, serializer: S) -> Result<S::Ok, S::Error> {
+    row::serialize(world, &mut WorldSaveContext, serializer)
 }
 
-pub fn load_world<P>(engine_state: &mut EngineState, file_path: &P)
-where
-    P: AsRef<Path>,
-{
-    let mut context = WorldSaveContext;
-    let file = File::open(file_path).expect("Failed to open world file");
-    let mut deserializer = Deserializer::from_reader(file);
-    let world = hecs::serialize::row::deserialize(&mut context, &mut deserializer)
-        .expect("Failed to deserialize world");
-    engine_state.world = world;
+pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<World, D::Error> {
+    row::deserialize(&mut WorldSaveContext, deserializer)
 }

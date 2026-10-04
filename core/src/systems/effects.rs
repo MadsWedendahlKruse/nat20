@@ -103,7 +103,7 @@ pub fn add_effect_template(
     result
 }
 
-fn register_end_conditions(
+pub(crate) fn register_end_conditions(
     engine_state: &mut EngineState,
     applier: Entity,
     target: Entity,

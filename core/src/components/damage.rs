@@ -398,7 +398,7 @@ impl fmt::Display for DamageResistances {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DamageComponentMitigation {
     pub damage_type: DamageType,
     pub original: ModifierResult,
@@ -417,7 +417,7 @@ impl DamageComponentMitigation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DamageMitigationResult {
     pub components: Vec<DamageComponentMitigation>,
     pub total: i32,

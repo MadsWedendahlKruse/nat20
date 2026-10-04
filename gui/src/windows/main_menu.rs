@@ -22,7 +22,7 @@ use crate::{
     render::{
         common::{
             colors::Color,
-            utils::{Renderable, RenderableMutWithContext, RenderableWithContext},
+            utils::{Renderable, RenderableMutWithContext},
         },
         ui::{
             engine::LogLevel,
@@ -392,11 +392,11 @@ impl MainMenuWindow {
                 // TEMP
                 ui.separator_with_text("Save & Load");
                 if ui.button("Save World") {
-                    persistence::world::save_world(engine_state);
+                    persistence::engine::save_engine_state(engine_state).unwrap();
                 }
 
                 if ui.button("Load World") {
-                    persistence::world::load_world(engine_state, &"world.json");
+                    *engine_state = persistence::engine::load_engine_state().unwrap();
                 }
             });
     }

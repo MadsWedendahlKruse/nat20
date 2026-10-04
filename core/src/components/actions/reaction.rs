@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use crate::{
@@ -97,14 +98,14 @@ impl ReactionBody {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ReactionResult {
     ModifyEvent {
         before: Event,
         after: Event,
     },
     CancelEvent {
-        event: Box<Event>,
+        event: Event,
         resources_refunded: ResourceAmountMap,
     },
     NoEffect,

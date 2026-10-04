@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use hecs::Entity;
+use serde::{Deserialize, Serialize};
 
 use crate::engine::{
     action_prompt::{ActionDecision, ActionPrompt, ActionPromptId},
@@ -8,10 +9,59 @@ use crate::engine::{
     event::{Event, EventId},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct PromptManager {
+    pub scopes: HashMap<PromptScopeId, PromptScope>,
+}
+
+impl PromptManager {
+    pub fn scope_mut(&mut self, id: PromptScopeId) -> &mut PromptScope {
+        self.scopes.entry(id).or_default()
+    }
+
+    pub fn scope(&self, id: &PromptScopeId) -> Option<&PromptScope> {
+        self.scopes.get(id)
+    }
+
+    pub fn remove_scope(&mut self, id: &PromptScopeId) {
+        self.scopes.remove(id);
+    }
+
+    pub fn scopes(&self) -> &HashMap<PromptScopeId, PromptScope> {
+        &self.scopes
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Must be representable as a string to use as a key when serializing
+#[serde(try_from = "String", into = "String")]
 pub enum PromptScopeId {
     Global,
     Encounter(EncounterId),
+}
+
+impl From<PromptScopeId> for String {
+    fn from(value: PromptScopeId) -> Self {
+        match value {
+            PromptScopeId::Global => "global".to_string(),
+            PromptScopeId::Encounter(id) => id.to_string(),
+        }
+    }
+}
+
+impl TryFrom<String> for PromptScopeId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value == "global" {
+            Ok(PromptScopeId::Global)
+        } else {
+            match value.parse::<EncounterId>() {
+                Ok(id) => Ok(PromptScopeId::Encounter(id)),
+                Err(error) => Err(error.to_string()),
+            }
+        }
+    }
 }
 
 /// A paused event together with the reactors that are still holding it up.
@@ -20,7 +70,7 @@ pub enum PromptScopeId {
 /// is cleared either when their decision resolves without spawning an activity
 /// (decline or instant modifier reaction), or when their resulting reaction
 /// activity completes. The event becomes drainable when `blocked_by` is empty.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingEvent {
     pub event: Event,
     pub blocked_by: HashSet<Entity>,
@@ -38,7 +88,7 @@ impl PendingEvent {
 }
 
 /// One place for prompts, decisions, and paused events.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct PromptScope {
     pending_prompts: VecDeque<ActionPrompt>,
     decisions_by_prompt: HashMap<ActionPromptId, HashMap<Entity, ActionDecision>>,
@@ -175,28 +225,5 @@ impl PromptScope {
         {
             pending_event.blocked_by.remove(&reactor);
         }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct PromptManager {
-    pub scopes: HashMap<PromptScopeId, PromptScope>,
-}
-
-impl PromptManager {
-    pub fn scope_mut(&mut self, id: PromptScopeId) -> &mut PromptScope {
-        self.scopes.entry(id).or_default()
-    }
-
-    pub fn scope(&self, id: &PromptScopeId) -> Option<&PromptScope> {
-        self.scopes.get(id)
-    }
-
-    pub fn remove_scope(&mut self, id: &PromptScopeId) {
-        self.scopes.remove(id);
-    }
-
-    pub fn scopes(&self) -> &HashMap<PromptScopeId, PromptScope> {
-        &self.scopes
     }
 }

@@ -30,7 +30,7 @@ use crate::{
 
 pub type EventId = Uuid;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
     pub id: EventId,
     pub kind: EventKind,
@@ -108,7 +108,7 @@ impl Event {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumDiscriminants)]
 #[strum_discriminants(
     name(EventKindTag),
     derive(Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema),
@@ -191,14 +191,14 @@ pub enum EventKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EncounterEvent {
     EncounterStarted(EncounterId),
     EncounterEnded(EncounterId, EventLog),
     NewRound(EncounterId, usize),
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct EventLog {
     pub events: Vec<Event>,
     pub indices: HashMap<EventId, usize>,

@@ -60,8 +60,17 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TimeDurationDefinition {
-    RealTime { time: TimeExpressionDefinition },
-    Turns { turns: u32 },
+    RealTime {
+        time: TimeExpressionDefinition,
+    },
+    Turns {
+        turns: u32,
+    },
+    /// TODO: Bit of a hack to allow deserializing a `TimeDuration` which was serialized
+    /// directly rather than through a `TimeDurationDefinition`
+    Seconds {
+        seconds: f32,
+    },
 }
 
 impl From<TimeDurationDefinition> for TimeDuration {
@@ -71,6 +80,7 @@ impl From<TimeDurationDefinition> for TimeDuration {
                 TimeDuration::from_seconds(time.evaluate_without_variables().unwrap().value)
             }
             TimeDurationDefinition::Turns { turns } => TimeDuration::from_turns(turns),
+            TimeDurationDefinition::Seconds { seconds } => TimeDuration::from_seconds(seconds),
         }
     }
 }

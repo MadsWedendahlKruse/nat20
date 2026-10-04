@@ -1111,7 +1111,7 @@ impl DisplacementTemplate {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Displacement {
     Teleport,
     Push { trajectory: Parabola },

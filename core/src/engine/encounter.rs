@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use hecs::{Entity, World};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -24,7 +25,7 @@ use crate::{
 
 pub type EncounterId = Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Encounter {
     id: EncounterId,
     participants: HashSet<Entity>,

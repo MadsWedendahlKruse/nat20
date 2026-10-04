@@ -16,7 +16,7 @@ use crate::{
 
 pub type ActionPromptId = Uuid;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ActionPromptKind {
     /// Prompt an entity to perform an action
     Action {
@@ -45,7 +45,7 @@ impl ActionPromptKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionPrompt {
     pub id: ActionPromptId,
     pub kind: ActionPromptKind,
