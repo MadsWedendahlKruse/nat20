@@ -210,18 +210,27 @@ impl ActionBarWindow {
                 true
             }),
             EventCallback::new(move |_engine_state, event, _source| match &event.kind {
-                EventKind::ActionResult { result, .. } if result.target.id() != entity => {
-                    let components = result.components_kind(ActionResultComponentKind::Effect);
-                    for component in components {
-                        let ActionResultComponent::Effect(effect_result) = component else {
-                            continue;
-                        };
-                        if let Some(effect) = EffectsRegistry::get(effect_result.root())
-                            && !effect.actions.is_empty()
-                            && effect_result.result != EffectResultKind::None
-                        {
-                            flag.store(true, Ordering::Relaxed);
-                            return CallbackResult::None;
+                EventKind::ActionResult { result, actor, .. } => {
+                    if let Some(actor) = actor
+                        && actor.id() == entity
+                    {
+                        flag.store(true, Ordering::Relaxed);
+                        return CallbackResult::None;
+                    }
+
+                    if result.target.id() == entity {
+                        let components = result.components_kind(ActionResultComponentKind::Effect);
+                        for component in components {
+                            let ActionResultComponent::Effect(effect_result) = component else {
+                                continue;
+                            };
+                            if let Some(effect) = EffectsRegistry::get(effect_result.root())
+                                && !effect.actions.is_empty()
+                                && effect_result.result != EffectResultKind::None
+                            {
+                                flag.store(true, Ordering::Relaxed);
+                                return CallbackResult::None;
+                            }
                         }
                     }
 

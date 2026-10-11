@@ -237,7 +237,6 @@ impl MainMenuWindow {
                     ui,
                     &mut gui_state.window_manager,
                     engine_state,
-                    encounters,
                     auto_scroll_event_log,
                     log_level,
                     log_source,
@@ -443,7 +442,6 @@ impl MainMenuWindow {
         ui: &imgui::Ui,
         window_manager: &mut WindowManager,
         engine_state: &mut EngineState,
-        encounters: &mut Vec<EncounterWindow>,
         auto_scroll_event_log: &mut bool,
         log_level: &mut LogLevel,
         log_source: &mut usize,
@@ -455,7 +453,7 @@ impl MainMenuWindow {
             AUTO_RESIZE,
             &mut true,
             || {
-                let mut log_sources = vec!["World".to_string()];
+                let mut log_sources = vec!["Global".to_string()];
                 log_sources.extend(
                     engine_state
                         .encounters
@@ -470,11 +468,17 @@ impl MainMenuWindow {
                 });
                 width_token.end();
 
-                let scope = if *log_source == 0 || encounters.len() < *log_source {
+                let scope = if *log_source == 0 || engine_state.encounters.len() < *log_source {
                     EventScope::Global
                 } else {
-                    let id = encounters.get(*log_source - 1).map(|e| e.id()).unwrap();
-                    EventScope::Encounter(*id)
+                    EventScope::Encounter(
+                        engine_state
+                            .encounters
+                            .keys()
+                            .nth(*log_source - 1)
+                            .cloned()
+                            .unwrap(),
+                    )
                 };
 
                 ui.child_window("Event Log Content")

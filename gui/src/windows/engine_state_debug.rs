@@ -41,13 +41,13 @@ impl RenderableMutWithContext<&mut EngineState> for EngineStateDebugWindow {
 
         gui_state.window_manager.render_window(
             ui,
-            "Game State Debug",
+            "Engine State Debug",
             &anchor::TOP_RIGHT,
             [0.0, 500.0],
             &mut engine_state_debug_open,
             || {
                 ui.checkbox(
-                    "Update Game State",
+                    "Update Engine State",
                     gui_state
                         .settings
                         .get_mut::<bool>(state::parameters::UPDATE_ENGINE_STATE),
@@ -63,6 +63,8 @@ impl RenderableMutWithContext<&mut EngineState> for EngineStateDebugWindow {
                 ui.separator();
 
                 render_entities(ui, engine_state);
+
+                render_encounters(ui, engine_state);
 
                 render_prompt_manager(ui, engine_state);
 
@@ -133,6 +135,18 @@ fn render_entities(ui: &imgui::Ui, engine_state: &mut EngineState) {
 
             ui.separator();
         }
+    }
+}
+
+fn render_encounters(ui: &imgui::Ui, engine_state: &mut EngineState) {
+    if ui.collapsing_header("Encounters", TreeNodeFlags::empty()) {
+        ui.indent();
+        for (id, encounter) in engine_state.encounters.iter() {
+            if ui.collapsing_header(format!("Encounter {:?}", id), TreeNodeFlags::empty()) {
+                ui.text(format!("{:#?}", encounter));
+            }
+        }
+        ui.unindent();
     }
 }
 
