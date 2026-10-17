@@ -16,6 +16,7 @@ use crate::{
         activity::Activity,
         ai::AIController,
         id::AIControllerId,
+        rng,
     },
     engine::{
         action_prompt::{ActionPrompt, ActionPromptKind},
@@ -44,7 +45,7 @@ impl AIController for RandomController {
         prompt: &ActionPrompt,
         actor: Entity,
     ) -> Option<Activity> {
-        let rng = &mut rand::rng();
+        let rng = &mut rng::rng();
 
         match &prompt.kind {
             ActionPromptKind::Action { actor } => {
