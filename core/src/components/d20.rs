@@ -19,6 +19,7 @@ use crate::{
         },
         proficiency::Proficiency,
         range::Range,
+        rng,
         saving_throw::SavingThrowKind,
         skill::Skill,
     },
@@ -262,7 +263,7 @@ impl D20Check {
     pub fn roll(&self) -> D20CheckResult {
         let check: D20Check = self.clone();
 
-        let mut rng = rand::rng();
+        let mut rng = rng::rng();
         let roll_mode = self.advantage_tracker.roll_mode();
         let rolls = match roll_mode {
             RollMode::Normal => vec![rng.random_range(1..=20) as u8],
@@ -527,14 +528,14 @@ impl D20CheckResult {
             }
             (RollMode::Advantage, RollMode::Normal) => {
                 // We had no advantage before, but now we do. Reroll and keep the highest.
-                let mut rng = rand::rng();
+                let mut rng = rng::rng();
                 let new_roll = rng.random_range(1..=20) as u8;
                 self.rolls.push(new_roll);
                 self.selected_roll = *self.rolls.iter().max().unwrap();
             }
             (RollMode::Disadvantage, RollMode::Normal) => {
                 // We had no disadvantage before, but now we do. Reroll and keep the lowest.
-                let mut rng = rand::rng();
+                let mut rng = rng::rng();
                 let new_roll = rng.random_range(1..=20) as u8;
                 self.rolls.push(new_roll);
                 self.selected_roll = *self.rolls.iter().min().unwrap();

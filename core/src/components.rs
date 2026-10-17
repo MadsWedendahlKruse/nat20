@@ -19,6 +19,7 @@ pub mod modifier;
 pub mod proficiency;
 pub mod range;
 pub mod resource;
+pub mod rng;
 pub mod saving_throw;
 pub mod scratchpad;
 pub mod skill;
