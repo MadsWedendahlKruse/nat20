@@ -60,9 +60,13 @@ impl Encounter {
     }
 
     fn roll_initiative(&mut self, engine_state: &EngineState) {
-        let mut indexed_rolls: Vec<(Entity, D20CheckResult)> = self
-            .participants
-            .iter()
+        // Roll in a fixed order rather than HashSet order, so a seeded run gets
+        // the same initiative every time (ties also keep this order).
+        let mut participants: Vec<&Entity> = self.participants.iter().collect();
+        participants.sort();
+
+        let mut indexed_rolls: Vec<(Entity, D20CheckResult)> = participants
+            .into_iter()
             .map(|entity| {
                 let roll =
                     systems::helpers::get_component::<SkillSet>(&engine_state.world, *entity)
