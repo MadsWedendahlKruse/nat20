@@ -1,5 +1,6 @@
 use hecs::{Bundle, Entity};
 use parry3d::query::Ray;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use uom::si::{f32::Velocity, velocity::meter_per_second};
 
@@ -75,7 +76,7 @@ pub fn update(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
 
 // TODO: Not sure if it's the most ECS-idiomatic solution to just cram everything
 // into one component
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectileData {
     pub pose: Pose,
     pub trajectory: RaycastMode,

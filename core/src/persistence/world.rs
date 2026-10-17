@@ -42,6 +42,7 @@ use crate::{
         spells::spellbook::Spellbook,
         time::EntityClock,
     },
+    entities::projectile::ProjectileData,
     systems::{combat::CombatState, entities::EntityKind, geometry::Pose, time::RestKind},
 };
 
@@ -127,7 +128,6 @@ saved_components! {
     "loadout" => Loadout,
     "spellbook" => Spellbook,
     "resources" => ResourceMap,
-    // TODO: Remember to re-register end conditions when deserializing
     "effects" => EffectManager,
     "feats" => Vec<FeatId>,
     "actions" => ActionMap,
@@ -136,6 +136,7 @@ saved_components! {
     "factions" => FactionSet,
     "scratchpad" => Scratchpad,
     "resting" => Option<RestKind>,
+    "projectile_data" => ProjectileData,
 }
 
 /// Some components can't be saved, so we have to rebuild them on load
@@ -152,6 +153,21 @@ fn rebuild_transient(entity: &mut EntityBuilder) {
 /// Whether a component of the given type is expected to be saved
 pub fn should_save(type_id: TypeId) -> bool {
     is_saved(type_id) || type_id == TypeId::of::<Option<ActionExecution>>()
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum WorldSaveBlocker {
+    ActionExecutionInProgress,
+}
+
+pub fn can_save(world: &World) -> Result<(), WorldSaveBlocker> {
+    for (_, action_execution) in world.query::<&Option<ActionExecution>>().iter() {
+        if action_execution.is_some() {
+            return Err(WorldSaveBlocker::ActionExecutionInProgress);
+        }
+    }
+
+    Ok(())
 }
 
 /// These two are shaped for `#[serde(with = "world")]`

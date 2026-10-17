@@ -395,7 +395,18 @@ impl MainMenuWindow {
 
                 // TEMP
                 ui.separator_with_text("Save & Load");
-                if ui.button("Save World") {
+
+                let can_save = persistence::engine::can_save(engine_state).err();
+
+                if render_button_disabled_conditionally(
+                    ui,
+                    "Save World",
+                    AUTO_RESIZE,
+                    can_save.is_some(),
+                    &can_save.map_or("".to_string(), |blocker| {
+                        format!("Save blocked by: {:?}", blocker)
+                    }),
+                ) {
                     persistence::engine::save_engine_state(engine_state).unwrap();
                 }
 

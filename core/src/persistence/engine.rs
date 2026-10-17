@@ -12,7 +12,8 @@ use crate::{
         geometry::{WorldGeometry, WorldGeometrySource},
         prompt::PromptManager,
     },
-    persistence, systems,
+    persistence::{self, world::WorldSaveBlocker},
+    systems,
 };
 
 #[derive(Serialize)]
@@ -25,7 +26,11 @@ struct SaveFileRef<'engine> {
     geometry: String,
 }
 
-pub fn save_engine_state<'engine>(engine_state: &'engine EngineState) -> Result<(), String> {
+pub fn save_engine_state<'engine>(
+    engine_state: &'engine EngineState,
+) -> Result<(), EngineSaveBlocker> {
+    can_save(engine_state)?;
+
     let save_file = SaveFileRef {
         world: &engine_state.world,
         event_log: &engine_state.event_log,
@@ -93,4 +98,19 @@ pub fn load_engine_state() -> Result<EngineState, String> {
     }
 
     Ok(engine_state)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EngineSaveBlocker {
+    World(WorldSaveBlocker),
+}
+
+impl From<WorldSaveBlocker> for EngineSaveBlocker {
+    fn from(blocker: WorldSaveBlocker) -> Self {
+        EngineSaveBlocker::World(blocker)
+    }
+}
+
+pub fn can_save(engine_state: &EngineState) -> Result<(), EngineSaveBlocker> {
+    Ok(persistence::world::can_save(&engine_state.world)?)
 }

@@ -212,7 +212,7 @@ impl Parabola {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RaycastMode {
     Ray(Ray),
     Parabola(Parabola),
