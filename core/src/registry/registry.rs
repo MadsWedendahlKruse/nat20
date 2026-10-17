@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::OsString,
     fmt::{self, Debug, Display},
     fs,
     hash::Hash,
@@ -44,10 +45,24 @@ use crate::{
 
 pub static REGISTRIES_FOLDER: &str = "registries";
 
-// TODO: Make this configurable?
-pub static REGISTRY_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../assets/{}", REGISTRIES_FOLDER))
-});
+/// Environment variable that overrides [`REGISTRY_ROOT`], e.g. to load
+/// registries from outside the source tree. The folder it points to should be
+/// named `registries` (see [`REGISTRIES_FOLDER`]), since script IDs are derived
+/// from the path below that folder.
+pub static REGISTRY_ROOT_ENV_VAR: &str = "NAT20_REGISTRY_ROOT";
+
+/// The folder the registries are loaded from: `NAT20_REGISTRY_ROOT` if it is
+/// set, otherwise `assets/registries` in the source tree.
+pub static REGISTRY_ROOT: LazyLock<PathBuf> =
+    LazyLock::new(|| registry_root(std::env::var_os(REGISTRY_ROOT_ENV_VAR)));
+
+pub fn registry_root(override_root: Option<OsString>) -> PathBuf {
+    match override_root {
+        Some(root) if !root.is_empty() => PathBuf::from(root),
+        _ => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../assets/{}", REGISTRIES_FOLDER)),
+    }
+}
 
 static REGISTRIES: LazyLock<RegistrySet> =
     LazyLock::new(
