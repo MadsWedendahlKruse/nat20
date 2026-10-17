@@ -145,6 +145,7 @@ impl Scenario {
         ScenarioActionBuilder {
             scenario: self,
             builder,
+            auto_update: true,
         }
     }
 
@@ -341,6 +342,7 @@ impl<'s> ScenarioEncounterBuilder<'s> {
 pub struct ScenarioActionBuilder<'s> {
     scenario: &'s mut Scenario,
     builder: ActionBuilder,
+    auto_update: bool,
 }
 
 impl ScenarioActionBuilder<'_> {
@@ -402,11 +404,18 @@ impl ScenarioActionBuilder<'_> {
         self
     }
 
+    pub fn auto_update(mut self, auto_update: bool) -> Self {
+        self.auto_update = auto_update;
+        self
+    }
+
     pub fn perform(self) {
         self.builder.perform_ok(&mut self.scenario.engine_state);
-        // TODO: Do this in a more elegant way
-        for _ in 0..10 {
-            self.scenario.engine_state.update(0.5);
+        if self.auto_update {
+            // TODO: Do this in a more elegant way
+            for _ in 0..10 {
+                self.scenario.engine_state.update(0.5);
+            }
         }
     }
 

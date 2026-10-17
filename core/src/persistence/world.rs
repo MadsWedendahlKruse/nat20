@@ -1,7 +1,7 @@
 use std::any::TypeId;
 
 use hecs::{
-    EntityBuilder, EntityRef, World,
+    Entity, EntityBuilder, EntityRef, World,
     serialize::row::{self, DeserializeContext, SerializeContext, try_serialize},
 };
 use serde::{
@@ -27,7 +27,9 @@ use crate::{
             hit_points::HitPoints,
             life_state::{DeathPolicy, LifeState},
         },
-        id::{AIControllerId, BackgroundId, FeatId, Name, SpeciesId, SubspeciesId},
+        id::{
+            AIControllerId, BackgroundId, EntityIdentifier, FeatId, Name, SpeciesId, SubspeciesId,
+        },
         items::{
             equipment::{armor::ArmorTrainingSet, loadout::Loadout, weapon::WeaponProficiencyMap},
             inventory::Inventory,
@@ -155,15 +157,17 @@ pub fn should_save(type_id: TypeId) -> bool {
     is_saved(type_id) || type_id == TypeId::of::<Option<ActionExecution>>()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WorldSaveBlocker {
-    ActionExecutionInProgress,
+    ActionExecutionInProgress { actor: EntityIdentifier },
 }
 
 pub fn can_save(world: &World) -> Result<(), WorldSaveBlocker> {
     for (_, action_execution) in world.query::<&Option<ActionExecution>>().iter() {
-        if action_execution.is_some() {
-            return Err(WorldSaveBlocker::ActionExecutionInProgress);
+        if let Some(action_execution) = action_execution {
+            return Err(WorldSaveBlocker::ActionExecutionInProgress {
+                actor: action_execution.action.actor.clone(),
+            });
         }
     }
 

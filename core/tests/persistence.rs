@@ -1,7 +1,11 @@
 use hecs::{DynamicBundle, TypeInfo};
 use nat20_core::{
     entities::creature::{Character, Monster},
-    persistence::world::should_save,
+    persistence::{
+        self,
+        engine::EngineSaveBlocker,
+        world::{WorldSaveBlocker, should_save},
+    },
     test_utils::scenario::Scenario,
 };
 
@@ -26,5 +30,29 @@ fn save_all_creature_components() {
     assert!(
         unsaved.is_empty(),
         "Components missing from `saved_components!`: {unsaved:#?}"
+    );
+}
+
+#[test]
+fn save_blocked_by_action() {
+    let mut scenario = Scenario::new();
+    scenario.spawn("fighter", "hero.fighter").spawn();
+    scenario.spawn("goblin", "monster.goblin_warrior").spawn();
+
+    scenario
+        .probe("fighter")
+        .act("action.melee_attack")
+        .target_entity("goblin")
+        // Disable auto updating after perform so it's still in progress
+        .auto_update(false)
+        .perform();
+
+    assert_eq!(
+        Err(EngineSaveBlocker::World(
+            WorldSaveBlocker::ActionExecutionInProgress {
+                actor: scenario.entity_identifier("fighter")
+            }
+        )),
+        persistence::engine::save_engine_state(&scenario.engine_state)
     );
 }

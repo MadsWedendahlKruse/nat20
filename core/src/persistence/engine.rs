@@ -100,7 +100,7 @@ pub fn load_engine_state() -> Result<EngineState, String> {
     Ok(engine_state)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EngineSaveBlocker {
     World(WorldSaveBlocker),
 }
