@@ -1,7 +1,7 @@
-use std::{fs::File, io::BufReader, path::Path};
+use std::{fs::File, io::BufReader, path::PathBuf, sync::LazyLock};
 
 use glam::{UVec3, Vec2, Vec3A};
-use obj::Obj;
+use obj::{Obj, ObjError};
 use parry3d::na::Point3;
 use polyanya::Coords;
 use rerecast::{
@@ -13,22 +13,41 @@ use uom::si::{f32::Length, length::meter};
 
 use crate::systems::geometry::EPSILON;
 
+pub const GEOMETRY_FOLDER: &str = "models/geometry";
+
+pub const CACHE_FOLDER: &str = "cache";
+
+pub static GEOMETRY_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../assets/{}", GEOMETRY_FOLDER))
+});
+
+pub static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| GEOMETRY_ROOT.join(CACHE_FOLDER));
+
 #[derive(Serialize, Deserialize)]
 pub struct WorldGeometry {
     points: Vec<[f32; 3]>,
     indices: Vec<[u32; 3]>,
+
     pub trimesh: parry3d::shape::TriMesh,
     pub poly_navmesh: PolygonNavmesh,
     pub detail_navmesh: DetailNavmesh,
     pub polyanya_mesh: polyanya::Mesh,
+
+    #[serde(skip)]
+    pub identifier: String,
 }
 
 impl WorldGeometry {
-    pub fn new(points: Vec<[f32; 3]>, indices: Vec<[u32; 3]>, config: &Config) -> Self {
+    fn new(
+        points: Vec<[f32; 3]>,
+        indices: Vec<[u32; 3]>,
+        config: &Config,
+        identifier: String,
+    ) -> Self {
         let (poly_navmesh, detail_navmesh, polyanya_mesh) =
             build_navmesh(&points, &indices, config);
 
-        Self {
+        let geometry = Self {
             points: points.clone(),
             indices: indices.clone(),
             trimesh: parry3d::shape::TriMesh::new(
@@ -39,29 +58,15 @@ impl WorldGeometry {
             poly_navmesh,
             detail_navmesh,
             polyanya_mesh,
+            identifier: identifier.clone(),
+        };
+
+        // Cache the geometry
+        if let Ok(cache_file) = File::create(CACHE_PATH.join(format!("{}.json", identifier))) {
+            let _ = serde_json::to_writer(cache_file, &geometry);
         }
-    }
 
-    pub fn from_obj(obj: Obj, config: &Config) -> Self {
-        let points = obj
-            .vertices
-            .iter()
-            .map(|v| [v.position[0], v.position[1], v.position[2]])
-            .collect();
-
-        let indices = obj
-            .indices
-            .chunks(3)
-            .map(|chunk| [chunk[0] as u32, chunk[1] as u32, chunk[2] as u32])
-            .collect();
-
-        Self::new(points, indices, config)
-    }
-
-    pub fn from_obj_path(obj_path: impl AsRef<Path>, config: &Config) -> Self {
-        let obj: Obj = obj::load_obj(BufReader::new(File::open(obj_path).unwrap()))
-            .expect("Failed to load world geometry");
-        Self::from_obj(obj, config)
+        geometry
     }
 
     pub fn rebuild_navmesh(&mut self, config: &Config) {
@@ -99,6 +104,81 @@ impl WorldGeometry {
 
                 WorldPath::new(final_path)
             })
+    }
+}
+
+#[derive(Debug)]
+pub enum WorldGeometrySource {
+    Obj {
+        file_path: PathBuf,
+        config: Config,
+        try_cache: bool,
+    },
+    Cached {
+        identifier: String,
+    },
+}
+
+#[derive(Debug)]
+pub enum GeometrySourceError {
+    ObjError(ObjError),
+    CacheMiss(String),
+    IoError(std::io::Error),
+}
+
+impl TryFrom<WorldGeometrySource> for WorldGeometry {
+    type Error = GeometrySourceError;
+
+    fn try_from(value: WorldGeometrySource) -> Result<Self, Self::Error> {
+        match value {
+            WorldGeometrySource::Obj {
+                file_path,
+                config,
+                try_cache,
+            } => {
+                let identifier = file_path
+                    .file_stem()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+
+                if try_cache
+                    && let Ok(cached_geometry) = Self::try_from(WorldGeometrySource::Cached {
+                        identifier: identifier.clone(),
+                    })
+                {
+                    return Ok(cached_geometry);
+                }
+
+                let obj_file = File::open(&file_path).map_err(GeometrySourceError::IoError)?;
+                let obj_geometry: Obj = obj::load_obj(BufReader::new(&obj_file))
+                    .map_err(GeometrySourceError::ObjError)?;
+
+                let points = obj_geometry
+                    .vertices
+                    .iter()
+                    .map(|v| [v.position[0], v.position[1], v.position[2]])
+                    .collect();
+
+                let indices = obj_geometry
+                    .indices
+                    .chunks(3)
+                    .map(|chunk| [chunk[0] as u32, chunk[1] as u32, chunk[2] as u32])
+                    .collect();
+
+                Ok(Self::new(points, indices, &config, identifier))
+            }
+
+            WorldGeometrySource::Cached { identifier } => {
+                if let Ok(cache) = File::open(CACHE_PATH.join(format!("{}.json", identifier)))
+                    && let Ok(cached_geometry) = serde_json::from_reader(BufReader::new(&cache))
+                {
+                    return Ok(cached_geometry);
+                }
+
+                Err(GeometrySourceError::CacheMiss(identifier))
+            }
+        }
     }
 }
 

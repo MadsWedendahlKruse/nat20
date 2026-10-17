@@ -4,13 +4,15 @@ use hecs::{Entity, World};
 use imgui::MouseButton;
 use nat20_core::{
     components::id::{EntityIdentifier, Name},
-    engine::{engine_state::EngineState, geometry::WorldGeometry},
+    engine::{
+        engine_state::EngineState,
+        geometry::{WorldGeometry, WorldGeometrySource},
+    },
     entities::creature::{Character, Monster},
     systems::{self, entities::EntityKind, time::RestKind},
     test_utils::fixtures::{self},
 };
 use parry3d::na::Point3;
-use rerecast::ConfigBuilder;
 use tracing::info;
 
 use crate::{
@@ -64,10 +66,12 @@ pub struct SpawnPredefinedWindow {
 impl SpawnPredefinedWindow {
     pub fn new() -> Self {
         // TODO: Seems pretty scuffed to construct an entire new EngineState here?
-        let mut engine_state = EngineState::new(WorldGeometry::from_obj_path(
-            "assets/models/geometry/test_terrain.obj",
-            &ConfigBuilder::default().build(),
-        ));
+        let mut engine_state = EngineState::new(
+            WorldGeometry::try_from(WorldGeometrySource::Cached {
+                identifier: "test_terrain".to_string(),
+            })
+            .unwrap(),
+        );
 
         let mut spawners = vec![
             Spawner::new(fixtures::creatures::heroes::barbarian, 17),

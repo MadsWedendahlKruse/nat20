@@ -42,7 +42,7 @@ use crate::{
     scripts::script::{LUA_FILE_EXTENSION, Script, ScriptError},
 };
 
-pub static REGISTRIES_FOLDER: &str = "registries";
+pub const REGISTRIES_FOLDER: &str = "registries";
 
 // TODO: Make this configurable?
 pub static REGISTRY_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {

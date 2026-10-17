@@ -859,14 +859,17 @@ pub mod creatures {
 }
 
 pub mod engine {
-    use rerecast::ConfigBuilder;
-
-    use crate::engine::{engine_state::EngineState, geometry::WorldGeometry};
+    use crate::engine::{
+        engine_state::EngineState,
+        geometry::{WorldGeometry, WorldGeometrySource},
+    };
 
     pub fn engine_state() -> EngineState {
-        EngineState::new(WorldGeometry::from_obj_path(
-            "../assets/models/geometry/scenario_terrain.obj",
-            &ConfigBuilder::default().build(),
-        ))
+        EngineState::new(
+            WorldGeometry::try_from(WorldGeometrySource::Cached {
+                identifier: "scenario_terrain".to_string(),
+            })
+            .unwrap(),
+        )
     }
 }

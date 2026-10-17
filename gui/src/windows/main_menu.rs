@@ -1,5 +1,3 @@
-use std::{fs::File, io::BufReader};
-
 use imgui::{ChildFlags, MouseButton};
 use nat20_core::{
     components::{
@@ -8,12 +6,17 @@ use nat20_core::{
         id::Name,
     },
     engine::{
-        action_prompt::ActionPromptKind, engine_state::EngineState, event::EventScope,
-        geometry::WorldGeometry,
+        action_prompt::ActionPromptKind,
+        engine_state::EngineState,
+        event::EventScope,
+        geometry::{WorldGeometry, WorldGeometrySource},
     },
     entities::projectile::ProjectileData,
-    persistence, systems,
-    systems::geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
+    persistence,
+    systems::{
+        self,
+        geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
+    },
 };
 use parry3d::na::{Matrix4, Point3};
 use strum::IntoEnumIterator;
@@ -86,27 +89,10 @@ impl MainMenuWindow {
         initial_config.min_region_size = 4;
         initial_config.max_vertices_per_polygon = 4;
 
-        let geometry_name = "test_terrain_2";
-        // Attempt to load from the local cache first
-        let geometry = if let Ok(file) = File::open(format!(
-            "assets/models/geometry/cache/{}.json",
-            geometry_name
-        )) {
-            serde_json::from_reader(BufReader::new(file)).expect("Failed to load cached geometry")
-        } else {
-            let geometry = WorldGeometry::from_obj_path(
-                format!("assets/models/geometry/{}.obj", geometry_name),
-                &initial_config.clone().build(),
-            );
-            // Save to local cache for next time
-            let file = File::create(format!(
-                "assets/models/geometry/cache/{}.json",
-                geometry_name
-            ))
-            .expect("Failed to create cache file for geometry");
-            serde_json::to_writer_pretty(file, &geometry).expect("Failed to write cached geometry");
-            geometry
-        };
+        let geometry = WorldGeometry::try_from(WorldGeometrySource::Cached {
+            identifier: "test_terrain_2".to_string(),
+        })
+        .unwrap();
 
         Self {
             state: MainMenuState::World {

@@ -9,6 +9,7 @@ use crate::{
         encounter::{Encounter, EncounterId},
         engine_state::EngineState,
         event::{EventDispatcher, EventLog},
+        geometry::{WorldGeometry, WorldGeometrySource},
         prompt::PromptManager,
     },
     persistence, systems,
@@ -21,6 +22,7 @@ struct SaveFileRef<'engine> {
     prompts: &'engine PromptManager,
     encounters: &'engine HashMap<EncounterId, Encounter>,
     event_log: &'engine EventLog,
+    geometry: String,
 }
 
 pub fn save_engine_state<'engine>(engine_state: &'engine EngineState) -> Result<(), String> {
@@ -29,6 +31,7 @@ pub fn save_engine_state<'engine>(engine_state: &'engine EngineState) -> Result<
         event_log: &engine_state.event_log,
         encounters: &engine_state.encounters,
         prompts: &engine_state.prompts,
+        geometry: engine_state.geometry.identifier.clone(),
     };
 
     let file = File::create("save_file.json").unwrap();
@@ -44,6 +47,7 @@ struct SaveFile {
     prompts: PromptManager,
     encounters: HashMap<EncounterId, Encounter>,
     event_log: EventLog,
+    geometry: String,
 }
 
 pub fn load_engine_state() -> Result<EngineState, String> {
@@ -52,10 +56,10 @@ pub fn load_engine_state() -> Result<EngineState, String> {
 
     let mut engine_state = EngineState {
         world: save_file.world,
-        geometry: serde_json::from_reader(
-            File::open("assets/models/geometry/cache/test_terrain_2.json").unwrap(),
-        )
-        .unwrap(),
+        geometry: WorldGeometry::try_from(WorldGeometrySource::Cached {
+            identifier: save_file.geometry.clone(),
+        })
+        .expect("Failed to load geometry from cache"),
         encounters: save_file.encounters,
         prompts: save_file.prompts,
         event_log: save_file.event_log,
