@@ -60,7 +60,7 @@ pub enum MainMenuState {
         auto_scroll_event_log: bool,
         log_level: LogLevel,
         log_source: usize,
-        encounters: Vec<EncounterWindow>,
+        encounter: Option<EncounterWindow>,
         level_up: Option<LevelUpWindow>,
         spawn_predefined: Option<SpawnPredefinedWindow>,
         creature_debug: Option<CreatureDebugWindow>,
@@ -114,7 +114,7 @@ impl MainMenuWindow {
                 log_level: LogLevel::Info,
                 log_source: 0,
                 engine_state: EngineState::new(geometry),
-                encounters: Vec::new(),
+                encounter: None,
                 level_up: None,
                 spawn_predefined: None,
                 creature_debug: None,
@@ -135,7 +135,7 @@ impl MainMenuWindow {
                 auto_scroll_event_log,
                 log_level,
                 log_source,
-                encounters,
+                encounter,
                 level_up,
                 spawn_predefined,
                 creature_debug,
@@ -209,7 +209,7 @@ impl MainMenuWindow {
                             engine_state,
                             level_up,
                             spawn_predefined,
-                            encounters,
+                            encounter,
                             creature_debug,
                             log_source,
                         );
@@ -242,15 +242,25 @@ impl MainMenuWindow {
                     log_source,
                 );
 
-                let mut encounter_finished = None;
-                for encounter in &mut *encounters {
-                    encounter.render_mut_with_context(ui, gui_state, engine_state);
-                    if encounter.finished() {
-                        encounter_finished = Some(*encounter.id());
-                    }
+                let mut ended_encounter = None;
+                for (id, encounter) in &engine_state.encounters {
+                    gui_state.window_manager.render_window(
+                        ui,
+                        &format!("Encounter {:?}", id),
+                        &anchor::CENTER_LEFT,
+                        AUTO_RESIZE,
+                        &mut true,
+                        || {
+                            encounter.render_with_context(ui, engine_state);
+
+                            if ui.button("End Encounter") {
+                                ended_encounter = Some(*id);
+                            }
+                        },
+                    );
                 }
-                if let Some(id) = encounter_finished {
-                    encounters.retain(|encounter| encounter.id() != &id);
+                if let Some(id) = ended_encounter {
+                    systems::combat::end_encounter(engine_state, &id);
                 }
 
                 if let Some(action_bar) = action_bar {
@@ -320,7 +330,7 @@ impl MainMenuWindow {
         engine_state: &mut EngineState,
         level_up_window: &mut Option<LevelUpWindow>,
         spawn_predefined_window: &mut Option<SpawnPredefinedWindow>,
-        encounters: &mut Vec<EncounterWindow>,
+        encounter: &mut Option<EncounterWindow>,
         debug_window: &mut Option<CreatureDebugWindow>,
         log_source: &mut usize,
     ) {
@@ -383,9 +393,18 @@ impl MainMenuWindow {
                     entitiy_count < 2,
                     "You must have at least two characters to create an encounter.",
                 ) {
-                    let window = EncounterWindow::new();
-                    encounters.push(window);
-                    *log_source = encounters.len(); // Select the new encounter as log source
+                    encounter.replace(EncounterWindow::new());
+                    ui.open_popup("EncounterWindow");
+                }
+
+                if let Some(encounter) = encounter {
+                    let mut encounter_id = None;
+                    ui.popup("EncounterWindow", || {
+                        encounter.render_mut_with_context(ui, (engine_state, &mut encounter_id));
+                    });
+                    if encounter_id.is_some() {
+                        *log_source = engine_state.encounters.len();
+                    }
                 }
 
                 // TEMP
