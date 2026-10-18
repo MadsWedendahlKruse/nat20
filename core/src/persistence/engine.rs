@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::File, path::Path};
 
 use hecs::World;
 use serde::{Deserialize, Serialize};
@@ -28,6 +28,7 @@ struct SaveFileRef<'engine> {
 
 pub fn save_engine_state<'engine>(
     engine_state: &'engine EngineState,
+    path: impl AsRef<Path>,
 ) -> Result<(), EngineSaveBlocker> {
     can_save(engine_state)?;
 
@@ -39,7 +40,7 @@ pub fn save_engine_state<'engine>(
         geometry: engine_state.geometry.identifier.clone(),
     };
 
-    let file = File::create("save_file.json").unwrap();
+    let file = File::create(path).unwrap();
     serde_json::to_writer_pretty(file, &save_file).unwrap();
 
     Ok(())
@@ -55,8 +56,8 @@ struct SaveFile {
     geometry: String,
 }
 
-pub fn load_engine_state() -> Result<EngineState, String> {
-    let file = File::open("save_file.json").unwrap();
+pub fn load_engine_state(path: impl AsRef<Path>) -> Result<EngineState, String> {
+    let file = File::open(path).unwrap();
     let save_file: SaveFile = serde_json::from_reader(file).unwrap();
 
     let mut engine_state = EngineState {

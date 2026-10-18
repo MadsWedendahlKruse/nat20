@@ -37,10 +37,12 @@ use crate::{
         engine_state::EngineState,
         event::{Event, EventCallback, EventFilter, EventKind, EventScope},
     },
-    systems,
-    systems::time::RestKind,
+    persistence::{self, engine::EngineSaveBlocker},
+    systems::{self, time::RestKind},
     test_utils::{creature_builder::CreatureBuilder, fixtures},
 };
+
+pub const SAVE_FILE_PATH: &str = "save_file.json";
 
 pub struct Scenario {
     pub engine_state: EngineState,
@@ -223,6 +225,33 @@ impl Scenario {
             scope: None,
             kind: None,
         }
+    }
+
+    pub fn save_to_path(&mut self, save_path: impl AsRef<Path>) -> Result<(), EngineSaveBlocker> {
+        persistence::engine::save_engine_state(&self.engine_state, save_path)
+    }
+
+    pub fn save(&mut self) -> Result<(), EngineSaveBlocker> {
+        self.save_to_path(SAVE_FILE_PATH)
+    }
+
+    pub fn load_from_path(
+        &mut self,
+        save_path: impl AsRef<Path>,
+        delete_after_load: bool,
+    ) -> Result<(), String> {
+        self.engine_state = persistence::engine::load_engine_state(save_path.as_ref())?;
+        if delete_after_load {
+            if std::fs::remove_file(save_path.as_ref()).is_err() {
+                // Ignore errors, as the file might not exist
+            }
+        }
+        Ok(())
+    }
+
+    pub fn load(&mut self, delete_after_load: bool) -> Result<(), String> {
+        let result = self.load_from_path(SAVE_FILE_PATH, delete_after_load);
+        result
     }
 }
 

@@ -171,8 +171,12 @@ impl TryFrom<WorldGeometrySource> for WorldGeometry {
 
             WorldGeometrySource::Cached { identifier } => {
                 if let Ok(cache) = File::open(CACHE_PATH.join(format!("{}.json", identifier)))
-                    && let Ok(cached_geometry) = serde_json::from_reader(BufReader::new(&cache))
+                    && let Ok(mut cached_geometry) = serde_json::from_reader::<
+                        BufReader<&File>,
+                        WorldGeometry,
+                    >(BufReader::new(&cache))
                 {
+                    cached_geometry.identifier = identifier.clone();
                     return Ok(cached_geometry);
                 }
 

@@ -398,6 +398,8 @@ impl MainMenuWindow {
 
                 let can_save = persistence::engine::can_save(engine_state).err();
 
+                let save_path = "save_file.json";
+
                 if render_button_disabled_conditionally(
                     ui,
                     "Save World",
@@ -407,11 +409,11 @@ impl MainMenuWindow {
                         format!("Save blocked by: {:?}", blocker)
                     }),
                 ) {
-                    persistence::engine::save_engine_state(engine_state).unwrap();
+                    persistence::engine::save_engine_state(engine_state, &save_path).unwrap();
                 }
 
                 if ui.button("Load World") {
-                    *engine_state = persistence::engine::load_engine_state().unwrap();
+                    *engine_state = persistence::engine::load_engine_state(&save_path).unwrap();
                 }
             });
     }
