@@ -242,10 +242,8 @@ pub enum SpellbookError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spellbook {
     /// Per-class spellcasting state.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     class_states: HashMap<ClassAndSubclass, ClassSpellcastingState>,
     /// External sources (items/feats/race).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     granted: HashMap<GrantedSpellSource, GrantedSpellMap>,
     concentration: ConcentrationTracker,
 
