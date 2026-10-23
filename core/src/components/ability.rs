@@ -82,7 +82,7 @@ impl TryFrom<String> for Ability {
 
 impl From<Ability> for String {
     fn from(ability: Ability) -> Self {
-        ability.to_string()
+        ability.to_string().to_lowercase()
     }
 }
 

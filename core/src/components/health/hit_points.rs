@@ -29,7 +29,7 @@ impl Default for TemporaryHitPoints {
     fn default() -> Self {
         Self {
             amount: 0,
-            source: ModifierSource::None,
+            source: ModifierSource::Base,
         }
     }
 }

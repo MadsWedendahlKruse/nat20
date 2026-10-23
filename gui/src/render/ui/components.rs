@@ -148,7 +148,6 @@ impl ImguiRenderable for LifeState {
 
 fn proficiency_icon(proficiency: &ProficiencyLevel) -> &'static str {
     match proficiency {
-        ProficiencyLevel::None => "",
         ProficiencyLevel::Half => "½",
         ProficiencyLevel::Proficient => "*",
         ProficiencyLevel::Expertise => "**",
@@ -158,20 +157,18 @@ fn proficiency_icon(proficiency: &ProficiencyLevel) -> &'static str {
 impl ImguiRenderableWithContext<&str> for Proficiency {
     fn render_with_context(&self, ui: &imgui::Ui, context: &str) {
         let level = self.level();
-        if level != &ProficiencyLevel::None {
-            ui.text(proficiency_icon(level));
-            if ui.is_item_hovered() {
-                ui.tooltip(|| {
-                    let mut segments = vec![
-                        (format!("{}", level), TextKind::Normal),
-                        (format!("({})", self.source()), TextKind::Details),
-                    ];
-                    if !context.is_empty() {
-                        segments.push((context.to_string(), TextKind::Details));
-                    }
-                    TextSegments::new(segments).render(ui);
-                });
-            }
+        ui.text(proficiency_icon(level));
+        if ui.is_item_hovered() {
+            ui.tooltip(|| {
+                let mut segments = vec![
+                    (format!("{}", level), TextKind::Normal),
+                    (format!("({})", self.source()), TextKind::Details),
+                ];
+                if !context.is_empty() {
+                    segments.push((context.to_string(), TextKind::Details));
+                }
+                TextSegments::new(segments).render(ui);
+            });
         }
     }
 }
@@ -235,7 +232,7 @@ impl ImguiRenderableWithContext<(&EngineState, Entity)> for AbilityScoreMap {
 
                     ui.separator_with_text("Saving Throw");
 
-                    if saving_throw_proficiency.level() != &ProficiencyLevel::None {
+                    if let Some(saving_throw_proficiency) = saving_throw_proficiency {
                         TextSegments::new(vec![
                             (
                                 format!("{}", saving_throw_proficiency.level()),
@@ -287,8 +284,9 @@ impl ImguiRenderableWithContext<(&EngineState, Entity)> for SkillSet {
 
                 // Proficiency column
                 ui.table_next_column();
-                let proficiency = self.get(&skill).proficiency();
-                proficiency.render(ui);
+                if let Some(proficiency) = self.get(&skill).proficiency() {
+                    proficiency.render(ui);
+                }
                 // Skill name
                 ui.table_next_column();
                 ui.text(skill.to_string());
@@ -1255,12 +1253,12 @@ impl ImguiRenderable for CreatureType {
 
 impl ImguiRenderable for ResourceAmountMap {
     fn render(&self, ui: &imgui::Ui) {
-        if self.map.is_empty() {
+        if self.is_empty() {
             ui.text("No cost");
             return;
         }
 
-        for (resource, amount) in self.map.iter() {
+        for (resource, amount) in self.iter() {
             let amount_text = match amount {
                 ResourceAmount::Flat(amount) => amount.to_string(),
                 ResourceAmount::Tiered { tier, amount } => format!("{} Level {}", amount, tier),
@@ -1392,8 +1390,8 @@ impl ImguiRenderable for ModifierSource {
             ModifierSource::Base => todo!(),
             ModifierSource::Background(_background_id) => todo!(),
             ModifierSource::Item(_item_id) => todo!(),
-            ModifierSource::ClassFeature(_class_id) => todo!(),
-            ModifierSource::SubclassFeature(_subclass_id) => todo!(),
+            ModifierSource::Class(_class_id) => todo!(),
+            ModifierSource::Subclass(_subclass_id) => todo!(),
             ModifierSource::Action(_action_id) => todo!(),
             ModifierSource::Effect(effect_id) => {
                 TextSegment::new(format!("{}", effect_id), TextKind::Effect).render(ui);
@@ -1405,7 +1403,6 @@ impl ImguiRenderable for ModifierSource {
             ModifierSource::Custom(_) => todo!(),
             ModifierSource::Species(_species_id) => todo!(),
             ModifierSource::Subspecies(_subspecies_id) => todo!(),
-            ModifierSource::None => todo!(),
         }
     }
 }

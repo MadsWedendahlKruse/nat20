@@ -23,7 +23,7 @@ use crate::{
             item::Item,
         },
         modifier::{KeyedFlatModifiable, Modifiable, ModifierKind, ModifierMap, ModifierSource},
-        proficiency::{Proficiency, ProficiencyLevel},
+        proficiency::{BinaryProficiencyMap, Proficiency, ProficiencyLevel},
     },
     registry::serialize::{
         item::WeaponDefinition,
@@ -178,35 +178,7 @@ impl_string_schema!(
 //     Vex,
 // }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WeaponProficiencyMap {
-    map: HashMap<WeaponCategory, Proficiency>,
-}
-
-impl Default for WeaponProficiencyMap {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WeaponProficiencyMap {
-    pub fn new() -> Self {
-        WeaponProficiencyMap {
-            map: HashMap::new(),
-        }
-    }
-
-    pub fn set_proficiency(&mut self, category: WeaponCategory, proficiency: Proficiency) {
-        self.map.insert(category, proficiency);
-    }
-
-    pub fn proficiency(&self, category: &WeaponCategory) -> Proficiency {
-        self.map.get(category).cloned().unwrap_or(Proficiency::new(
-            ProficiencyLevel::None,
-            ModifierSource::None,
-        ))
-    }
-}
+pub type WeaponProficiencyMap = BinaryProficiencyMap<WeaponCategory>;
 
 pub static MELEE_RANGE_DEFAULT: LazyLock<TargetingRange> =
     LazyLock::new(|| TargetingRange::new::<foot>(5.0));
@@ -307,11 +279,11 @@ impl Weapon {
     pub fn attack_roll(
         &self,
         ability_scores: &AbilityScoreMap,
-        weapon_proficiency: &Proficiency,
+        weapon_proficiency: Option<&Proficiency>,
     ) -> D20Check {
         let mut attack_roll = D20Check::new(
             D20CheckKind::AttackRoll(AttackSource::Weapon(*self.kind())),
-            weapon_proficiency.clone(),
+            weapon_proficiency.cloned(),
         );
 
         self.add_ability_modifier(ability_scores, attack_roll.modifiers_mut());

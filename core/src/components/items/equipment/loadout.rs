@@ -393,8 +393,9 @@ impl AttackRollProvider for Loadout {
                     .expect("No weapon equipped in the specified slot");
                 let mut attack_roll = weapon.attack_roll(
                     &systems::helpers::get_component::<AbilityScoreMap>(world, actor),
-                    &systems::helpers::get_component::<WeaponProficiencyMap>(world, actor)
-                        .proficiency(weapon.category()),
+                    systems::helpers::get_component::<WeaponProficiencyMap>(world, actor)
+                        .proficiency(weapon.category())
+                        .as_ref(),
                 );
 
                 let range = weapon.range();
@@ -417,7 +418,10 @@ impl AttackRollProvider for Loadout {
             ActionAttackKind::Unarmed => {
                 let mut attack_roll = D20Check::new(
                     D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Unarmed)),
-                    Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::Base),
+                    Some(Proficiency::new(
+                        ProficiencyLevel::Proficient,
+                        ModifierSource::Base,
+                    )),
                 );
                 let strength_modifier =
                     systems::helpers::get_component::<AbilityScoreMap>(world, actor)

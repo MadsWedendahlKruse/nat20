@@ -60,7 +60,7 @@ mod tests {
         systems::helpers::get_component_mut::<SavingThrowSet>(&mut engine_state.world, entity)
             .set_proficiency(
                 &SavingThrowKind::Ability(Ability::Strength),
-                Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::None),
+                Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::Base),
             );
 
         let result = systems::helpers::get_component::<SavingThrowSet>(&engine_state.world, entity)
@@ -86,7 +86,7 @@ mod tests {
         systems::helpers::get_component_mut::<SavingThrowSet>(&mut engine_state.world, entity)
             .set_proficiency(
                 &SavingThrowKind::Ability(Ability::Strength),
-                Proficiency::new(ProficiencyLevel::Expertise, ModifierSource::None),
+                Proficiency::new(ProficiencyLevel::Expertise, ModifierSource::Base),
             );
 
         let result = systems::helpers::get_component::<SavingThrowSet>(&engine_state.world, entity)

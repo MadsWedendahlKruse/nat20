@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Primary use case is for storing per-entity state that doesn't have a dedicated
 /// place to live otherwise, e.g. Relentless Rage's escalating CON save DC.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Scratchpad {
     values: BTreeMap<String, ScratchValue>,
 }

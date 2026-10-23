@@ -24,6 +24,7 @@ use super::{ability::Ability, proficiency::ProficiencyLevel};
 /// The underlying map is exposed through the `Deref` trait, which haters will say
 /// is an anti-pattern, but I think it's very convenient here :^).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(transparent)]
 pub struct ModifierMap {
     modifiers: BTreeMap<ModifierSource, ModifierKind>,
 }
@@ -130,6 +131,7 @@ impl Deref for ModifierMap {
 /// Like [`ModifierMap`], but restricted to flat integer modifiers.
 /// This is useful for stuff like Armor Class, where dice don't really make sense.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(transparent)]
 pub struct FlatModifierMap {
     modifiers: BTreeMap<ModifierSource, i32>,
 }
@@ -517,23 +519,22 @@ impl_string_schema!(
 );
 
 // TODO: Do we need Base and None as separate variants?
-#[derive(Debug, Hash, Eq, PartialEq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String", rename_all = "snake_case")]
 pub enum ModifierSource {
     Ability(Ability),
     Action(ActionId),
     Background(BackgroundId),
     Base,
-    ClassFeature(ClassId),
+    Class(ClassId),
     Custom(String),
     Effect(EffectId),
     Feat(FeatId),
     FeatRepeatable(FeatId, Uuid),
     Item(ItemId),
-    None,
     Proficiency(ProficiencyLevel),
     Species(SpeciesId),
-    SubclassFeature(SubclassId),
+    Subclass(SubclassId),
     Subspecies(SubspeciesId),
 }
 
@@ -544,8 +545,8 @@ impl fmt::Display for ModifierSource {
             ModifierSource::Base => write!(f, "Base"),
             ModifierSource::Background(id) => write!(f, "Background: {}", id),
             ModifierSource::Item(name) => write!(f, "Item: {}", name),
-            ModifierSource::ClassFeature(id) => write!(f, "Class Feature: {}", id),
-            ModifierSource::SubclassFeature(id) => write!(f, "Subclass Feature: {}", id),
+            ModifierSource::Class(id) => write!(f, "Class: {}", id),
+            ModifierSource::Subclass(id) => write!(f, "Subclass: {}", id),
             ModifierSource::Action(id) => write!(f, "Action: {}", id),
             ModifierSource::Effect(id) => write!(f, "Effect: {}", id),
             ModifierSource::Custom(text) => write!(f, "{}", text),
@@ -557,7 +558,6 @@ impl fmt::Display for ModifierSource {
             }
             ModifierSource::Species(id) => write!(f, "Species: {}", id),
             ModifierSource::Subspecies(id) => write!(f, "Subspecies: {}", id),
-            ModifierSource::None => write!(f, "None"),
         }
     }
 }
@@ -567,12 +567,12 @@ impl From<Id> for ModifierSource {
         match id {
             Id::ActionId(action_id) => ModifierSource::Action(action_id),
             Id::BackgroundId(background_id) => ModifierSource::Background(background_id),
-            Id::ClassId(class_id) => ModifierSource::ClassFeature(class_id),
+            Id::ClassId(class_id) => ModifierSource::Class(class_id),
             Id::EffectId(effect_id) => ModifierSource::Effect(effect_id),
             Id::FeatId(feat_id) => ModifierSource::Feat(feat_id),
             Id::ItemId(item_id) => ModifierSource::Item(item_id),
             Id::SpeciesId(species_id) => ModifierSource::Species(species_id),
-            Id::SubclassId(subclass_id) => ModifierSource::SubclassFeature(subclass_id),
+            Id::SubclassId(subclass_id) => ModifierSource::Subclass(subclass_id),
             Id::SubspeciesId(subspecies_id) => ModifierSource::Subspecies(subspecies_id),
             other => ModifierSource::Custom(other.to_string()),
         }
@@ -604,7 +604,6 @@ impl FromStr for ModifierSource {
 
         match s.to_lowercase().as_str() {
             "base" => Ok(ModifierSource::Base),
-            "none" => Ok(ModifierSource::None),
             other => Ok(ModifierSource::Custom(other.to_string())),
         }
     }
@@ -625,7 +624,7 @@ impl From<ModifierSource> for String {
             ModifierSource::Action(action_id) => action_id.to_string(),
             ModifierSource::Background(background_id) => background_id.to_string(),
             ModifierSource::Base => "base".to_string(),
-            ModifierSource::ClassFeature(class_id) => class_id.to_string(),
+            ModifierSource::Class(class_id) => class_id.to_string(),
             ModifierSource::Custom(custom) => custom,
             ModifierSource::Effect(effect_id) => effect_id.to_string(),
             ModifierSource::Feat(feat_id) => feat_id.to_string(),
@@ -633,10 +632,9 @@ impl From<ModifierSource> for String {
                 format!("{}#{}", feat_id.to_string(), repeatable_id.to_string())
             }
             ModifierSource::Item(item_id) => item_id.to_string(),
-            ModifierSource::None => "none".to_string(),
             ModifierSource::Proficiency(proficiency) => proficiency.to_string(),
             ModifierSource::Species(species_id) => species_id.to_string(),
-            ModifierSource::SubclassFeature(subclass_id) => subclass_id.to_string(),
+            ModifierSource::Subclass(subclass_id) => subclass_id.to_string(),
             ModifierSource::Subspecies(subspecies_id) => subspecies_id.to_string(),
         }
     }

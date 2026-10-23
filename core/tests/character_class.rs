@@ -146,8 +146,8 @@ mod tests {
                 systems::helpers::get_component::<SkillSet>(&engine_state.world, character);
             for skill in [Skill::Athletics, Skill::Perception] {
                 assert_eq!(
-                    skills.get(&skill).proficiency().level(),
-                    &ProficiencyLevel::Proficient
+                    skills.get(&skill).proficiency().map(|p| p.level()),
+                    Some(&ProficiencyLevel::Proficient)
                 );
             }
         }
@@ -160,8 +160,8 @@ mod tests {
                     saving_throws
                         .get(&SavingThrowKind::Ability(ability))
                         .proficiency()
-                        .level(),
-                    &ProficiencyLevel::Proficient
+                        .map(|p| p.level()),
+                    Some(&ProficiencyLevel::Proficient)
                 );
             }
         }

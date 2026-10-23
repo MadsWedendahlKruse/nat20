@@ -60,8 +60,8 @@ static REACTION_BODY_DEFAULTS: LazyLock<HashMap<String, Arc<ReactionBodyFunction
                                 action
                             );
                             let mut resources_to_refund = action.resource_cost.clone();
-                            for resource in rules().default_resources.map.keys() {
-                                resources_to_refund.map.remove(&resource);
+                            for resource in rules().default_resources.keys() {
+                                resources_to_refund.remove(&resource);
                             }
                             let _ = systems::resources::restore(
                                 &mut engine_state.world,

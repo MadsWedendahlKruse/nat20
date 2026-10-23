@@ -105,6 +105,7 @@ impl DeathSavingThrows {
 /// Typically for player characters they will fall unconscious and make death saving
 /// throws, while monsters die immediately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum DeathPolicy {
     Die,
     Unconscious,

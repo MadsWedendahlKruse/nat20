@@ -1,7 +1,7 @@
 use std::any::TypeId;
 
 use hecs::{
-    Entity, EntityBuilder, EntityRef, World,
+    EntityBuilder, EntityRef, World,
     serialize::row::{self, DeserializeContext, SerializeContext, try_serialize},
 };
 use serde::{
@@ -31,7 +31,7 @@ use crate::{
             AIControllerId, BackgroundId, EntityIdentifier, FeatId, Name, SpeciesId, SubspeciesId,
         },
         items::{
-            equipment::{armor::ArmorTrainingSet, loadout::Loadout, weapon::WeaponProficiencyMap},
+            equipment::{armor::ArmorTrainingMap, loadout::Loadout, weapon::WeaponProficiencyMap},
             inventory::Inventory,
         },
         level::{ChallengeRating, CharacterLevels},
@@ -125,7 +125,7 @@ saved_components! {
     "saving_throws" => SavingThrowSet,
     "resistances" => DamageResistances,
     "weapon_proficiencies" => WeaponProficiencyMap,
-    "armor_training" => ArmorTrainingSet,
+    "armor_training" => ArmorTrainingMap,
     "inventory" => Inventory,
     "loadout" => Loadout,
     "spellbook" => Spellbook,

@@ -242,8 +242,10 @@ pub enum SpellbookError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spellbook {
     /// Per-class spellcasting state.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     class_states: HashMap<ClassAndSubclass, ClassSpellcastingState>,
     /// External sources (items/feats/race).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     granted: HashMap<GrantedSpellSource, GrantedSpellMap>,
     concentration: ConcentrationTracker,
 
@@ -269,7 +271,10 @@ impl Spellbook {
             ),
             attack_roll: D20Check::new(
                 D20CheckKind::AttackRoll(AttackSource::Spell),
-                Proficiency::new(ProficiencyLevel::Proficient, ModifierSource::Base),
+                Some(Proficiency::new(
+                    ProficiencyLevel::Proficient,
+                    ModifierSource::Base,
+                )),
             ),
         }
     }
@@ -925,7 +930,7 @@ impl ActionProvider for Spellbook {
                         let mut resource_cost: ResourceAmountMap =
                             spell.action().resource_cost().clone();
 
-                        resource_cost.map.insert(
+                        resource_cost.insert(
                             spellcasting_rules.spellcasting_resource.clone(),
                             ResourceAmount::Tiered {
                                 tier: cast_level,

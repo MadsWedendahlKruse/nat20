@@ -34,7 +34,7 @@ impl ConcentrationInstance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConcentrationTracker {
     instances: Vec<ConcentrationInstance>,
     action_instance: Option<ActionExecutionInstanceId>,

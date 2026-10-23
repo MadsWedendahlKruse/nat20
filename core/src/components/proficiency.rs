@@ -1,5 +1,6 @@
-use std::fmt;
+use std::{collections::HashMap, fmt, hash::Hash};
 
+use parry3d::utils::hashset::HashSet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -10,22 +11,14 @@ use crate::components::modifier::ModifierSource;
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ProficiencyLevel {
-    None,
     Proficient,
     Expertise,
     Half, // Optional: for features like Bard’s Jack of All Trades
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Proficiency {
-    level: ProficiencyLevel,
-    source: ModifierSource,
-}
-
 impl ProficiencyLevel {
     pub fn multiplier(&self) -> f32 {
         match self {
-            ProficiencyLevel::None => 0.0,
             ProficiencyLevel::Half => 0.5,
             ProficiencyLevel::Proficient => 1.0,
             ProficiencyLevel::Expertise => 2.0,
@@ -41,6 +34,12 @@ impl fmt::Display for ProficiencyLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Proficiency {
+    level: ProficiencyLevel,
+    source: ModifierSource,
 }
 
 impl Proficiency {
@@ -61,11 +60,67 @@ impl Proficiency {
     }
 }
 
-impl Default for Proficiency {
+/// A map that tracks binary proficiency (proficient or not, i.e. no level) for
+/// different categories, keyed by `K`.
+/// Each category can have multiple sources contributing to its proficiency.
+///
+/// This is mainly used for things like weapon and armor proficiencies, where the
+/// concept of having expertise or half proficiency does not apply.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BinaryProficiencyMap<K>
+where
+    K: Eq + Hash,
+{
+    map: HashMap<K, HashSet<ModifierSource>>,
+}
+
+impl<K> BinaryProficiencyMap<K>
+where
+    K: Eq + Hash,
+{
+    pub fn set_proficient(&mut self, category: K, source: ModifierSource) {
+        self.map.entry(category).or_default().insert(source);
+    }
+
+    pub fn remove_proficient(&mut self, category: &K, source: &ModifierSource) {
+        if let Some(sources) = self.map.get_mut(category) {
+            sources.remove(source);
+            if sources.is_empty() {
+                self.map.remove(category);
+            }
+        }
+    }
+
+    pub fn sources(&self, category: &K) -> Option<&HashSet<ModifierSource>> {
+        self.map.get(category)
+    }
+
+    pub fn is_proficient(&self, category: &K) -> bool {
+        self.sources(category)
+            .map_or(false, |sources| !sources.is_empty())
+    }
+
+    pub fn proficiency(&self, category: &K) -> Option<Proficiency> {
+        if let Some(sources) = self.sources(category)
+            && !sources.is_empty()
+        {
+            return Some(Proficiency::new(
+                ProficiencyLevel::Proficient,
+                sources.iter().next().cloned().unwrap(),
+            ));
+        }
+        None
+    }
+}
+
+impl<K> Default for BinaryProficiencyMap<K>
+where
+    K: Eq + Hash,
+{
     fn default() -> Self {
         Self {
-            level: ProficiencyLevel::None,
-            source: ModifierSource::None,
+            map: HashMap::new(),
         }
     }
 }
@@ -96,9 +151,27 @@ mod tests {
     }
 
     #[test]
-    fn none_bonus() {
-        let prof = ProficiencyLevel::None;
-        assert_eq!(prof.bonus(2), 0);
-        assert_eq!(prof.bonus(3), 0);
+    fn binary_proficiency_map() {
+        let mut map = BinaryProficiencyMap::<u8>::default();
+        let source = ModifierSource::Base;
+
+        map.set_proficient(1, source.clone());
+        assert!(map.is_proficient(&1));
+        assert_eq!(
+            map.sources(&1),
+            Some(&[source.clone()].iter().cloned().collect())
+        );
+        assert_eq!(
+            map.proficiency(&1),
+            Some(Proficiency::new(
+                ProficiencyLevel::Proficient,
+                source.clone()
+            ))
+        );
+
+        map.remove_proficient(&1, &source);
+        assert!(!map.is_proficient(&1));
+        assert_eq!(map.sources(&1), None);
+        assert_eq!(map.proficiency(&1), None);
     }
 }

@@ -11,7 +11,7 @@ use nat20_core::{
         level::CharacterLevels,
         level_up::{ChoiceItem, ChoiceSpec, LevelUpPrompt},
         modifier::FlatModifiable,
-        proficiency::{Proficiency, ProficiencyLevel},
+        proficiency::Proficiency,
         skill::{Skill, SkillSet},
     },
     engine::engine_state::EngineState,
@@ -259,7 +259,13 @@ impl LevelUpDecisionProgress {
                 LevelUpPrompt::SkillProficiency { choices, .. } => {
                     let skill_set = systems::helpers::get_component::<SkillSet>(world, entity);
                     let all_skills = Skill::iter()
-                        .map(|skill| (skill, skill_set.get(&skill).proficiency().clone()))
+                        .filter_map(|skill| {
+                            skill_set
+                                .get(&skill)
+                                .proficiency()
+                                .cloned()
+                                .map(|p| (skill, p))
+                        })
                         .collect();
                     return LevelUpDecisionProgress::SkillProficiency {
                         selected: HashSet::new(),
@@ -769,16 +775,16 @@ impl ImguiRenderableMut for LevelUpPromptWithProgress {
                     if let Some(table) = table_with_columns!(ui, "Skills", "", "Skill", "") {
                         for skill in Skill::iter() {
                             ui.table_next_column();
-                            let proficiency = all_skills.get(&skill).unwrap();
-                            proficiency.render(ui);
+                            if let Some(proficiency) = all_skills.get(&skill) {
+                                proficiency.render(ui);
+                            }
 
                             ui.table_next_column();
                             ui.text(skill.to_string());
 
                             ui.table_next_column();
                             if skills.contains(&skill) {
-                                let already_proficient =
-                                    proficiency.level() != &ProficiencyLevel::None;
+                                let already_proficient = all_skills.get(&skill).is_some();
 
                                 let mut checked = selected.contains(&skill) || already_proficient;
 

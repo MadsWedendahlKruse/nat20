@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::{Debug, Display},
     hash::Hash,
-    ops::{Add, AddAssign, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Sub, SubAssign},
     str::FromStr,
 };
 
@@ -607,9 +607,10 @@ impl schemars::JsonSchema for ResourceAmount {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ResourceAmountMap {
-    pub map: HashMap<ResourceId, ResourceAmount>,
+    map: HashMap<ResourceId, ResourceAmount>,
 }
 
 impl Default for ResourceAmountMap {
@@ -623,6 +624,14 @@ impl ResourceAmountMap {
         Self {
             map: HashMap::new(),
         }
+    }
+
+    pub fn insert(&mut self, resource: ResourceId, amount: ResourceAmount) {
+        self.map.insert(resource, amount);
+    }
+
+    pub fn remove(&mut self, resource: &ResourceId) -> Option<ResourceAmount> {
+        self.map.remove(resource)
     }
 
     pub fn replace_resource(
@@ -647,29 +656,18 @@ impl ResourceAmountMap {
     }
 }
 
+impl Deref for ResourceAmountMap {
+    type Target = HashMap<ResourceId, ResourceAmount>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
 impl FromIterator<(ResourceId, ResourceAmount)> for ResourceAmountMap {
     fn from_iter<T: IntoIterator<Item = (ResourceId, ResourceAmount)>>(iter: T) -> Self {
         let map = iter.into_iter().collect();
         Self { map }
-    }
-}
-
-impl Serialize for ResourceAmountMap {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.map.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ResourceAmountMap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let map = HashMap::deserialize(deserializer)?;
-        Ok(ResourceAmountMap { map })
     }
 }
 
@@ -933,7 +931,10 @@ mod tests {
             tiered_resource(&[(1, 4, 4), (2, 0, 3), (10, 1, 1)]),
         ] {
             let json = serde_json::to_string(&res).unwrap();
-            assert_eq!(serde_json::from_str::<ResourceBudgetKind>(&json).unwrap(), res);
+            assert_eq!(
+                serde_json::from_str::<ResourceBudgetKind>(&json).unwrap(),
+                res
+            );
         }
     }
 

@@ -69,7 +69,7 @@ impl From<SpellDefinition> for Spell {
 impl RegistryReferenceCollector for SpellDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         self.kind.collect_registry_references(collector);
-        for resource in self.resource_cost.map.keys() {
+        for resource in self.resource_cost.keys() {
             collector.add(RegistryReference::Resource(resource.clone()));
         }
         if let Some(reaction_trigger) = &self.reaction_trigger

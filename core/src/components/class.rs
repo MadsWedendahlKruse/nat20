@@ -158,7 +158,7 @@ impl Class {
             .push(LevelUpPrompt::SkillProficiency {
                 skills: skill_proficiencies.clone(),
                 choices: skill_prompts,
-                source: ModifierSource::ClassFeature(id.clone()),
+                source: ModifierSource::Class(id.clone()),
             });
 
         // Add subclass prompt

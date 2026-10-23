@@ -2,7 +2,7 @@ use crate::{
     components::{
         class::{ClassAndSubclass, ClassBase},
         id::{ClassId, SubclassId},
-        items::equipment::{armor::ArmorTrainingSet, weapon::WeaponProficiencyMap},
+        items::equipment::{armor::ArmorTrainingMap, weapon::WeaponProficiencyMap},
         proficiency::ProficiencyLevel,
         resource::ResourceMap,
         saving_throw::SavingThrowKind,
@@ -28,10 +28,8 @@ enum ClassIdentifier {
 impl ClassIdentifier {
     pub fn modifier_source(&self) -> ModifierSource {
         match self {
-            ClassIdentifier::Class(class_id) => ModifierSource::ClassFeature(class_id.clone()),
-            ClassIdentifier::Subclass(subclass_id) => {
-                ModifierSource::SubclassFeature(subclass_id.clone())
-            }
+            ClassIdentifier::Class(class_id) => ModifierSource::Class(class_id.clone()),
+            ClassIdentifier::Subclass(subclass_id) => ModifierSource::Subclass(subclass_id.clone()),
         }
     }
 }
@@ -72,7 +70,7 @@ pub fn increment_class_level(
                 &SavingThrowKind::Ability(*ability),
                 Proficiency::new(
                     ProficiencyLevel::Proficient,
-                    ModifierSource::ClassFeature(class_id.clone()),
+                    ModifierSource::Class(class_id.clone()),
                 ),
             );
     }
@@ -198,22 +196,19 @@ fn apply_class_base(
             &mut engine_state.world,
             entity,
         );
-        for proficiency in class_base.weapon_proficiencies.iter() {
-            weapon_proficiencies.set_proficiency(
-                proficiency.clone(),
-                Proficiency::new(ProficiencyLevel::Proficient, id.modifier_source()),
-            );
+        for category in class_base.weapon_proficiencies.iter() {
+            weapon_proficiencies.set_proficient(category.clone(), id.modifier_source());
         }
     }
 
     // Armor training
     {
-        let armor_training = systems::helpers::get_component_mut::<ArmorTrainingSet>(
+        let armor_training = systems::helpers::get_component_mut::<ArmorTrainingMap>(
             &mut engine_state.world,
             entity,
         );
         for armor_type in class_base.armor_proficiencies.iter() {
-            armor_training.insert(armor_type.clone());
+            armor_training.set_proficient(armor_type.clone(), id.modifier_source());
         }
     }
 

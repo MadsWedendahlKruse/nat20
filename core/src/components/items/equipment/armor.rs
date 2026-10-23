@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::Display;
@@ -13,6 +11,7 @@ use crate::{
             item::Item,
         },
         modifier::{FlatModifiable, FlatModifierMap, ModifierSource},
+        proficiency::BinaryProficiencyMap,
     },
     registry::serialize::{item::ArmorDefinition, schema::impl_schema_via},
 };
@@ -208,7 +207,7 @@ impl SlotProvider for Armor {
     }
 }
 
-pub type ArmorTrainingSet = HashSet<ArmorType>;
+pub type ArmorTrainingMap = BinaryProficiencyMap<ArmorType>;
 
 #[cfg(test)]
 mod tests {
@@ -219,7 +218,7 @@ mod tests {
     #[test]
     fn armor_class_add_and_remove_modifier() {
         let mut armor_class =
-            ArmorClass::new(10, ModifierSource::None, ArmorDexterityBonus::Limited(2));
+            ArmorClass::new(10, ModifierSource::Base, ArmorDexterityBonus::Limited(2));
         assert_eq!(armor_class.total(), 10);
 
         armor_class.add_modifier(ModifierSource::Custom("Test".to_string()), 3);

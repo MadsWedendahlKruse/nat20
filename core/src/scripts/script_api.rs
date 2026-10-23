@@ -690,7 +690,7 @@ impl UserData for ActionData {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("costs_resource", |_, this, resource_id: String| {
             let id = parse_id::<ResourceId>(&resource_id)?;
-            Ok(this.resource_cost.map.contains_key(&id))
+            Ok(this.resource_cost.contains_key(&id))
         });
     }
 }
@@ -1258,7 +1258,6 @@ impl UserData for ResourceAmountMap {
         methods.add_method("costs_resource", |_, this, resource_id: String| {
             let id = parse_id::<ResourceId>(&resource_id)?;
             Ok(this
-                .map
                 .get(&id)
                 .map(|resource| !resource.is_empty())
                 .unwrap_or(false))
