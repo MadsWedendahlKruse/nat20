@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
     components::{
@@ -11,23 +11,17 @@ use crate::{
         id::{ActionId, ClassId, EffectId, ResourceId, SubclassId},
         items::equipment::{armor::ArmorType, weapon::WeaponCategory},
         level_up::{ChoiceItem, ChoiceSpec, LevelUpPrompt},
-        resource::ResourceBudgetKind,
+        modifier::ModifierSource,
+        resource::{ResourceMergeOperation, ResourceMergePolicy},
         skill::Skill,
     },
-    registry::registry_validation::{
-        ReferenceCollector, RegistryReference, RegistryReferenceCollector,
+    registry::{
+        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
+        serialize::resource::ResourceBudgetKindDefinition,
     },
 };
 
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ClassResourceDefinition {
-    pub id: ResourceId,
-    pub budget: ResourceBudgetKind,
-    #[serde(default, rename(deserialize = "override"))]
-    pub override_existing: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 pub struct ClassDefinition {
     pub id: ClassId,
     pub hit_die: DieSize,
@@ -59,7 +53,16 @@ impl From<ClassDefinition> for Class {
                     level,
                     resources
                         .into_iter()
-                        .map(|res_def| (res_def.id, res_def.budget, res_def.override_existing))
+                        .map(|res_def| {
+                            (
+                                res_def.id,
+                                res_def
+                                    .budget
+                                    .try_into_budget_kind(ModifierSource::Class(def.id.clone()))
+                                    .unwrap(),
+                                res_def.policy.into(),
+                            )
+                        })
                         .collect(),
                 )
             })
@@ -87,6 +90,54 @@ impl From<ClassDefinition> for Class {
     }
 }
 
+#[derive(Clone, Deserialize, JsonSchema)]
+pub struct ClassResourceDefinition {
+    pub id: ResourceId,
+    pub budget: ResourceBudgetKindDefinition,
+    #[serde(default = "default_policy")]
+    pub policy: ClassResourceMergePolicy,
+}
+
+#[derive(Clone, Deserialize, JsonSchema)]
+pub struct ClassResourceMergePolicy {
+    #[serde(default = "default_current_uses")]
+    pub current_uses: ResourceMergeOperation,
+    #[serde(default = "default_max_uses")]
+    pub max_uses: ResourceMergeOperation,
+    #[serde(default = "default_tier")]
+    pub tier: ResourceMergeOperation,
+}
+
+impl Into<ResourceMergePolicy> for ClassResourceMergePolicy {
+    fn into(self) -> ResourceMergePolicy {
+        ResourceMergePolicy {
+            current_uses: self.current_uses,
+            max_uses: self.max_uses,
+            tier: self.tier,
+        }
+    }
+}
+
+fn default_current_uses() -> ResourceMergeOperation {
+    ResourceMergeOperation::Skip
+}
+
+fn default_max_uses() -> ResourceMergeOperation {
+    ResourceMergeOperation::Replace
+}
+
+fn default_tier() -> ResourceMergeOperation {
+    ResourceMergeOperation::Add
+}
+
+fn default_policy() -> ClassResourceMergePolicy {
+    ClassResourceMergePolicy {
+        current_uses: default_current_uses(),
+        max_uses: default_max_uses(),
+        tier: default_tier(),
+    }
+}
+
 impl RegistryReferenceCollector for ClassDefinition {
     fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
         for effect_list in self.effects_by_level.values() {
@@ -97,6 +148,11 @@ impl RegistryReferenceCollector for ClassDefinition {
         for action_list in self.actions_by_level.values() {
             for action in action_list {
                 collector.add(RegistryReference::Action(action.clone()));
+            }
+        }
+        for resources in self.resources_by_level.values() {
+            for resource in resources {
+                collector.add(RegistryReference::Resource(resource.id.clone()));
             }
         }
         for prompts in self.prompts_by_level.values() {

@@ -324,7 +324,8 @@ function EngineState:can_afford_resource(entity, resource_id, amount) end
 ---@param entity ScriptEntity
 ---@param resource_id string
 ---@param amount string|integer
-function EngineState:add_resource(entity, resource_id, amount) end
+---@param source string
+function EngineState:add_resource(entity, resource_id, amount, source) end
 
 --- Note that the callback runs immediately and inline, before this function returns.
 ---@param entity ScriptEntity

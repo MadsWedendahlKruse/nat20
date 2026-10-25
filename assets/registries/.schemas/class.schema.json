@@ -466,20 +466,48 @@
             "type": "object",
             "properties": {
                 "budget": {
-                    "$ref": "#/definitions/ResourceBudgetKind"
+                    "$ref": "#/definitions/ResourceBudgetKindDefinition"
                 },
                 "id": {
                     "$ref": "#/definitions/ResourceId"
                 },
-                "override": {
-                    "type": "boolean",
-                    "default": false
+                "policy": {
+                    "$ref": "#/definitions/ClassResourceMergePolicy"
                 }
             },
             "required": [
                 "id",
                 "budget"
             ]
+        },
+        "ClassResourceMergePolicy": {
+            "type": "object",
+            "properties": {
+                "current_uses": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ResourceMergeOperation"
+                        }
+                    ],
+                    "default": "skip"
+                },
+                "max_uses": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ResourceMergeOperation"
+                        }
+                    ],
+                    "default": "replace"
+                },
+                "tier": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ResourceMergeOperation"
+                        }
+                    ],
+                    "default": "add"
+                }
+            }
         },
         "DieSize": {
             "type": "string",
@@ -739,7 +767,7 @@
                 }
             ]
         },
-        "ResourceBudgetKind": {
+        "ResourceBudgetKindDefinition": {
             "anyOf": [
                 {
                     "description": "A resource budget: `<max uses>` (spawns full) or `<current>/<max>`.",
@@ -769,6 +797,14 @@
             "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
+        },
+        "ResourceMergeOperation": {
+            "type": "string",
+            "enum": [
+                "add",
+                "replace",
+                "skip"
+            ]
         },
         "Skill": {
             "type": "string",

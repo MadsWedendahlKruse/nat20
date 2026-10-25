@@ -336,7 +336,7 @@
                                         "$ref": "#/definitions/ResourceBudgetKind"
                                     },
                                     {
-                                        "type": "boolean"
+                                        "$ref": "#/definitions/ResourceMergePolicy"
                                     }
                                 ],
                                 "maxItems": 3,
@@ -635,27 +635,41 @@
                 }
             ]
         },
+        "ResourceBudget": {
+            "type": "object",
+            "properties": {
+                "current_uses": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "max_uses": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "uint8",
+                        "maximum": 255,
+                        "minimum": 0
+                    }
+                }
+            },
+            "required": [
+                "current_uses",
+                "max_uses"
+            ]
+        },
         "ResourceBudgetKind": {
             "anyOf": [
                 {
-                    "description": "A resource budget: `<max uses>` (spawns full) or `<current>/<max>`.",
-                    "type": "string",
-                    "examples": [
-                        "2",
-                        "1/4"
-                    ]
+                    "$ref": "#/definitions/ResourceBudget"
                 },
                 {
                     "type": "object",
                     "additionalProperties": false,
                     "patternProperties": {
                         "^\\d+$": {
-                            "description": "A resource budget: `<max uses>` (spawns full) or `<current>/<max>`.",
-                            "type": "string",
-                            "examples": [
-                                "2",
-                                "1/4"
-                            ]
+                            "$ref": "#/definitions/ResourceBudget"
                         }
                     }
                 }
@@ -665,6 +679,38 @@
             "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
             "type": "string",
             "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
+        },
+        "ResourceMergeOperation": {
+            "type": "string",
+            "enum": [
+                "add",
+                "replace",
+                "skip"
+            ]
+        },
+        "ResourceMergePolicy": {
+            "type": "object",
+            "properties": {
+                "current_uses": {
+                    "$ref": "#/definitions/ResourceMergeOperation"
+                },
+                "max_uses": {
+                    "$ref": "#/definitions/ResourceMergeOperation"
+                },
+                "tier": {
+                    "description": "Techinically only relevant for tiered resources, but it's easier to have\neverything in one struct",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/ResourceMergeOperation"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "current_uses",
+                "max_uses",
+                "tier"
+            ]
         },
         "Skill": {
             "type": "string",

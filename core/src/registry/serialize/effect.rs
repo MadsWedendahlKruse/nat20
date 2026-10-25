@@ -16,8 +16,8 @@ use crate::{
         effects::{
             effect::{
                 Effect, EffectEndCondition, EffectEntiyReference, EffectEventFilter,
-                EffectGrantedAction, EffectInstance, EffectInstanceTemplate, EffectKind,
-                EffectLifetime, EffectStackingPolicy,
+                EffectGrantedAction, EffectInstance, EffectKind, EffectLifetime,
+                EffectStackingPolicy,
             },
             hooks::{
                 ActionHook, ActionResultHook, ActionUsabilityHook, ArmorClassHook, AttackedHook,
@@ -30,7 +30,9 @@ use crate::{
         id::{ActionId, EffectId, ResourceId, ScriptId},
         items::equipment::{armor::ArmorClass, loadout::Loadout},
         modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
-        resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
+        resource::{
+            ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap, ResourceMergePolicy,
+        },
         saving_throw::{SavingThrowKind, SavingThrowSet},
         skill::{Skill, SkillSet},
         speed::Speed,
@@ -715,18 +717,28 @@ impl EffectModifier {
                 match phase {
                     EffectPhase::Apply => {
                         if let Some(amount) = amount {
-                            resources.add_uses(resource, amount);
+                            resources
+                                .add(
+                                    resource.clone(),
+                                    ResourceBudgetKind::from_amount(amount, source.clone()),
+                                    &ResourceMergePolicy::add_all(),
+                                )
+                                .expect(&format!(
+                                    "Failed to add resource {} to entity {:?} from source {}",
+                                    resource, entity, source
+                                ));
                         }
                         if *disable {
                             resources.disable_resource(resource, source.clone());
                         }
                     }
                     EffectPhase::Unapply => {
-                        if let Some(amount) = amount {
-                            resources.remove_uses(resource, amount);
-                        }
+                        resources.remove_uses(resource, &source).expect(&format!(
+                            "Failed to remove uses of resource {} from entity {:?} from source {}",
+                            resource, entity, source
+                        ));
                         if *disable {
-                            resources.enable_resource(resource);
+                            resources.enable_resource(resource, &source);
                         }
                     }
                 }

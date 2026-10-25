@@ -40,7 +40,6 @@ use nat20_core::{
     systems::{self, geometry::DisplacementTemplate},
 };
 use strum::IntoEnumIterator;
-use tracing::debug;
 use uom::si::{length::meter, mass::kilogram};
 
 use crate::{
@@ -323,14 +322,21 @@ impl ImguiRenderable for ResourceMap {
             for (resource_id, resource) in flat_resources.iter() {
                 // Resource ID column
                 ui.table_next_column();
-                if let Some(source) = self.is_resource_disabled(resource_id) {
+                if let Some(sources) = self.is_resource_disabled(resource_id) {
                     TextSegment::new(resource_id.to_string(), TextKind::Red).render(ui);
 
                     if ui.is_item_hovered() {
                         ui.tooltip(|| {
                             TextSegments::new(vec![
                                 ("Disabled by:".to_string(), TextKind::Normal),
-                                (source.to_string(), TextKind::Details),
+                                (
+                                    sources
+                                        .iter()
+                                        .map(|s| s.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
+                                    TextKind::Details,
+                                ),
                             ])
                             .render(ui);
                         });
@@ -343,7 +349,19 @@ impl ImguiRenderable for ResourceMap {
                 ui.table_next_column();
                 match resource {
                     ResourceBudgetKind::Flat(budget) => {
-                        ui.text(format!("{}/{}", budget.current_uses, budget.max_uses));
+                        ui.text(format!(
+                            "{}/{}",
+                            budget.current_uses(),
+                            budget.max_uses_total()
+                        ));
+
+                        if ui.is_item_hovered() {
+                            ui.tooltip(|| {
+                                budget
+                                    .max_uses()
+                                    .render_with_context(ui, ModifierRenderMode::List(false));
+                            });
+                        }
                     }
                     _ => {
                         ui.text("Expected ResourceKind::Flat");
@@ -380,7 +398,11 @@ impl ImguiRenderable for ResourceMap {
                             ui.text(roman_numeral(*tier));
                             // Current uses column
                             ui.table_next_column();
-                            ui.text(format!("{}/{}", budget.current_uses, budget.max_uses));
+                            ui.text(format!(
+                                "{}/{}",
+                                budget.current_uses(),
+                                budget.max_uses_total()
+                            ));
                         }
                     }
                     _ => {

@@ -1,6 +1,6 @@
 local common = require("effects.extra_attack_common")
 
-local extra_attack_action_hook = common.action_hook(3)
+local extra_attack_action_hook = common.action_hook(3, "nat20_core::effect.fighter.three_extra_attacks")
 
 ---@type ActionHookFn
 local function action_hook(engine_state, action)

@@ -19,8 +19,9 @@ local function should_apply(action)
 end
 
 ---@param max_extra_attacks string|integer
+---@param source string
 ---@return ActionHookFn
-function M.action_hook(max_extra_attacks)
+function M.action_hook(max_extra_attacks, source)
     return function(engine_state, action)
         if not should_apply(action) then
             return
@@ -29,7 +30,12 @@ function M.action_hook(max_extra_attacks)
         -- attacks come from the extra-attack resource. If we don't already
         -- have extra-attack charges, hand some out.
         if not engine_state:can_afford_resource(action.actor, M.EXTRA_ATTACK_RESOURCE_ID, "1") then
-            engine_state:add_resource(action.actor, M.EXTRA_ATTACK_RESOURCE_ID, max_extra_attacks)
+            engine_state:add_resource(
+                action.actor,
+                M.EXTRA_ATTACK_RESOURCE_ID,
+                max_extra_attacks,
+                source
+            )
         end
     end
 end

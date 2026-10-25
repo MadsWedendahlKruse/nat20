@@ -11,7 +11,11 @@ use crate::{
         id::{EntityIdentifier, ResourceId, SpellId},
         level::CharacterLevels,
         level_up::LevelUpPrompt,
-        resource::{ResourceAmount, ResourceBudgetKind, ResourceMap},
+        modifier::ModifierSource,
+        resource::{
+            ResourceAmount, ResourceBudgetKind, ResourceMap, ResourceMergeOperation,
+            ResourceMergePolicy,
+        },
         spells::{
             concentration::{ConcentrationError, ConcentrationInstance},
             spell::SpellFlag,
@@ -131,14 +135,25 @@ pub fn update_spellbook(
         let resources = systems::helpers::get_component_mut::<ResourceMap>(world, entity);
         for (level, &num_slots) in slots_per_level.iter().enumerate() {
             let spellslot_level = level as u8 + 1;
-            resources.add(
-                ResourceId::new("nat20_core", "resource.spell_slot"),
-                ResourceBudgetKind::from(ResourceAmount::Tiered {
-                    tier: spellslot_level,
-                    amount: num_slots,
-                }),
-                false,
-            );
+            resources
+                .add(
+                    // TODO: Don't hardcode this?
+                    ResourceId::new("nat20_core", "resource.spell_slot"),
+                    ResourceBudgetKind::from_amount(
+                        &ResourceAmount::Tiered {
+                            tier: spellslot_level,
+                            amount: num_slots,
+                        },
+                        // TODO: What if it's the subclass which grants the spell slot?
+                        ModifierSource::Class(class_and_subclass.class.clone()),
+                    ),
+                    &ResourceMergePolicy {
+                        current_uses: ResourceMergeOperation::Skip,
+                        max_uses: ResourceMergeOperation::Replace,
+                        tier: ResourceMergeOperation::Add,
+                    },
+                )
+                .expect("Failed to add spell slot");
         }
     }
 

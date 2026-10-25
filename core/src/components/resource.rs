@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet, btree_map, hash_map::Entry},
     fmt::{Debug, Display},
     hash::Hash,
     ops::{Add, AddAssign, Deref, Sub, SubAssign},
@@ -9,6 +9,7 @@ use std::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
+use strum::EnumDiscriminants;
 
 use crate::{
     components::{
@@ -95,26 +96,24 @@ impl Display for RechargeRule {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ResourceBudget {
-    pub current_uses: u8,
-    pub max_uses: u8,
+    current_uses: u8,
+    max_uses: BTreeMap<ModifierSource, u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResourceBudgetError {
     InsufficientResources { needed: u8, available: u8 },
-    ZeroMaxUses,
-    NegativeMaxUses { reduction: u8, max_uses: u8 },
     CurrentUsesAboveMax { current_uses: u8, max_uses: u8 },
 }
 
 impl ResourceBudget {
-    pub fn new(current_uses: u8, max_uses: u8) -> Result<Self, ResourceBudgetError> {
-        if max_uses == 0 {
-            return Err(ResourceBudgetError::ZeroMaxUses);
-        }
+    pub fn new(
+        current_uses: u8,
+        max_uses: u8,
+        source: ModifierSource,
+    ) -> Result<Self, ResourceBudgetError> {
         if current_uses > max_uses {
             return Err(ResourceBudgetError::CurrentUsesAboveMax {
                 current_uses,
@@ -123,16 +122,31 @@ impl ResourceBudget {
         }
         Ok(Self {
             current_uses,
-            max_uses,
+            max_uses: BTreeMap::from_iter([(source, max_uses)]),
         })
     }
 
-    pub fn with_max_uses(max_uses: u8) -> Result<Self, ResourceBudgetError> {
-        Self::new(max_uses, max_uses)
+    pub fn with_max_uses(
+        max_uses: u8,
+        source: ModifierSource,
+    ) -> Result<Self, ResourceBudgetError> {
+        Self::new(max_uses, max_uses, source)
     }
 
     pub fn can_afford(&self, amount: u8) -> bool {
         self.current_uses >= amount
+    }
+
+    pub fn current_uses(&self) -> u8 {
+        self.current_uses
+    }
+
+    pub fn max_uses_total(&self) -> u8 {
+        self.max_uses.values().sum::<u8>()
+    }
+
+    pub fn max_uses(&self) -> &BTreeMap<ModifierSource, u8> {
+        &self.max_uses
     }
 
     pub fn spend(&mut self, amount: u8) -> Result<(), ResourceBudgetError> {
@@ -147,126 +161,96 @@ impl ResourceBudget {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.current_uses == 0
+        self.max_uses_total() == 0
     }
 
-    pub fn add_uses(&mut self, amount: u8) -> Result<(), ResourceBudgetError> {
-        self.max_uses += amount;
-        self.current_uses += amount;
-        Ok(())
-    }
-
-    pub fn remove_uses(&mut self, amount: u8) -> Result<(), ResourceBudgetError> {
-        if amount > self.max_uses {
-            return Err(ResourceBudgetError::NegativeMaxUses {
-                reduction: amount,
-                max_uses: self.max_uses,
-            });
-        }
-        self.max_uses -= amount;
-        if self.current_uses > self.max_uses {
-            self.current_uses = self.max_uses;
+    pub fn remove_uses(&mut self, source: &ModifierSource) -> Result<(), ResourceBudgetError> {
+        self.max_uses.remove(source);
+        if self.current_uses > self.max_uses_total() {
+            self.current_uses = self.max_uses_total();
         }
         Ok(())
     }
 
-    pub fn set_current_uses(&mut self, current_uses: u8) -> Result<(), ResourceBudgetError> {
-        if current_uses > self.max_uses {
-            return Err(ResourceBudgetError::CurrentUsesAboveMax {
-                current_uses,
-                max_uses: self.max_uses,
-            });
+    pub fn merge(&mut self, other: &ResourceBudget, policy: &ResourceMergePolicy) {
+        for (source, max_uses) in &other.max_uses {
+            match self.max_uses.entry(source.clone()) {
+                btree_map::Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(*max_uses);
+                }
+                btree_map::Entry::Occupied(mut occupied_entry) => match policy.max_uses {
+                    ResourceMergeOperation::Add => {
+                        *occupied_entry.get_mut() += *max_uses;
+                    }
+                    ResourceMergeOperation::Replace => {
+                        *occupied_entry.get_mut() = *max_uses;
+                    }
+                    ResourceMergeOperation::Skip => {}
+                },
+            };
         }
-        self.current_uses = current_uses;
-        Ok(())
-    }
 
-    pub fn set_max_uses(&mut self, max_uses: u8) -> Result<(), ResourceBudgetError> {
-        if max_uses == 0 {
-            return Err(ResourceBudgetError::ZeroMaxUses);
+        match policy.current_uses {
+            ResourceMergeOperation::Add => {
+                self.current_uses += other.current_uses;
+            }
+            ResourceMergeOperation::Replace => {
+                self.current_uses = other.current_uses;
+            }
+            ResourceMergeOperation::Skip => {}
         }
-        if max_uses < self.current_uses {
-            self.current_uses = max_uses;
+
+        if self.current_uses > self.max_uses_total() {
+            self.current_uses = self.max_uses_total();
         }
-        self.max_uses = max_uses;
-        Ok(())
     }
 
     pub fn recharge_full(&mut self) {
-        self.current_uses = self.max_uses;
+        self.current_uses = self.max_uses_total();
     }
 
-    // TODO: return type is just for the macro impl_resource_amount_router
-    pub fn restore(&mut self, amount: u8) -> Result<(), ResourceBudgetError> {
+    pub fn restore(&mut self, amount: u8) {
         self.current_uses += amount;
-        if self.current_uses > self.max_uses {
-            self.current_uses = self.max_uses;
-        }
-        Ok(())
-    }
-}
-
-impl Display for ResourceBudget {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.current_uses, self.max_uses)
-    }
-}
-
-impl FromStr for ResourceBudget {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split('/').collect();
-        if parts.len() == 1 {
-            let max_uses = parts[0]
-                .parse::<u8>()
-                .map_err(|_| format!("Invalid ResourceBudget format: {}", s))?;
-            let result = ResourceBudget::with_max_uses(max_uses);
-            match result {
-                Ok(budget) => Ok(budget),
-                Err(e) => Err(format!("Error creating ResourceBudget: {:?}", e)),
-            }
-        } else if parts.len() == 2 {
-            let current_uses = parts[0]
-                .parse::<u8>()
-                .map_err(|_| format!("Invalid ResourceBudget format: {}", s))?;
-            let max_uses = parts[1]
-                .parse::<u8>()
-                .map_err(|_| format!("Invalid ResourceBudget format: {}", s))?;
-            let result = ResourceBudget::new(current_uses, max_uses);
-            match result {
-                Ok(budget) => Ok(budget),
-                Err(e) => Err(format!("Error creating ResourceBudget: {:?}", e)),
-            }
-        } else {
-            Err(format!("Invalid ResourceBudget format: {}", s))
+        if self.current_uses > self.max_uses_total() {
+            self.current_uses = self.max_uses_total();
         }
     }
 }
 
-impl TryFrom<String> for ResourceBudget {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.parse()
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceMergeOperation {
+    Add,
+    Replace,
+    Skip,
 }
 
-impl From<ResourceBudget> for String {
-    fn from(spec: ResourceBudget) -> Self {
-        spec.to_string()
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ResourceMergePolicy {
+    pub current_uses: ResourceMergeOperation,
+    pub max_uses: ResourceMergeOperation,
+    /// Techinically only relevant for tiered resources, but it's easier to have
+    /// everything in one struct
+    pub tier: ResourceMergeOperation,
 }
 
-impl_string_schema!(
-    ResourceBudget,
-    "ResourceBudget",
-    "description": "A resource budget: `<max uses>` (spawns full) or `<current>/<max>`.",
-    "examples": ["2", "1/4"]
-);
+impl ResourceMergePolicy {
+    pub fn add_all() -> Self {
+        Self {
+            current_uses: ResourceMergeOperation::Add,
+            max_uses: ResourceMergeOperation::Add,
+            tier: ResourceMergeOperation::Add,
+        }
+    }
+}
 
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, Serialize, Deserialize, JsonSchema)]
+#[strum_discriminants(
+    name(ResourceKind),
+    derive(Serialize, Deserialize, JsonSchema),
+    serde(rename_all = "snake_case")
+)]
 #[serde(untagged)]
 pub enum ResourceBudgetKind {
     Flat(ResourceBudget),
@@ -279,58 +263,14 @@ pub enum ResourceBudgetKind {
     ),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ResourceError {
-    BudgetError(ResourceBudgetError),
-    MistmatchAmountAndKind {
-        amount: ResourceAmount,
-        kind: ResourceBudgetKind,
-    },
-    InvalidResourceKind(String),
-    InvalidTier {
-        tier: u8,
-    },
-    InsufficientResource {
-        id: ResourceId,
-        needed: ResourceAmount,
-        available: ResourceAmount,
-    },
-}
-
-macro_rules! impl_resource_amount_router {
-    ($( $fn_name:ident => $inner:ident ),+ $(,)?) => {
-        $(
-            pub fn $fn_name(&mut self, __arg: &ResourceAmount) -> Result<(), ResourceError> {
-                match (&mut *self, __arg) {
-                    (ResourceBudgetKind::Flat(budget), ResourceAmount::Flat(amt)) => {
-                        match budget.$inner(*amt) {
-                            Ok(()) => Ok(()),
-                            Err(e) => Err(ResourceError::BudgetError(e)),
-                        }
-                    }
-                    (ResourceBudgetKind::Tiered(budgets), ResourceAmount::Tiered { tier, amount }) => {
-                        if let Some(budget) = budgets.get_mut(tier) {
-                            match budget.$inner(*amount) {
-                                Ok(()) => Ok(()),
-                                Err(e) => Err(ResourceError::BudgetError(e)),
-                            }
-                        } else {
-                            Err(ResourceError::InvalidTier {
-                                tier: *tier,
-                            })
-                        }
-                    }
-                    _ => Err(ResourceError::MistmatchAmountAndKind {
-                        amount: __arg.clone(),
-                        kind: self.clone(),
-                    }),
-                }
-            }
-        )+
-    };
-}
-
 impl ResourceBudgetKind {
+    pub fn kind(&self) -> ResourceKind {
+        match self {
+            ResourceBudgetKind::Flat(_) => ResourceKind::Flat,
+            ResourceBudgetKind::Tiered(_) => ResourceKind::Tiered,
+        }
+    }
+
     pub fn recharge_full(&mut self) {
         match self {
             ResourceBudgetKind::Flat(budget) => budget.recharge_full(),
@@ -349,7 +289,7 @@ impl ResourceBudgetKind {
         }
     }
 
-    fn can_afford(&self, cost: &ResourceAmount) -> bool {
+    pub fn can_afford(&self, cost: &ResourceAmount) -> bool {
         match (self, cost) {
             (ResourceBudgetKind::Flat(budget), ResourceAmount::Flat(amt)) => {
                 budget.can_afford(*amt)
@@ -365,23 +305,105 @@ impl ResourceBudgetKind {
         }
     }
 
-    impl_resource_amount_router! {
-        spend => spend,
-        restore => restore,
-        add_uses => add_uses,
-        remove_uses => remove_uses,
-        set_current_uses => set_current_uses,
-        set_max_uses => set_max_uses,
+    pub fn spend(&mut self, cost: &ResourceAmount) -> Result<(), ResourceError> {
+        match (&mut *self, cost) {
+            (ResourceBudgetKind::Flat(budget), ResourceAmount::Flat(amt)) => {
+                Ok(budget.spend(*amt)?)
+            }
+            (ResourceBudgetKind::Tiered(budgets), ResourceAmount::Tiered { tier, amount }) => {
+                if let Some(budget) = budgets.get_mut(tier) {
+                    Ok(budget.spend(*amount)?)
+                } else {
+                    Err(ResourceError::InvalidTier { tier: *tier })
+                }
+            }
+            _ => Err(ResourceError::MistmatchKind {
+                other: cost.kind(),
+                own: self.kind(),
+            }),
+        }
     }
 
+    pub fn restore(&mut self, cost: &ResourceAmount) -> Result<(), ResourceError> {
+        match (&mut *self, cost) {
+            (ResourceBudgetKind::Flat(budget), ResourceAmount::Flat(amt)) => {
+                Ok(budget.restore(*amt))
+            }
+            (ResourceBudgetKind::Tiered(budgets), ResourceAmount::Tiered { tier, amount }) => {
+                if let Some(budget) = budgets.get_mut(tier) {
+                    Ok(budget.restore(*amount))
+                } else {
+                    Err(ResourceError::InvalidTier { tier: *tier })
+                }
+            }
+            _ => Err(ResourceError::MistmatchKind {
+                other: cost.kind(),
+                own: self.kind(),
+            }),
+        }
+    }
+
+    pub fn remove_uses(&mut self, source: &ModifierSource) -> Result<(), ResourceError> {
+        match (&mut *self, source) {
+            (ResourceBudgetKind::Flat(budget), source) => Ok(budget.remove_uses(source)?),
+            (ResourceBudgetKind::Tiered(budgets), source) => {
+                for (_, budget) in budgets.iter_mut() {
+                    budget.remove_uses(source)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub fn merge(
+        &mut self,
+        other: ResourceBudgetKind,
+        policy: &ResourceMergePolicy,
+    ) -> Result<(), ResourceError> {
+        match (&mut *self, &other) {
+            (ResourceBudgetKind::Flat(budget), ResourceBudgetKind::Flat(other_budget)) => {
+                Ok(budget.merge(&other_budget, policy))
+            }
+            (ResourceBudgetKind::Tiered(budgets), ResourceBudgetKind::Tiered(other_budgets)) => {
+                for (tier, other_budget) in other_budgets {
+                    match budgets.entry(*tier) {
+                        btree_map::Entry::Occupied(mut occupied_entry) => {
+                            match policy.tier {
+                                ResourceMergeOperation::Add => {
+                                    occupied_entry.get_mut().merge(&other_budget, policy);
+                                }
+                                ResourceMergeOperation::Replace => {
+                                    occupied_entry.insert(other_budget.clone());
+                                }
+                                ResourceMergeOperation::Skip => {}
+                            }
+                            if occupied_entry.get().is_empty() {
+                                occupied_entry.remove();
+                            }
+                        }
+                        btree_map::Entry::Vacant(vacant_entry) => {
+                            vacant_entry.insert(other_budget.clone());
+                        }
+                    };
+                }
+                Ok(())
+            }
+            _ => Err(ResourceError::MistmatchKind {
+                other: other.kind(),
+                own: self.kind(),
+            }),
+        }
+    }
+
+    // TODO: Only used for testing purposes
     pub fn max_uses(&self) -> Vec<ResourceAmount> {
         match self {
-            ResourceBudgetKind::Flat(budget) => vec![ResourceAmount::Flat(budget.max_uses)],
+            ResourceBudgetKind::Flat(budget) => vec![ResourceAmount::Flat(budget.max_uses_total())],
             ResourceBudgetKind::Tiered(budgets) => budgets
                 .iter()
                 .map(|(tier, budget)| ResourceAmount::Tiered {
                     tier: *tier,
-                    amount: budget.max_uses,
+                    amount: budget.max_uses_total(),
                 })
                 .collect(),
         }
@@ -399,34 +421,58 @@ impl ResourceBudgetKind {
                 .collect(),
         }
     }
-}
 
-impl From<ResourceAmount> for ResourceBudgetKind {
-    fn from(amount: ResourceAmount) -> Self {
+    pub fn from_amount(amount: &ResourceAmount, source: ModifierSource) -> Self {
         match amount {
             ResourceAmount::Flat(max_uses) => {
-                ResourceBudgetKind::Flat(ResourceBudget::with_max_uses(max_uses).unwrap())
+                ResourceBudgetKind::Flat(ResourceBudget::with_max_uses(*max_uses, source).unwrap())
             }
             ResourceAmount::Tiered { tier, amount } => {
                 let mut map = BTreeMap::new();
-                map.insert(tier, ResourceBudget::with_max_uses(amount).unwrap());
+                map.insert(
+                    *tier,
+                    ResourceBudget::with_max_uses(*amount, source).unwrap(),
+                );
                 ResourceBudgetKind::Tiered(map)
             }
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ResourceDefinitionKind {
-    Flat,
-    Tiered,
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResourceError {
+    BudgetError(ResourceBudgetError),
+    MistmatchKind {
+        other: ResourceKind,
+        own: ResourceKind,
+    },
+    InvalidResourceKind(String),
+    InvalidTier {
+        tier: u8,
+    },
+    MissingResource {
+        id: ResourceId,
+    },
+    InsufficientResource {
+        id: ResourceId,
+        needed: ResourceAmount,
+        available: ResourceAmount,
+    },
+    SpendDisabled {
+        id: ResourceId,
+    },
+}
+
+impl From<ResourceBudgetError> for ResourceError {
+    fn from(err: ResourceBudgetError) -> Self {
+        ResourceError::BudgetError(err)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Resource {
     pub id: ResourceId,
-    pub kind: ResourceDefinitionKind,
+    pub kind: ResourceKind,
     pub recharge: RechargeRule,
 }
 
@@ -450,6 +496,13 @@ impl ResourceAmount {
         match self {
             ResourceAmount::Flat(amt) => *amt == 0,
             ResourceAmount::Tiered { amount, .. } => *amount == 0,
+        }
+    }
+
+    pub fn kind(&self) -> ResourceKind {
+        match self {
+            ResourceAmount::Flat(_) => ResourceKind::Flat,
+            ResourceAmount::Tiered { .. } => ResourceKind::Tiered,
         }
     }
 }
@@ -677,7 +730,7 @@ impl_schema_via!(ResourceAmountMap, HashMap<ResourceId, ResourceAmount>);
 pub struct ResourceMap {
     resources: HashMap<ResourceId, ResourceBudgetKind>,
     /// Some effects might prevent certain resources from being used
-    disabled_resources: HashMap<ResourceId, ModifierSource>,
+    disabled_resources: HashMap<ResourceId, HashSet<ModifierSource>>,
 }
 
 impl ResourceMap {
@@ -693,71 +746,31 @@ impl ResourceMap {
         &mut self,
         resource: ResourceId,
         budget: ResourceBudgetKind,
-        set_current_uses: bool,
-    ) {
-        self.resources
-            .entry(resource.clone())
-            .and_modify(|existing| match (existing, &budget) {
-                (
-                    ResourceBudgetKind::Flat(existing_budget),
-                    ResourceBudgetKind::Flat(new_budget),
-                ) => {
-                    existing_budget.set_max_uses(new_budget.max_uses).unwrap();
-                    if set_current_uses {
-                        existing_budget
-                            .set_current_uses(new_budget.current_uses)
-                            .unwrap();
-                    }
-                }
-
-                (
-                    ResourceBudgetKind::Tiered(existing_budgets),
-                    ResourceBudgetKind::Tiered(new_budgets),
-                ) => {
-                    for (tier, new_budget) in new_budgets {
-                        existing_budgets
-                            .entry(*tier)
-                            .and_modify(|existing_budget| {
-                                existing_budget.set_max_uses(new_budget.max_uses).unwrap();
-                                if set_current_uses {
-                                    existing_budget
-                                        .set_current_uses(new_budget.current_uses)
-                                        .unwrap();
-                                }
-                            })
-                            .or_insert(new_budget.clone());
-                    }
-                }
-
-                _ => {
-                    panic!("Mismatched resource kinds for resource id {}", resource);
-                }
-            })
-            .or_insert(budget);
-    }
-
-    pub fn add_uses(
-        &mut self,
-        resource: &ResourceId,
-        amount: &ResourceAmount,
+        policy: &ResourceMergePolicy,
     ) -> Result<(), ResourceError> {
-        if let Some(budget) = self.resources.get_mut(resource) {
-            budget.add_uses(amount)
-        } else {
-            Err(ResourceError::InvalidResourceKind(format!(
-                "Resource with id {} not found",
-                resource
-            )))
+        match self.resources.entry(resource) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().merge(budget, policy)?;
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
+            }
+            Entry::Vacant(entry) => {
+                if !budget.is_empty() {
+                    entry.insert(budget);
+                }
+            }
         }
+        Ok(())
     }
 
     pub fn remove_uses(
         &mut self,
         resource: &ResourceId,
-        amount: &ResourceAmount,
+        source: &ModifierSource,
     ) -> Result<(), ResourceError> {
         if let Some(budget) = self.resources.get_mut(resource) {
-            budget.remove_uses(amount)
+            budget.remove_uses(source)
         } else {
             Err(ResourceError::InvalidResourceKind(format!(
                 "Resource with id {} not found",
@@ -812,16 +825,15 @@ impl ResourceMap {
     }
 
     pub fn spend(&mut self, id: &ResourceId, cost: &ResourceAmount) -> Result<(), ResourceError> {
-        if let Some(resource) = self.resources.get_mut(id)
-            && !self.disabled_resources.contains_key(id)
-        {
-            resource.spend(cost)
-        } else {
-            Err(ResourceError::InvalidResourceKind(format!(
-                "Resource with id {} not found",
-                id
-            )))
+        let Some(resource) = self.resources.get_mut(id) else {
+            return Err(ResourceError::MissingResource { id: id.clone() });
+        };
+
+        if self.disabled_resources.contains_key(id) {
+            return Err(ResourceError::SpendDisabled { id: id.clone() });
         }
+
+        resource.spend(cost)
     }
 
     pub fn spend_all(&mut self, cost: &ResourceAmountMap) -> Result<(), Vec<ResourceError>> {
@@ -864,14 +876,11 @@ impl ResourceMap {
         id: &ResourceId,
         restoration: &ResourceAmount,
     ) -> Result<(), ResourceError> {
-        if let Some(resource) = self.resources.get_mut(id) {
-            resource.restore(restoration)
-        } else {
-            Err(ResourceError::InvalidResourceKind(format!(
-                "Resource with id {} not found",
-                id
-            )))
-        }
+        let Some(resource) = self.resources.get_mut(id) else {
+            return Err(ResourceError::MissingResource { id: id.clone() });
+        };
+
+        resource.restore(restoration)
     }
 
     pub fn restore_all(&mut self, restoration: &ResourceAmountMap) -> Result<(), ResourceError> {
@@ -882,16 +891,24 @@ impl ResourceMap {
         Ok(())
     }
 
-    pub fn is_resource_disabled(&self, id: &ResourceId) -> Option<&ModifierSource> {
+    pub fn is_resource_disabled(&self, id: &ResourceId) -> Option<&HashSet<ModifierSource>> {
         self.disabled_resources.get(id)
     }
 
     pub fn disable_resource(&mut self, id: &ResourceId, source: ModifierSource) {
-        self.disabled_resources.insert(id.clone(), source);
+        self.disabled_resources
+            .entry(id.clone())
+            .or_insert_with(HashSet::new)
+            .insert(source);
     }
 
-    pub fn enable_resource(&mut self, id: &ResourceId) {
-        self.disabled_resources.remove(id);
+    pub fn enable_resource(&mut self, id: &ResourceId, source: &ModifierSource) {
+        if let Some(sources) = self.disabled_resources.get_mut(id) {
+            sources.remove(source);
+            if sources.is_empty() {
+                self.disabled_resources.remove(id);
+            }
+        }
     }
 }
 
@@ -902,7 +919,12 @@ impl Default for ResourceMap {
             .default_resources
             .map
             .iter()
-            .map(|(id, amount)| (id.clone(), amount.clone().into()))
+            .map(|(id, amount)| {
+                (
+                    id.clone(),
+                    ResourceBudgetKind::from_amount(amount, ModifierSource::Base),
+                )
+            })
             .collect();
         map
     }
@@ -910,16 +932,67 @@ impl Default for ResourceMap {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
+    #[test]
+    fn budget_new() {
+        assert!(ResourceBudget::new(2, 2, ModifierSource::Base).is_ok());
+        assert_eq!(
+            ResourceBudget::new(2, 1, ModifierSource::Base),
+            Err(ResourceBudgetError::CurrentUsesAboveMax {
+                current_uses: 2,
+                max_uses: 1
+            })
+        );
+    }
+
+    #[test]
+    fn budget_remove_uses() {
+        let mut budget = ResourceBudget::new(3, 3, ModifierSource::Base).unwrap();
+        assert!(budget.remove_uses(&ModifierSource::Base).is_ok());
+        assert_eq!(budget.current_uses, 0);
+        assert_eq!(budget.max_uses_total(), 0);
+    }
+
+    #[rstest]
+    #[case(ResourceMergeOperation::Add, ResourceMergeOperation::Add, 3, 5)]
+    #[case(ResourceMergeOperation::Add, ResourceMergeOperation::Skip, 2, 2)]
+    #[case(ResourceMergeOperation::Skip, ResourceMergeOperation::Add, 2, 5)]
+    #[case(ResourceMergeOperation::Skip, ResourceMergeOperation::Skip, 2, 2)]
+    #[case(ResourceMergeOperation::Replace, ResourceMergeOperation::Replace, 1, 3)]
+    #[case(ResourceMergeOperation::Replace, ResourceMergeOperation::Add, 1, 5)]
+    #[case(ResourceMergeOperation::Add, ResourceMergeOperation::Replace, 3, 3)]
+    fn budge_merge(
+        #[case] current_policy: ResourceMergeOperation,
+        #[case] max_policy: ResourceMergeOperation,
+        #[case] current_uses: u8,
+        #[case] max_uses: u8,
+    ) {
+        let policy = ResourceMergePolicy {
+            current_uses: current_policy,
+            max_uses: max_policy,
+            tier: ResourceMergeOperation::Skip,
+        };
+        let mut budget1 = ResourceBudget::new(2, 2, ModifierSource::Base).unwrap();
+        let mut budget2 = ResourceBudget::new(1, 3, ModifierSource::Base).unwrap();
+        budget1.merge(&mut budget2, &policy);
+        assert_eq!(budget1.current_uses, current_uses);
+        assert_eq!(budget1.max_uses_total(), max_uses);
+    }
+
     fn flat_resource(current: u8, max: u8) -> ResourceBudgetKind {
-        ResourceBudgetKind::Flat(ResourceBudget::new(current, max).unwrap())
+        ResourceBudgetKind::Flat(ResourceBudget::new(current, max, ModifierSource::Base).unwrap())
     }
 
     fn tiered_resource(tiers: &[(u8, u8, u8)]) -> ResourceBudgetKind {
         let mut map = BTreeMap::new();
         for (tier, current, max) in tiers {
-            map.insert(*tier, ResourceBudget::new(*current, *max).unwrap());
+            map.insert(
+                *tier,
+                ResourceBudget::new(*current, *max, ModifierSource::Base).unwrap(),
+            );
         }
         ResourceBudgetKind::Tiered(map)
     }
@@ -970,54 +1043,16 @@ mod tests {
 
     #[test]
     fn flat_is_empty() {
-        let res = flat_resource(0, 1);
+        let res = flat_resource(0, 0);
         assert!(res.is_empty());
-    }
-
-    #[test]
-    fn flat_add_uses() {
-        let mut res = flat_resource(2, 2);
-        res.add_uses(&ResourceAmount::Flat(3));
-        assert_eq!(res.max_uses()[0], ResourceAmount::Flat(5));
-        assert_eq!(res.current_uses()[0], ResourceAmount::Flat(5));
     }
 
     #[test]
     fn flat_remove_uses_success() {
         let mut res = flat_resource(4, 4);
-        assert!(res.remove_uses(&ResourceAmount::Flat(2)).is_ok());
-        assert_eq!(res.max_uses()[0], ResourceAmount::Flat(2));
-        assert_eq!(res.current_uses()[0], ResourceAmount::Flat(2));
-    }
-
-    #[test]
-    fn flat_remove_uses_too_many() {
-        let mut res = flat_resource(1, 1);
-        let err = res.remove_uses(&ResourceAmount::Flat(2)).unwrap_err();
-        match err {
-            ResourceError::BudgetError(ResourceBudgetError::NegativeMaxUses {
-                reduction,
-                max_uses,
-            }) => {
-                assert_eq!(reduction, 2);
-                assert_eq!(max_uses, 1);
-            }
-            _ => panic!("Unexpected error variant"),
-        }
-    }
-
-    #[test]
-    fn flat_set_current_uses() {
-        let mut res = flat_resource(3, 3);
-        assert!(res.set_current_uses(&ResourceAmount::Flat(2)).is_ok());
-        assert_eq!(res.current_uses()[0], ResourceAmount::Flat(2));
-    }
-
-    #[test]
-    fn flat_set_max_uses() {
-        let mut res = flat_resource(3, 3);
-        assert!(res.set_max_uses(&ResourceAmount::Flat(4)).is_ok());
-        assert_eq!(res.max_uses()[0], ResourceAmount::Flat(4));
+        assert!(res.remove_uses(&ModifierSource::Base).is_ok());
+        assert_eq!(res.max_uses()[0], ResourceAmount::Flat(0));
+        assert_eq!(res.current_uses()[0], ResourceAmount::Flat(0));
     }
 
     #[test]
@@ -1058,52 +1093,17 @@ mod tests {
     }
 
     #[test]
-    fn tiered_add_uses() {
-        let mut res = tiered_resource(&[(1, 2, 2), (2, 1, 1)]);
-        res.add_uses(&ResourceAmount::Tiered { tier: 1, amount: 1 });
-        let uses = res.max_uses();
-        assert_eq!(
-            uses,
-            vec![
-                ResourceAmount::Tiered { tier: 1, amount: 3 },
-                ResourceAmount::Tiered { tier: 2, amount: 1 }
-            ]
-        );
-    }
-
-    #[test]
     fn tiered_remove_uses_success() {
         let mut res = tiered_resource(&[(1, 2, 2), (2, 1, 1)]);
-        assert!(
-            res.remove_uses(&ResourceAmount::Tiered { tier: 1, amount: 1 })
-                .is_ok()
-        );
+        assert!(res.remove_uses(&ModifierSource::Base).is_ok());
         let uses = res.max_uses();
         assert_eq!(
             uses,
             vec![
-                ResourceAmount::Tiered { tier: 1, amount: 1 },
-                ResourceAmount::Tiered { tier: 2, amount: 1 }
+                ResourceAmount::Tiered { tier: 1, amount: 0 },
+                ResourceAmount::Tiered { tier: 2, amount: 0 }
             ]
         );
-    }
-
-    #[test]
-    fn tiered_remove_uses_too_many() {
-        let mut res = tiered_resource(&[(1, 2, 2)]);
-        let err = res
-            .remove_uses(&ResourceAmount::Tiered { tier: 1, amount: 3 })
-            .unwrap_err();
-        match err {
-            ResourceError::BudgetError(ResourceBudgetError::NegativeMaxUses {
-                reduction,
-                max_uses,
-            }) => {
-                assert_eq!(reduction, 3);
-                assert_eq!(max_uses, 2);
-            }
-            _ => panic!("Unexpected error variant"),
-        }
     }
 
     #[test]
@@ -1122,7 +1122,7 @@ mod tests {
 
     #[test]
     fn tiered_is_empty() {
-        let res = tiered_resource(&[(1, 0, 2), (2, 0, 1)]);
+        let res = tiered_resource(&[(1, 0, 0), (2, 0, 0)]);
         assert!(res.is_empty());
     }
 
@@ -1130,7 +1130,11 @@ mod tests {
     fn resource_map_add_and_get() {
         let mut map = ResourceMap::new();
         let res = flat_resource(1, 1);
-        map.add(ResourceId::new("nat20_core", "Action"), res.clone(), false);
+        map.add(
+            ResourceId::new("nat20_core", "Action"),
+            res.clone(),
+            &ResourceMergePolicy::add_all(),
+        );
         let got = map.get(&ResourceId::new("nat20_core", "Action")).unwrap();
         assert_eq!(got.max_uses(), vec![ResourceAmount::Flat(1)]);
     }
@@ -1141,12 +1145,12 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Action"),
             flat_resource(1, 1),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
         map.add(
             ResourceId::new("nat20_core", "Bonus Action"),
             flat_resource(1, 1),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
         let ids: Vec<_> = map.iter().map(|(id, _)| id).collect();
         assert!(ids.contains(&&ResourceId::new("nat20_core", "Action")));
@@ -1159,7 +1163,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(3, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1177,7 +1181,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(1, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1195,7 +1199,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Spell Slot"),
             tiered_resource(&[(1, 2, 2), (2, 1, 1)]),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1213,7 +1217,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Spell Slot"),
             tiered_resource(&[(1, 1, 2), (2, 1, 1)]),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1231,7 +1235,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(3, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1251,7 +1255,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(1, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1282,7 +1286,7 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Spell Slot"),
             tiered_resource(&[(1, 2, 2), (2, 1, 1)]),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1311,12 +1315,12 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(3, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
         map.add(
             ResourceId::new("nat20_core", "Spell Slot"),
             tiered_resource(&[(1, 2, 2), (2, 1, 1)]),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1338,12 +1342,12 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(3, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
         map.add(
             ResourceId::new("nat20_core", "Rage"),
             flat_resource(2, 2),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1369,12 +1373,12 @@ mod tests {
         map.add(
             ResourceId::new("nat20_core", "Ki Point"),
             flat_resource(3, 3),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
         map.add(
             ResourceId::new("nat20_core", "Spell Slot"),
             tiered_resource(&[(1, 2, 2), (2, 1, 1)]),
-            false,
+            &ResourceMergePolicy::add_all(),
         );
 
         let mut cost = ResourceAmountMap::new();
@@ -1399,6 +1403,40 @@ mod tests {
                 ResourceAmount::Tiered { tier: 1, amount: 0 },
                 ResourceAmount::Tiered { tier: 2, amount: 1 }
             ]
+        );
+    }
+
+    #[test]
+    fn resource_map_replace_tiered_resource() {
+        let mut map = ResourceMap::new();
+        let policy = ResourceMergePolicy {
+            current_uses: ResourceMergeOperation::Skip,
+            max_uses: ResourceMergeOperation::Replace,
+            tier: ResourceMergeOperation::Replace,
+        };
+
+        map.add(
+            ResourceId::new("nat20_core", "Spell Slot"),
+            tiered_resource(&[(1, 1, 1)]),
+            &policy,
+        );
+        assert_eq!(
+            map.get(&ResourceId::new("nat20_core", "Spell Slot"))
+                .unwrap()
+                .current_uses(),
+            vec![ResourceAmount::Tiered { tier: 1, amount: 1 }]
+        );
+
+        map.add(
+            ResourceId::new("nat20_core", "Spell Slot"),
+            tiered_resource(&[(1, 0, 0), (2, 1, 1)]),
+            &policy,
+        );
+        assert_eq!(
+            map.get(&ResourceId::new("nat20_core", "Spell Slot"))
+                .unwrap()
+                .current_uses(),
+            vec![ResourceAmount::Tiered { tier: 2, amount: 1 }]
         );
     }
 }

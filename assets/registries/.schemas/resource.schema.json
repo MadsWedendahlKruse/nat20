@@ -7,7 +7,7 @@
             "$ref": "#/definitions/ResourceId"
         },
         "kind": {
-            "$ref": "#/definitions/ResourceDefinitionKind"
+            "$ref": "#/definitions/ResourceKind"
         },
         "recharge": {
             "description": "When the resource recharges.",
@@ -27,17 +27,17 @@
         "recharge"
     ],
     "definitions": {
-        "ResourceDefinitionKind": {
+        "ResourceId": {
+            "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
+        },
+        "ResourceKind": {
             "type": "string",
             "enum": [
                 "flat",
                 "tiered"
             ]
-        },
-        "ResourceId": {
-            "description": "Registry id `[namespace::]resource.<name>`, e.g. `nat20_core::resource.example`. The namespace defaults to `nat20_core`.",
-            "type": "string",
-            "pattern": "^([A-Za-z0-9_]+::)?resource[A-Za-z0-9_.]*$"
         }
     }
 }

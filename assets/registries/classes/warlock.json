@@ -158,7 +158,9 @@
                 "budget": {
                     "1": "1"
                 },
-                "override": true
+                "policy": {
+                    "tier": "replace"
+                }
             }
         ],
         "2": [
@@ -167,25 +169,33 @@
                 "budget": {
                     "1": "2"
                 },
-                "override": true
+                "policy": {
+                    "tier": "replace"
+                }
             }
         ],
         "3": [
             {
                 "id": "nat20_core::resource.warlock.pact_magic_spell_slot",
                 "budget": {
+                    "1": "0",
                     "2": "2"
                 },
-                "override": true
+                "policy": {
+                    "tier": "replace"
+                }
             }
         ],
         "5": [
             {
                 "id": "nat20_core::resource.warlock.pact_magic_spell_slot",
                 "budget": {
+                    "2": "0",
                     "3": "2"
                 },
-                "override": true
+                "policy": {
+                    "tier": "replace"
+                }
             }
         ],
         "7": [
@@ -194,7 +204,9 @@
                 "budget": {
                     "4": "2"
                 },
-                "override": true
+                "policy": {
+                    "tier": "replace"
+                }
             }
         ],
         "9": [
@@ -203,7 +215,9 @@
                 "budget": {
                     "5": "2"
                 },
-                "override": true
+                "policy": {
+                    "tier": "replace"
+                }
             }
         ]
     },

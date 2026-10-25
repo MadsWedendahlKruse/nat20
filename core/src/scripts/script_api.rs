@@ -36,7 +36,10 @@ use crate::{
             FlatModifierMap, Modifiable, ModifierKind, ModifierKindResult, ModifierMap,
             ModifierResult, ModifierSource,
         },
-        resource::{ResourceAmount, ResourceAmountMap, ResourceMap},
+        resource::{
+            ResourceAmount, ResourceAmountMap, ResourceBudgetKind, ResourceMap,
+            ResourceMergeOperation, ResourceMergePolicy,
+        },
         saving_throw::SavingThrowKind,
         scratchpad::{ScratchValue, Scratchpad},
         speed::Speed,
@@ -895,11 +898,23 @@ impl UserData for EngineState {
 
         methods.add_method_mut(
             "add_resource",
-            |_, this, (entity, resource_id, amount): (ScriptEntity, String, Value)| {
+            |_, this, (entity, resource_id, amount, source): (ScriptEntity, String, Value, String)| {
                 let id = parse_id::<ResourceId>(&resource_id)?;
                 let amount = parse_resource_amount(amount)?;
-                systems::helpers::get_component_mut::<ResourceMap>(&mut this.world, entity.into())
-                    .add(id, amount.into(), true);
+                let source = parse_source(&source)?;
+                let budget = ResourceBudgetKind::from_amount(&amount, source.clone());
+                let entity = entity.into();
+                systems::helpers::get_component_mut::<ResourceMap>(&mut this.world, entity)
+                    .add(id, budget, &ResourceMergePolicy {
+                        current_uses: ResourceMergeOperation::Add,
+                        max_uses: ResourceMergeOperation::Add,
+                        tier: ResourceMergeOperation::Add,
+                    }).expect(&format!(
+                        "Failed to add resource {} to entity {:?} from source {}",
+                        resource_id,
+                        entity,
+                        source,
+                    ));
                 Ok(())
             },
         );

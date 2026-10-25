@@ -103,6 +103,18 @@ impl ImguiRenderableWithContext<ModifierRenderMode> for ModifierResult {
     }
 }
 
+impl ImguiRenderableWithContext<ModifierRenderMode> for BTreeMap<ModifierSource, u8> {
+    fn render_with_context(&self, ui: &imgui::Ui, mode: ModifierRenderMode) {
+        render_map(
+            ui,
+            self,
+            mode,
+            |value| value.to_string(),
+            self.iter().map(|(_, v)| *v).sum::<u8>().to_string(),
+        );
+    }
+}
+
 fn render_map<T>(
     ui: &imgui::Ui,
     map: &BTreeMap<ModifierSource, T>,

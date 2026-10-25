@@ -414,6 +414,20 @@ impl ModifierValue for i32 {
     }
 }
 
+impl ModifierValue for u8 {
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+
+    fn min(&self) -> i32 {
+        *self as i32
+    }
+
+    fn max(&self) -> i32 {
+        *self as i32
+    }
+}
+
 /// The result of evaluating a [`ModifierMap`], which contains the results of each
 /// individual modifier keyed by its source. For flat modifiers this doesn't do anything,
 /// but for the dice-based modifiers it rolls them and stores the value.

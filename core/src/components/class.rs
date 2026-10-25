@@ -14,12 +14,13 @@ use crate::{
         items::equipment::{armor::ArmorType, weapon::WeaponCategory},
         level_up::{ChoiceItem, ChoiceSpec, LevelUpPrompt},
         modifier::ModifierSource,
-        resource::ResourceBudgetKind,
+        resource::{ResourceBudgetKind, ResourceMergePolicy},
         skill::Skill,
     },
     registry::{registry::SubclassesRegistry, serialize::class::ClassDefinition},
 };
 
+// TODO: Is this ever (de)serialized directly?
 /// Classes and subclasses share a lot of common properties, so we define a base struct
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ClassBase {
@@ -44,7 +45,7 @@ pub struct ClassBase {
     #[serde(default)]
     pub effects_by_level: HashMap<u8, Vec<EffectId>>,
     #[serde(default)]
-    pub resources_by_level: HashMap<u8, Vec<(ResourceId, ResourceBudgetKind, bool)>>,
+    pub resources_by_level: HashMap<u8, Vec<(ResourceId, ResourceBudgetKind, ResourceMergePolicy)>>,
     /// Class specific prompts that can be made at each level.
     /// For example, a Fighter might choose a fighting style at level 1.
     /// TODO: Include subclass prompts?
@@ -147,7 +148,7 @@ impl Class {
         weapon_proficiencies: HashSet<WeaponCategory>,
         spellcasting: Option<SpellcastingRules>,
         effects_by_level: HashMap<u8, Vec<EffectId>>,
-        resources_by_level: HashMap<u8, Vec<(ResourceId, ResourceBudgetKind, bool)>>,
+        resources_by_level: HashMap<u8, Vec<(ResourceId, ResourceBudgetKind, ResourceMergePolicy)>>,
         mut prompts_by_level: HashMap<u8, Vec<LevelUpPrompt>>,
         actions_by_level: HashMap<u8, Vec<ActionId>>,
     ) -> Self {

@@ -172,11 +172,8 @@ fn apply_class_base(
         let resources =
             systems::helpers::get_component_mut::<ResourceMap>(&mut engine_state.world, entity);
         if let Some(resources_for_level) = class_base.resources_by_level.get(&level) {
-            for (resource, amount, override_existing) in resources_for_level {
-                if *override_existing {
-                    resources.remove(resource);
-                }
-                resources.add(resource.clone(), amount.clone(), false);
+            for (resource, amount, policy) in resources_for_level {
+                resources.add(resource.clone(), amount.clone(), policy);
             }
         }
     }

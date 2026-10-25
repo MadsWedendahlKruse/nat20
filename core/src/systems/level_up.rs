@@ -20,7 +20,7 @@ use crate::{
         level_up::{ChoiceItem, LevelUpPrompt},
         modifier::{FlatModifiable, KeyedFlatModifiable, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
-        resource::{ResourceBudgetKind, ResourceMap},
+        resource::{ResourceBudgetKind, ResourceMap, ResourceMergePolicy},
         skill::{Skill, SkillSet},
         spells::spellbook::{SpellSource, Spellbook},
     },
@@ -688,7 +688,7 @@ pub struct LevelUpGains {
     pub hit_points: HitPoints,
     pub actions: Vec<ActionId>,
     pub effects: Vec<EffectId>,
-    pub resources: Vec<(ResourceId, ResourceBudgetKind, bool)>,
+    pub resources: Vec<(ResourceId, ResourceBudgetKind, ResourceMergePolicy)>,
 }
 
 pub fn level_up_gains(

@@ -752,7 +752,7 @@ impl ScenarioProbe<'_> {
                 resource, amount
             );
         };
-        budget.current_uses
+        budget.current_uses()
     }
 
     #[track_caller]
@@ -781,7 +781,7 @@ impl ScenarioProbe<'_> {
                 budgets.keys().collect::<Vec<_>>()
             );
         };
-        budget.current_uses
+        budget.current_uses()
     }
 
     pub fn effect_remaining_turns(&self, effect: impl Into<EffectId>) -> Option<u32> {
