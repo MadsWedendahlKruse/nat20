@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use crate::registry::registry_validation;
 use hecs::Entity;
 use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Debug, hash::Hash, str::FromStr};
@@ -64,7 +65,16 @@ macro_rules! id_newtypes {
                         return Err(IdError::EmptyId);
                     }
 
-                    Ok(Self::new(namespace.to_string(), id.to_string()))
+                    let parsed = Self::new(namespace.to_string(), id.to_string());
+
+                    // Record the parsed ID (usually through deserializing a file)
+                    // in the global `IdRecorder`, so we can check later if it
+                    // exists in the registry.
+                    // This seems a little bit illegal, but also a little bit clever
+                    // at the same time?
+                    registry_validation::record_id(|| Id::$name(parsed.clone()));
+
+                    Ok(parsed)
                 }
             }
 
@@ -111,6 +121,7 @@ macro_rules! id_newtypes {
             }
         )+
 
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         pub enum Id {
             $($name($name),)+
         }

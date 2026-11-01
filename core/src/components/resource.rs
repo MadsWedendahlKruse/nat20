@@ -164,12 +164,11 @@ impl ResourceBudget {
         self.max_uses_total() == 0
     }
 
-    pub fn remove_uses(&mut self, source: &ModifierSource) -> Result<(), ResourceBudgetError> {
+    pub fn remove_uses(&mut self, source: &ModifierSource) {
         self.max_uses.remove(source);
         if self.current_uses > self.max_uses_total() {
             self.current_uses = self.max_uses_total();
         }
-        Ok(())
     }
 
     pub fn merge(&mut self, other: &ResourceBudget, policy: &ResourceMergePolicy) {
@@ -343,14 +342,13 @@ impl ResourceBudgetKind {
         }
     }
 
-    pub fn remove_uses(&mut self, source: &ModifierSource) -> Result<(), ResourceError> {
+    pub fn remove_uses(&mut self, source: &ModifierSource) {
         match (&mut *self, source) {
-            (ResourceBudgetKind::Flat(budget), source) => Ok(budget.remove_uses(source)?),
+            (ResourceBudgetKind::Flat(budget), source) => budget.remove_uses(source),
             (ResourceBudgetKind::Tiered(budgets), source) => {
                 for (_, budget) in budgets.iter_mut() {
-                    budget.remove_uses(source)?;
+                    budget.remove_uses(source);
                 }
-                Ok(())
             }
         }
     }
@@ -770,7 +768,7 @@ impl ResourceMap {
         source: &ModifierSource,
     ) -> Result<(), ResourceError> {
         if let Some(budget) = self.resources.get_mut(resource) {
-            budget.remove_uses(source)
+            Ok(budget.remove_uses(source))
         } else {
             Err(ResourceError::InvalidResourceKind(format!(
                 "Resource with id {} not found",
@@ -951,7 +949,7 @@ mod tests {
     #[test]
     fn budget_remove_uses() {
         let mut budget = ResourceBudget::new(3, 3, ModifierSource::Base).unwrap();
-        assert!(budget.remove_uses(&ModifierSource::Base).is_ok());
+        budget.remove_uses(&ModifierSource::Base);
         assert_eq!(budget.current_uses, 0);
         assert_eq!(budget.max_uses_total(), 0);
     }
@@ -1050,7 +1048,7 @@ mod tests {
     #[test]
     fn flat_remove_uses_success() {
         let mut res = flat_resource(4, 4);
-        assert!(res.remove_uses(&ModifierSource::Base).is_ok());
+        res.remove_uses(&ModifierSource::Base);
         assert_eq!(res.max_uses()[0], ResourceAmount::Flat(0));
         assert_eq!(res.current_uses()[0], ResourceAmount::Flat(0));
     }
@@ -1095,7 +1093,7 @@ mod tests {
     #[test]
     fn tiered_remove_uses_success() {
         let mut res = tiered_resource(&[(1, 2, 2), (2, 1, 1)]);
-        assert!(res.remove_uses(&ModifierSource::Base).is_ok());
+        res.remove_uses(&ModifierSource::Base);
         let uses = res.max_uses();
         assert_eq!(
             uses,

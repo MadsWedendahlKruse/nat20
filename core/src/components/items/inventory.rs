@@ -145,10 +145,9 @@ impl Inventory {
         &self.items
     }
 
-    /// Optional: find by name
-    // pub fn find_by_name(&self, name: &str) -> Option<&ItemInstance> {
-    //     self.items.iter().find(|i| i.item().name == name)
-    // }
+    pub fn find_item(&self, item_id: &ItemId) -> Option<usize> {
+        self.items.iter().position(|id| id == item_id)
+    }
 
     pub fn money(&self) -> &MonetaryValue {
         &self.money

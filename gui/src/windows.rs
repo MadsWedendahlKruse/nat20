@@ -9,4 +9,5 @@ pub mod line_of_sight_debug;
 pub mod main_menu;
 pub mod navigation_debug;
 pub mod reactions;
+pub mod save_load;
 pub mod spawn_predefined;

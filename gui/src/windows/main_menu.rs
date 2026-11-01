@@ -12,7 +12,6 @@ use nat20_core::{
         geometry::{WorldGeometry, WorldGeometrySource},
     },
     entities::projectile::ProjectileData,
-    persistence,
     systems::{
         self,
         geometry::{Pose, RaycastFilter, RaycastHitKind, RaycastMode},
@@ -53,6 +52,7 @@ use crate::{
         line_of_sight_debug::LineOfSightDebugWindow,
         navigation_debug::NavigationDebugWindow,
         reactions::ReactionsWindow,
+        save_load::SaveLoadWindow,
         spawn_predefined::SpawnPredefinedWindow,
     },
 };
@@ -73,6 +73,7 @@ pub enum MainMenuState {
         navigation_debug: NavigationDebugWindow,
         line_of_sight_debug: LineOfSightDebugWindow,
         engine_state_debug: EngineStateDebugWindow,
+        save_load: Option<SaveLoadWindow>,
     },
 }
 
@@ -110,6 +111,7 @@ impl MainMenuWindow {
                 navigation_debug: NavigationDebugWindow::new(&initial_config),
                 line_of_sight_debug: LineOfSightDebugWindow::new(),
                 engine_state_debug: EngineStateDebugWindow::new(),
+                save_load: None,
             },
         }
     }
@@ -131,6 +133,7 @@ impl MainMenuWindow {
                 navigation_debug,
                 line_of_sight_debug,
                 engine_state_debug,
+                save_load,
             } => {
                 engine_state_debug.render_mut_with_context(ui, gui_state, engine_state);
 
@@ -189,7 +192,7 @@ impl MainMenuWindow {
                     AUTO_RESIZE,
                     &mut true,
                     || {
-                        Self::render_creature_menu(
+                        Self::render_world_menu(
                             ui,
                             gui_state,
                             engine_state,
@@ -197,6 +200,7 @@ impl MainMenuWindow {
                             spawn_predefined,
                             encounter,
                             creature_debug,
+                            save_load,
                             log_source,
                         );
                     },
@@ -310,7 +314,7 @@ impl MainMenuWindow {
         }
     }
 
-    fn render_creature_menu(
+    fn render_world_menu(
         ui: &imgui::Ui,
         gui_state: &mut GuiState,
         engine_state: &mut EngineState,
@@ -318,6 +322,7 @@ impl MainMenuWindow {
         spawn_predefined_window: &mut Option<SpawnPredefinedWindow>,
         encounter: &mut Option<EncounterWindow>,
         debug_window: &mut Option<CreatureDebugWindow>,
+        save_load: &mut Option<SaveLoadWindow>,
         log_source: &mut usize,
     ) {
         ui.child_window("Creatures")
@@ -394,26 +399,16 @@ impl MainMenuWindow {
                 }
 
                 // TEMP
-                ui.separator_with_text("Save & Load");
+                ui.separator();
 
-                let can_save = persistence::engine::can_save(engine_state).err();
-
-                let save_path = "save_file.json";
-
-                if render_button_disabled_conditionally(
-                    ui,
-                    "Save World",
-                    AUTO_RESIZE,
-                    can_save.is_some(),
-                    &can_save.map_or("".to_string(), |blocker| {
-                        format!("Save blocked by: {:?}", blocker)
-                    }),
-                ) {
-                    persistence::engine::save_engine_state(engine_state, &save_path).unwrap();
+                if ui.button("Save & Load") {
+                    ui.open_popup("Save & Load");
+                    save_load.replace(SaveLoadWindow::new());
                 }
-
-                if ui.button("Load World") {
-                    *engine_state = persistence::engine::load_engine_state(&save_path).unwrap();
+                if let Some(save_load) = save_load {
+                    ui.popup("Save & Load", || {
+                        save_load.render_mut_with_context(ui, engine_state);
+                    });
                 }
             });
     }

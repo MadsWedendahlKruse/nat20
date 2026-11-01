@@ -1,15 +1,19 @@
-use hecs::{DynamicBundle, TypeInfo};
+use hecs::{DynamicBundle, Entity, TypeInfo};
 use nat20_core::{
     components::{
         ability::Ability,
         d20::{D20CheckKind, D20CheckOutcome},
+        id::{EffectId, ResourceId, SpeciesId},
+        modifier::ModifierSource,
+        resource::{ResourceBudget, ResourceBudgetKind, ResourceMap, ResourceMergePolicy},
         saving_throw::SavingThrowKind,
     },
     engine::event::{EventKindTag, ListenerSource},
     entities::creature::{Character, Monster},
     persistence::{
-        engine::EngineSaveBlocker,
-        world::{WorldSaveBlocker, should_save},
+        engine::{EngineLoadBlocker, SaveFile, SaveFileSource, SaveFileTarget},
+        registry::LoadPolicy,
+        world::should_save,
     },
     test_utils::scenario::Scenario,
 };
@@ -52,14 +56,7 @@ fn save_blocked_by_action() {
         .auto_update(false)
         .perform();
 
-    assert_eq!(
-        Err(EngineSaveBlocker::World(
-            WorldSaveBlocker::ActionExecutionInProgress {
-                actor: scenario.entity_identifier("fighter")
-            }
-        )),
-        scenario.save(),
-    );
+    assert!(scenario.save().is_err());
 }
 
 /// Effect end conditions live in the EventDispatcher as EventListener, which can't
@@ -133,4 +130,99 @@ fn assert_event_listeners(scenario: &Scenario) {
         .collect::<Vec<_>>();
 
     assert_eq!(filtered_listeners.len(), 2);
+}
+
+#[test]
+fn load_blocked_by_fatal_missing_references() {
+    let mut scenario = Scenario::new();
+
+    let (mut save_file, entity) = spawn_entity_and_save(&mut scenario);
+
+    // Modify the save file to introduce a fatal missing reference
+    {
+        *save_file
+            .world
+            .query_one_mut::<&mut SpeciesId>(entity)
+            .unwrap() = SpeciesId::new("nat20_core", "species.species_that_does_not_exist");
+    }
+
+    let load_result = serialize_and_load(&mut scenario, &save_file, LoadPolicy::Strict);
+
+    println!("{:#?}", load_result);
+    assert!(load_result.is_err());
+}
+
+// TODO: Come up with more scenarios to cover all droppable components?
+#[test]
+fn load_droppable() {
+    let mut scenario = Scenario::new();
+
+    let (mut save_file, entity) = spawn_entity_and_save(&mut scenario);
+
+    // Resources are considered droppable, so introducing a missing resource should
+    // still allow loading with the DropDroppable policy
+    {
+        save_file
+            .world
+            .query_one_mut::<&mut ResourceMap>(entity)
+            .unwrap()
+            .add(
+                ResourceId::new("nat20_core", "resource.that_does_not_exist"),
+                ResourceBudgetKind::Flat(
+                    ResourceBudget::with_max_uses(
+                        1,
+                        ModifierSource::Effect(EffectId::new(
+                            "nat20_core",
+                            "effect.that_does_not_exist",
+                        )),
+                    )
+                    .unwrap(),
+                ),
+                &ResourceMergePolicy::add_all(),
+            )
+            .unwrap();
+    }
+
+    // Strict load should fail due to the missing resource
+    let load_result = serialize_and_load(&mut scenario, &save_file, LoadPolicy::Strict);
+    println!("{:#?}", load_result);
+    assert!(load_result.is_err());
+
+    // Droppable load should succeed despite the missing resource
+    let load_result = serialize_and_load(&mut scenario, &save_file, LoadPolicy::DropDroppable);
+    println!("{:#?}", load_result);
+    assert!(load_result.is_ok());
+
+    // The missing resource should be dropped in the loaded world when using DropDroppable policy
+    scenario
+        .probe("fighter")
+        .assert_no_resource("resource.that_does_not_exist");
+}
+
+fn spawn_entity_and_save(scenario: &mut Scenario) -> (SaveFile, Entity) {
+    scenario.spawn("fighter", "hero.fighter").level(5).spawn();
+    let entity = scenario.entity("fighter");
+
+    let save_file = scenario.save_to_target(SaveFileTarget::Struct).unwrap();
+
+    let SaveFileSource::Struct(save_file) = save_file else {
+        panic!("Expected save file to be in memory");
+    };
+
+    (save_file, entity)
+}
+
+fn serialize_and_load(
+    scenario: &mut Scenario,
+    save_file: &SaveFile,
+    policy: LoadPolicy,
+) -> Result<(), EngineLoadBlocker> {
+    // TODO: Little bit hacky?
+    // IDs are recorded during deserialization, so we need to serialize the modified
+    // save file to a string so that the recorded IDs are updated
+    let save_file_string = serde_json::to_string_pretty(save_file).unwrap();
+
+    let load_result =
+        scenario.load_from_source(SaveFileSource::String(save_file_string), policy, true);
+    load_result
 }

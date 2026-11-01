@@ -49,16 +49,12 @@ pub static REGISTRY_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../assets/{}", REGISTRIES_FOLDER))
 });
 
-static REGISTRIES: LazyLock<RegistrySet> =
+pub static REGISTRIES: LazyLock<RegistrySet> =
     LazyLock::new(
         || match RegistrySet::load_from_root_directory(&*REGISTRY_ROOT) {
             Ok(set) => set,
             Err(error) => {
                 error!(path = ?&*REGISTRY_ROOT, %error, "Failed to load registries");
-                eprintln!(
-                    "Failed to load registries from {:?}: {}",
-                    &*REGISTRY_ROOT, error
-                );
                 panic!("Failed to load registries");
             }
         },
@@ -419,21 +415,23 @@ impl RegistrySet {
         };
 
         // Validate references now that all registries are loaded.
-        Self::validate_registry_references(&mut errors, &set.actions, &set);
-        Self::validate_registry_references(&mut errors, &set.action_variants, &set);
-        Self::validate_registry_references(&mut errors, &set.backgrounds, &set);
-        Self::validate_registry_references(&mut errors, &set.classes, &set);
-        Self::validate_registry_references(&mut errors, &set.effects, &set);
-        Self::validate_registry_references(&mut errors, &set.factions, &set);
-        Self::validate_registry_references(&mut errors, &set.feats, &set);
-        Self::validate_registry_references(&mut errors, &set.items, &set);
-        Self::validate_registry_references(&mut errors, &set.resources, &set);
-        Self::validate_registry_references(&mut errors, &set.species, &set);
-        Self::validate_registry_references(&mut errors, &set.spells, &set);
-        Self::validate_registry_references(&mut errors, &set.subclasses, &set);
-        Self::validate_registry_references(&mut errors, &set.subspecies, &set);
+        set.validate_registry_entries(&mut errors, &set.actions);
+        set.validate_registry_entries(&mut errors, &set.action_variants);
+        set.validate_registry_entries(&mut errors, &set.backgrounds);
+        set.validate_registry_entries(&mut errors, &set.classes);
+        set.validate_registry_entries(&mut errors, &set.effects);
+        set.validate_registry_entries(&mut errors, &set.factions);
+        set.validate_registry_entries(&mut errors, &set.feats);
+        set.validate_registry_entries(&mut errors, &set.items);
+        set.validate_registry_entries(&mut errors, &set.resources);
+        set.validate_registry_entries(&mut errors, &set.species);
+        set.validate_registry_entries(&mut errors, &set.spells);
+        set.validate_registry_entries(&mut errors, &set.subclasses);
+        set.validate_registry_entries(&mut errors, &set.subspecies);
 
-        validate_registry_entry(&mut errors, &set, &set.rules, &rules_path);
+        let mut collector = ReferenceCollector::new();
+        set.rules.collect_registry_references(&mut collector);
+        set.validate_registry_references(&mut errors, &collector.into_references(), &rules_path);
 
         if !errors.is_empty() {
             return Err(RegistryError::Many(errors));
@@ -562,145 +560,146 @@ impl RegistrySet {
         }
     }
 
-    fn validate_registry_references<K, V, D>(
+    fn validate_registry_entries<K, V, D>(
+        &self,
         errors: &mut Vec<RegistryError>,
         registry: &Registry<K, V, D>,
-        registries: &RegistrySet,
     ) where
         K: Eq + Hash + Clone + Debug,
         V: IdProvider<Id = K> + From<D>,
         D: DeserializeOwned + RegistryReferenceCollector + Clone,
     {
         for entry in registry.entries.values() {
-            validate_registry_entry(errors, registries, &entry.definition, &entry.path);
+            let mut collector = ReferenceCollector::new();
+            entry.definition.collect_registry_references(&mut collector);
+            self.validate_registry_references(errors, &collector.into_references(), &entry.path);
         }
     }
-}
 
-fn validate_registry_entry(
-    errors: &mut Vec<RegistryError>,
-    registries: &RegistrySet,
-    reference_collector: &impl RegistryReferenceCollector,
-    path: &PathBuf,
-) {
-    let mut collector = ReferenceCollector::new();
-    reference_collector.collect_registry_references(&mut collector);
-    for reference in collector.into_references() {
-        if !find_registry_reference(errors, registries, &reference) {
-            errors.push(RegistryError::MissingRegistryEntry {
-                path: path.clone(),
-                reference: reference.clone(),
-                suggestion: Some(find_nearest_match(registries, &reference)),
-            });
-        }
-    }
-}
-
-fn find_registry_reference(
-    errors: &mut Vec<RegistryError>,
-    registries: &RegistrySet,
-    reference: &RegistryReference,
-) -> bool {
-    match reference {
-        RegistryReference::Action(id) => registries.actions.entries.contains_key(id),
-        RegistryReference::ActionVariant(id) => registries.action_variants.entries.contains_key(id),
-        RegistryReference::Background(id) => registries.backgrounds.entries.contains_key(id),
-        RegistryReference::Class(id) => registries.classes.entries.contains_key(id),
-        RegistryReference::Effect(id) => registries.effects.entries.contains_key(id),
-        RegistryReference::Faction(id) => registries.factions.entries.contains_key(id),
-        RegistryReference::Feat(id) => registries.feats.entries.contains_key(id),
-        RegistryReference::Item(id) => registries.items.entries.contains_key(id),
-        RegistryReference::Resource(id) => registries.resources.entries.contains_key(id),
-        RegistryReference::Species(id) => registries.species.entries.contains_key(id),
-        RegistryReference::Spell(id) => registries.spells.entries.contains_key(id),
-        RegistryReference::Subclass(id) => registries.subclasses.entries.contains_key(id),
-        RegistryReference::Subspecies(id) => registries.subspecies.entries.contains_key(id),
-        RegistryReference::Script(id, function) => {
-            let found = registries.scripts.entries.contains_key(id);
-
-            if found {
-                let script_entry = &registries.scripts.entries[id].value;
-                if !function.defined_in_script(script_entry) {
-                    errors.push(RegistryError::ScriptError(ScriptError::MissingFunction {
-                        function_name: function.fn_name().to_string(),
-                        script_id: id.clone(),
-                    }));
-                }
+    pub fn validate_registry_references(
+        &self,
+        errors: &mut Vec<RegistryError>,
+        references: &Vec<RegistryReference>,
+        path: &PathBuf,
+    ) {
+        for reference in references {
+            if !self.find_registry_reference(errors, reference) {
+                errors.push(RegistryError::MissingRegistryEntry {
+                    path: path.clone(),
+                    reference: reference.clone(),
+                    suggestion: Some(self.find_nearest_match(&reference)),
+                });
             }
-
-            found
         }
-        RegistryReference::ScriptAnyOf(id, functions) => {
-            let found = registries.scripts.entries.contains_key(id);
+    }
 
-            if found {
-                let script_entry = &registries.scripts.entries[id].value;
-                if !functions.iter().any(|f| f.defined_in_script(script_entry)) {
-                    errors.push(RegistryError::ScriptError(ScriptError::MissingFunction {
-                        function_name: functions
-                            .iter()
-                            .map(|f| f.fn_name())
-                            .collect::<Vec<_>>()
-                            .join(" or "),
-                        script_id: id.clone(),
-                    }));
-                }
+    pub fn find_registry_reference(
+        &self,
+        errors: &mut Vec<RegistryError>,
+        reference: &RegistryReference,
+    ) -> bool {
+        match reference {
+            RegistryReference::Action(id) => {
+                // TODO: Find a way to unify or decouple action and spell IDs
+                self.actions.entries.contains_key(id)
+                    || self.spells.entries.contains_key(&SpellId::from(id))
             }
+            RegistryReference::ActionVariant(id) => self.action_variants.entries.contains_key(id),
+            RegistryReference::Background(id) => self.backgrounds.entries.contains_key(id),
+            RegistryReference::Class(id) => self.classes.entries.contains_key(id),
+            RegistryReference::Effect(id) => self.effects.entries.contains_key(id),
+            RegistryReference::Faction(id) => self.factions.entries.contains_key(id),
+            RegistryReference::Feat(id) => self.feats.entries.contains_key(id),
+            RegistryReference::Item(id) => self.items.entries.contains_key(id),
+            RegistryReference::Resource(id) => self.resources.entries.contains_key(id),
+            RegistryReference::Species(id) => self.species.entries.contains_key(id),
+            RegistryReference::Spell(id) => {
+                self.spells.entries.contains_key(id)
+                    || self.actions.entries.contains_key(&ActionId::from(id))
+            }
+            RegistryReference::Subclass(id) => self.subclasses.entries.contains_key(id),
+            RegistryReference::Subspecies(id) => self.subspecies.entries.contains_key(id),
+            RegistryReference::Script(id, function) => {
+                let found = self.scripts.entries.contains_key(id);
 
-            found
-        }
-    }
-}
+                if found {
+                    let script_entry = &self.scripts.entries[id].value;
+                    if !function.defined_in_script(script_entry) {
+                        errors.push(RegistryError::ScriptError(ScriptError::MissingFunction {
+                            function_name: function.fn_name().to_string(),
+                            script_id: id.clone(),
+                        }));
+                    }
+                }
 
-fn find_nearest_match(registries: &RegistrySet, reference: &RegistryReference) -> String {
-    let (id_str, candidates) = match reference {
-        RegistryReference::Action(id) => (id.to_string(), registries.actions.all_keys_strings()),
-        RegistryReference::ActionVariant(id) => (
-            id.to_string(),
-            registries.action_variants.all_keys_strings(),
-        ),
-        RegistryReference::Background(id) => {
-            (id.to_string(), registries.backgrounds.all_keys_strings())
-        }
-        RegistryReference::Class(id) => (id.to_string(), registries.classes.all_keys_strings()),
-        RegistryReference::Effect(id) => (id.to_string(), registries.effects.all_keys_strings()),
-        RegistryReference::Faction(id) => (id.to_string(), registries.factions.all_keys_strings()),
-        RegistryReference::Feat(id) => (id.to_string(), registries.feats.all_keys_strings()),
-        RegistryReference::Item(id) => (id.to_string(), registries.items.all_keys_strings()),
-        RegistryReference::Resource(id) => {
-            (id.to_string(), registries.resources.all_keys_strings())
-        }
-        RegistryReference::Species(id) => (id.to_string(), registries.species.all_keys_strings()),
-        RegistryReference::Spell(id) => (id.to_string(), registries.spells.all_keys_strings()),
-        RegistryReference::Subclass(id) => {
-            (id.to_string(), registries.subclasses.all_keys_strings())
-        }
-        RegistryReference::Subspecies(id) => {
-            (id.to_string(), registries.subspecies.all_keys_strings())
-        }
-        RegistryReference::Script(id, _) | RegistryReference::ScriptAnyOf(id, _) => (
-            id.to_string(),
-            registries
-                .scripts
-                .entries
-                .keys()
-                .map(|k| format!("{}", k))
-                .collect(),
-        ),
-    };
+                found
+            }
+            RegistryReference::ScriptAnyOf(id, functions) => {
+                let found = self.scripts.entries.contains_key(id);
 
-    let mut best_match = String::new();
-    let mut best_distance = usize::MAX;
+                if found {
+                    let script_entry = &self.scripts.entries[id].value;
+                    if !functions.iter().any(|f| f.defined_in_script(script_entry)) {
+                        errors.push(RegistryError::ScriptError(ScriptError::MissingFunction {
+                            function_name: functions
+                                .iter()
+                                .map(|f| f.fn_name())
+                                .collect::<Vec<_>>()
+                                .join(" or "),
+                            script_id: id.clone(),
+                        }));
+                    }
+                }
 
-    for candidate in candidates {
-        let distance = strsim::levenshtein(&id_str, &candidate);
-        if distance < best_distance {
-            best_distance = distance;
-            best_match = candidate;
+                found
+            }
         }
     }
 
-    best_match
+    pub fn find_nearest_match(&self, reference: &RegistryReference) -> String {
+        let (id_str, candidates) = match reference {
+            RegistryReference::Action(id) => (id.to_string(), self.actions.all_keys_strings()),
+            RegistryReference::ActionVariant(id) => {
+                (id.to_string(), self.action_variants.all_keys_strings())
+            }
+            RegistryReference::Background(id) => {
+                (id.to_string(), self.backgrounds.all_keys_strings())
+            }
+            RegistryReference::Class(id) => (id.to_string(), self.classes.all_keys_strings()),
+            RegistryReference::Effect(id) => (id.to_string(), self.effects.all_keys_strings()),
+            RegistryReference::Faction(id) => (id.to_string(), self.factions.all_keys_strings()),
+            RegistryReference::Feat(id) => (id.to_string(), self.feats.all_keys_strings()),
+            RegistryReference::Item(id) => (id.to_string(), self.items.all_keys_strings()),
+            RegistryReference::Resource(id) => (id.to_string(), self.resources.all_keys_strings()),
+            RegistryReference::Species(id) => (id.to_string(), self.species.all_keys_strings()),
+            RegistryReference::Spell(id) => (id.to_string(), self.spells.all_keys_strings()),
+            RegistryReference::Subclass(id) => (id.to_string(), self.subclasses.all_keys_strings()),
+            RegistryReference::Subspecies(id) => {
+                (id.to_string(), self.subspecies.all_keys_strings())
+            }
+            RegistryReference::Script(id, _) | RegistryReference::ScriptAnyOf(id, _) => (
+                id.to_string(),
+                self.scripts
+                    .entries
+                    .keys()
+                    .map(|k| format!("{}", k))
+                    .collect(),
+            ),
+        };
+
+        let mut best_match = String::new();
+        let mut best_distance = usize::MAX;
+
+        for candidate in candidates {
+            let distance = strsim::levenshtein(&id_str, &candidate);
+            if distance < best_distance {
+                best_distance = distance;
+                best_match = candidate;
+            }
+        }
+
+        best_match
+    }
 }
 
 macro_rules! define_registry {

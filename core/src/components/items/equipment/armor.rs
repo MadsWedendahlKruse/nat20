@@ -1,6 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use strum::Display;
+use strum::{Display, EnumIter};
 
 use crate::{
     components::{
@@ -18,7 +18,9 @@ use crate::{
 
 pub const DEFAULT_ARMOR_CLASS: i32 = 10;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Display, EnumIter, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ArmorType {
     Clothing,

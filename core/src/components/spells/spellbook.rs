@@ -296,6 +296,14 @@ impl Spellbook {
         self.granted.get_mut(source)
     }
 
+    pub fn granted_spells(&self) -> &HashMap<GrantedSpellSource, GrantedSpellMap> {
+        &self.granted
+    }
+
+    pub fn granted_spells_mut(&mut self) -> &mut HashMap<GrantedSpellSource, GrantedSpellMap> {
+        &mut self.granted
+    }
+
     pub fn insert_class_state(
         &mut self,
         class_and_subclass: ClassAndSubclass,
@@ -309,6 +317,10 @@ impl Spellbook {
         class_and_subclass: &ClassAndSubclass,
     ) -> Option<&ClassSpellcastingState> {
         self.class_states.get(class_and_subclass)
+    }
+
+    pub fn class_states(&self) -> &HashMap<ClassAndSubclass, ClassSpellcastingState> {
+        &self.class_states
     }
 
     pub fn class_state_mut(

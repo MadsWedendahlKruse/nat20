@@ -73,6 +73,32 @@ impl EffectManager {
         std::mem::take(&mut self.marked_for_removal)
     }
 
+    pub fn relatives(&self, instance_id: &EffectInstanceId) -> HashSet<EffectInstanceId> {
+        let mut relatives = HashSet::new();
+        self.relative_flood_fill(instance_id, &mut relatives);
+        relatives
+    }
+
+    fn relative_flood_fill(
+        &self,
+        instance_id: &EffectInstanceId,
+        visited: &mut HashSet<EffectInstanceId>,
+    ) {
+        if visited.contains(instance_id) {
+            return;
+        }
+        visited.insert(*instance_id);
+
+        if let Some(instance) = self.effects.get(instance_id) {
+            if let Some(parent) = instance.parent {
+                self.relative_flood_fill(&parent, visited);
+            }
+            for child in &instance.children {
+                self.relative_flood_fill(child, visited);
+            }
+        }
+    }
+
     fn for_each<H>(&self, get_hook: impl Fn(&Effect) -> Option<&H>, mut f: impl FnMut(&H)) {
         for instance in self.effects.values() {
             if let Some(hook) = get_hook(instance.effect()) {

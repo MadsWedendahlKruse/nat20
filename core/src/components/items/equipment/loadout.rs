@@ -226,12 +226,13 @@ impl Loadout {
     }
 
     pub fn armor_class(&self, engine_state: &EngineState, entity: Entity) -> ArmorClass {
-        let mut armor_class = if let Some(armor) = &self.armor() {
+        let mut armor_class = if let Some(armor) = self.armor() {
             let ability_scores =
                 systems::helpers::get_component::<AbilityScoreMap>(&engine_state.world, entity);
             armor.armor_class(&ability_scores)
         } else {
             // TODO: Not sure if this is the right way to handle unarmored characters
+            // TODO: Dex bonus???
             ArmorClass::new(10, ModifierSource::Base, ArmorDexterityBonus::Unlimited)
         };
 

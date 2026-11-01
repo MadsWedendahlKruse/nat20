@@ -23,7 +23,7 @@ use crate::{
             item::Item,
         },
         modifier::{KeyedFlatModifiable, Modifiable, ModifierKind, ModifierMap, ModifierSource},
-        proficiency::{BinaryProficiencyMap, Proficiency, ProficiencyLevel},
+        proficiency::{BinaryProficiencyMap, Proficiency},
     },
     registry::serialize::{
         item::WeaponDefinition,
@@ -31,7 +31,9 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Display, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Hash, PartialEq, Eq, Display, EnumIter, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum WeaponCategory {
     Simple,

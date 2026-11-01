@@ -21,7 +21,7 @@ use crate::{
         },
         health::hit_points::HitPoints,
         id::{ActionId, ActionVariantId, EffectId, EntityIdentifier, ItemId, ResourceId},
-        items::equipment::{loadout::Loadout, slots::EquipmentSlot},
+        items::equipment::slots::EquipmentSlot,
         modifier::{
             FlatModifiable, FlatModifierMap, Modifiable, ModifierKind, ModifierKindResult,
             ModifierMap, ModifierResult, ModifierSource,
@@ -37,7 +37,11 @@ use crate::{
         engine_state::EngineState,
         event::{Event, EventCallback, EventFilter, EventKind, EventScope},
     },
-    persistence::{self, engine::EngineSaveBlocker},
+    persistence::{
+        self,
+        engine::{EngineLoadBlocker, EngineSaveBlocker, SaveFileSource, SaveFileTarget},
+        registry::LoadPolicy,
+    },
     systems::{self, time::RestKind},
     test_utils::{creature_builder::CreatureBuilder, fixtures},
 };
@@ -227,30 +231,46 @@ impl Scenario {
         }
     }
 
-    pub fn save_to_path(&mut self, save_path: impl AsRef<Path>) -> Result<(), EngineSaveBlocker> {
-        persistence::engine::save_engine_state(&self.engine_state, save_path)
-    }
-
-    pub fn save(&mut self) -> Result<(), EngineSaveBlocker> {
-        self.save_to_path(SAVE_FILE_PATH)
-    }
-
-    pub fn load_from_path(
+    pub fn save_to_target(
         &mut self,
-        save_path: impl AsRef<Path>,
+        save_target: impl Into<SaveFileTarget>,
+    ) -> Result<SaveFileSource, EngineSaveBlocker> {
+        persistence::engine::save_engine_state(&self.engine_state, save_target)
+    }
+
+    pub fn save(&mut self) -> Result<SaveFileSource, EngineSaveBlocker> {
+        self.save_to_target(SAVE_FILE_PATH)
+    }
+
+    pub fn load_from_source(
+        &mut self,
+        save_source: impl Into<SaveFileSource>,
+        policy: LoadPolicy,
         delete_after_load: bool,
-    ) -> Result<(), String> {
-        self.engine_state = persistence::engine::load_engine_state(save_path.as_ref())?;
-        if delete_after_load {
-            if std::fs::remove_file(save_path.as_ref()).is_err() {
+    ) -> Result<(), EngineLoadBlocker> {
+        let save_source = save_source.into();
+
+        let path = if let SaveFileSource::Path(path) = &save_source {
+            Some(path.clone())
+        } else {
+            None
+        };
+
+        self.engine_state = persistence::engine::load_engine_state(save_source, policy)?;
+
+        if let Some(path) = path
+            && delete_after_load
+        {
+            if std::fs::remove_file(&path).is_err() {
                 // Ignore errors, as the file might not exist
             }
         }
+
         Ok(())
     }
 
-    pub fn load(&mut self, delete_after_load: bool) -> Result<(), String> {
-        let result = self.load_from_path(SAVE_FILE_PATH, delete_after_load);
+    pub fn load(&mut self, delete_after_load: bool) -> Result<(), EngineLoadBlocker> {
+        let result = self.load_from_source(SAVE_FILE_PATH, LoadPolicy::Strict, delete_after_load);
         result
     }
 }
@@ -1227,8 +1247,7 @@ impl ScenarioProbe<'_> {
     #[track_caller]
     pub fn assert_armor_class(&mut self, modifiers: &FlatModifierMap) -> &mut Self {
         let entity = self.entity();
-        let armor_class = systems::helpers::get_component::<Loadout>(self.world(), entity)
-            .armor_class(&self.scenario.engine_state, entity);
+        let armor_class = systems::loadout::armor_class(&self.scenario.engine_state, entity);
         assert_eq!(
             armor_class.modifiers(),
             modifiers,

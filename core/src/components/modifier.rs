@@ -532,7 +532,6 @@ impl_string_schema!(
     ]
 );
 
-// TODO: Do we need Base and None as separate variants?
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String", rename_all = "snake_case")]
 pub enum ModifierSource {
@@ -597,6 +596,15 @@ impl FromStr for ModifierSource {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Try this first, otherwise it will get parsed as a regular Feat ID, including
+        // the whole UUID part, which will then fail in the registry validation.
+        if let Some((feat, instance)) = s.split_once('#')
+            && let Ok(feat_id) = FeatId::from_str(feat)
+            && let Ok(instance_id) = Uuid::from_str(instance)
+        {
+            return Ok(ModifierSource::FeatRepeatable(feat_id, instance_id));
+        }
+
         if let Ok(id) = s.parse::<Id>() {
             return Ok(ModifierSource::from(id));
         }
@@ -607,13 +615,6 @@ impl FromStr for ModifierSource {
 
         if let Ok(proficieny) = serde_plain::from_str(s) {
             return Ok(ModifierSource::Proficiency(proficieny));
-        }
-
-        if let Some((feat, instance)) = s.split_once('#')
-            && let Ok(feat_id) = FeatId::from_str(feat)
-            && let Ok(instance_id) = Uuid::from_str(instance)
-        {
-            return Ok(ModifierSource::FeatRepeatable(feat_id, instance_id));
         }
 
         match s.to_lowercase().as_str() {
