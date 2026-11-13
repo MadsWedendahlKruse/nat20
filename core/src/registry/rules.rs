@@ -8,10 +8,7 @@ use crate::{
         id::{ActionId, FactionId},
         resource::ResourceAmountMap,
     },
-    registry::{
-        registry::{self, RegistryError},
-        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
-    },
+    registry::registry::{self, RegistryError},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -38,14 +35,6 @@ impl Rules {
                 error.clone().push_into(errors);
                 None
             }
-        }
-    }
-}
-
-impl RegistryReferenceCollector for Rules {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for action_id in &self.default_actions {
-            collector.add(RegistryReference::Action(action_id.clone()));
         }
     }
 }

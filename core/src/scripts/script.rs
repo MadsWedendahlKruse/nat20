@@ -119,7 +119,7 @@ impl IdProvider for Script {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, EnumIter)]
 pub enum ScriptFunction {
     ActionHook,
     ActionResultHook,

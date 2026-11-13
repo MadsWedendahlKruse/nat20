@@ -21,7 +21,7 @@ use crate::{
         registry::{LoadPolicy, RegistryLoadBlocker},
         world::WorldSaveBlocker,
     },
-    registry::registry_validation::{self, RegistryReference},
+    registry::registry_reference::{self, ReferenceMap},
     systems,
 };
 
@@ -165,7 +165,7 @@ pub struct SaveFile {
     #[serde(skip)]
     pub path: PathBuf,
     #[serde(skip)]
-    pub references: Vec<RegistryReference>,
+    pub references: ReferenceMap,
 }
 
 pub enum SaveFileSource {
@@ -185,29 +185,25 @@ impl TryFrom<SaveFileSource> for SaveFile {
         match source {
             SaveFileSource::Path(path) => {
                 let file = File::open(&path)?;
-                let (result, ids) = registry_validation::record_ids_scoped(|| {
-                    serde_json::from_reader::<_, SaveFile>(file)
+                let (result, references) = registry_reference::record_references_scoped(|| {
+                    registry_reference::with_label(path.to_path_buf(), || {
+                        serde_json::from_reader::<_, SaveFile>(file)
+                    })
                 });
                 let mut save_file = result?;
                 save_file.path = path;
-                save_file.references = ids
-                    .iter()
-                    .filter_map(|id| RegistryReference::try_from(id.clone()).ok())
-                    .collect();
+                save_file.references = references;
                 Ok(save_file)
             }
 
             SaveFileSource::Struct(save_file) => Ok(save_file),
 
             SaveFileSource::String(string) => {
-                let (result, ids) = registry_validation::record_ids_scoped(|| {
+                let (result, references) = registry_reference::record_references_scoped(|| {
                     serde_json::from_str::<SaveFile>(&string)
                 });
                 let mut save_file = result?;
-                save_file.references = ids
-                    .iter()
-                    .filter_map(|id| RegistryReference::try_from(id.clone()).ok())
-                    .collect();
+                save_file.references = references;
                 Ok(save_file)
             }
         }

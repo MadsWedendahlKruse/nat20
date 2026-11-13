@@ -11,6 +11,7 @@ pub mod quantity;
 pub mod reaction;
 pub mod resource;
 pub mod schema;
+pub mod script;
 pub mod species;
 pub mod spell;
 pub mod targeting;

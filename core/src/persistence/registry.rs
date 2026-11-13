@@ -32,7 +32,7 @@ use crate::{
     persistence::engine::{SaveFile, SaveFileSource},
     registry::{
         registry::{REGISTRIES, RegistryError},
-        registry_validation::RegistryReference,
+        registry_reference::RegistryReference,
     },
 };
 
@@ -102,7 +102,7 @@ pub fn validate_registry_references(
     policy: LoadPolicy,
 ) -> Result<SaveFile, RegistryLoadBlocker> {
     let mut errors = Vec::new();
-    REGISTRIES.validate_registry_references(&mut errors, &save_file.references, &save_file.path);
+    REGISTRIES.validate_registry_references(&mut errors, &save_file.references);
 
     if errors.is_empty() {
         return Ok(save_file);
@@ -268,7 +268,7 @@ fn missing_policy(reference: &RegistryReference) -> MissingPolicy {
             }
         })),
 
-        RegistryReference::Script(script_id, _) | RegistryReference::ScriptAnyOf(script_id, _) => {
+        RegistryReference::Script(script_id, _) => {
             panic!(
                 "Missing script found in save file: {}. Scripts should not be stored in a save file, so I'm not sure how this happened",
                 script_id

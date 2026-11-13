@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::registry::registry_validation;
+use crate::registry::registry_reference;
 use hecs::Entity;
 use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Debug, hash::Hash, str::FromStr};
@@ -68,11 +68,11 @@ macro_rules! id_newtypes {
                     let parsed = Self::new(namespace.to_string(), id.to_string());
 
                     // Record the parsed ID (usually through deserializing a file)
-                    // in the global `IdRecorder`, so we can check later if it
+                    // in the global `ReferenceRecorder`, so we can check later if it
                     // exists in the registry.
                     // This seems a little bit illegal, but also a little bit clever
                     // at the same time?
-                    registry_validation::record_id(|| Id::$name(parsed.clone()));
+                    registry_reference::record_id(|| Id::$name(parsed.clone()));
 
                     Ok(parsed)
                 }

@@ -8,15 +8,11 @@ use crate::{
         resource::ResourceAmountMap,
         spells::spell::{MagicSchool, Spell, SpellFlag},
     },
-    registry::{
-        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
-        serialize::{
-            action::{ActionKindDefinition, ActionUsabilityDefinition, TargetUsabilityDefinition},
-            reaction::ReactionTriggerDefinition,
-            targeting::TargetingDefinition,
-        },
+    registry::serialize::{
+        action::{ActionKindDefinition, ActionUsabilityDefinition, TargetUsabilityDefinition},
+        reaction::ReactionTriggerDefinition,
+        targeting::TargetingDefinition,
     },
-    scripts::script::ScriptFunction,
 };
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
@@ -63,38 +59,5 @@ impl From<SpellDefinition> for Spell {
                 .target_usability
                 .map(|target_usability| target_usability.function()),
         )
-    }
-}
-
-impl RegistryReferenceCollector for SpellDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        self.kind.collect_registry_references(collector);
-        for resource in self.resource_cost.keys() {
-            collector.add(RegistryReference::Resource(resource.clone()));
-        }
-        if let Some(reaction_trigger) = &self.reaction_trigger
-            && let Some(script_id) = &reaction_trigger.script.script
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::ReactionTrigger,
-            ));
-        }
-        if let Some(usability) = &self.usability
-            && let ActionUsabilityDefinition::Script(script_id) = usability
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::ActionUsability,
-            ));
-        }
-        if let Some(target_usability) = &self.target_usability
-            && let TargetUsabilityDefinition::Script(script_id) = target_usability
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::TargetUsability,
-            ));
-        }
     }
 }

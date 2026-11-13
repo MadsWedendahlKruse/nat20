@@ -45,6 +45,7 @@ use crate::{
         time::EntityClock,
     },
     entities::projectile::ProjectileData,
+    registry::registry_reference,
     systems::{combat::CombatState, entities::EntityKind, geometry::Pose, time::RestKind},
 };
 
@@ -77,18 +78,34 @@ macro_rules! saved_components {
             where
                 M: MapAccess<'de>,
             {
-                while let Some(key) = map.next_key::<String>()? {
-                    match key.as_str() {
-                        $($key => {
-                            entity.add::<$ty>(map.next_value()?);
-                        })*
-                        other => {
-                            warn!("Entity has unknown field: {}", other);
-                            let _: IgnoredAny = map.next_value()?;
+                let (result, references) = registry_reference::record_references_scoped(|| {
+                    while let Some(key) = map.next_key::<String>()? {
+                        match key.as_str() {
+                            $($key => {
+                                entity.add::<$ty>(
+                                    registry_reference::with_label($key, || {
+                                        map.next_value()
+                                    })?
+                                );
+                            })*
+                            other => {
+                                warn!("Entity has unknown field: {}", other);
+                                let _: IgnoredAny = map.next_value()?;
+                            }
                         }
                     }
-                }
+                    Ok(())
+                });
+
+                let name = entity
+                    .get::<&Name>()
+                    .map_or_else(|| "<unnamed>".to_string(), |name| name.to_string());
+                registry_reference::merge_references(name.as_str(), references);
+
+                result?;
+
                 rebuild_transient(entity);
+
                 Ok(())
             }
         }

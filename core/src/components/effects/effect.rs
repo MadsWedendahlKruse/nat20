@@ -31,7 +31,10 @@ use crate::{
     engine::event::{
         CallbackResult, EventCallback, EventFilter, EventKind, EventKindTag, ListenerSource,
     },
-    registry::{registry::EffectsRegistry, serialize::effect::EffectDefinition},
+    registry::{
+        registry::EffectsRegistry,
+        serialize::{effect::EffectDefinition, script},
+    },
     systems,
 };
 
@@ -447,6 +450,7 @@ pub enum EffectEventFilter {
     Script {
         /// Event kinds this filter can match
         events: Vec<EventKindTag>,
+        #[serde(deserialize_with = "script::event_filter")]
         script: ScriptId,
     },
 }

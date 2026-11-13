@@ -9,10 +9,7 @@ use crate::{
         species::{CreatureSize, CreatureType, Species, SpeciesBase, Subspecies},
         speed::Speed,
     },
-    registry::{
-        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
-        serialize::quantity::LengthExpressionDefinition,
-    },
+    registry::serialize::quantity::LengthExpressionDefinition,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -44,24 +41,6 @@ impl From<SpeciesDefinition> for Species {
     }
 }
 
-impl RegistryReferenceCollector for SpeciesDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for effects in self.effects_by_level.values() {
-            for effect in effects {
-                collector.add(RegistryReference::Effect(effect.clone()));
-            }
-        }
-        for actions in self.actions_by_level.values() {
-            for action in actions {
-                collector.add(RegistryReference::Action(action.clone()));
-            }
-        }
-        for subspecies in &self.subspecies {
-            collector.add(RegistryReference::Subspecies(subspecies.clone()));
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SubspeciesDefinition {
     pub id: SubspeciesId,
@@ -79,21 +58,6 @@ impl From<SubspeciesDefinition> for Subspecies {
                 effects_by_level: value.effects_by_level,
                 actions_by_level: value.actions_by_level,
             },
-        }
-    }
-}
-
-impl RegistryReferenceCollector for SubspeciesDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for effects in self.effects_by_level.values() {
-            for effect in effects {
-                collector.add(RegistryReference::Effect(effect.clone()));
-            }
-        }
-        for actions in self.actions_by_level.values() {
-            for action in actions {
-                collector.add(RegistryReference::Action(action.clone()));
-            }
         }
     }
 }

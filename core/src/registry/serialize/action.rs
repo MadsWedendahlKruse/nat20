@@ -19,18 +19,17 @@ use crate::{
     entities::projectile::ProjectileTemplate,
     registry::{
         registry::Registry,
-        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             d20::{AttackRollDefinition, SavingThrowDefinition},
             dice::{DamageEquation, HealEquation},
             parser::{Evaluable, EvaluationError},
             quantity::{LengthExpressionDefinition, VelocityExpressionDefinition},
             reaction::{ReactionBodyDefinition, ReactionTriggerDefinition},
+            script,
             targeting::{AreaShapeDefinition, TargetingDefinition, TargetingKindDefinition},
             variables::{PARSER_VARIABLES, VariableMap},
         },
     },
-    scripts::script::ScriptFunction,
     systems::{self, geometry::DisplacementTemplate},
 };
 
@@ -60,39 +59,6 @@ pub struct ActionDefinition {
     /// being targeted (e.g. Brutal Strike needs Advantage against *this* target)
     #[serde(default)]
     pub target_usability: Option<TargetUsabilityDefinition>,
-}
-
-impl RegistryReferenceCollector for ActionDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        self.kind.collect_registry_references(collector);
-        for resource in self.resource_cost.keys() {
-            collector.add(RegistryReference::Resource(resource.clone()));
-        }
-        if let Some(reaction_trigger) = &self.reaction_trigger
-            && let Some(script_id) = &reaction_trigger.script.script
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::ReactionTrigger,
-            ));
-        }
-        if let Some(usability) = &self.usability
-            && let ActionUsabilityDefinition::Script(script_id) = usability
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::ActionUsability,
-            ));
-        }
-        if let Some(target_usability) = &self.target_usability
-            && let TargetUsabilityDefinition::Script(script_id) = target_usability
-        {
-            collector.add(RegistryReference::Script(
-                script_id.clone(),
-                ScriptFunction::TargetUsability,
-            ));
-        }
-    }
 }
 
 impl ActionKindDefinition {
@@ -457,12 +423,6 @@ pub struct ActionVariantDefinition {
     pub phases: Vec<ActionPhaseDefinition>,
 }
 
-impl RegistryReferenceCollector for ActionVariantDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        collect_phase_references(&self.phases, collector);
-    }
-}
-
 impl From<ActionVariantDefinition> for ActionVariant {
     fn from(value: ActionVariantDefinition) -> Self {
         Self {
@@ -507,55 +467,10 @@ impl From<ActionKindDefinition> for ActionKind {
     }
 }
 
-fn collect_phase_references(phases: &[ActionPhaseDefinition], collector: &mut ReferenceCollector) {
-    for component in phases.iter().flat_map(|phase| &phase.payload.components) {
-        match component {
-            ActionPayloadComponentDefinition::Effect { effect } => {
-                collector.add(RegistryReference::Effect(effect.effect_id.clone()));
-            }
-            ActionPayloadComponentDefinition::Reaction { reaction } => {
-                if let Some(script_id) = &reaction.script {
-                    collector.add(RegistryReference::Script(
-                        script_id.clone(),
-                        ScriptFunction::ReactionBody,
-                    ));
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-impl RegistryReferenceCollector for ActionKindDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        match self {
-            ActionKindDefinition::Standard { phases } => {
-                collect_phase_references(phases, collector);
-            }
-
-            ActionKindDefinition::Variant { phases, variants } => {
-                collect_phase_references(phases, collector);
-                for variant in variants {
-                    collector.add(RegistryReference::ActionVariant(variant.clone()));
-                }
-            }
-
-            ActionKindDefinition::Reaction { body } => {
-                if let Some(script_id) = &body.script {
-                    collector.add(RegistryReference::Script(
-                        script_id.clone(),
-                        ScriptFunction::ReactionBody,
-                    ));
-                }
-            }
-        }
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionUsabilityDefinition {
-    Script(ScriptId),
+    Script(#[serde(deserialize_with = "script::action_usability")] ScriptId),
 }
 
 impl ActionUsabilityDefinition {
@@ -580,7 +495,7 @@ impl ActionUsabilityDefinition {
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetUsabilityDefinition {
-    Script(ScriptId),
+    Script(#[serde(deserialize_with = "script::target_usability")] ScriptId),
 }
 
 impl TargetUsabilityDefinition {

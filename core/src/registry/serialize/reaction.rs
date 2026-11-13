@@ -22,7 +22,12 @@ use crate::{
         engine_state::EngineState,
         event::{Event, EventKind, EventKindTag},
     },
-    registry::{registry::rules, serialize::schema::impl_string_schema},
+    registry::{
+        registry::rules,
+        registry_reference::{self, RegistryReference},
+        serialize::schema::impl_string_schema,
+    },
+    scripts::script::ScriptFunction,
     systems,
 };
 
@@ -108,6 +113,11 @@ impl FromStr for ReactionTriggerScript {
                 s
             )
         })?;
+
+        registry_reference::record_reference(|| {
+            RegistryReference::Script(script_id.clone(), vec![ScriptFunction::ReactionTrigger])
+        });
+
         let script = Some(script_id.clone());
 
         Ok(ReactionTriggerScript {
@@ -182,6 +192,11 @@ impl FromStr for ReactionBodyDefinition {
                 s
             )
         })?;
+
+        registry_reference::record_reference(|| {
+            RegistryReference::Script(script_id.clone(), vec![ScriptFunction::ReactionBody])
+        });
+
         let script = Some(script_id.clone());
 
         Ok(ReactionBodyDefinition {

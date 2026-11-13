@@ -15,9 +15,8 @@ use crate::{
         },
         effects::{
             effect::{
-                Effect, EffectEndCondition, EffectEntiyReference, EffectEventFilter,
-                EffectGrantedAction, EffectInstance, EffectKind, EffectLifetime,
-                EffectStackingPolicy,
+                Effect, EffectEndCondition, EffectEntiyReference, EffectGrantedAction,
+                EffectInstance, EffectKind, EffectLifetime, EffectStackingPolicy,
             },
             hooks::{
                 ActionHook, ActionResultHook, ActionUsabilityHook, ArmorClassHook, AttackedHook,
@@ -42,7 +41,6 @@ use crate::{
     engine::{action_prompt::ActionData, engine_state::EngineState},
     registry::{
         registry::ScriptsRegistry,
-        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
         serialize::{
             dice::HealEquation,
             modifier::{
@@ -52,6 +50,7 @@ use crate::{
                 SpeedModifierProvider,
             },
             quantity::{LengthExpressionDefinition, TimeExpressionDefinition},
+            script,
         },
     },
     scripts::script::ScriptFunction,
@@ -391,160 +390,6 @@ impl From<EffectDefinition> for Effect {
         }
 
         effect
-    }
-}
-
-impl RegistryReferenceCollector for EffectDefinition {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        if let Some(replaces) = &self.replaces {
-            collector.add(RegistryReference::Effect(replaces.clone()));
-        }
-        for child in &self.children {
-            collector.add(RegistryReference::Effect(child.clone()));
-        }
-        for modifier in &self.modifiers {
-            match modifier {
-                EffectModifier::Resource { resource, .. } => {
-                    collector.add(RegistryReference::Resource(resource.clone()));
-                }
-                _ => { /* No references to collect */ }
-            }
-        }
-        for end_condition in &self.end_conditions {
-            if let EffectEventFilter::Script { script, .. } = &end_condition.event_filter {
-                collector.add(RegistryReference::Script(
-                    script.clone(),
-                    ScriptFunction::EventFilter,
-                ));
-            }
-        }
-        let d20_hook_scripts = self
-            .on_attack_roll
-            .iter()
-            .map(|hook| &hook.script)
-            .chain(self.on_saving_throw.iter().map(|hook| &hook.script))
-            .chain(self.on_skill_check.iter().map(|hook| &hook.script));
-        for script in d20_hook_scripts {
-            collector.add(RegistryReference::ScriptAnyOf(
-                script.clone(),
-                vec![
-                    ScriptFunction::D20AbilityHook,
-                    ScriptFunction::D20CheckHook,
-                    ScriptFunction::D20CheckResultHook,
-                ],
-            ));
-        }
-        for hook in &self.post_damage_roll {
-            match hook {
-                DamageRollResultHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::DamageRollResultHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_armor_class {
-            match hook {
-                ArmorClassHookDefinition::Modifier { .. } => { /* No references to collect */ }
-                ArmorClassHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::ArmorClassHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_action {
-            match hook {
-                ActionHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::ActionHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_action_result {
-            match hook {
-                ActionResultHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::ActionResultHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_resource_cost {
-            match hook {
-                ResourceCostHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::ResourceCostHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.pre_death {
-            match hook {
-                PreDeathHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::PreDeathHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_death {
-            match hook {
-                DeathHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::DeathHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_rest {
-            match hook {
-                RestHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::RestHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_turn_start {
-            match hook {
-                TurnStartHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::TurnStartHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_speed {
-            match hook {
-                SpeedHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::SpeedHook,
-                    ));
-                }
-            }
-        }
-        for hook in &self.on_effect_lifetime {
-            match hook {
-                EffectLifetimeHookDefinition::Script { script } => {
-                    collector.add(RegistryReference::Script(
-                        script.clone(),
-                        ScriptFunction::EffectLifetimeHook,
-                    ));
-                }
-            }
-        }
     }
 }
 
@@ -896,6 +741,7 @@ where
 /// one of the two.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AttackRollHookDefinition {
+    #[serde(deserialize_with = "script::d20_hook")]
     pub script: ScriptId,
     /// Restrict to attacks from one source; all attacks when omitted
     #[serde(default)]
@@ -904,6 +750,7 @@ pub struct AttackRollHookDefinition {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SavingThrowHookDefinition {
+    #[serde(deserialize_with = "script::d20_hook")]
     pub script: ScriptId,
     /// Restrict to one saving throw kind; all of them when omitted
     #[serde(default)]
@@ -912,6 +759,7 @@ pub struct SavingThrowHookDefinition {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SkillCheckHookDefinition {
+    #[serde(deserialize_with = "script::d20_hook")]
     pub script: ScriptId,
     /// Restrict to one skill; all skills when omitted
     #[serde(default)]
@@ -983,6 +831,7 @@ where
 #[serde(untagged)]
 pub enum AttackedHookDefinition {
     Script {
+        #[serde(deserialize_with = "script::attacked_hook")]
         script: ScriptId,
     },
     Modifier {
@@ -1080,7 +929,10 @@ impl HookEffect<AttackedHook> for AttackedHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DamageRollHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::damage_roll_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<DamageRollHook> for DamageRollHookDefinition {
@@ -1126,7 +978,10 @@ impl HookEffect<DamageRollHook> for DamageRollHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DamageRollResultHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::damage_roll_result_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<DamageRollResultHook> for DamageRollResultHookDefinition {
@@ -1176,6 +1031,7 @@ pub enum ArmorClassHookDefinition {
         modifier: ArmorClassModifierProvider,
     },
     Script {
+        #[serde(deserialize_with = "script::armor_class_hook")]
         script: ScriptId,
     },
 }
@@ -1222,7 +1078,10 @@ impl HookEffect<ArmorClassHook> for ArmorClassHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::action_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<ActionHook> for ActionHookDefinition {
@@ -1257,7 +1116,10 @@ impl HookEffect<ActionHook> for ActionHookDefinition {
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionResultHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::action_result_hook")]
+        script: ScriptId,
+    },
 }
 
 impl std::fmt::Debug for ActionResultHookDefinition {
@@ -1307,7 +1169,10 @@ impl HookEffect<ActionResultHook> for ActionResultHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ResourceCostHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::resource_cost_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
@@ -1353,7 +1218,10 @@ impl HookEffect<ResourceCostHook> for ResourceCostHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ActionUsabilityHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::action_usability_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<ActionUsabilityHook> for ActionUsabilityHookDefinition {
@@ -1397,7 +1265,10 @@ impl HookEffect<ActionUsabilityHook> for ActionUsabilityHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum PreDamageMitigationHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::pre_damage_mitigation_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
@@ -1453,7 +1324,10 @@ impl HookEffect<PreDamageMitigationHook> for PreDamageMitigationHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum PostDamageMitigationHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::post_damage_mitigation_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition {
@@ -1505,7 +1379,10 @@ impl HookEffect<PostDamageMitigationHook> for PostDamageMitigationHookDefinition
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DeathHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::death_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<DeathHook> for DeathHookDefinition {
@@ -1548,7 +1425,10 @@ impl HookEffect<DeathHook> for DeathHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum PreDeathHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::pre_death_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<PreDeathHook> for PreDeathHookDefinition {
@@ -1591,7 +1471,10 @@ impl HookEffect<PreDeathHook> for PreDeathHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum RestHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::rest_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<RestHook> for RestHookDefinition {
@@ -1627,7 +1510,10 @@ impl HookEffect<RestHook> for RestHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TurnStartHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::turn_start_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
@@ -1654,7 +1540,10 @@ impl HookEffect<TurnStartHook> for TurnStartHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum SpeedHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::speed_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<SpeedHook> for SpeedHookDefinition {
@@ -1688,7 +1577,10 @@ impl HookEffect<SpeedHook> for SpeedHookDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum EffectLifetimeHookDefinition {
-    Script { script: ScriptId },
+    Script {
+        #[serde(deserialize_with = "script::effect_lifetime_hook")]
+        script: ScriptId,
+    },
 }
 
 impl HookEffect<EffectLifetimeHook> for EffectLifetimeHookDefinition {

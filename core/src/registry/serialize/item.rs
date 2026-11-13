@@ -11,18 +11,13 @@ use crate::{
         items::{
             equipment::{
                 armor::{Armor, ArmorDexterityBonus, ArmorType},
-                equipment::EquipmentItem,
                 weapon::{Weapon, WeaponCategory, WeaponKind, WeaponProperties},
             },
-            inventory::ItemInstance,
             item::{Item, ItemRarity},
             money::MonetaryValue,
         },
     },
-    registry::{
-        registry_validation::{ReferenceCollector, RegistryReference, RegistryReferenceCollector},
-        serialize::quantity::MassExpressionDefinition,
-    },
+    registry::serialize::quantity::MassExpressionDefinition,
 };
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -96,50 +91,6 @@ impl From<ArmorDefinition> for Armor {
             armor_class: def.armor_class,
             dexterity_bonus: def.dexterity_bonus,
             effects: def.effects,
-        }
-    }
-}
-
-impl RegistryReferenceCollector for Armor {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for effect in self.effects() {
-            collector.add(RegistryReference::Effect(effect.clone()));
-        }
-    }
-}
-
-impl RegistryReferenceCollector for Weapon {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for action in self.extra_actions() {
-            collector.add(RegistryReference::Action(action.clone()));
-        }
-        for effect in self.effects() {
-            collector.add(RegistryReference::Effect(effect.clone()));
-        }
-    }
-}
-
-impl RegistryReferenceCollector for EquipmentItem {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        for effect in &self.effects {
-            collector.add(RegistryReference::Effect(effect.clone()));
-        }
-    }
-}
-
-impl RegistryReferenceCollector for ItemInstance {
-    fn collect_registry_references(&self, collector: &mut ReferenceCollector) {
-        match self {
-            ItemInstance::Item(_) => { /* No references to collect */ }
-            ItemInstance::Armor(armor) => {
-                armor.collect_registry_references(collector);
-            }
-            ItemInstance::Weapon(weapon) => {
-                weapon.collect_registry_references(collector);
-            }
-            ItemInstance::Equipment(equipment_item) => {
-                equipment_item.collect_registry_references(collector);
-            }
         }
     }
 }
