@@ -228,9 +228,6 @@ pub enum ResourceMergeOperation {
 pub struct ResourceMergePolicy {
     pub current_uses: ResourceMergeOperation,
     pub max_uses: ResourceMergeOperation,
-    /// Techinically only relevant for tiered resources, but it's easier to have
-    /// everything in one struct
-    pub tier: ResourceMergeOperation,
 }
 
 impl ResourceMergePolicy {
@@ -238,7 +235,6 @@ impl ResourceMergePolicy {
         Self {
             current_uses: ResourceMergeOperation::Add,
             max_uses: ResourceMergeOperation::Add,
-            tier: ResourceMergeOperation::Add,
         }
     }
 }
@@ -366,15 +362,7 @@ impl ResourceBudgetKind {
                 for (tier, other_budget) in other_budgets {
                     match budgets.entry(*tier) {
                         btree_map::Entry::Occupied(mut occupied_entry) => {
-                            match policy.tier {
-                                ResourceMergeOperation::Add => {
-                                    occupied_entry.get_mut().merge(&other_budget, policy);
-                                }
-                                ResourceMergeOperation::Replace => {
-                                    occupied_entry.insert(other_budget.clone());
-                                }
-                                ResourceMergeOperation::Skip => {}
-                            }
+                            occupied_entry.get_mut().merge(&other_budget, policy);
                             if occupied_entry.get().is_empty() {
                                 occupied_entry.remove();
                             }
@@ -971,7 +959,6 @@ mod tests {
         let policy = ResourceMergePolicy {
             current_uses: current_policy,
             max_uses: max_policy,
-            tier: ResourceMergeOperation::Skip,
         };
         let mut budget1 = ResourceBudget::new(2, 2, ModifierSource::Base).unwrap();
         let mut budget2 = ResourceBudget::new(1, 3, ModifierSource::Base).unwrap();
@@ -1410,7 +1397,6 @@ mod tests {
         let policy = ResourceMergePolicy {
             current_uses: ResourceMergeOperation::Skip,
             max_uses: ResourceMergeOperation::Replace,
-            tier: ResourceMergeOperation::Replace,
         };
 
         map.add(

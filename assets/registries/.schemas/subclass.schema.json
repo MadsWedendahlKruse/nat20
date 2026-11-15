@@ -696,20 +696,11 @@
                 },
                 "max_uses": {
                     "$ref": "#/definitions/ResourceMergeOperation"
-                },
-                "tier": {
-                    "description": "Techinically only relevant for tiered resources, but it's easier to have\neverything in one struct",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/ResourceMergeOperation"
-                        }
-                    ]
                 }
             },
             "required": [
                 "current_uses",
-                "max_uses",
-                "tier"
+                "max_uses"
             ]
         },
         "Skill": {

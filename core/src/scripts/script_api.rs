@@ -905,15 +905,17 @@ impl UserData for EngineState {
                 let budget = ResourceBudgetKind::from_amount(&amount, source.clone());
                 let entity = entity.into();
                 systems::helpers::get_component_mut::<ResourceMap>(&mut this.world, entity)
-                    .add(id, budget, &ResourceMergePolicy {
-                        current_uses: ResourceMergeOperation::Add,
-                        max_uses: ResourceMergeOperation::Add,
-                        tier: ResourceMergeOperation::Add,
-                    }).expect(&format!(
+                    .add(
+                        id,
+                        budget,
+                        &ResourceMergePolicy {
+                            current_uses: ResourceMergeOperation::Add,
+                            max_uses: ResourceMergeOperation::Add,
+                        },
+                    )
+                    .expect(&format!(
                         "Failed to add resource {} to entity {:?} from source {}",
-                        resource_id,
-                        entity,
-                        source,
+                        resource_id, entity, source,
                     ));
                 Ok(())
             },

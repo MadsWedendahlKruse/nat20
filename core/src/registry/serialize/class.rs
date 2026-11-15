@@ -101,8 +101,6 @@ pub struct ClassResourceMergePolicy {
     pub current_uses: ResourceMergeOperation,
     #[serde(default = "default_max_uses")]
     pub max_uses: ResourceMergeOperation,
-    #[serde(default = "default_tier")]
-    pub tier: ResourceMergeOperation,
 }
 
 impl Into<ResourceMergePolicy> for ClassResourceMergePolicy {
@@ -110,7 +108,6 @@ impl Into<ResourceMergePolicy> for ClassResourceMergePolicy {
         ResourceMergePolicy {
             current_uses: self.current_uses,
             max_uses: self.max_uses,
-            tier: self.tier,
         }
     }
 }
@@ -123,14 +120,9 @@ fn default_max_uses() -> ResourceMergeOperation {
     ResourceMergeOperation::Replace
 }
 
-fn default_tier() -> ResourceMergeOperation {
-    ResourceMergeOperation::Add
-}
-
 fn default_policy() -> ClassResourceMergePolicy {
     ClassResourceMergePolicy {
         current_uses: default_current_uses(),
         max_uses: default_max_uses(),
-        tier: default_tier(),
     }
 }

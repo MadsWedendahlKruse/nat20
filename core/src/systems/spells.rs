@@ -150,7 +150,6 @@ pub fn update_spellbook(
                     &ResourceMergePolicy {
                         current_uses: ResourceMergeOperation::Skip,
                         max_uses: ResourceMergeOperation::Replace,
-                        tier: ResourceMergeOperation::Add,
                     },
                 )
                 .expect("Failed to add spell slot");
