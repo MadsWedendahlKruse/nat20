@@ -1,0 +1,12 @@
+{
+    "item": {
+        "id": "nat20_core::item.shield",
+        "name": "Shield",
+        "description": "A wooden or metal shield, carried in one hand.",
+        "weight": "6 lb",
+        "value": "10 GP",
+        "rarity": "common"
+    },
+    "armor_class_bonus": 2,
+    "effects": []
+}

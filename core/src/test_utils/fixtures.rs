@@ -764,7 +764,8 @@ pub mod creatures {
                 id::{EntityIdentifier, FactionId, ItemId, Name},
                 items::{
                     equipment::{
-                        armor::ArmorTrainingMap, loadout::TryEquipError,
+                        armor::{ArmorTrainingMap, ArmorType},
+                        loadout::TryEquipError,
                         weapon::WeaponProficiencyMap,
                     },
                     inventory::ItemInstance,
@@ -810,10 +811,9 @@ pub mod creatures {
                 engine_state,
                 entity,
                 &[
-                    // TODO: Should be LEATHER_ARMOR_ID
-                    ItemId::new("nat20_core", "item.studded_leather_armor"),
+                    ItemId::new("nat20_core", "item.leather_armor"),
                     ItemId::new("nat20_core", "item.scimitar"),
-                    // TODO: Add SHIELD_ID
+                    ItemId::new("nat20_core", "item.shield"),
                     ItemId::new("nat20_core", "item.shortbow"),
                 ],
             );
@@ -836,6 +836,13 @@ pub mod creatures {
                             entity,
                         )
                         .set_proficient(armor.armor_type.clone(), ModifierSource::Base);
+                    }
+                    ItemInstance::Shield(_) => {
+                        systems::helpers::get_component_mut::<ArmorTrainingMap>(
+                            &mut engine_state.world,
+                            entity,
+                        )
+                        .set_proficient(ArmorType::Shield, ModifierSource::Base);
                     }
                     ItemInstance::Weapon(weapon) => {
                         systems::helpers::get_component_mut::<WeaponProficiencyMap>(

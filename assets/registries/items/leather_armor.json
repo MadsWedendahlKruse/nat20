@@ -1,0 +1,14 @@
+{
+    "item": {
+        "id": "nat20_core::item.leather_armor",
+        "name": "Leather Armor",
+        "description": "A breastplate and shoulder protectors made of leather that has been stiffened by being boiled in oil.",
+        "weight": "10 lb",
+        "value": "10 GP",
+        "rarity": "common"
+    },
+    "armor_type": "light",
+    "armor_class": 11,
+    "dexterity_bonus": "unlimited",
+    "effects": []
+}

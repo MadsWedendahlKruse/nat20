@@ -21,12 +21,21 @@
             "pattern": "^([A-Za-z0-9_]+::)?action[A-Za-z0-9_.]*$"
         },
         "ArmorType": {
-            "type": "string",
-            "enum": [
-                "clothing",
-                "light",
-                "medium",
-                "heavy"
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "clothing",
+                        "light",
+                        "medium",
+                        "heavy"
+                    ]
+                },
+                {
+                    "description": "Only a training key: a shield is its own item type, never an `Armor`",
+                    "type": "string",
+                    "const": "shield"
+                }
             ]
         },
         "BackgroundId": {

@@ -43,7 +43,8 @@
     ],
     "armor_proficiencies": [
         "light",
-        "medium"
+        "medium",
+        "shield"
     ],
     "effects_by_level": {
         "1": [

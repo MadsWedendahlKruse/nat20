@@ -9,6 +9,9 @@
             "$ref": "#/definitions/ArmorDefinition"
         },
         {
+            "$ref": "#/definitions/ShieldDefinition"
+        },
+        {
             "$ref": "#/definitions/WeaponDefinition"
         },
         {
@@ -78,12 +81,21 @@
             ]
         },
         "ArmorType": {
-            "type": "string",
-            "enum": [
-                "clothing",
-                "light",
-                "medium",
-                "heavy"
+            "oneOf": [
+                {
+                    "type": "string",
+                    "enum": [
+                        "clothing",
+                        "light",
+                        "medium",
+                        "heavy"
+                    ]
+                },
+                {
+                    "description": "Only a training key: a shield is its own item type, never an `Armor`",
+                    "type": "string",
+                    "const": "shield"
+                }
             ]
         },
         "DamageType": {
@@ -192,6 +204,29 @@
                 "rare",
                 "very_rare",
                 "legendary"
+            ]
+        },
+        "ShieldDefinition": {
+            "type": "object",
+            "properties": {
+                "armor_class_bonus": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "effects": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/EffectId"
+                    }
+                },
+                "item": {
+                    "$ref": "#/definitions/ItemDefinition"
+                }
+            },
+            "required": [
+                "item",
+                "armor_class_bonus"
             ]
         },
         "WeaponCategory": {

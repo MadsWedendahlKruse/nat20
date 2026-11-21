@@ -44,7 +44,8 @@
     "armor_proficiencies": [
         "light",
         "medium",
-        "heavy"
+        "heavy",
+        "shield"
     ],
     "weapon_proficiencies": [
         "simple",

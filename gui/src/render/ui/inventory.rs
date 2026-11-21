@@ -309,6 +309,9 @@ impl ImguiRenderableWithContext<(&World, Entity)> for ItemInstance {
             ItemInstance::Armor(armor) => {
                 armor.render_with_context(ui, context);
             }
+            ItemInstance::Shield(shield) => {
+                shield.render(ui);
+            }
             _ => {
                 ui.text("Placeholder tooltip :^)");
             }

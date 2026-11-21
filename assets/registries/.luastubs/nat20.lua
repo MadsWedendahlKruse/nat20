@@ -362,7 +362,7 @@ function EngineState:hp_max(entity) end
 function EngineState:ability_modifier(entity, ability_name) end
 
 ---@param entity ScriptEntity
----@return string  -- "None" | "Clothing" | "Light" | "Medium" | "Heavy" | "Shield"
+---@return string  -- "None" | "Clothing" | "Light" | "Medium" | "Heavy"
 function EngineState:armor_type(entity) end
 
 ---@param entity ScriptEntity

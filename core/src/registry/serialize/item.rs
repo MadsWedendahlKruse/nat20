@@ -10,7 +10,7 @@ use crate::{
         id::{ActionId, EffectId, ItemId},
         items::{
             equipment::{
-                armor::{Armor, ArmorDexterityBonus, ArmorType},
+                armor::{Armor, ArmorDexterityBonus, ArmorType, Shield},
                 weapon::{Weapon, WeaponCategory, WeaponKind, WeaponProperties},
             },
             item::{Item, ItemRarity},
@@ -83,13 +83,41 @@ pub struct ArmorDefinition {
     pub effects: Vec<EffectId>,
 }
 
-impl From<ArmorDefinition> for Armor {
-    fn from(def: ArmorDefinition) -> Self {
-        Armor {
+impl TryFrom<ArmorDefinition> for Armor {
+    type Error = String;
+
+    fn try_from(def: ArmorDefinition) -> Result<Self, Self::Error> {
+        if def.armor_type == ArmorType::Shield {
+            return Err(format!(
+                "Armor {} has armor_type 'shield'; shields are their own item type \
+                 (`armor_class_bonus` instead of `armor_type`/`armor_class`/`dexterity_bonus`)",
+                def.item.id
+            ));
+        }
+
+        Ok(Armor {
             item: def.item.into(),
             armor_type: def.armor_type,
             armor_class: def.armor_class,
             dexterity_bonus: def.dexterity_bonus,
+            effects: def.effects,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ShieldDefinition {
+    pub item: ItemDefinition,
+    pub armor_class_bonus: i32,
+    #[serde(default)]
+    pub effects: Vec<EffectId>,
+}
+
+impl From<ShieldDefinition> for Shield {
+    fn from(def: ShieldDefinition) -> Self {
+        Shield {
+            item: def.item.into(),
+            armor_class_bonus: def.armor_class_bonus,
             effects: def.effects,
         }
     }

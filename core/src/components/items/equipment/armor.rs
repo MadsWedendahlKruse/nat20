@@ -13,7 +13,10 @@ use crate::{
         modifier::{FlatModifiable, FlatModifierMap, ModifierSource},
         proficiency::BinaryProficiencyMap,
     },
-    registry::serialize::{item::ArmorDefinition, schema::impl_schema_via},
+    registry::serialize::{
+        item::{ArmorDefinition, ShieldDefinition},
+        schema::impl_schema_via,
+    },
 };
 
 pub const DEFAULT_ARMOR_CLASS: i32 = 10;
@@ -27,6 +30,8 @@ pub enum ArmorType {
     Light,
     Medium,
     Heavy,
+    /// Only a training key: a shield is its own item type, never an `Armor`
+    Shield,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
@@ -101,7 +106,7 @@ impl FlatModifiable for ArmorClass {
 impl_schema_via!(Armor, ArmorDefinition);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(from = "ArmorDefinition")]
+#[serde(try_from = "ArmorDefinition")]
 pub struct Armor {
     pub item: Item,
     pub armor_type: ArmorType,
@@ -209,6 +214,22 @@ impl SlotProvider for Armor {
     }
 }
 
+impl_schema_via!(Shield, ShieldDefinition);
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(from = "ShieldDefinition")]
+pub struct Shield {
+    pub item: Item,
+    pub armor_class_bonus: i32,
+    pub effects: Vec<EffectId>,
+}
+
+impl SlotProvider for Shield {
+    fn valid_slots(&self) -> &'static [EquipmentSlot] {
+        &[EquipmentSlot::MeleeOffHand]
+    }
+}
+
 pub type ArmorTrainingMap = BinaryProficiencyMap<ArmorType>;
 
 #[cfg(test)]
@@ -228,6 +249,25 @@ mod tests {
 
         armor_class.remove_modifier(&ModifierSource::Custom("Test".to_string()));
         assert_eq!(armor_class.total(), 10);
+    }
+
+    #[test]
+    fn armor_rejects_shield_armor_type() {
+        let json = r#"{
+            "item": {
+                "id": "nat20_core::item.test_shield",
+                "name": "Test Shield",
+                "description": "",
+                "weight": "6 lb",
+                "value": "10 GP",
+                "rarity": "common"
+            },
+            "armor_type": "shield",
+            "armor_class": 2,
+            "dexterity_bonus": "unlimited"
+        }"#;
+        let error = serde_json::from_str::<Armor>(json).unwrap_err();
+        assert!(error.to_string().contains("shields are their own item type"));
     }
 
     #[test]

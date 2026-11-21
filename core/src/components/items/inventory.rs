@@ -5,7 +5,7 @@ use crate::components::{
     id::{EffectId, IdProvider, ItemId},
     items::{
         equipment::{
-            armor::Armor,
+            armor::{Armor, Shield},
             equipment::EquipmentItem,
             slots::{EquipmentSlot, SlotProvider},
             weapon::Weapon,
@@ -20,6 +20,7 @@ use crate::components::{
 pub enum ItemInstance {
     Item(Item),
     Armor(Armor),
+    Shield(Shield),
     Weapon(Weapon),
     Equipment(EquipmentItem),
 }
@@ -28,13 +29,17 @@ impl ItemInstance {
     pub fn is_equippable(&self) -> bool {
         matches!(
             self,
-            ItemInstance::Armor(_) | ItemInstance::Weapon(_) | ItemInstance::Equipment(_)
+            ItemInstance::Armor(_)
+                | ItemInstance::Shield(_)
+                | ItemInstance::Weapon(_)
+                | ItemInstance::Equipment(_)
         )
     }
 
     pub fn effects(&self) -> &[EffectId] {
         match self {
             ItemInstance::Armor(armor) => armor.effects(),
+            ItemInstance::Shield(shield) => &shield.effects,
             ItemInstance::Weapon(weapon) => weapon.effects(),
             ItemInstance::Equipment(equipment) => &equipment.effects,
             _ => &[],
@@ -46,6 +51,7 @@ impl SlotProvider for ItemInstance {
     fn valid_slots(&self) -> &'static [EquipmentSlot] {
         match self {
             ItemInstance::Armor(armor) => armor.valid_slots(),
+            ItemInstance::Shield(shield) => shield.valid_slots(),
             ItemInstance::Weapon(weapon) => weapon.valid_slots(),
             ItemInstance::Equipment(equipment) => equipment.valid_slots(),
             _ => &[],
@@ -55,6 +61,7 @@ impl SlotProvider for ItemInstance {
     fn required_slots(&self) -> &'static [EquipmentSlot] {
         match self {
             ItemInstance::Armor(armor) => armor.required_slots(),
+            ItemInstance::Shield(shield) => shield.required_slots(),
             ItemInstance::Weapon(weapon) => weapon.required_slots(),
             ItemInstance::Equipment(equipment) => equipment.required_slots(),
             _ => &[],
@@ -69,6 +76,7 @@ impl IdProvider for ItemInstance {
         match self {
             ItemInstance::Item(item) => &item.id,
             ItemInstance::Armor(armor) => &armor.item.id,
+            ItemInstance::Shield(shield) => &shield.item.id,
             ItemInstance::Weapon(weapon) => &weapon.item().id,
             ItemInstance::Equipment(equipment) => &equipment.item.id,
         }
@@ -84,6 +92,7 @@ impl ItemContainer for ItemInstance {
         match self {
             ItemInstance::Item(item) => item,
             ItemInstance::Armor(armor) => &armor.item,
+            ItemInstance::Shield(shield) => &shield.item,
             ItemInstance::Weapon(weapon) => weapon.item(),
             ItemInstance::Equipment(equipment) => &equipment.item,
         }
@@ -105,6 +114,7 @@ macro_rules! impl_into_item_instance {
 impl_into_item_instance! {
     Item => Item,
     Armor => Armor,
+    Shield => Shield,
     Weapon => Weapon,
     EquipmentItem => Equipment,
 }

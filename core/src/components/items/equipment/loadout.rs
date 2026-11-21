@@ -18,7 +18,7 @@ use crate::{
         id::ItemId,
         items::{
             equipment::{
-                armor::{Armor, ArmorClass, ArmorDexterityBonus},
+                armor::{Armor, ArmorClass, ArmorDexterityBonus, Shield},
                 slots::{EquipmentSlot, SlotProvider},
                 weapon::{
                     MELEE_RANGE_DEFAULT, Weapon, WeaponKind, WeaponProficiencyMap, WeaponProperties,
@@ -26,7 +26,7 @@ use crate::{
             },
             inventory::ItemInstance,
         },
-        modifier::{Modifiable, ModifierMap, ModifierSource},
+        modifier::{FlatModifiable, Modifiable, ModifierMap, ModifierSource},
         proficiency::{Proficiency, ProficiencyLevel},
         saving_throw::SavingThrowKind,
     },
@@ -225,6 +225,16 @@ impl Loadout {
         }
     }
 
+    pub fn shield(&self) -> Option<&Shield> {
+        if let Some(shield_id) = self.equipment.get(&EquipmentSlot::MeleeOffHand)
+            && let Some(ItemInstance::Shield(shield)) = ItemsRegistry::get(shield_id)
+        {
+            Some(shield)
+        } else {
+            None
+        }
+    }
+
     pub fn armor_class(&self, engine_state: &EngineState, entity: Entity) -> ArmorClass {
         let mut armor_class = if let Some(armor) = self.armor() {
             let ability_scores =
@@ -235,6 +245,13 @@ impl Loadout {
             // TODO: Dex bonus???
             ArmorClass::new(10, ModifierSource::Base, ArmorDexterityBonus::Unlimited)
         };
+
+        if let Some(shield) = self.shield() {
+            armor_class.add_modifier(
+                ModifierSource::Item(shield.item.id.clone()),
+                shield.armor_class_bonus,
+            );
+        }
 
         systems::effects::effects(&engine_state.world, entity).armor_class(
             engine_state,
@@ -270,13 +287,13 @@ impl Loadout {
         if let Some(main_hand_weapon) = self.weapon_in_hand(&main_hand_slot) {
             // Check that:
             // 1. The main hand weapon is two-handed or versatile.
-            // 2. The off hand is empty
+            // 2. The off hand is empty (a shield occupies it too)
             return (main_hand_weapon.has_property(&WeaponProperties::TwoHanded)
                 || main_hand_weapon
                     .properties()
                     .iter()
                     .any(|p| matches!(p, WeaponProperties::Versatile(_))))
-                && !self.has_weapon_in_hand(&off_hand_slot);
+                && self.item_in_slot(&off_hand_slot).is_none();
         }
         false
     }

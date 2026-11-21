@@ -17,7 +17,7 @@ use nat20_core::{
         id::{FeatId, Name, ResourceId, SpeciesId, SpellId, SubspeciesId},
         items::{
             equipment::{
-                armor::{Armor, ArmorClass, ArmorDexterityBonus, ArmorType},
+                armor::{Armor, ArmorClass, ArmorDexterityBonus, ArmorType, Shield},
                 loadout::Loadout,
                 weapon::Weapon,
             },
@@ -749,6 +749,16 @@ impl ImguiRenderableWithContext<(&World, Entity)> for Armor {
             TextSegment::new(format!("({} Armor)", self.armor_type), TextKind::Details).render(ui);
             ui.separator();
         }
+        render_item_misc(ui, &self.item);
+    }
+}
+
+impl ImguiRenderable for Shield {
+    fn render(&self, ui: &imgui::Ui) {
+        render_item_name(ui, &self.item);
+        self.item.rarity.render(ui);
+        ui.text(format!("+{} Armor Class", self.armor_class_bonus));
+        ui.separator();
         render_item_misc(ui, &self.item);
     }
 }
