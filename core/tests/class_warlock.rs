@@ -19,12 +19,12 @@ use rstest::rstest;
 fn warlock_eldritch_blast(#[case] warlock_level: u8, #[case] expected_beams: u8) {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("warlock", "hero.warlock")
+        .spawn_hero("warlock", "hero.warlock")
         .level(warlock_level)
         .spawn();
     // Spawn someone who doesn't get one shot
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .level(5)
         .position([1.0, 0.0, 0.0], false)
         .spawn();
@@ -54,10 +54,12 @@ fn warlock_eldritch_blast(#[case] warlock_level: u8, #[case] expected_beams: u8)
 fn warlock_hellish_rebuke() {
     let mut scenario = Scenario::new();
     // Level 3 is just to make sure he has enough HP to survive the attack and react
-    scenario.spawn("warlock", "hero.warlock").level(3).spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_hero("warlock", "hero.warlock")
+        .level(3)
+        .spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -112,10 +114,12 @@ fn warlock_hex_disadvantage(
     #[case] skills: &[Skill],
 ) {
     let mut scenario = Scenario::new();
-    scenario.spawn("warlock", "hero.warlock").level(2).spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_hero("warlock", "hero.warlock")
+        .level(2)
+        .spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -147,10 +151,13 @@ fn warlock_hex_disadvantage(
 fn warlock_hex_damage() {
     let mut scenario = Scenario::new();
     // Level 5 so we get two beams on Eldritch Blast
-    scenario.spawn("warlock", "hero.warlock").level(5).spawn();
+    scenario
+        .spawn_hero("warlock", "hero.warlock")
+        .level(5)
+        .spawn();
     // Spawn someone who doesn't get one shot
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .level(5)
         .position([1.0, 0.0, 0.0], false)
         .spawn();
@@ -203,10 +210,12 @@ fn warlock_hex_damage() {
 #[test]
 fn warlock_hex_reapply_on_kill() {
     let mut scenario = Scenario::new();
-    scenario.spawn("warlock", "hero.warlock").level(5).spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_hero("warlock", "hero.warlock")
+        .level(5)
+        .spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -247,8 +256,7 @@ fn warlock_hex_reapply_on_kill() {
 
     // Spawn a new goblin to reapply Hex to
     scenario
-        .spawn("goblin2", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin2", "monster.goblin_warrior")
         .position([2.0, 0.0, 0.0], false)
         .spawn();
 

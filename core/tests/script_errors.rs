@@ -16,7 +16,10 @@ use nat20_core::{
 #[test]
 fn usability_script_error_blocks_action() {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(1).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(1)
+        .spawn();
     let entity = scenario.entity("fighter");
 
     // Defines `speed_hook` instead of `action_usability`

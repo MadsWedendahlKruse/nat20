@@ -18,6 +18,7 @@ use crate::{
         serialize::{
             action::{ActionDefinition, ActionVariantDefinition},
             class::ClassDefinition,
+            creature::MonsterDefinition,
             effect::EffectDefinition,
             feat::FeatDefinition,
             species::{SpeciesDefinition, SubspeciesDefinition},
@@ -56,19 +57,20 @@ fn schema_for<T: JsonSchema>(registry: &'static str) -> RegistrySchema {
 pub fn registry_schemas() -> Vec<RegistrySchema> {
     vec![
         schema_for::<ActionDefinition>("actions"),
+        schema_for::<ActionVariantDefinition>("action_variants"),
         schema_for::<Background>("backgrounds"),
         schema_for::<ClassDefinition>("classes"),
         schema_for::<EffectDefinition>("effects"),
         schema_for::<Faction>("factions"),
         schema_for::<FeatDefinition>("feats"),
         schema_for::<ItemInstance>("items"),
+        schema_for::<MonsterDefinition>("monsters"),
         schema_for::<Resource>("resources"),
+        schema_for::<Rules>("rules"),
         schema_for::<SpeciesDefinition>("species"),
         schema_for::<SpellDefinition>("spells"),
         schema_for::<Subclass>("subclasses"),
         schema_for::<SubspeciesDefinition>("subspecies"),
-        schema_for::<ActionVariantDefinition>("action_variants"),
-        schema_for::<Rules>("rules"),
     ]
 }
 

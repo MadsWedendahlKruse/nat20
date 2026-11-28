@@ -19,17 +19,15 @@ use rstest::rstest;
 fn ice_knife_scenario(wizard_level: u8) -> Scenario {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("wizard", "hero.wizard")
+        .spawn_hero("wizard", "hero.wizard")
         .level(wizard_level)
         .spawn();
     scenario
-        .spawn("goblin_1", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin_1", "monster.goblin_warrior")
         .position([3.0, 0.0, 0.5], false)
         .spawn();
     scenario
-        .spawn("goblin_2", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin_2", "monster.goblin_warrior")
         .position([3.0, 0.0, -0.5], false)
         .spawn();
     scenario

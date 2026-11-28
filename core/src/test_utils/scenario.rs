@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, path::Path, u32};
+use std::{collections::HashSet, fmt::Debug, fs, path::Path, u32};
 
 use hecs::{Component, Entity, World};
 use parry3d::{na::Point3, utils::hashmap::HashMap};
@@ -36,6 +36,10 @@ use crate::{
         encounter::EncounterId,
         engine_state::EngineState,
         event::{Event, EventCallback, EventFilter, EventKind, EventScope},
+    },
+    entities::{
+        common::EntityTemplate,
+        creature::{CharacterTemplate, MonsterTemplate},
     },
     persistence::{
         self,
@@ -108,18 +112,23 @@ impl Scenario {
         self.entity_identifier(handle).id()
     }
 
-    pub fn spawn(
+    #[track_caller]
+    pub fn spawn_hero(
         &mut self,
         handle: impl Into<String>,
-        template: impl Into<String>,
-    ) -> ScenarioCreatureBuilder<'_> {
-        let handle = handle.into();
-        let template = template.into();
-        if self.creatures.contains_key(&handle) {
-            panic!("Creature with handle {handle} already exists in scenario");
-        }
+        template: &str,
+    ) -> ScenarioCreatureBuilder<'_, CharacterTemplate> {
+        let builder = CreatureBuilder::hero(template);
+        ScenarioCreatureBuilder::new(self, handle, builder)
+    }
 
-        let builder = CreatureBuilder::new(&template);
+    #[track_caller]
+    pub fn spawn_monster(
+        &mut self,
+        handle: impl Into<String>,
+        monster_id: &str,
+    ) -> ScenarioCreatureBuilder<'_, MonsterTemplate> {
+        let builder = CreatureBuilder::monster(monster_id);
         ScenarioCreatureBuilder::new(self, handle, builder)
     }
 
@@ -275,30 +284,41 @@ impl Scenario {
     }
 }
 
-pub struct ScenarioCreatureBuilder<'s> {
+#[must_use = "ScenarioCreatureBuilder must be used by calling spawn()"]
+pub struct ScenarioCreatureBuilder<'s, T> {
     scenario: &'s mut Scenario,
     handle: String,
-    builder: CreatureBuilder,
+    builder: CreatureBuilder<T>,
     spawned: bool,
 }
 
-impl<'s> ScenarioCreatureBuilder<'s> {
-    pub fn new(
-        scenario: &'s mut Scenario,
-        handle: impl Into<String>,
-        builder: CreatureBuilder,
-    ) -> Self {
-        Self {
-            scenario,
-            handle: handle.into(),
-            builder,
-            spawned: false,
-        }
-    }
-
+impl<'s> ScenarioCreatureBuilder<'s, CharacterTemplate> {
     pub fn level(mut self, level: u8) -> Self {
         self.builder.level(level);
         self
+    }
+}
+
+impl<'s, T: EntityTemplate> ScenarioCreatureBuilder<'s, T>
+where
+    T::TemplateError: Debug,
+{
+    #[track_caller]
+    fn new(
+        scenario: &'s mut Scenario,
+        handle: impl Into<String>,
+        builder: CreatureBuilder<T>,
+    ) -> Self {
+        let handle = handle.into();
+        if scenario.creatures.contains_key(&handle) {
+            panic!("Creature with handle {handle} already exists in scenario");
+        }
+        Self {
+            scenario,
+            handle,
+            builder,
+            spawned: false,
+        }
     }
 
     pub fn position(mut self, position: impl Into<Point3<f32>>, on_ground: bool) -> Self {
@@ -320,9 +340,9 @@ impl<'s> ScenarioCreatureBuilder<'s> {
     }
 }
 
-impl Drop for ScenarioCreatureBuilder<'_> {
+impl<T> Drop for ScenarioCreatureBuilder<'_, T> {
     fn drop(&mut self) {
-        if !self.spawned {
+        if !self.spawned && !std::thread::panicking() {
             panic!(
                 "ScenarioCreatureBuilder for handle {} was dropped without calling spawn()",
                 self.handle

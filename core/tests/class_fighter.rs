@@ -18,7 +18,7 @@ use nat20_core::{
 fn fighter_scenario(level: u8) -> Scenario {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .level(level)
         .time_mode(TimeMode::TurnBased { encounter_id: None })
         .spawn();
@@ -83,7 +83,10 @@ fn fighter_second_wind() {
 #[test]
 fn fighter_tactical_mind() {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(2).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(2)
+        .spawn();
 
     scenario
         .probe("fighter")
@@ -120,7 +123,10 @@ fn fighter_tactical_mind() {
 #[test]
 fn fighter_tactical_shift() {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(5).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(5)
+        .spawn();
 
     scenario
         .probe("fighter")
@@ -200,7 +206,10 @@ fn fighter_two_extra_attacks() {
 fn fighter_indomitable() {
     // Use Scenario for event log inspection
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(9).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(9)
+        .spawn();
 
     let saving_throw = SavingThrowKind::Ability(Ability::Intelligence);
 
@@ -246,13 +255,12 @@ fn fighter_studied_attacks() {
     let mut scenario = Scenario::new();
 
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .level(13)
         .position([0.0, 0.0, 0.0], false)
         .spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(5)
+        .spawn_monster("dummy", "monster.training_dummy")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -262,7 +270,7 @@ fn fighter_studied_attacks() {
 
     scenario
         .encounter()
-        .initiative_order(vec!["fighter", "goblin"])
+        .initiative_order(vec!["fighter", "dummy"])
         .build();
 
     // Force the fighter's first attack to miss to trigger Studied Attacks
@@ -273,13 +281,13 @@ fn fighter_studied_attacks() {
 
     scenario
         .act("fighter", "action.melee_attack")
-        .target_entity("goblin")
+        .target_entity("dummy")
         .perform();
 
-    // The effect is now applied to the *goblin*, not the fighter, and should
-    // grant advantage on the fighter's next attack against the goblin
+    // The effect is now applied to the *dummy*, not the fighter, and should
+    // grant advantage on the fighter's next attack against the dummy
     scenario
-        .probe("goblin")
+        .probe("dummy")
         .assert_effect("effect.fighter.studied_attacks_advantage");
 
     // Prevent next attack from missing on a nat 1
@@ -290,7 +298,7 @@ fn fighter_studied_attacks() {
 
     scenario
         .act("fighter", "action.melee_attack")
-        .target_entity("goblin")
+        .target_entity("dummy")
         .perform();
 
     scenario
@@ -303,9 +311,9 @@ fn fighter_studied_attacks() {
         )
         .assert_event();
 
-    // After the attack the effect is consumed (and it's not just because the goblin died)
+    // After the attack the effect is consumed (and it's not just because the dummy died)
     scenario
-        .probe("goblin")
+        .probe("dummy")
         .assert_hp(Operator::Greater(0))
         .assert_no_effect("effect.fighter.studied_attacks_advantage");
 }
@@ -317,25 +325,24 @@ fn fighter_studied_attacks_not_consumed_by_another_attacker() {
     let mut scenario = Scenario::new();
 
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .level(13)
         .position([0.0, 0.0, 0.0], false)
         .spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(5)
+        .spawn_monster("dummy", "monster.training_dummy")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
     // Level 1, so this one has no Studied Attacks of its own to apply
     scenario
-        .spawn("ally", "hero.fighter")
+        .spawn_hero("ally", "hero.fighter")
         .level(1)
         .position([2.0, 0.0, 0.0], false)
         .spawn();
 
     scenario
         .encounter()
-        .initiative_order(vec!["fighter", "ally", "goblin"])
+        .initiative_order(vec!["fighter", "ally", "dummy"])
         .build();
 
     scenario.probe("fighter").d20_force_outcome(
@@ -345,16 +352,16 @@ fn fighter_studied_attacks_not_consumed_by_another_attacker() {
 
     scenario
         .act("fighter", "action.melee_attack")
-        .target_entity("goblin")
+        .target_entity("dummy")
         .perform();
 
     scenario
-        .probe("goblin")
+        .probe("dummy")
         .assert_effect("effect.fighter.studied_attacks_advantage");
 
     scenario.probe("fighter").end_turn();
 
-    // Miss, so the goblin survives to still be carrying the effect
+    // Miss, so the dummy survives to still be carrying the effect
     scenario.probe("ally").d20_force_outcome(
         D20CheckKind::AttackRoll(AttackSource::Weapon(WeaponKind::Melee)),
         D20CheckOutcome::Failure,
@@ -362,11 +369,11 @@ fn fighter_studied_attacks_not_consumed_by_another_attacker() {
 
     scenario
         .act("ally", "action.melee_attack")
-        .target_entity("goblin")
+        .target_entity("dummy")
         .perform();
 
     scenario
-        .probe("goblin")
+        .probe("dummy")
         .assert_hp(Operator::Greater(0))
         .assert_effect("effect.fighter.studied_attacks_advantage");
 }

@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     engine::engine_state::EngineState,
-    entities::{self},
+    entities::{
+        common::EntityUpdater,
+        creature::{CharacterUpdater, MonsterUpdater},
+        projectile::ProjectileUpdater,
+    },
 };
 
 /// The different kinds of entities that can exist in the world.
@@ -24,19 +28,19 @@ impl EntityKind {
     pub fn is_creature(&self) -> bool {
         matches!(self, EntityKind::Character | EntityKind::Monster)
     }
+
+    pub fn updater(&self) -> &'static dyn EntityUpdater {
+        match self {
+            EntityKind::Projectile => &ProjectileUpdater,
+            EntityKind::Character => &CharacterUpdater,
+            EntityKind::Monster => &MonsterUpdater,
+        }
+    }
 }
 
 pub fn update(engine_state: &mut EngineState, delta_time: f32) {
     for (entity, kind) in get_entities_to_update(engine_state) {
-        match kind {
-            EntityKind::Projectile => {
-                entities::projectile::update(engine_state, delta_time, entity);
-            }
-
-            EntityKind::Character | EntityKind::Monster => {
-                entities::creature::update(engine_state, delta_time, entity);
-            }
-        }
+        kind.updater().update(engine_state, delta_time, entity);
     }
 }
 
@@ -46,7 +50,7 @@ fn get_entities_to_update(engine_state: &EngineState) -> Vec<(Entity, EntityKind
         .query::<&EntityKind>()
         .iter()
         .filter_map(|(entity, kind)| {
-            if should_update(engine_state, entity, kind) {
+            if kind.updater().should_update(engine_state, entity) {
                 Some((entity, *kind))
             } else {
                 None
@@ -59,11 +63,9 @@ fn get_entities_to_update(engine_state: &EngineState) -> Vec<(Entity, EntityKind
     entities
 }
 
-fn should_update(engine_state: &EngineState, entity: Entity, kind: &EntityKind) -> bool {
-    match kind {
-        EntityKind::Projectile => entities::projectile::should_update(engine_state, entity),
-        EntityKind::Character | EntityKind::Monster => {
-            entities::creature::should_update(engine_state, entity)
-        }
+pub fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
+    if let Ok(kind) = engine_state.world.get::<&EntityKind>(entity) {
+        return kind.updater().should_update(engine_state, entity);
     }
+    false
 }

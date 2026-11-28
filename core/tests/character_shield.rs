@@ -11,7 +11,7 @@ use nat20_core::{
 fn barbarian_scenario() -> Scenario {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("barbarian", "hero.barbarian")
+        .spawn_hero("barbarian", "hero.barbarian")
         .level(3)
         .spawn();
     scenario

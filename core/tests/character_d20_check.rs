@@ -14,7 +14,7 @@ mod tests {
         },
         entities::creature::Character,
         systems::{self},
-        test_utils::fixtures,
+        test_utils::{creature_builder::CreatureBuilder, fixtures},
     };
 
     #[test]
@@ -53,7 +53,11 @@ mod tests {
         // Default character is level 0, meaning it has no proficieny bonus, so
         // if we want to test that we need a character with at least one level.
         // Easiest way is to use one of the fixtures.
-        let entity = fixtures::creatures::heroes::wizard(&mut engine_state, 5, None).id();
+        // TODO: Migrate to Scenario API
+        let entity = CreatureBuilder::hero("hero.wizard")
+            .level(5)
+            .spawn(&mut engine_state)
+            .id();
 
         systems::helpers::get_component_mut::<AbilityScoreMap>(&mut engine_state.world, entity)
             .set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));
@@ -79,7 +83,11 @@ mod tests {
         // Default character is level 0, meaning it has no proficieny bonus, so
         // if we want to test that we need a character with at least one level.
         // Easiest way is to use one of the fixtures.
-        let entity = fixtures::creatures::heroes::wizard(&mut engine_state, 5, None).id();
+        // TODO: Migrate to Scenario API
+        let entity = CreatureBuilder::hero("hero.wizard")
+            .level(5)
+            .spawn(&mut engine_state)
+            .id();
 
         systems::helpers::get_component_mut::<AbilityScoreMap>(&mut engine_state.world, entity)
             .set(Ability::Strength, AbilityScore::new(Ability::Strength, 17));

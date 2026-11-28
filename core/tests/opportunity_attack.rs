@@ -18,11 +18,11 @@ fn opportunity_attack_scenario(goblin_position: impl Into<Point3<f32>>) -> Scena
     let mut scenario = Scenario::new();
 
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .position([0.0, 0.0, 0.0], true)
         .spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position(goblin_position, true)
         .spawn();
 

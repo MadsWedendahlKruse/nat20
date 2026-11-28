@@ -21,7 +21,8 @@ use crate::{
         feat::Feat,
         id::{
             ActionId, ActionVariantId, BackgroundId, ClassId, EffectId, FactionId, FeatId,
-            IdProvider, ItemId, ResourceId, ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
+            IdProvider, ItemId, MonsterId, ResourceId, ScriptId, SpeciesId, SpellId, SubclassId,
+            SubspeciesId,
         },
         items::inventory::ItemInstance,
         resource::Resource,
@@ -34,6 +35,7 @@ use crate::{
         serialize::{
             action::{ActionDefinition, ActionVariantDefinition},
             class::ClassDefinition,
+            creature::MonsterDefinition,
             effect::EffectDefinition,
             species::{SpeciesDefinition, SubspeciesDefinition},
             spell::SpellDefinition,
@@ -324,6 +326,7 @@ pub struct RegistrySet {
     pub factions: Registry<FactionId, Faction, Faction>,
     pub feats: Registry<FeatId, Feat, Feat>,
     pub items: Registry<ItemId, ItemInstance, ItemInstance>,
+    pub monsters: Registry<MonsterId, MonsterDefinition, MonsterDefinition>,
     pub resources: Registry<ResourceId, Resource, Resource>,
     pub scripts: Registry<ScriptId, Script, Script>,
     pub species: Registry<SpeciesId, Species, SpeciesDefinition>,
@@ -347,6 +350,7 @@ impl RegistrySet {
         let factions_directory = root_directory.join("factions");
         let feats_directory = root_directory.join("feats");
         let items_directory = root_directory.join("items");
+        let monsters_directory = root_directory.join("monsters");
         let resources_directory = root_directory.join("resources");
         let species_directory = root_directory.join("species");
         let spells_directory = root_directory.join("spells");
@@ -362,6 +366,7 @@ impl RegistrySet {
             factions_directory.as_path(),
             feats_directory.as_path(),
             items_directory.as_path(),
+            monsters_directory.as_path(),
             resources_directory.as_path(),
             species_directory.as_path(),
             spells_directory.as_path(),
@@ -384,6 +389,7 @@ impl RegistrySet {
                 factions,
                 feats,
                 items,
+                monsters,
                 resources,
                 species,
                 spells,
@@ -404,6 +410,7 @@ impl RegistrySet {
                 Registry::load_registry(&factions_directory, &mut errors),
                 Registry::load_registry(&feats_directory, &mut errors),
                 Registry::load_registry(&items_directory, &mut errors),
+                Registry::load_registry(&monsters_directory, &mut errors),
                 Registry::load_registry(&resources_directory, &mut errors),
                 Registry::load_registry(&species_directory, &mut errors),
                 Registry::load_registry(&spells_directory, &mut errors),
@@ -427,6 +434,7 @@ impl RegistrySet {
             factions: factions.expect("validated"),
             feats: feats.expect("validated"),
             items: items.expect("validated"),
+            monsters: monsters.expect("validated"),
             resources: resources.expect("validated"),
             scripts: Registry {
                 entries: scripts_map,
@@ -603,6 +611,7 @@ impl RegistrySet {
             RegistryReference::Faction(id) => self.factions.entries.contains_key(id),
             RegistryReference::Feat(id) => self.feats.entries.contains_key(id),
             RegistryReference::Item(id) => self.items.entries.contains_key(id),
+            RegistryReference::Monster(id) => self.monsters.entries.contains_key(id),
             RegistryReference::Resource(id) => self.resources.entries.contains_key(id),
             RegistryReference::Species(id) => self.species.entries.contains_key(id),
             RegistryReference::Spell(id) => {
@@ -647,6 +656,7 @@ impl RegistrySet {
             RegistryReference::Faction(id) => (id.to_string(), self.factions.all_keys_strings()),
             RegistryReference::Feat(id) => (id.to_string(), self.feats.all_keys_strings()),
             RegistryReference::Item(id) => (id.to_string(), self.items.all_keys_strings()),
+            RegistryReference::Monster(id) => (id.to_string(), self.monsters.all_keys_strings()),
             RegistryReference::Resource(id) => (id.to_string(), self.resources.all_keys_strings()),
             RegistryReference::Species(id) => (id.to_string(), self.species.all_keys_strings()),
             RegistryReference::Spell(id) => (id.to_string(), self.spells.all_keys_strings()),
@@ -712,6 +722,7 @@ define_registry!(EffectsRegistry, EffectId, Effect, effects);
 define_registry!(FactionsRegistry, FactionId, Faction, factions);
 define_registry!(FeatsRegistry, FeatId, Feat, feats);
 define_registry!(ItemsRegistry, ItemId, ItemInstance, items);
+define_registry!(MonstersRegistry, MonsterId, MonsterDefinition, monsters);
 define_registry!(ResourcesRegistry, ResourceId, Resource, resources);
 define_registry!(ScriptsRegistry, ScriptId, Script, scripts);
 define_registry!(SpeciesRegistry, SpeciesId, Species, species);

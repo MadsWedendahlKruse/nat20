@@ -790,7 +790,7 @@ mod tests {
 
     #[fixture]
     fn engine_state_fighter(mut engine_state: EngineState) -> (EngineState, EntityIdentifier) {
-        let fighter = CreatureBuilder::new("hero.fighter")
+        let fighter = CreatureBuilder::hero("hero.fighter")
             .level(5)
             .spawn(&mut engine_state);
         (engine_state, fighter)
@@ -880,7 +880,7 @@ mod tests {
 
     #[fixture]
     fn engine_state_wizard(mut engine_state: EngineState) -> (EngineState, EntityIdentifier) {
-        let wizard = CreatureBuilder::new("hero.wizard")
+        let wizard = CreatureBuilder::hero("hero.wizard")
             .level(5)
             .spawn(&mut engine_state);
         (engine_state, wizard)
@@ -981,8 +981,7 @@ mod tests {
     ) {
         let (mut engine_state, fighter) = engine_state_fighter;
 
-        let goblin = CreatureBuilder::new("monster.goblin_warrior")
-            .level(1)
+        let goblin = CreatureBuilder::monster("monster.goblin_warrior")
             .position([1.0, 0.0, 0.0], false)
             .spawn(&mut engine_state);
 
@@ -1005,8 +1004,7 @@ mod tests {
     ) {
         let (mut engine_state, fighter) = engine_state_fighter;
 
-        let goblin = CreatureBuilder::new("monster.goblin_warrior")
-            .level(1)
+        let goblin = CreatureBuilder::monster("monster.goblin_warrior")
             .position([3.0, 0.0, 0.0], false)
             .spawn(&mut engine_state);
 
@@ -1029,8 +1027,7 @@ mod tests {
     ) {
         let (mut engine_state, fighter) = engine_state_fighter;
 
-        let goblin = CreatureBuilder::new("monster.goblin_warrior")
-            .level(1)
+        let goblin = CreatureBuilder::monster("monster.goblin_warrior")
             .position([100.0, 0.0, 0.0], false)
             .spawn(&mut engine_state);
 
@@ -1086,11 +1083,11 @@ mod tests {
     fn engine_state_reaction(
         mut engine_state: EngineState,
     ) -> (EngineState, EntityIdentifier, EntityIdentifier) {
-        let fighter = CreatureBuilder::new("hero.fighter")
+        let fighter = CreatureBuilder::hero("hero.fighter")
             .level(5)
             .position([0.0, 0.0, 0.0], false)
             .spawn(&mut engine_state);
-        let wizard = CreatureBuilder::new("hero.wizard")
+        let wizard = CreatureBuilder::hero("hero.wizard")
             .level(5)
             .position([1.0, 0.0, 0.0], false)
             .spawn(&mut engine_state);

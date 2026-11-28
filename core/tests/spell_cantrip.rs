@@ -15,16 +15,17 @@ use uom::si::{f32::Length, length::foot};
 #[test]
 fn acid_splash() {
     let mut scenario = Scenario::new();
-    scenario.spawn("wizard", "hero.wizard").level(1).spawn();
+    scenario
+        .spawn_hero("wizard", "hero.wizard")
+        .level(1)
+        .spawn();
     // Spawn them next to each other so they both get hit
     scenario
-        .spawn("goblin_1", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin_1", "monster.goblin_warrior")
         .position([3.0, 0.0, 0.5], false)
         .spawn();
     scenario
-        .spawn("goblin_2", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin_2", "monster.goblin_warrior")
         .position([3.0, 0.0, -0.5], false)
         .spawn();
 
@@ -67,12 +68,11 @@ fn acid_splash() {
 fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("wizard", "hero.wizard")
+        .spawn_hero("wizard", "hero.wizard")
         .level(wizard_level)
         .spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .spawn();
 
     scenario
@@ -105,10 +105,12 @@ fn fire_bolt(#[case] wizard_level: u8, #[case] expected_dice_num: u32) {
 #[test]
 fn ray_of_frost() {
     let mut scenario = Scenario::new();
-    scenario.spawn("wizard", "hero.wizard").level(4).spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_hero("wizard", "hero.wizard")
+        .level(4)
+        .spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .spawn();
 
     let goblin_speed = scenario.probe("goblin").movement_speed();

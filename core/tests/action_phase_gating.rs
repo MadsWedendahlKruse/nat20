@@ -84,10 +84,12 @@ fn phase_gating(
     #[case] expected_gated_rolls: usize,
 ) {
     let mut scenario = Scenario::new();
-    scenario.spawn("wizard", "hero.wizard").level(4).spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_hero("wizard", "hero.wizard")
+        .level(4)
+        .spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .spawn();
 
     cast_gated_ray_of_frost(&mut scenario, requires, attack_outcome);

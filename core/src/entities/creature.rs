@@ -23,12 +23,17 @@ use crate::{
             hit_points::HitPoints,
             life_state::{DeathPolicy, LifeState},
         },
-        id::{AIControllerId, BackgroundId, FeatId, Name, SpeciesId, SubspeciesId},
+        id::{AIControllerId, BackgroundId, FeatId, MonsterId, Name, SpeciesId, SubspeciesId},
         items::{
-            equipment::{armor::ArmorTrainingMap, loadout::Loadout, weapon::WeaponProficiencyMap},
-            inventory::Inventory,
+            equipment::{
+                armor::{ArmorTrainingMap, ArmorType},
+                loadout::Loadout,
+                weapon::WeaponProficiencyMap,
+            },
+            inventory::{Inventory, ItemInstance},
         },
         level::{ChallengeRating, CharacterLevels},
+        modifier::ModifierSource,
         resource::ResourceMap,
         saving_throw::SavingThrowSet,
         scratchpad::Scratchpad,
@@ -39,13 +44,21 @@ use crate::{
         time::{EntityClock, TimeStep},
     },
     engine::engine_state::EngineState,
+    entities::{
+        self,
+        common::{EntityTemplate, EntityUpdater},
+    },
     from_world,
-    registry::{self, registry::rules},
+    registry::{
+        self,
+        registry::{ItemsRegistry, MonstersRegistry, rules},
+    },
     systems::{
         self,
         combat::CombatState,
         entities::EntityKind,
         geometry::Pose,
+        level_up::LevelUpDecision,
         movement::{MOVEMENT_SPEED, MoveMode},
         time::RestKind,
     },
@@ -149,6 +162,47 @@ impl Default for Character {
     }
 }
 
+pub struct CharacterUpdater;
+
+impl EntityUpdater for CharacterUpdater {
+    fn should_update(&self, engine_state: &EngineState, entity: Entity) -> bool {
+        should_update(engine_state, entity)
+    }
+
+    fn update(&self, engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
+        update(engine_state, delta_time, entity);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CharacterTemplate {
+    pub name: Name,
+    pub levels: u8,
+    // TODO: Should these be stored somewhere else?
+    pub level_up_decisions: Vec<LevelUpDecision>,
+}
+
+impl EntityTemplate for CharacterTemplate {
+    type TemplateError = ();
+
+    fn spawn(
+        &self,
+        engine_state: &mut EngineState,
+        id: Option<Entity>,
+    ) -> Result<Entity, Self::TemplateError> {
+        let character = Character::new(self.name.clone());
+        let entity = entities::common::spawn_bundle(engine_state, character, id);
+        systems::level_up::apply_level_up_decision(
+            engine_state,
+            entity,
+            self.levels,
+            &self.level_up_decisions,
+        );
+
+        Ok(entity)
+    }
+}
+
 from_world!(
     #[derive(Bundle, Clone)]
     pub struct Monster {
@@ -235,7 +289,86 @@ impl Monster {
     }
 }
 
-pub fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
+pub struct MonsterUpdater;
+
+impl EntityUpdater for MonsterUpdater {
+    fn should_update(&self, engine_state: &EngineState, entity: Entity) -> bool {
+        should_update(engine_state, entity)
+    }
+
+    fn update(&self, engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
+        update(engine_state, delta_time, entity);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MonsterTemplate {
+    pub monster_id: MonsterId,
+}
+
+#[derive(Debug, Clone)]
+pub enum MonsterTemplateError {
+    MonsterNotFound(MonsterId),
+}
+
+impl EntityTemplate for MonsterTemplate {
+    type TemplateError = MonsterTemplateError;
+
+    fn spawn(
+        &self,
+        engine_state: &mut EngineState,
+        id: Option<Entity>,
+    ) -> Result<Entity, Self::TemplateError> {
+        let Some(monster) = MonstersRegistry::get(&self.monster_id) else {
+            return Err(MonsterTemplateError::MonsterNotFound(
+                self.monster_id.clone(),
+            ));
+        };
+
+        let entity =
+            entities::common::spawn_bundle(engine_state, Monster::from(monster.clone()), id);
+
+        for item_id in &monster.gear {
+            // Monsters are considered proficient with all their equipment
+            // so we can add proficiency for what they equip
+            match ItemsRegistry::get(item_id).unwrap() {
+                ItemInstance::Armor(armor) => {
+                    systems::helpers::get_component_mut::<ArmorTrainingMap>(
+                        &mut engine_state.world,
+                        entity,
+                    )
+                    .set_proficient(armor.armor_type.clone(), ModifierSource::Base);
+                }
+                ItemInstance::Shield(_) => {
+                    systems::helpers::get_component_mut::<ArmorTrainingMap>(
+                        &mut engine_state.world,
+                        entity,
+                    )
+                    .set_proficient(ArmorType::Shield, ModifierSource::Base);
+                }
+                ItemInstance::Weapon(weapon) => {
+                    systems::helpers::get_component_mut::<WeaponProficiencyMap>(
+                        &mut engine_state.world,
+                        entity,
+                    )
+                    .set_proficient(weapon.category().clone(), ModifierSource::Base);
+                }
+                _ => {}
+            }
+
+            if let Err(error) = systems::loadout::equip(engine_state, entity, item_id) {
+                warn!(
+                    "Failed to equip item {:?} on entity {:?}: {:?}",
+                    item_id, entity, error
+                );
+            }
+        }
+
+        Ok(entity)
+    }
+}
+
+fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
     if let Some(scope) = engine_state.scope_for_entity(entity)
         && let Some(pending_event) = scope.pending_events().front()
     {
@@ -245,7 +378,7 @@ pub fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
     }
 }
 
-pub fn update(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
+fn update(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
     let time_step = TimeStep::RealTime {
         delta_seconds: delta_time,
     };

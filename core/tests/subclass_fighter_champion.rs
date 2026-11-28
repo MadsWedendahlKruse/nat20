@@ -15,7 +15,7 @@ use nat20_core::{
 fn fighter_scenario(level: u8) -> Scenario {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .level(level)
         .spawn();
     scenario
@@ -40,10 +40,12 @@ fn champion_improved_critical() {
 #[test]
 fn champion_remarkable_athlete() {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(3).spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_hero("fighter", "hero.fighter")
+        .level(3)
+        .spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -83,11 +85,11 @@ fn champion_remarkable_athlete() {
 fn champion_additional_fighting_style() {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("fighter_lvl_6", "hero.fighter")
+        .spawn_hero("fighter_lvl_6", "hero.fighter")
         .level(6)
         .spawn();
     scenario
-        .spawn("fighter_lvl_7", "hero.fighter")
+        .spawn_hero("fighter_lvl_7", "hero.fighter")
         .level(7)
         .spawn();
 
@@ -120,7 +122,10 @@ fn champion_superior_critical() {
 #[test]
 fn champion_survivor() {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").level(18).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(18)
+        .spawn();
 
     scenario
         .probe("fighter")

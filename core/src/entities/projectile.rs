@@ -8,8 +8,11 @@ use crate::{
     components::actions::targeting::{
         LineOfSight, LineOfSightExtentTemplate, LineOfSightTrajectory, TargetInstance,
     },
-    engine::{action_prompt::ActionData, engine_state::EngineState},
-    entities,
+    engine::engine_state::EngineState,
+    entities::{
+        self,
+        common::{EntityTemplate, EntityUpdater},
+    },
     systems::{
         self,
         entities::EntityKind,
@@ -32,46 +35,50 @@ impl Projectile {
     }
 }
 
-pub fn should_update(engine_state: &EngineState, entity: Entity) -> bool {
-    if let Ok(projectile) = engine_state.world.get::<&ProjectileData>(entity) {
-        entities::creature::should_update(engine_state, projectile.owner)
-    } else {
-        false
-    }
-}
+pub struct ProjectileUpdater;
 
-pub fn update(engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
-    let owner = {
-        let Ok(mut projectile) = engine_state.world.get::<&mut ProjectileData>(entity) else {
-            return;
+impl EntityUpdater for ProjectileUpdater {
+    fn should_update(&self, engine_state: &EngineState, entity: Entity) -> bool {
+        if let Ok(projectile) = engine_state.world.get::<&ProjectileData>(entity) {
+            systems::entities::should_update(engine_state, projectile.owner)
+        } else {
+            false
+        }
+    }
+
+    fn update(&self, engine_state: &mut EngineState, delta_time: f32, entity: Entity) {
+        let owner = {
+            let Ok(mut projectile) = engine_state.world.get::<&mut ProjectileData>(entity) else {
+                return;
+            };
+
+            projectile.flight_time += delta_time;
+            projectile.pose.translation = projectile
+                .trajectory
+                .position_at_time(projectile.flight_time)
+                .into();
+            if let Some(orientation) = projectile
+                .trajectory
+                .orientation_at_time(projectile.flight_time)
+            {
+                projectile.pose.rotation = orientation;
+            }
+
+            if projectile.flight_time < projectile.time_of_impact {
+                return;
+            }
+
+            projectile.owner
         };
 
-        projectile.flight_time += delta_time;
-        projectile.pose.translation = projectile
-            .trajectory
-            .position_at_time(projectile.flight_time)
-            .into();
-        if let Some(orientation) = projectile
-            .trajectory
-            .orientation_at_time(projectile.flight_time)
-        {
-            projectile.pose.rotation = orientation;
-        }
+        debug!("Projectile {:?} has reached its target", entity);
 
-        if projectile.flight_time < projectile.time_of_impact {
-            return;
-        }
+        engine_state
+            .despawn(entity)
+            .expect("Failed to despawn projectile entity");
 
-        projectile.owner
-    };
-
-    debug!("Projectile {:?} has reached its target", entity);
-
-    engine_state
-        .despawn(entity)
-        .expect("Failed to despawn projectile entity");
-
-    systems::actions::projectile_impact(engine_state, owner);
+        systems::actions::projectile_impact(engine_state, owner);
+    }
 }
 
 // TODO: Not sure if it's the most ECS-idiomatic solution to just cram everything
@@ -93,21 +100,28 @@ pub enum ProjectileError {
 }
 
 #[derive(Debug, Clone)]
-pub enum ProjectileTemplate {
+pub enum ProjectileTrajectory {
     Ray { velocity: Velocity },
     Parabola { launch_velocity: Velocity },
 }
 
-impl ProjectileTemplate {
-    pub fn instantiate(
+pub struct ProjectileTemplate {
+    pub trajectory: ProjectileTrajectory,
+    pub actor: Entity,
+    pub target: TargetInstance,
+}
+
+impl EntityTemplate for ProjectileTemplate {
+    type TemplateError = ProjectileError;
+
+    fn spawn(
         &self,
         engine_state: &mut EngineState,
-        action: &ActionData,
-        target: &TargetInstance,
-    ) -> Result<Projectile, ProjectileError> {
-        let trajectory = match self {
-            ProjectileTemplate::Ray { .. } => LineOfSightTrajectory::Ray,
-            ProjectileTemplate::Parabola { launch_velocity } => LineOfSightTrajectory::Parabola {
+        id: Option<Entity>,
+    ) -> Result<Entity, Self::TemplateError> {
+        let trajectory = match &self.trajectory {
+            ProjectileTrajectory::Ray { .. } => LineOfSightTrajectory::Ray,
+            ProjectileTrajectory::Parabola { launch_velocity } => LineOfSightTrajectory::Parabola {
                 launch_velocity: *launch_velocity,
             },
         };
@@ -115,8 +129,8 @@ impl ProjectileTemplate {
         let mut line_of_sight_result = systems::geometry::line_of_sight_entity_target(
             &engine_state.world,
             &engine_state.geometry,
-            action.actor.id(),
-            target,
+            self.actor,
+            &self.target,
             &LineOfSight {
                 trajectory,
                 extent: LineOfSightExtentTemplate::Point,
@@ -142,8 +156,8 @@ impl ProjectileTemplate {
         };
         let mut time_of_impact = closest.toi;
 
-        match (&self, &mut raycast_result.mode) {
-            (ProjectileTemplate::Ray { velocity }, RaycastMode::Ray(ray)) => {
+        match (&self.trajectory, &mut raycast_result.mode) {
+            (ProjectileTrajectory::Ray { velocity }, RaycastMode::Ray(ray)) => {
                 // Scale the time of impact so it matches the velocity of the projectile
                 let velocity = velocity.get::<meter_per_second>();
                 time_of_impact /= velocity;
@@ -155,12 +169,16 @@ impl ProjectileTemplate {
             _ => { /* Don't think it's necesarry to do anything else */ }
         }
 
-        Ok(Projectile::new(ProjectileData {
-            pose: raycast_result.mode.pose_at_time(0.0),
-            trajectory: raycast_result.mode.clone(),
-            flight_time: 0.0,
-            time_of_impact,
-            owner: action.actor.id(),
-        }))
+        Ok(entities::common::spawn_bundle(
+            engine_state,
+            Projectile::new(ProjectileData {
+                pose: raycast_result.mode.pose_at_time(0.0),
+                trajectory: raycast_result.mode.clone(),
+                flight_time: 0.0,
+                time_of_impact,
+                owner: self.actor,
+            }),
+            id,
+        ))
     }
 }

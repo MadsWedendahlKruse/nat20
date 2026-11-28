@@ -23,7 +23,7 @@ use nat20_core::{
     },
     engine::{
         action_prompt::{ActionData, ActionDecisionKind, ActionError},
-        event::{Event, EventId, EventKind},
+        event::EventId,
     },
     systems::{
         actions::{ActionUsabilityError, ReactionUsabilityError, VariantUsabilityError},
@@ -39,18 +39,16 @@ fn scenario() -> Scenario {
 
     // Spawn some random entities so we have something to chose form
     scenario
-        .spawn("barbarian", "hero.barbarian")
+        .spawn_hero("barbarian", "hero.barbarian")
         .level(9)
         .position([0.0, 0.0, 0.0], true)
         .spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        // Higher level so he doesn't get one-shot
-        .level(5)
+        .spawn_monster("dummy", "monster.training_dummy")
         .position([1.5, 0.0, 0.0], true)
         .spawn();
     scenario
-        .spawn("wizard", "hero.wizard")
+        .spawn_hero("wizard", "hero.wizard")
         .level(5)
         .position([0.0, 0.0, 1.5], true)
         .spawn();
@@ -66,7 +64,7 @@ fn known_action(mut scenario: Scenario) {
         "action.melee_attack".into(),
         ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -91,7 +89,7 @@ fn known_action_invalid_resource(mut scenario: Scenario) {
             "resource.bonus_action".into(),
             ResourceAmount::Flat(1),
         )]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -124,7 +122,7 @@ fn known_action_invalid_context(mut scenario: Scenario) {
         "action.melee_attack".into(),
         ActionContext::empty(),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -157,7 +155,7 @@ fn unknown_action(mut scenario: Scenario) {
         "action.ranged_attack".into(),
         ActionContext::ranged_weapon(EquipmentSlot::RangedMainHand),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -186,7 +184,7 @@ fn nonexistent_action(mut scenario: Scenario) {
         "action.nonexistent".into(),
         ActionContext::empty(),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -218,7 +216,7 @@ fn known_cantrip(mut scenario: Scenario) {
             0,
         ),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -246,7 +244,7 @@ fn known_cantrip_leveled(mut scenario: Scenario) {
             1,
         ),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -293,7 +291,7 @@ fn unknown_cantrip(mut scenario: Scenario) {
             0,
         ),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -330,7 +328,7 @@ fn unknown_spell_own_class(mut scenario: Scenario) {
             1,
         ),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -408,7 +406,7 @@ fn reaction_as_action(mut scenario: Scenario) {
                 ResourceAmount::Tiered { tier: 3, amount: 1 },
             ),
         ]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -449,7 +447,7 @@ fn reaction_no_trigger_event(mut scenario: Scenario) {
                 ResourceAmount::Tiered { tier: 3, amount: 1 },
             ),
         ]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Reaction {
@@ -487,7 +485,7 @@ fn reaction_no_pending_event(mut scenario: Scenario) {
         "action.melee_attack".into(),
         ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
     scenario
         .submit_action_decision(ActionDecisionKind::Action {
@@ -495,17 +493,7 @@ fn reaction_no_pending_event(mut scenario: Scenario) {
         })
         .expect("melee attack should be submittable");
 
-    // Counterspell has a trigger event, but there's nothing pending to react to
-    let trigger = Event::new(EventKind::ActionRequested {
-        action: ActionData::new(
-            scenario.entity_identifier("goblin"),
-            "action.melee_attack".into(),
-            ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
-            ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-            vec![TargetInstance::entity(scenario.entity_identifier("wizard"))],
-        ),
-    });
-
+    // Cast Counterspell with a trigger event, but there's nothing pending to react to
     let action = ActionData::new(
         scenario.entity_identifier("wizard"),
         "action.counterspell".into(),
@@ -524,9 +512,11 @@ fn reaction_no_pending_event(mut scenario: Scenario) {
                 ResourceAmount::Tiered { tier: 3, amount: 1 },
             ),
         ]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(
+            scenario.entity_identifier("barbarian"),
+        )],
     )
-    .with_trigger_event(trigger.id);
+    .with_trigger_event(EventId::new_v4());
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Reaction {
         event: EventId::new_v4(),
@@ -557,7 +547,7 @@ fn dead_actor(mut scenario: Scenario) {
         "action.melee_attack".into(),
         ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -578,7 +568,10 @@ fn dead_actor(mut scenario: Scenario) {
 #[rstest]
 fn action_on_cooldown(mut scenario: Scenario) {
     // Action Surge doesn't come back until the fighter has had a short rest
-    scenario.spawn("fighter", "hero.fighter").level(5).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(5)
+        .spawn();
 
     fn action_surge(scenario: &Scenario) -> ActionData {
         ActionData::new(
@@ -631,7 +624,7 @@ fn not_enough_resources(mut scenario: Scenario) {
                 0,
             ),
             ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-            vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+            vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
         )
     }
 
@@ -690,8 +683,8 @@ fn too_many_targets(mut scenario: Scenario) {
         ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
         vec![
-            TargetInstance::entity(scenario.entity_identifier("goblin")),
-            TargetInstance::entity(scenario.entity_identifier("goblin")),
+            TargetInstance::entity(scenario.entity_identifier("dummy")),
+            TargetInstance::entity(scenario.entity_identifier("dummy")),
         ],
     );
 
@@ -713,8 +706,7 @@ fn too_many_targets(mut scenario: Scenario) {
 #[rstest]
 fn target_out_of_range(mut scenario: Scenario) {
     scenario
-        .spawn("distant_goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("distant_goblin", "monster.goblin_warrior")
         .position([30.0, 0.0, 0.0], true)
         .spawn();
 
@@ -759,7 +751,7 @@ fn target_not_self(mut scenario: Scenario) {
             ("resource.bonus_action".into(), ResourceAmount::Flat(1)),
             ("resource.barbarian.rage".into(), ResourceAmount::Flat(1)),
         ]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -768,7 +760,7 @@ fn target_not_self(mut scenario: Scenario) {
         result,
         Err(ActivityError::ActionError(ActionError::Usability(
             ActionUsabilityError::TargetingError(TargetingError::NotSelf {
-                target: TargetInstance::entity(scenario.entity_identifier("goblin")),
+                target: TargetInstance::entity(scenario.entity_identifier("dummy")),
                 actor: scenario.entity_identifier("barbarian"),
             })
         )))
@@ -783,7 +775,7 @@ fn target_not_self(mut scenario: Scenario) {
 #[rstest]
 fn invalid_target(mut scenario: Scenario) {
     // Fire Bolt doesn't target the dead
-    scenario.probe("goblin").kill();
+    scenario.probe("dummy").kill();
 
     let action = ActionData::new(
         scenario.entity_identifier("wizard"),
@@ -797,7 +789,7 @@ fn invalid_target(mut scenario: Scenario) {
             0,
         ),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -806,7 +798,7 @@ fn invalid_target(mut scenario: Scenario) {
         result,
         Err(ActivityError::ActionError(ActionError::Usability(
             ActionUsabilityError::TargetingError(TargetingError::InvalidTarget {
-                target: TargetInstance::entity(scenario.entity_identifier("goblin")),
+                target: TargetInstance::entity(scenario.entity_identifier("dummy")),
                 violated_filters: vec![TargetFilter::Entity(EntityFilter::NotLifeStates(
                     HashSet::from([LifeState::Dead])
                 ))],
@@ -874,7 +866,7 @@ fn effect_blocks_action(mut scenario: Scenario) {
             0,
         ),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     );
 
     let result = scenario.submit_action_decision(ActionDecisionKind::Action { action });
@@ -955,7 +947,7 @@ fn brutal_strike(scenario: &Scenario) -> ActionData {
                 ResourceAmount::Flat(1),
             ),
         ]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     )
 }
 
@@ -1032,7 +1024,7 @@ fn variant_on_standard_action(mut scenario: Scenario) {
         "action.melee_attack".into(),
         ActionContext::melee_weapon(EquipmentSlot::MeleeMainHand),
         ResourceAmountMap::from_iter(vec![("resource.action".into(), ResourceAmount::Flat(1))]),
-        vec![TargetInstance::entity(scenario.entity_identifier("goblin"))],
+        vec![TargetInstance::entity(scenario.entity_identifier("dummy"))],
     )
     .with_variant("variant.brutal_strike.forceful_blow");
 

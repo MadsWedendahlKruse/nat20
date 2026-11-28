@@ -1,0 +1,27 @@
+{
+    "id": "nat20_core::monster.goblin_warrior",
+    "name": "Goblin Warrior",
+    "brain": "nat20_core::ai_controller.random",
+    "challenge_rating": "1/4",
+    "size": "small",
+    "creature_type": "fey",
+    "abilities": {
+        "strength": 8,
+        "dexterity": 15,
+        "constitution": 10,
+        "intelligence": 10,
+        "wisdom": 8,
+        "charisma": 8
+    },
+    "hit_points": 10,
+    "speed": "30 ft",
+    "factions": [
+        "nat20_core::faction.goblins"
+    ],
+    "gear": [
+        "nat20_core::item.leather_armor",
+        "nat20_core::item.scimitar",
+        "nat20_core::item.shield",
+        "nat20_core::item.shortbow"
+    ]
+}

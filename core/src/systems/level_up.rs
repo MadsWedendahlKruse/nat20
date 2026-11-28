@@ -634,9 +634,9 @@ pub fn apply_level_up_decision(
     engine_state: &mut EngineState,
     entity: Entity,
     levels: u8,
-    decisions: Vec<LevelUpDecision>,
+    decisions: &Vec<LevelUpDecision>,
 ) {
-    let mut decisions = decisions;
+    let mut decisions = decisions.clone();
 
     for level in 1..=levels {
         let name = systems::helpers::get_component_clone::<Name>(&engine_state.world, entity);

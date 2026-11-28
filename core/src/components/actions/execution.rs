@@ -29,9 +29,13 @@ use crate::{
         engine_state::EngineState,
         event::{CallbackResult, Event, EventCallback, EventKind},
     },
+    entities::{
+        common::EntityTemplate,
+        projectile::{ProjectileData, ProjectileTemplate},
+    },
     registry::registry::SpellsRegistry,
-    systems,
     systems::{
+        self,
         effects::EffectApplicationResult,
         geometry::{Displacement, DisplacementTemplate},
     },
@@ -208,7 +212,7 @@ impl PhaseState {
                 PhasePerformResult::Applied
             }
 
-            PayloadDelivery::Projectile { template } => {
+            PayloadDelivery::Projectile { trajectory } => {
                 match self.condition {
                     ActionConditionKind::None | ActionConditionKind::AttackRoll => {
                         if !self.resolve_condition(engine_state) {
@@ -221,23 +225,34 @@ impl PhaseState {
                     ActionConditionKind::SavingThrow => { /* Don't resolve anything in advance */ }
                 }
 
-                let projectile = template.instantiate(engine_state, &self.action, &self.target);
+                let template = ProjectileTemplate {
+                    trajectory,
+                    actor: self.action.actor.id(),
+                    target: self.target.clone(),
+                };
 
-                if let Ok(projectile) = projectile {
-                    debug!("Instantiated projectile {:?}", projectile);
-                    engine_state.world.spawn(projectile);
-                    // The steps are applied when the projectile lands and the
-                    // execution resumes this phase
-                    self.delivery = PayloadDelivery::Immediate;
-                    PhasePerformResult::ProjectileLaunched
-                } else {
-                    error!(
-                        "Failed to instantiate projectile for action instance {:?}: {:?}",
-                        self.action.instance_id,
-                        projectile.err()
-                    );
-                    self.steps.clear();
-                    PhasePerformResult::Applied
+                match template.spawn(engine_state, None) {
+                    Ok(entity) => {
+                        debug!(
+                            "Instantiated projectile {:?}",
+                            systems::helpers::get_component::<ProjectileData>(
+                                &engine_state.world,
+                                entity
+                            )
+                        );
+                        // The steps are applied when the projectile lands and the
+                        // execution resumes this phase
+                        self.delivery = PayloadDelivery::Immediate;
+                        PhasePerformResult::ProjectileLaunched
+                    }
+                    Err(error) => {
+                        error!(
+                            "Failed to instantiate projectile for action instance {:?}: {:?}",
+                            self.action.instance_id, error
+                        );
+                        self.steps.clear();
+                        PhasePerformResult::Applied
+                    }
                 }
             }
         }
@@ -437,11 +452,7 @@ impl StepState {
                 )
             }
         }
-        .with_parent(
-            engine_state
-                .event_log
-                .action_event_id(&action.instance_id),
-        );
+        .with_parent(engine_state.event_log.action_event_id(&action.instance_id));
 
         let callback = EventCallback::new(move |engine_state, event, _| match &event.kind {
             EventKind::D20CheckResolved { result, dc, .. } => {
@@ -509,11 +520,7 @@ impl StepState {
             actor: Some(action.actor.clone()),
             action: Some(action.action_id.clone()),
         })
-        .with_parent(
-            engine_state
-                .event_log
-                .action_event_id(&action.instance_id),
-        );
+        .with_parent(engine_state.event_log.action_event_id(&action.instance_id));
 
         engine_state.process_event(event);
     }
@@ -636,11 +643,7 @@ impl StepComponent {
                     actor: action.actor.clone(),
                     result: damage_roll,
                 })
-                .with_parent(
-                    engine_state
-                        .event_log
-                        .action_event_id(&action.instance_id),
-                );
+                .with_parent(engine_state.event_log.action_event_id(&action.instance_id));
 
                 let actor = action.actor.id();
                 let callback =

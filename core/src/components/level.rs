@@ -1,10 +1,10 @@
-use std::{collections::HashMap, sync::LazyLock};
+use std::{collections::HashMap, fmt, str::FromStr, sync::LazyLock};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     components::id::{ClassId, SubclassId},
-    registry::registry::ClassesRegistry,
+    registry::{registry::ClassesRegistry, serialize::schema::impl_string_schema},
 };
 
 pub trait Level {
@@ -12,8 +12,8 @@ pub trait Level {
 
     fn proficiency_bonus(&self) -> u8 {
         let total_level = self.total_level();
-        if total_level == 0 {
-            return 0;
+        if total_level < 4 {
+            return 2;
         }
         // Proficiency bonus is typically calculated as (total level - 1) / 4 + 2
         // This is a common rule in many RPG systems, including D&D 5e
@@ -22,65 +22,116 @@ pub trait Level {
 }
 
 // TODO: Not sure if hardcoding this is the best approach, but it works for now
-static EXPERIENCE_BY_CHALLENGE_RATING: LazyLock<HashMap<u8, u32>> = LazyLock::new(|| {
-    HashMap::from([
-        (0, 0),
-        (1, 200),
-        (2, 450),
-        (3, 700),
-        (4, 1100),
-        (5, 1800),
-        (6, 2300),
-        (7, 2900),
-        (8, 3900),
-        (9, 5000),
-        (10, 5900),
-        (11, 7200),
-        (12, 8400),
-        (13, 10000),
-        (14, 11500),
-        (15, 13000),
-        (16, 15000),
-        (17, 18000),
-        (18, 20000),
-        (19, 22000),
-        (20, 25000),
-        (21, 33000),
-        (22, 41000),
-        (23, 50000),
-        (24, 62000),
-        (25, 75000),
-        (26, 90000),
-        (27, 105000),
-        (28, 120000),
-        (29, 135000),
-        (30, 155000),
-    ])
-});
+static EXPERIENCE_BY_CHALLENGE_RATING: LazyLock<HashMap<ChallengeRating, u32>> =
+    LazyLock::new(|| {
+        HashMap::from([
+            (ChallengeRating::Full(0), 0),
+            (ChallengeRating::Eighth, 25),
+            (ChallengeRating::Quarter, 50),
+            (ChallengeRating::Half, 100),
+            (ChallengeRating::Full(1), 200),
+            (ChallengeRating::Full(2), 450),
+            (ChallengeRating::Full(3), 700),
+            (ChallengeRating::Full(4), 1100),
+            (ChallengeRating::Full(5), 1800),
+            (ChallengeRating::Full(6), 2300),
+            (ChallengeRating::Full(7), 2900),
+            (ChallengeRating::Full(8), 3900),
+            (ChallengeRating::Full(9), 5000),
+            (ChallengeRating::Full(10), 5900),
+            (ChallengeRating::Full(11), 7200),
+            (ChallengeRating::Full(12), 8400),
+            (ChallengeRating::Full(13), 10000),
+            (ChallengeRating::Full(14), 11500),
+            (ChallengeRating::Full(15), 13000),
+            (ChallengeRating::Full(16), 15000),
+            (ChallengeRating::Full(17), 18000),
+            (ChallengeRating::Full(18), 20000),
+            (ChallengeRating::Full(19), 22000),
+            (ChallengeRating::Full(20), 25000),
+            (ChallengeRating::Full(21), 33000),
+            (ChallengeRating::Full(22), 41000),
+            (ChallengeRating::Full(23), 50000),
+            (ChallengeRating::Full(24), 62000),
+            (ChallengeRating::Full(25), 75000),
+            (ChallengeRating::Full(26), 90000),
+            (ChallengeRating::Full(27), 105000),
+            (ChallengeRating::Full(28), 120000),
+            (ChallengeRating::Full(29), 135000),
+            (ChallengeRating::Full(30), 155000),
+        ])
+    });
 
-/// The SRD supports fractional challenge ratings, but that's a bit more complex
-/// to handle, so we'll stick with whole numbers for now
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChallengeRating(u8);
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum ChallengeRating {
+    Eighth,
+    Quarter,
+    Half,
+    Full(u8),
+}
 
-impl ChallengeRating {
-    pub fn new(level: u8) -> Self {
-        if level == 0 {
-            panic!("Creature level cannot be zero");
+impl FromStr for ChallengeRating {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "1/8" => Ok(ChallengeRating::Eighth),
+            "1/4" => Ok(ChallengeRating::Quarter),
+            "1/2" => Ok(ChallengeRating::Half),
+            _ => {
+                if let Ok(value) = s.parse::<u8>() {
+                    Ok(ChallengeRating::Full(value))
+                } else {
+                    Err(format!("Invalid challenge rating: {}", s))
+                }
+            }
         }
-        Self(level)
     }
+}
 
-    pub fn experience(&self) -> u32 {
-        *EXPERIENCE_BY_CHALLENGE_RATING.get(&self.0).unwrap_or(&0)
+impl TryFrom<String> for ChallengeRating {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(&value)
+    }
+}
+
+impl fmt::Display for ChallengeRating {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ChallengeRating::Eighth => write!(f, "1/8"),
+            ChallengeRating::Quarter => write!(f, "1/4"),
+            ChallengeRating::Half => write!(f, "1/2"),
+            ChallengeRating::Full(value) => write!(f, "{}", value),
+        }
+    }
+}
+
+impl From<ChallengeRating> for String {
+    fn from(value: ChallengeRating) -> Self {
+        value.to_string()
     }
 }
 
 impl Level for ChallengeRating {
     fn total_level(&self) -> u8 {
-        self.0
+        match self {
+            ChallengeRating::Eighth => 0,
+            ChallengeRating::Quarter => 0,
+            ChallengeRating::Half => 0,
+            ChallengeRating::Full(value) => *value,
+        }
     }
 }
+
+impl_string_schema!(
+    ChallengeRating,
+    "ChallengeRating",
+    "description": "The challenge rating of a creature, representing its relative difficulty.",
+    "example": ["1/8", "1/4", "1/2", "1", "2", "3"],
+);
 
 // TODO: Not sure if hardcoding this is the best approach, but it works for now
 static EXPERIENCE_PER_LEVEL: LazyLock<Vec<u32>> = LazyLock::new(|| {
@@ -252,14 +303,8 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "Creature level cannot be zero")]
-    fn creature_level_zero_panics() {
-        ChallengeRating::new(0);
-    }
-
-    #[test]
     fn creature_level_new_and_total_level() {
-        let lvl = ChallengeRating::new(5);
+        let lvl = ChallengeRating::Full(5);
         assert_eq!(lvl.total_level(), 5);
     }
 

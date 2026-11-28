@@ -1,0 +1,20 @@
+{
+    "id": "nat20_core::monster.training_dummy",
+    "name": "Training Dummy",
+    "brain": "nat20_core::ai_controller.random",
+    "challenge_rating": "1",
+    "size": "medium",
+    "creature_type": "construct",
+    "abilities": {
+        "strength": 10,
+        "dexterity": 10,
+        "constitution": 10,
+        "intelligence": 10,
+        "wisdom": 10,
+        "charisma": 10
+    },
+    "hit_points": 1000,
+    "speed": "0 ft",
+    "factions": [],
+    "gear": []
+}

@@ -18,9 +18,18 @@ fn despawned_participant_is_removed_from_the_turn_order(
     #[case] turn_order: Vec<&str>,
 ) {
     let mut scenario = Scenario::new();
-    scenario.spawn("first", "hero.fighter").level(1).spawn();
-    scenario.spawn("second", "hero.wizard").level(1).spawn();
-    scenario.spawn("third", "hero.warlock").level(1).spawn();
+    scenario
+        .spawn_hero("first", "hero.fighter")
+        .level(1)
+        .spawn();
+    scenario
+        .spawn_hero("second", "hero.wizard")
+        .level(1)
+        .spawn();
+    scenario
+        .spawn_hero("third", "hero.warlock")
+        .level(1)
+        .spawn();
 
     scenario
         .encounter()
@@ -38,9 +47,12 @@ fn despawned_participant_is_removed_from_the_turn_order(
 #[test]
 fn turn_boundary_events_belong_to_the_encounter() {
     let mut scenario = Scenario::new();
-    scenario.spawn("warlock", "hero.warlock").level(4).spawn();
     scenario
-        .spawn("barbarian", "hero.barbarian")
+        .spawn_hero("warlock", "hero.warlock")
+        .level(4)
+        .spawn();
+    scenario
+        .spawn_hero("barbarian", "hero.barbarian")
         .level(3)
         .position([3.0, 0.0, 0.0], false)
         .spawn();

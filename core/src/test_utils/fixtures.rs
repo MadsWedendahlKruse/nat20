@@ -27,15 +27,14 @@ pub mod creatures {
         use crate::{
             components::{
                 id::{
-                    BackgroundId, ClassId, EntityIdentifier, FeatId, ItemId, Name, SpeciesId,
-                    SpellId, SubclassId, SubspeciesId,
+                    BackgroundId, ClassId, FeatId, ItemId, Name, SpeciesId, SpellId, SubclassId,
+                    SubspeciesId,
                 },
                 level_up::ChoiceItem,
                 modifier::KeyedModifiable,
                 skill::SkillSet,
             },
-            engine::engine_state::EngineState,
-            entities::creature::Character,
+            entities::creature::CharacterTemplate,
             registry::registry::ClassesRegistry,
         };
 
@@ -49,19 +48,11 @@ pub mod creatures {
             );
         }
 
-        pub fn barbarian(
-            engine_state: &mut EngineState,
-            levels: u8,
-            id: Option<Entity>,
-        ) -> EntityIdentifier {
-            let name = Name::new("Conan the Barbarian");
-            let character = Character::new(name.clone());
-            let entity = spawn_entity(engine_state, character, id);
-            systems::level_up::apply_level_up_decision(
-                engine_state,
-                entity,
+        pub fn barbarian(levels: u8) -> CharacterTemplate {
+            CharacterTemplate {
+                name: Name::new("Conan the Barbarian"),
                 levels,
-                vec![
+                level_up_decisions: vec![
                     // Level 1
                     LevelUpDecision::single_choice(ChoiceItem::Species(SpeciesId::new(
                         "nat20_core",
@@ -224,24 +215,14 @@ pub mod creatures {
                         "class.barbarian",
                     ))),
                 ],
-            );
-
-            EntityIdentifier::from_world(&engine_state.world, entity)
+            }
         }
 
-        pub fn fighter(
-            engine_state: &mut EngineState,
-            levels: u8,
-            id: Option<Entity>,
-        ) -> EntityIdentifier {
-            let name = Name::new("Johnny Fighter");
-            let character = Character::new(name.clone());
-            let entity = spawn_entity(engine_state, character, id);
-            systems::level_up::apply_level_up_decision(
-                engine_state,
-                entity,
+        pub fn fighter(levels: u8) -> CharacterTemplate {
+            CharacterTemplate {
+                name: Name::new("Johnny Fighter"),
                 levels,
-                vec![
+                level_up_decisions: vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
                     LevelUpDecision::single_choice(ChoiceItem::Species(SpeciesId::new(
@@ -443,35 +424,14 @@ pub mod creatures {
                         "class.fighter",
                     ))),
                 ],
-            );
-
-            let _ = systems::loadout::equip(
-                engine_state,
-                entity,
-                &ItemId::new("nat20_core", "item.crossbow"),
-            );
-            systems::inventory::add_item(
-                &mut engine_state.world,
-                entity,
-                ItemId::new("nat20_core", "item.admin_dagger"),
-            );
-
-            EntityIdentifier::from_world(&engine_state.world, entity)
+            }
         }
 
-        pub fn wizard(
-            engine_state: &mut EngineState,
-            levels: u8,
-            id: Option<Entity>,
-        ) -> EntityIdentifier {
-            let name = Name::new("Jimmy Wizard");
-            let character = Character::new(name.clone());
-            let entity = spawn_entity(engine_state, character, id);
-            systems::level_up::apply_level_up_decision(
-                engine_state,
-                entity,
+        pub fn wizard(levels: u8) -> CharacterTemplate {
+            CharacterTemplate {
+                name: Name::new("Jimmy Wizard"),
                 levels,
-                vec![
+                level_up_decisions: vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
                     LevelUpDecision::single_choice(ChoiceItem::Species(SpeciesId::new(
@@ -619,24 +579,14 @@ pub mod creatures {
                         vec![SpellId::new("nat20_core", "spell.thunderwave")],
                     ),
                 ],
-            );
-
-            EntityIdentifier::from_world(&engine_state.world, entity)
+            }
         }
 
-        pub fn warlock(
-            engine_state: &mut EngineState,
-            levels: u8,
-            id: Option<Entity>,
-        ) -> EntityIdentifier {
-            let name = Name::new("Bobby Warlock");
-            let character = Character::new(name.clone());
-            let entity = spawn_entity(engine_state, character, id);
-            systems::level_up::apply_level_up_decision(
-                engine_state,
-                entity,
+        pub fn warlock(levels: u8) -> CharacterTemplate {
+            CharacterTemplate {
+                name: Name::new("Bobby Warlock"),
                 levels,
-                vec![
+                level_up_decisions: vec![
                     // Level 1
                     // TODO: Everyone is dragonborn for now
                     LevelUpDecision::single_choice(ChoiceItem::Species(SpeciesId::new(
@@ -746,117 +696,7 @@ pub mod creatures {
                     ))),
                     LevelUpDecision::ReplaceSpells { spells: Vec::new() },
                 ],
-            );
-
-            EntityIdentifier::from_world(&engine_state.world, entity)
-        }
-    }
-
-    pub mod monsters {
-
-        use uom::si::{f32::Length, length::foot};
-
-        use crate::{
-            components::{
-                ability::AbilityScoreMap,
-                faction::FactionSet,
-                health::hit_points::HitPoints,
-                id::{EntityIdentifier, FactionId, ItemId, Name},
-                items::{
-                    equipment::{
-                        armor::{ArmorTrainingMap, ArmorType},
-                        loadout::TryEquipError,
-                        weapon::WeaponProficiencyMap,
-                    },
-                    inventory::ItemInstance,
-                },
-                level::ChallengeRating,
-                species::{CreatureSize, CreatureType},
-                speed::Speed,
-            },
-            engine::engine_state::EngineState,
-            entities::creature::Monster,
-            registry::{self, registry::ItemsRegistry},
-        };
-
-        use super::*;
-
-        pub fn goblin_warrior(
-            engine_state: &mut EngineState,
-            challenge_rating: u8,
-            id: Option<Entity>,
-        ) -> EntityIdentifier {
-            let name = Name::new("Goblin Warrior");
-            let monster = Monster::new(
-                name.clone(),
-                registry::ai::RANDOM_CONTROLLER_ID.clone(),
-                ChallengeRating::new(challenge_rating),
-                // TODO: Figure out proper challenge rating scaling
-                HitPoints::new((10 * challenge_rating) as u32),
-                CreatureSize::Small,
-                CreatureType::Fey,
-                Speed::new(Length::new::<foot>(30.0)),
-                AbilityScoreMap::from([
-                    (Ability::Strength, 10),
-                    (Ability::Dexterity, 14),
-                    (Ability::Constitution, 12),
-                    (Ability::Intelligence, 8),
-                    (Ability::Wisdom, 10),
-                    (Ability::Charisma, 8),
-                ]),
-                FactionSet::from([FactionId::new("nat20_core", "faction.goblins")]),
-            );
-            let entity = spawn_entity(engine_state, monster, id);
-            let _ = monster_equipment(
-                engine_state,
-                entity,
-                &[
-                    ItemId::new("nat20_core", "item.leather_armor"),
-                    ItemId::new("nat20_core", "item.scimitar"),
-                    ItemId::new("nat20_core", "item.shield"),
-                    ItemId::new("nat20_core", "item.shortbow"),
-                ],
-            );
-
-            EntityIdentifier::from_world(&engine_state.world, entity)
-        }
-
-        fn monster_equipment(
-            engine_state: &mut EngineState,
-            entity: Entity,
-            item_ids: &[ItemId],
-        ) -> Result<(), TryEquipError> {
-            for item_id in item_ids {
-                // Monsters are considered proficient with all their equipment
-                // so we can add proficiency for what they equip
-                match ItemsRegistry::get(item_id).unwrap() {
-                    ItemInstance::Armor(armor) => {
-                        systems::helpers::get_component_mut::<ArmorTrainingMap>(
-                            &mut engine_state.world,
-                            entity,
-                        )
-                        .set_proficient(armor.armor_type.clone(), ModifierSource::Base);
-                    }
-                    ItemInstance::Shield(_) => {
-                        systems::helpers::get_component_mut::<ArmorTrainingMap>(
-                            &mut engine_state.world,
-                            entity,
-                        )
-                        .set_proficient(ArmorType::Shield, ModifierSource::Base);
-                    }
-                    ItemInstance::Weapon(weapon) => {
-                        systems::helpers::get_component_mut::<WeaponProficiencyMap>(
-                            &mut engine_state.world,
-                            entity,
-                        )
-                        .set_proficient(weapon.category().clone(), ModifierSource::Base);
-                    }
-                    _ => {}
-                }
-
-                systems::loadout::equip(engine_state, entity, item_id)?;
             }
-            Ok(())
         }
     }
 }

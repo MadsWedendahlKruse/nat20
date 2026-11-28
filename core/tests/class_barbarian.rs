@@ -22,7 +22,7 @@ use uom::si::{f32::Length, length::foot, length::meter};
 fn barbarian_scenario(level: u8) -> Scenario {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("barbarian", "hero.barbarian")
+        .spawn_hero("barbarian", "hero.barbarian")
         .level(level)
         // Turn-based, so the real-time ticks in `perform` don't eat into the
         // Rage duration between the turn boundaries the tests drive manually
@@ -112,8 +112,7 @@ fn rage_grants_resistances_advantage_and_extend_rage() {
 fn rage_bonus_damage_on_strength_attacks() {
     let mut scenario = barbarian_scenario(3);
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -293,7 +292,10 @@ fn rage_requires_no_heavy_armor_and_no_active_rage() {
 #[test]
 fn rage_blocks_spellcasting() {
     let mut scenario = Scenario::new();
-    scenario.spawn("wizard", "hero.wizard").level(3).spawn();
+    scenario
+        .spawn_hero("wizard", "hero.wizard")
+        .level(3)
+        .spawn();
 
     scenario
         .probe("wizard")
@@ -322,7 +324,7 @@ fn rage_ends_when_equipping_heavy_armor() {
 fn rage_ends_when_incapacitated() {
     let mut scenario = barbarian_scenario(3);
     scenario
-        .spawn("warlock", "hero.warlock")
+        .spawn_hero("warlock", "hero.warlock")
         .level(4)
         .position([3.0, 0.0, 0.0], false)
         .spawn();
@@ -373,8 +375,7 @@ fn unarmored_defense() {
 fn reckless_attack_reaction() {
     let mut scenario = barbarian_scenario(3);
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -416,8 +417,7 @@ fn reckless_attack_reaction() {
 fn reckless_attack_advantage_preview() {
     let mut scenario = barbarian_scenario(3);
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(20)
+        .spawn_monster("dummy", "monster.training_dummy")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -425,7 +425,7 @@ fn reckless_attack_advantage_preview() {
     assert_eq!(
         probe
             .preview_attack_roll(
-                "goblin",
+                "dummy",
                 "action.barbarian.reckless_attack",
                 EquipmentSlot::MeleeMainHand
             )
@@ -435,11 +435,7 @@ fn reckless_attack_advantage_preview() {
     // Only for the action that grants it
     assert_eq!(
         probe
-            .preview_attack_roll(
-                "goblin",
-                "action.melee_attack",
-                EquipmentSlot::MeleeMainHand
-            )
+            .preview_attack_roll("dummy", "action.melee_attack", EquipmentSlot::MeleeMainHand)
             .roll_mode(),
         RollMode::Normal
     );
@@ -450,7 +446,7 @@ fn reckless_attack_advantage_preview() {
         .apply_effect("effect.barbarian.reckless_attack_advantage");
 
     let check = scenario.probe("barbarian").preview_attack_roll(
-        "goblin",
+        "dummy",
         "action.barbarian.reckless_attack",
         EquipmentSlot::MeleeMainHand,
     );
@@ -462,8 +458,7 @@ fn reckless_attack_advantage_preview() {
 fn reckless_attack_action() {
     let mut scenario = barbarian_scenario(3);
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(1)
+        .spawn_monster("goblin", "monster.goblin_warrior")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
 
@@ -502,7 +497,7 @@ fn danger_sense() {
 
     // Danger Sense is disabled when incapacitated
     scenario
-        .spawn("warlock", "hero.warlock")
+        .spawn_hero("warlock", "hero.warlock")
         .level(4)
         .position([3.0, 0.0, 0.0], false)
         .spawn();
@@ -623,10 +618,8 @@ fn instinctive_pounce() {
 
 fn brutal_strike_scenario(level: u8) -> Scenario {
     let mut scenario = barbarian_scenario(level);
-    // A high-level goblin so it doesn't get one-shot
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(20)
+        .spawn_monster("goblin", "monster.goblin_tank")
         .position([1.0, 0.0, 0.0], false)
         .spawn();
     scenario
@@ -901,7 +894,7 @@ fn brutal_strike_staggering_blow() {
 fn brutal_strike_sundering_blow() {
     let mut scenario = brutal_strike_scenario(13);
     scenario
-        .spawn("ally", "hero.fighter")
+        .spawn_hero("ally", "hero.fighter")
         .level(1)
         .position([2.0, 0.0, 0.0], false)
         .spawn();

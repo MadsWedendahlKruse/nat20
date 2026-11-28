@@ -259,6 +259,13 @@ fn missing_policy(reference: &RegistryReference) -> MissingPolicy {
             }
         })),
 
+        RegistryReference::Monster(monster_id) => {
+            panic!(
+                "Monster ID should not be stored in a save file: {}",
+                monster_id
+            );
+        }
+
         RegistryReference::Resource(resource_id) => MissingPolicy::Droppable(Box::new({
             let resource_id = resource_id.clone();
             move |save_file| {

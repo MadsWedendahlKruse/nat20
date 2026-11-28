@@ -1,0 +1,174 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "MonsterDefinition",
+    "type": "object",
+    "properties": {
+        "abilities": {
+            "$ref": "#/definitions/AbilityScoreDefinition"
+        },
+        "brain": {
+            "$ref": "#/definitions/AIControllerId"
+        },
+        "challenge_rating": {
+            "description": "The challenge rating of a creature, representing its relative difficulty.",
+            "type": "string",
+            "example": [
+                "1/8",
+                "1/4",
+                "1/2",
+                "1",
+                "2",
+                "3"
+            ]
+        },
+        "creature_type": {
+            "$ref": "#/definitions/CreatureType"
+        },
+        "factions": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/FactionId"
+            },
+            "uniqueItems": true
+        },
+        "gear": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/ItemId"
+            }
+        },
+        "hit_points": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+        },
+        "id": {
+            "$ref": "#/definitions/MonsterId"
+        },
+        "name": {
+            "type": "string"
+        },
+        "size": {
+            "$ref": "#/definitions/CreatureSize"
+        },
+        "speed": {
+            "description": "`<integer expression> <unit>` (e.g. `10 + spell_level ft` for a length) where the unit is one of `m`/`meter(s)`, `ft`/`foot`/`feet`. Expressions may use the variables `spell_level`, `caster_level`, `character_level` and `<class>.level` (e.g. `class.wizard.level`).",
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "name",
+        "brain",
+        "challenge_rating",
+        "hit_points",
+        "size",
+        "creature_type",
+        "speed",
+        "abilities",
+        "factions",
+        "gear"
+    ],
+    "definitions": {
+        "AIControllerId": {
+            "description": "Registry id `[namespace::]ai_controller.<name>`, e.g. `nat20_core::ai_controller.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?ai_controller[A-Za-z0-9_.]*$"
+        },
+        "AbilityScoreDefinition": {
+            "description": "Defines the ability scores for a creature.\nEach ability is defined as an explicit field, so you're forced to fill it out\nin the JSON file.",
+            "type": "object",
+            "properties": {
+                "charisma": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "constitution": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "dexterity": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "intelligence": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "strength": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                },
+                "wisdom": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0
+                }
+            },
+            "required": [
+                "strength",
+                "dexterity",
+                "constitution",
+                "intelligence",
+                "wisdom",
+                "charisma"
+            ]
+        },
+        "CreatureSize": {
+            "type": "string",
+            "enum": [
+                "tiny",
+                "small",
+                "medium",
+                "large",
+                "huge",
+                "gargantuan"
+            ]
+        },
+        "CreatureType": {
+            "type": "string",
+            "enum": [
+                "aberration",
+                "beast",
+                "celestial",
+                "construct",
+                "dragon",
+                "elemental",
+                "fey",
+                "fiend",
+                "giant",
+                "humanoid",
+                "monstrosity",
+                "ooze",
+                "plant",
+                "undead"
+            ]
+        },
+        "FactionId": {
+            "description": "Registry id `[namespace::]faction.<name>`, e.g. `nat20_core::faction.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?faction[A-Za-z0-9_.]*$"
+        },
+        "ItemId": {
+            "description": "Registry id `[namespace::]item.<name>`, e.g. `nat20_core::item.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?item[A-Za-z0-9_.]*$"
+        },
+        "MonsterId": {
+            "description": "Registry id `[namespace::]monster.<name>`, e.g. `nat20_core::monster.example`. The namespace defaults to `nat20_core`.",
+            "type": "string",
+            "pattern": "^([A-Za-z0-9_]+::)?monster[A-Za-z0-9_.]*$"
+        }
+    }
+}

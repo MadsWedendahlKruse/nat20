@@ -22,8 +22,10 @@ use nat20_core::{
 #[test]
 fn save_all_creature_components() {
     let mut scenario = Scenario::new();
-    scenario.spawn("hero", "hero.wizard").spawn();
-    scenario.spawn("goblin", "monster.goblin_warrior").spawn();
+    scenario.spawn_hero("hero", "hero.wizard").spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
+        .spawn();
 
     let world = &scenario.engine_state.world;
     let bundles = [
@@ -45,8 +47,10 @@ fn save_all_creature_components() {
 #[test]
 fn save_blocked_by_action() {
     let mut scenario = Scenario::new();
-    scenario.spawn("fighter", "hero.fighter").spawn();
-    scenario.spawn("goblin", "monster.goblin_warrior").spawn();
+    scenario.spawn_hero("fighter", "hero.fighter").spawn();
+    scenario
+        .spawn_monster("goblin", "monster.goblin_warrior")
+        .spawn();
 
     scenario
         .probe("fighter")
@@ -65,15 +69,18 @@ fn save_blocked_by_action() {
 fn load_rebuilds_effect_end_condition() {
     let mut scenario = Scenario::new();
     // Spawn a Warlock with Hold Person, which uses repeat save end condition
-    scenario.spawn("warlock", "hero.warlock").level(5).spawn();
+    scenario
+        .spawn_hero("warlock", "hero.warlock")
+        .level(5)
+        .spawn();
     // Spawn a target for Hold Person
     scenario
-        .spawn("fighter", "hero.fighter")
+        .spawn_hero("fighter", "hero.fighter")
         .position([1.0, 0.0, 0.0], true)
         .spawn();
     // Spawn a Barbarian with Rage, which ends on equipping heavy armor
     scenario
-        .spawn("barbarian", "hero.barbarian")
+        .spawn_hero("barbarian", "hero.barbarian")
         .level(5)
         .position([0.0, 0.0, 1.0], true)
         .spawn();
@@ -200,7 +207,10 @@ fn load_droppable() {
 }
 
 fn spawn_entity_and_save(scenario: &mut Scenario) -> (SaveFile, Entity) {
-    scenario.spawn("fighter", "hero.fighter").level(5).spawn();
+    scenario
+        .spawn_hero("fighter", "hero.fighter")
+        .level(5)
+        .spawn();
     let entity = scenario.entity("fighter");
 
     let save_file = scenario.save_to_target(SaveFileTarget::Struct).unwrap();

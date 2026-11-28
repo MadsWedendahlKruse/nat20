@@ -32,7 +32,7 @@ use crate::{
         engine_state::EngineState,
         event::{Event, EventKind},
     },
-    entities::projectile::ProjectileTemplate,
+    entities::projectile::ProjectileTrajectory,
     registry::{
         registry::{self, ActionVariantsRegistry, ActionsRegistry},
         serialize::action::ActionDefinition,
@@ -481,7 +481,7 @@ impl Debug for ActionCondition {
 #[derive(Debug, Clone)]
 pub enum PayloadDelivery {
     Immediate,
-    Projectile { template: ProjectileTemplate },
+    Projectile { trajectory: ProjectileTrajectory },
 }
 
 #[derive(Clone, Kinded)]
@@ -769,7 +769,7 @@ pub type ActionMap = BTreeMap<ActionId, Vec<(ActionContext, ResourceAmountMap)>>
 
 pub type ActionCooldownMap = HashMap<ActionId, RechargeRule>;
 
-pub const DEFAULT_ACTIONS: LazyLock<ActionMap> = LazyLock::new(|| {
+pub static DEFAULT_ACTIONS: LazyLock<ActionMap> = LazyLock::new(|| {
     let mut actions = ActionMap::new();
 
     for action in &registry::rules().default_actions {

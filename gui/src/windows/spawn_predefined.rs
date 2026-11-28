@@ -3,12 +3,16 @@ use core::f32;
 use hecs::{Entity, World};
 use imgui::MouseButton;
 use nat20_core::{
-    components::id::{EntityIdentifier, Name},
+    components::id::{EntityIdentifier, MonsterId, Name},
     engine::{
         engine_state::EngineState,
         geometry::{WorldGeometry, WorldGeometrySource},
     },
-    entities::creature::{Character, Monster},
+    entities::{
+        common::EntityTemplate,
+        creature::{Character, CharacterTemplate, Monster, MonsterTemplate},
+    },
+    registry::registry::MonstersRegistry,
     systems::{self, entities::EntityKind, time::RestKind},
     test_utils::fixtures::{self},
 };
@@ -25,32 +29,52 @@ use crate::{
 };
 
 struct Spawner {
-    spawn_fn: Box<dyn Fn(&mut EngineState, u8, Option<Entity>) -> EntityIdentifier>,
-    max_level: u8,
-    current_level: u8,
+    kind: SpawnerKind,
     spawned_entity: Option<Entity>,
 }
 
 impl Spawner {
-    fn new<F>(spawn_fn: F, max_level: u8) -> Self
-    where
-        F: Fn(&mut EngineState, u8, Option<Entity>) -> EntityIdentifier + 'static,
-    {
+    fn character(template: CharacterTemplate, max_level: u8) -> Self {
         Self {
-            spawn_fn: Box::new(spawn_fn),
-            max_level,
-            current_level: max_level,
+            kind: SpawnerKind::Character {
+                template,
+                max_level,
+            },
+            spawned_entity: None,
+        }
+    }
+
+    fn monster(monster_id: MonsterId) -> Self {
+        Self {
+            kind: SpawnerKind::Monster {
+                template: MonsterTemplate { monster_id },
+            },
             spawned_entity: None,
         }
     }
 
     fn spawn(&mut self, engine_state: &mut EngineState, id: Option<Entity>) -> EntityIdentifier {
-        let entity = (self.spawn_fn)(engine_state, self.current_level, id);
-        self.spawned_entity = Some(entity.id());
+        let entity = match &mut self.kind {
+            SpawnerKind::Character { template, .. } => template.spawn(engine_state, id).unwrap(),
+            SpawnerKind::Monster { template } => template.spawn(engine_state, id).unwrap(),
+        };
+
+        self.spawned_entity = Some(entity);
         // Ensure all resources are fully recharged
-        systems::time::on_rest_end(engine_state, &[entity.id()], &RestKind::Long);
-        entity
+        systems::time::on_rest_end(engine_state, &[entity], &RestKind::Long);
+
+        EntityIdentifier::from_world(&engine_state.world, entity)
     }
+}
+
+enum SpawnerKind {
+    Character {
+        template: CharacterTemplate,
+        max_level: u8,
+    },
+    Monster {
+        template: MonsterTemplate,
+    },
 }
 
 pub struct SpawnPredefinedWindow {
@@ -74,12 +98,15 @@ impl SpawnPredefinedWindow {
         );
 
         let mut spawners = vec![
-            Spawner::new(fixtures::creatures::heroes::barbarian, 17),
-            Spawner::new(fixtures::creatures::heroes::fighter, 18),
-            Spawner::new(fixtures::creatures::heroes::wizard, 7),
-            Spawner::new(fixtures::creatures::heroes::warlock, 5),
-            Spawner::new(fixtures::creatures::monsters::goblin_warrior, 1),
+            Spawner::character(fixtures::creatures::heroes::barbarian(17), 17),
+            Spawner::character(fixtures::creatures::heroes::fighter(18), 18),
+            Spawner::character(fixtures::creatures::heroes::wizard(7), 7),
+            Spawner::character(fixtures::creatures::heroes::warlock(5), 5),
         ];
+
+        spawners.extend(
+            MonstersRegistry::keys().map(|monster_id| Spawner::monster(monster_id.clone())),
+        );
 
         for spawner in &mut spawners {
             let entity = spawner.spawn(&mut engine_state, None);
@@ -148,15 +175,17 @@ impl RenderableMutWithContext<&mut EngineState> for SpawnPredefinedWindow {
                         let mut updated_level = false;
 
                         // TODO: Level slider probably doesn't make sense for monsters?
-                        if let Ok(entity_kind) = self.engine_state.world.get::<&EntityKind>(entity)
-                            && *entity_kind == EntityKind::Character
+                        if let SpawnerKind::Character {
+                            template,
+                            max_level,
+                        } = &mut spawner.kind
                         {
                             ui.set_next_item_width(150.0);
                             if ui.slider(
                                 format!("Level##{:?}", entity),
                                 1,
-                                spawner.max_level,
-                                &mut spawner.current_level,
+                                *max_level,
+                                &mut template.levels,
                             ) {
                                 updated_level = true;
                             }

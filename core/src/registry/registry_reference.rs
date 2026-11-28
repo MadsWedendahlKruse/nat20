@@ -11,7 +11,7 @@ use crate::{
     components::{
         id::{
             ActionId, ActionVariantId, BackgroundId, ClassId, EffectId, FactionId, FeatId, Id,
-            ItemId, ResourceId, ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
+            ItemId, MonsterId, ResourceId, ScriptId, SpeciesId, SpellId, SubclassId, SubspeciesId,
         },
         modifier::ModifierSource,
     },
@@ -197,6 +197,7 @@ pub enum RegistryReference {
     Faction(FactionId),
     Feat(FeatId),
     Item(ItemId),
+    Monster(MonsterId),
     Resource(ResourceId),
     Script(ScriptId, Vec<ScriptFunction>),
     Species(SpeciesId),
@@ -221,6 +222,7 @@ impl TryFrom<Id> for RegistryReference {
             Id::FactionId(faction_id) => Ok(RegistryReference::Faction(faction_id)),
             Id::FeatId(feat_id) => Ok(RegistryReference::Feat(feat_id)),
             Id::ItemId(item_id) => Ok(RegistryReference::Item(item_id)),
+            Id::MonsterId(monster_id) => Ok(RegistryReference::Monster(monster_id)),
             Id::ResourceId(resource_id) => Ok(RegistryReference::Resource(resource_id)),
             Id::ScriptId(_) => Err(()),
             Id::SpeciesId(species_id) => Ok(RegistryReference::Species(species_id)),
@@ -244,6 +246,7 @@ impl TryInto<ModifierSource> for RegistryReference {
             // TODO: Repeatable feats should be handled here as well?
             RegistryReference::Feat(id) => Ok(ModifierSource::Feat(id)),
             RegistryReference::Item(id) => Ok(ModifierSource::Item(id)),
+            RegistryReference::Monster(id) => Err(()),
             RegistryReference::Resource(id) => Err(()),
             RegistryReference::Script(_, _) => Err(()),
             RegistryReference::Species(id) => Ok(ModifierSource::Species(id)),
@@ -266,6 +269,7 @@ impl Display for RegistryReference {
             RegistryReference::Faction(id) => write!(f, "Faction '{}'", id),
             RegistryReference::Feat(id) => write!(f, "Feat '{}'", id),
             RegistryReference::Item(id) => write!(f, "Item '{}'", id),
+            RegistryReference::Monster(id) => write!(f, "Monster '{}'", id),
             RegistryReference::Resource(id) => write!(f, "Resource '{}'", id),
             RegistryReference::Script(id, function) => {
                 write!(f, "Script '{}' (functions: {:?})", id, function)

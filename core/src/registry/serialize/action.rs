@@ -16,7 +16,7 @@ use crate::{
         id::{ActionId, ActionVariantId, ScriptId},
         resource::{RechargeRule, ResourceAmountMap},
     },
-    entities::projectile::ProjectileTemplate,
+    entities::projectile::ProjectileTrajectory,
     registry::{
         registry::Registry,
         serialize::{
@@ -239,11 +239,11 @@ impl From<PayloadDeliveryDefinition> for PayloadDelivery {
                 trajectory,
                 velocity,
             } => PayloadDelivery::Projectile {
-                template: match trajectory {
-                    TrajectoryTemplateDefinition::Ray => ProjectileTemplate::Ray {
+                trajectory: match trajectory {
+                    TrajectoryTemplateDefinition::Ray => ProjectileTrajectory::Ray {
                         velocity: velocity.evaluate_without_variables().unwrap(),
                     },
-                    TrajectoryTemplateDefinition::Parabola => ProjectileTemplate::Parabola {
+                    TrajectoryTemplateDefinition::Parabola => ProjectileTrajectory::Parabola {
                         launch_velocity: velocity.evaluate_without_variables().unwrap(),
                     },
                 },

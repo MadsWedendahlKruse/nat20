@@ -234,11 +234,11 @@ impl From<AbilityScoreDistribution> for AbilityScoreMap {
     }
 }
 
-impl From<[(Ability, i32); 6]> for AbilityScoreMap {
-    fn from(scores: [(Ability, i32); 6]) -> Self {
+impl From<HashMap<Ability, u8>> for AbilityScoreMap {
+    fn from(scores: HashMap<Ability, u8>) -> Self {
         let mut map = AbilityScoreMap::new();
         for (ability, score) in scores {
-            map.set(ability, AbilityScore::new(ability, score));
+            map.set(ability, AbilityScore::new(ability, score as i32));
         }
         map
     }

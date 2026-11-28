@@ -29,6 +29,10 @@
             "url": "./assets/registries/.schemas/item.schema.json"
         },
         {
+            "fileMatch": ["/assets/registries/monsters/**/*.json"],
+            "url": "./assets/registries/.schemas/monster.schema.json"
+        },
+        {
             "fileMatch": ["/assets/registries/resources/**/*.json"],
             "url": "./assets/registries/.schemas/resource.schema.json"
         },

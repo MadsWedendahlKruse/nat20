@@ -32,10 +32,13 @@ fn assert_missile_rolls(scenario: &Scenario, count: usize) {
 #[case(2, 4)] // One extra dart per spell slot level above 1
 fn magic_missile_dart_count(#[case] slot_level: u8, #[case] darts: usize) {
     let mut scenario = Scenario::new();
-    scenario.spawn("attacker", "hero.wizard").level(3).spawn();
+    scenario
+        .spawn_hero("attacker", "hero.wizard")
+        .level(3)
+        .spawn();
     // A fighter has enough HP to survive all darts and no reaction to them
     scenario
-        .spawn("target", "hero.fighter")
+        .spawn_hero("target", "hero.fighter")
         .level(5)
         .position([3.0, 0.0, 0.0], false)
         .spawn();
@@ -58,10 +61,13 @@ fn magic_missile_dart_count(#[case] slot_level: u8, #[case] darts: usize) {
 #[test]
 fn shield_blocks_magic_missile() {
     let mut scenario = Scenario::new();
-    scenario.spawn("attacker", "hero.wizard").level(1).spawn();
+    scenario
+        .spawn_hero("attacker", "hero.wizard")
+        .level(1)
+        .spawn();
     // Level 2 so the defender knows Shield (and nothing else that could react)
     scenario
-        .spawn("defender", "hero.wizard")
+        .spawn_hero("defender", "hero.wizard")
         .level(2)
         .position([3.0, 0.0, 0.0], false)
         .spawn();
@@ -99,9 +105,12 @@ fn shield_blocks_magic_missile() {
 #[test]
 fn magic_missile_hits_when_reaction_declined() {
     let mut scenario = Scenario::new();
-    scenario.spawn("attacker", "hero.wizard").level(1).spawn();
     scenario
-        .spawn("defender", "hero.wizard")
+        .spawn_hero("attacker", "hero.wizard")
+        .level(1)
+        .spawn();
+    scenario
+        .spawn_hero("defender", "hero.wizard")
         .level(2)
         .position([3.0, 0.0, 0.0], false)
         .spawn();

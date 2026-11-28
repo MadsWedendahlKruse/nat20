@@ -15,26 +15,22 @@ use uom::si::{
     length::{foot, meter},
 };
 
-/// Displacement payloads (push via Thunderwave, teleport via Misty Step).
-
-/// Level 7 is when the test wizard learns Thunderwave. Challenge rating 2
-/// gives the goblin enough HP to survive a full 2d8.
-fn thunderwave_scenario(goblin_save: D20CheckOutcome) -> Scenario {
+fn thunderwave_scenario(dummy_save: D20CheckOutcome) -> Scenario {
     let mut scenario = Scenario::new();
     scenario
-        .spawn("wizard", "hero.wizard")
+        .spawn_hero("wizard", "hero.wizard")
+        // Level 7 is when the test wizard learns Thunderwave
         .level(7)
         .position([0.0, 0.0, 0.0], true)
         .spawn();
     scenario
-        .spawn("goblin", "monster.goblin_warrior")
-        .level(2)
+        .spawn_monster("dummy", "monster.training_d")
         .position([1.0, 0.0, 0.0], true)
         .spawn();
 
-    scenario.probe("goblin").d20_force_outcome(
+    scenario.probe("dummy").d20_force_outcome(
         D20CheckKind::SavingThrow(SavingThrowKind::Ability(Ability::Constitution)),
-        goblin_save,
+        dummy_save,
     );
     scenario
 }
@@ -61,9 +57,9 @@ fn assert_thunder_rolls(scenario: &Scenario, count: usize) {
 #[test]
 fn thunderwave_pushes_on_failed_save() {
     let mut scenario = thunderwave_scenario(D20CheckOutcome::CriticalFailure);
-    let goblin_hp = scenario.probe("goblin").hp();
-    let goblin_start = scenario.probe("goblin").position();
-    let goblin_end = goblin_start + Vector3::x() * Length::new::<foot>(10.0).get::<meter>();
+    let dummy_hp = scenario.probe("dummy").hp();
+    let dummy_start = scenario.probe("dummy").position();
+    let dummy_end = dummy_start + Vector3::x() * Length::new::<foot>(10.0).get::<meter>();
 
     cast_thunderwave(&mut scenario);
 
@@ -71,25 +67,25 @@ fn thunderwave_pushes_on_failed_save() {
     // Pushed 10 feet directly away from the wizard, with some slack for the
     // physics of the push trajectory
     scenario
-        .probe("goblin")
-        .assert_hp(Operator::Less(goblin_hp))
-        .assert_position(goblin_end, Length::new::<foot>(0.1));
+        .probe("dummy")
+        .assert_hp(Operator::Less(dummy_hp))
+        .assert_position(dummy_end, Length::new::<foot>(0.1));
 }
 
 #[test]
 fn thunderwave_no_push_on_successful_save() {
     let mut scenario = thunderwave_scenario(D20CheckOutcome::CriticalSuccess);
-    let goblin_hp = scenario.probe("goblin").hp();
-    let goblin_start = scenario.probe("goblin").position();
+    let dummy_hp = scenario.probe("dummy").hp();
+    let dummy_start = scenario.probe("dummy").position();
 
     cast_thunderwave(&mut scenario);
 
     // Still takes half damage, but is not pushed
     assert_thunder_rolls(&scenario, 1);
     scenario
-        .probe("goblin")
-        .assert_hp(Operator::Less(goblin_hp))
-        .assert_position(goblin_start, Length::new::<foot>(0.1));
+        .probe("dummy")
+        .assert_hp(Operator::Less(dummy_hp))
+        .assert_position(dummy_start, Length::new::<foot>(0.1));
 }
 
 #[test]
@@ -97,7 +93,7 @@ fn misty_step_teleports() {
     let mut scenario = Scenario::new();
     // Level 4 is when the test warlock learns Misty Step
     scenario
-        .spawn("warlock", "hero.warlock")
+        .spawn_hero("warlock", "hero.warlock")
         .level(4)
         .position([0.0, 0.0, 0.0], true)
         .spawn();

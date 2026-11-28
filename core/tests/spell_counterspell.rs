@@ -16,9 +16,12 @@ use rstest::rstest;
 /// defender is level 5 so it knows Counterspell.
 fn counterspell_scenario() -> Scenario {
     let mut scenario = Scenario::new();
-    scenario.spawn("attacker", "hero.wizard").level(1).spawn();
     scenario
-        .spawn("defender", "hero.wizard")
+        .spawn_hero("attacker", "hero.wizard")
+        .level(1)
+        .spawn();
+    scenario
+        .spawn_hero("defender", "hero.wizard")
         .level(5)
         .position([5.0, 0.0, 0.0], false)
         .spawn();
@@ -151,7 +154,7 @@ fn multiple_wizards_scenario(con_saves: &[D20CheckOutcome]) -> Scenario {
         let z = radius * angle.to_radians().sin();
 
         scenario
-            .spawn(&format!("wizard{}", i + 1), "hero.wizard")
+            .spawn_hero(&format!("wizard{}", i + 1), "hero.wizard")
             .level(5)
             .position([x, 0.0, z], true)
             .spawn();
@@ -237,17 +240,17 @@ fn multiple_counterspell_same_target(#[case] target_con_save: D20CheckOutcome) {
     let mut scenario = Scenario::new();
     // Spawn two wizards that will attempt to counterspell the warlock's spell
     scenario
-        .spawn("wizard1", "hero.wizard")
+        .spawn_hero("wizard1", "hero.wizard")
         .level(5)
         .position([1.0, 0.0, 0.0], true)
         .spawn();
     scenario
-        .spawn("wizard2", "hero.wizard")
+        .spawn_hero("wizard2", "hero.wizard")
         .level(5)
         .position([1.0, 0.0, 1.0], true)
         .spawn();
     scenario
-        .spawn("warlock", "hero.warlock")
+        .spawn_hero("warlock", "hero.warlock")
         .level(5)
         .position([-1.0, 0.0, 0.0], true)
         .spawn();

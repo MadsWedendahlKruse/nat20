@@ -167,6 +167,7 @@ id_newtypes!(
     SubspeciesId => "subspecies",
     AIControllerId => "ai_controller",
     FactionId => "faction",
+    MonsterId => "monster",
     ScriptId => "script"
 );
 

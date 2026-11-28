@@ -32,7 +32,7 @@ mod tests {
             &mut engine_state,
             character,
             3,
-            vec![
+            &vec![
                 // Level 1
                 // TODO: Everyone is dragonborn for now
                 LevelUpDecision::single_choice(ChoiceItem::Species(SpeciesId::new(

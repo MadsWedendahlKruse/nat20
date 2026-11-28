@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::LazyLock};
+use std::{collections::BTreeMap, fmt::Debug, sync::LazyLock};
 
 use hecs::Entity;
 use parry3d::na::Point3;
@@ -10,55 +10,72 @@ use crate::{
         time::{EntityClock, TimeMode},
     },
     engine::engine_state::EngineState,
+    entities::{
+        common::EntityTemplate,
+        creature::{CharacterTemplate, MonsterTemplate},
+    },
+    registry::registry::MonstersRegistry,
     systems,
-    test_utils::fixtures::creatures::{heroes, monsters},
+    test_utils::fixtures::creatures::heroes,
 };
 
-/// `(engine_state, level/challenge_rating, optional_entity_to_spawn_at) -> spawned`
-pub type CreatureTemplateFunction = fn(&mut EngineState, u8, Option<Entity>) -> EntityIdentifier;
-
-pub static CREATURE_TEMPLATES: LazyLock<BTreeMap<&'static str, CreatureTemplateFunction>> =
+pub static HERO_TEMPLATES: LazyLock<BTreeMap<&'static str, CharacterTemplate>> =
     LazyLock::new(|| {
         BTreeMap::from([
-            (
-                "hero.barbarian",
-                heroes::barbarian as CreatureTemplateFunction,
-            ),
-            ("hero.fighter", heroes::fighter as CreatureTemplateFunction),
-            ("hero.wizard", heroes::wizard as CreatureTemplateFunction),
-            ("hero.warlock", heroes::warlock as CreatureTemplateFunction),
-            (
-                "monster.goblin_warrior",
-                monsters::goblin_warrior as CreatureTemplateFunction,
-            ),
+            ("hero.barbarian", heroes::barbarian(1)),
+            ("hero.fighter", heroes::fighter(1)),
+            ("hero.wizard", heroes::wizard(1)),
+            ("hero.warlock", heroes::warlock(1)),
         ])
     });
 
 // TODO: Not sure where this should live
-pub struct CreatureBuilder {
-    template: CreatureTemplateFunction,
-    level: u8,
+pub struct CreatureBuilder<T> {
+    template: T,
     position: Option<(Point3<f32>, bool)>,
     time_mode: TimeMode,
     entity_id: Option<Entity>,
 }
 
-impl CreatureBuilder {
-    pub fn new(template: &str) -> Self {
-        Self {
-            template: *CREATURE_TEMPLATES
+impl CreatureBuilder<CharacterTemplate> {
+    #[track_caller]
+    pub fn hero(template: &str) -> Self {
+        Self::new(
+            HERO_TEMPLATES
                 .get(template)
-                .unwrap_or_else(|| panic!("No creature template with name {template}")),
-            level: 1,
+                .unwrap_or_else(|| panic!("No hero template with name {template}"))
+                .clone(),
+        )
+    }
+
+    pub fn level(&mut self, level: u8) -> &mut Self {
+        self.template.levels = level;
+        self
+    }
+}
+
+impl CreatureBuilder<MonsterTemplate> {
+    #[track_caller]
+    pub fn monster(id: &str) -> Self {
+        let monster_id = MonstersRegistry::keys()
+            .find(|key| key.id == id)
+            .unwrap_or_else(|| panic!("No monster with id {id}"))
+            .clone();
+        Self::new(MonsterTemplate { monster_id })
+    }
+}
+
+impl<T: EntityTemplate> CreatureBuilder<T>
+where
+    T::TemplateError: Debug,
+{
+    fn new(template: T) -> Self {
+        Self {
+            template,
             time_mode: TimeMode::RealTime,
             position: None,
             entity_id: None,
         }
-    }
-
-    pub fn level(&mut self, level: u8) -> &mut Self {
-        self.level = level;
-        self
     }
 
     pub fn position(&mut self, position: impl Into<Point3<f32>>, on_ground: bool) -> &mut Self {
@@ -77,8 +94,10 @@ impl CreatureBuilder {
     }
 
     pub fn spawn(&mut self, engine_state: &mut EngineState) -> EntityIdentifier {
-        let entity_id = (self.template)(engine_state, self.level, self.entity_id);
-        let entity = entity_id.id();
+        let entity = match self.template.spawn(engine_state, self.entity_id) {
+            Ok(entity) => entity,
+            Err(err) => panic!("Failed to spawn creature: {:?}", err),
+        };
 
         if let Some((position, on_ground)) = self.position {
             if on_ground {
@@ -100,6 +119,6 @@ impl CreatureBuilder {
 
         systems::resources::recharge(&mut engine_state.world, entity, &RechargeRule::Daily);
 
-        entity_id
+        EntityIdentifier::from_world(&engine_state.world, entity)
     }
 }
