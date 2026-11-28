@@ -38,6 +38,27 @@
                 }
             }
         },
+        "experience_by_challenge_rating": {
+            "description": "The amount of experience awarded for defeating a creature of a given challenge\nrating.",
+            "type": "object",
+            "additionalProperties": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+            }
+        },
+        "experience_per_level": {
+            "description": "The amount of experience required to reach each character level.",
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^\\d+$": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                }
+            }
+        },
         "loadout_attack_actions": {
             "description": "The underlying actions which are actually performed when making an attack,\ni.e. melee_attack, ranged_attack, unarmed_attack, etc.\nThese are granted to all creatures with a `Loadout`.",
             "type": "array",
@@ -50,7 +71,9 @@
         "default_actions",
         "loadout_attack_actions",
         "default_character_faction",
-        "default_resources"
+        "default_resources",
+        "experience_per_level",
+        "experience_by_challenge_rating"
     ],
     "definitions": {
         "ActionId": {

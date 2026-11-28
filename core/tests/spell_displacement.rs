@@ -24,7 +24,7 @@ fn thunderwave_scenario(dummy_save: D20CheckOutcome) -> Scenario {
         .position([0.0, 0.0, 0.0], true)
         .spawn();
     scenario
-        .spawn_monster("dummy", "monster.training_d")
+        .spawn_monster("dummy", "monster.training_dummy")
         .position([1.0, 0.0, 0.0], true)
         .spawn();
 

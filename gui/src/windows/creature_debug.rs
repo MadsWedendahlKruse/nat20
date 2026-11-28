@@ -6,6 +6,7 @@ use nat20_core::{
         ai::PlayerControlledTag,
         d20::D20CheckDC,
         damage::DamageRollResult,
+        level::CharacterLevels,
         modifier::{ModifierKindResult, ModifierResult, ModifierSource},
         resource::RechargeRule,
         saving_throw::SavingThrowKind,
@@ -37,6 +38,9 @@ pub enum CreatureDebugState {
     MoveTo {
         starting_pose: Pose,
         target_pose: Pose,
+    },
+    Experience {
+        amount: u32,
     },
 }
 
@@ -74,6 +78,7 @@ impl ImguiRenderableMutWithContext<&mut EngineState> for CreatureDebugWindow {
                         "Saving Throw",
                         "Skill Check",
                         "Move To",
+                        "Experience",
                     ],
                     [20.0, 5.0],
                 ) {
@@ -124,6 +129,9 @@ impl ImguiRenderableMutWithContext<&mut EngineState> for CreatureDebugWindow {
                                 starting_pose,
                                 target_pose: starting_pose,
                             };
+                        }
+                        8 => {
+                            self.state = CreatureDebugState::Experience { amount: 0 };
                         }
                         _ => unreachable!(),
                     }
@@ -363,6 +371,29 @@ impl ImguiRenderableMutWithContext<&mut EngineState> for CreatureDebugWindow {
                         .world
                         .insert_one(self.creature, *starting_pose)
                         .ok();
+                    ui.close_current_popup();
+                }
+            }
+
+            // TODO: Replace with a character specific UI
+            CreatureDebugState::Experience { amount } => {
+                ui.separator_with_text("Experience");
+
+                let width_token = ui.push_item_width(200.0);
+                ui.input_scalar("Amount", amount)
+                    .auto_select_all(true)
+                    .enter_returns_true(true)
+                    .build();
+
+                width_token.end();
+
+                ui.separator();
+                if ui.button("Add Experience") {
+                    systems::helpers::get_component_mut::<CharacterLevels>(
+                        &mut engine_state.world,
+                        self.creature,
+                    )
+                    .add_experience(*amount);
                     ui.close_current_popup();
                 }
             }

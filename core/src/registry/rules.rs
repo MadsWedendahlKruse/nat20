@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         id::{ActionId, FactionId},
+        level::ChallengeRating,
         resource::ResourceAmountMap,
     },
     registry::registry::{self, RegistryError},
@@ -25,6 +26,11 @@ pub struct Rules {
     pub default_character_faction: FactionId,
     /// The default resources available to all creatures.
     pub default_resources: ResourceAmountMap,
+    /// The amount of experience required to reach each character level.
+    pub experience_per_level: HashMap<u8, u32>,
+    /// The amount of experience awarded for defeating a creature of a given challenge
+    /// rating.
+    pub experience_by_challenge_rating: HashMap<ChallengeRating, u32>,
 }
 
 impl Rules {
@@ -36,5 +42,17 @@ impl Rules {
                 None
             }
         }
+    }
+
+    pub fn max_level(&self) -> u8 {
+        self.experience_per_level.keys().cloned().max().unwrap_or(0)
+    }
+
+    pub fn max_challenge_rating(&self) -> ChallengeRating {
+        self.experience_by_challenge_rating
+            .keys()
+            .cloned()
+            .max()
+            .unwrap_or(ChallengeRating::Full(0))
     }
 }

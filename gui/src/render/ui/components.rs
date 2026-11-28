@@ -78,6 +78,24 @@ impl ImguiRenderable for CharacterLevels {
         }
         let all_classes = class_strings.join(", ");
         ui.text(all_classes);
+
+        let xp_for_next_level = self.experience_for_next_level().unwrap_or(u32::MAX);
+        render_progress_bar(
+            ui,
+            self.experience(),
+            xp_for_next_level,
+            None,
+            self.experience() as f32 / xp_for_next_level as f32,
+            150.0,
+            "XP",
+            None,
+            Some(ProgressBarColor {
+                color_full: [0.5, 0.0, 1.0, 1.0],
+                color_empty: [0.5, 0.0, 1.0, 1.0],
+                color_full_bg: [0.25, 0.0, 0.5, 1.0],
+                color_empty_bg: [0.25, 0.0, 0.5, 1.0],
+            }),
+        );
     }
 }
 

@@ -1,10 +1,17 @@
-use std::{collections::HashMap, fmt, str::FromStr, sync::LazyLock};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    fmt,
+    str::FromStr,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     components::id::{ClassId, SubclassId},
-    registry::{registry::ClassesRegistry, serialize::schema::impl_string_schema},
+    registry::{
+        registry::{self, ClassesRegistry},
+        serialize::schema::impl_string_schema,
+    },
 };
 
 pub trait Level {
@@ -20,47 +27,6 @@ pub trait Level {
         (total_level - 1) / 4 + 2
     }
 }
-
-// TODO: Not sure if hardcoding this is the best approach, but it works for now
-static EXPERIENCE_BY_CHALLENGE_RATING: LazyLock<HashMap<ChallengeRating, u32>> =
-    LazyLock::new(|| {
-        HashMap::from([
-            (ChallengeRating::Full(0), 0),
-            (ChallengeRating::Eighth, 25),
-            (ChallengeRating::Quarter, 50),
-            (ChallengeRating::Half, 100),
-            (ChallengeRating::Full(1), 200),
-            (ChallengeRating::Full(2), 450),
-            (ChallengeRating::Full(3), 700),
-            (ChallengeRating::Full(4), 1100),
-            (ChallengeRating::Full(5), 1800),
-            (ChallengeRating::Full(6), 2300),
-            (ChallengeRating::Full(7), 2900),
-            (ChallengeRating::Full(8), 3900),
-            (ChallengeRating::Full(9), 5000),
-            (ChallengeRating::Full(10), 5900),
-            (ChallengeRating::Full(11), 7200),
-            (ChallengeRating::Full(12), 8400),
-            (ChallengeRating::Full(13), 10000),
-            (ChallengeRating::Full(14), 11500),
-            (ChallengeRating::Full(15), 13000),
-            (ChallengeRating::Full(16), 15000),
-            (ChallengeRating::Full(17), 18000),
-            (ChallengeRating::Full(18), 20000),
-            (ChallengeRating::Full(19), 22000),
-            (ChallengeRating::Full(20), 25000),
-            (ChallengeRating::Full(21), 33000),
-            (ChallengeRating::Full(22), 41000),
-            (ChallengeRating::Full(23), 50000),
-            (ChallengeRating::Full(24), 62000),
-            (ChallengeRating::Full(25), 75000),
-            (ChallengeRating::Full(26), 90000),
-            (ChallengeRating::Full(27), 105000),
-            (ChallengeRating::Full(28), 120000),
-            (ChallengeRating::Full(29), 135000),
-            (ChallengeRating::Full(30), 155000),
-        ])
-    });
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -133,35 +99,6 @@ impl_string_schema!(
     "example": ["1/8", "1/4", "1/2", "1", "2", "3"],
 );
 
-// TODO: Not sure if hardcoding this is the best approach, but it works for now
-static EXPERIENCE_PER_LEVEL: LazyLock<Vec<u32>> = LazyLock::new(|| {
-    vec![
-        0,      // dummy for level 0
-        0,      // level 1
-        300,    // level 2
-        900,    // level 3
-        2700,   // level 4
-        6500,   // level 5
-        14000,  // level 6
-        23000,  // level 7
-        34000,  // level 8
-        48000,  // level 9
-        64000,  // level 10
-        85000,  // level 11
-        100000, // level 12
-        120000, // level 13
-        140000, // level 14
-        165000, // level 15
-        195000, // level 16
-        225000, // level 17
-        265000, // level 18
-        305000, // level 19
-        355000, // level 20
-    ]
-});
-
-static MAX_LEVEL: u8 = 20;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassLevelProgression {
     level: u8,
@@ -182,6 +119,12 @@ impl ClassLevelProgression {
 
     pub fn subclass(&self) -> Option<&SubclassId> {
         self.subclass.as_ref()
+    }
+}
+
+impl Default for ClassLevelProgression {
+    fn default() -> Self {
+        Self::new(1, None)
     }
 }
 
@@ -213,60 +156,6 @@ impl CharacterLevels {
         }
     }
 
-    pub fn class_level(&self, class: &ClassId) -> Option<&ClassLevelProgression> {
-        self.class_levels.get(class)
-    }
-
-    pub fn all_classes(&self) -> &HashMap<ClassId, ClassLevelProgression> {
-        &self.class_levels
-    }
-
-    pub fn level_up(&mut self, class: ClassId) -> u8 {
-        if !self.class_levels.contains_key(&class) {
-            self.class_levels
-                .insert(class.clone(), ClassLevelProgression::new(1, None));
-        } else {
-            let level = self.class_levels.get_mut(&class).unwrap();
-            if level.level >= MAX_LEVEL {
-                panic!("Cannot level up beyond maximum level of {}", MAX_LEVEL);
-            }
-            level.level += 1;
-        }
-
-        if self.first_class.is_none() {
-            self.first_class = Some(class.clone());
-        }
-        self.latest_class = Some(class.clone());
-
-        self.class_levels.get(&class).unwrap().level
-    }
-
-    pub fn subclass(&self, class: &ClassId) -> Option<&SubclassId> {
-        self.class_levels
-            .get(class)
-            .and_then(|progression| progression.subclass())
-    }
-
-    pub fn set_subclass(&mut self, class_id: &ClassId, subclass: &SubclassId) {
-        if !self.class_levels.contains_key(class_id) {
-            panic!("Cannot set subclass for a class that has not been leveled up");
-        }
-        if let Some(class) = ClassesRegistry::get(class_id) {
-            if !class.subclasses.contains(subclass) {
-                panic!(
-                    "Subclass {:?} does not exist for class {:?}",
-                    subclass, class_id
-                );
-            }
-        } else {
-            panic!("Class {:?} does not exist", class_id);
-        }
-
-        if let Some(progression) = self.class_levels.get_mut(class_id) {
-            progression.subclass = Some(subclass.clone());
-        }
-    }
-
     pub fn total_level(&self) -> u8 {
         self.class_levels.values().map(|p| p.level()).sum()
     }
@@ -275,12 +164,87 @@ impl CharacterLevels {
         self.experience
     }
 
-    pub fn experience_for_next_level(&self) -> u32 {
+    pub fn experience_for_next_level(&self) -> Option<u32> {
         let next_level = self.total_level() + 1;
-        if next_level > MAX_LEVEL {
-            // TODO: Handle max level case, maybe return a special value or error
+        if next_level > registry::rules().max_level() {
+            return None;
         }
-        *EXPERIENCE_PER_LEVEL.get(next_level as usize).unwrap_or(&0)
+        registry::rules()
+            .experience_per_level
+            .get(&next_level)
+            .cloned()
+            .or(None)
+    }
+
+    pub fn add_experience(&mut self, amount: u32) {
+        self.experience = self.experience.saturating_add(amount);
+    }
+
+    pub fn class_level(&self, class: &ClassId) -> Option<&ClassLevelProgression> {
+        self.class_levels.get(class)
+    }
+
+    pub fn all_classes(&self) -> &HashMap<ClassId, ClassLevelProgression> {
+        &self.class_levels
+    }
+
+    pub fn can_level_up(&self) -> bool {
+        if self.total_level() >= registry::rules().max_level() {
+            return false;
+        }
+        self.experience >= self.experience_for_next_level().unwrap_or(u32::MAX)
+    }
+
+    pub fn level_up(&mut self, class: &ClassId) -> Result<u8, LevelUpError> {
+        if self.total_level() >= registry::rules().max_level() {
+            return Err(LevelUpError::MaxLevelReached);
+        }
+
+        match self.class_levels.entry(class.clone()) {
+            Entry::Occupied(occupied_entry) => {
+                occupied_entry.into_mut().level += 1;
+            }
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(ClassLevelProgression::new(1, None));
+            }
+        }
+
+        if self.first_class.is_none() {
+            self.first_class = Some(class.clone());
+        }
+        self.latest_class = Some(class.clone());
+
+        Ok(self.class_levels.get(class).unwrap().level)
+    }
+
+    pub fn subclass(&self, class: &ClassId) -> Option<&SubclassId> {
+        self.class_levels
+            .get(class)
+            .and_then(|progression| progression.subclass())
+    }
+
+    pub fn set_subclass(
+        &mut self,
+        class_id: &ClassId,
+        subclass: &SubclassId,
+    ) -> Result<(), SubclassError> {
+        if !self.class_levels.contains_key(class_id) {
+            return Err(SubclassError::ClassNotLeveled(class_id.clone()));
+        }
+
+        let Some(class) = ClassesRegistry::get(class_id) else {
+            return Err(SubclassError::ClassDoesNotExist(class_id.clone()));
+        };
+
+        if !class.subclasses.contains(subclass) {
+            return Err(SubclassError::SubclassDoesNotExist(subclass.clone()));
+        }
+
+        if let Some(progression) = self.class_levels.get_mut(class_id) {
+            progression.subclass = Some(subclass.clone());
+        }
+
+        Ok(())
     }
 
     pub fn first_class(&self) -> Option<&ClassId> {
@@ -296,6 +260,18 @@ impl Level for CharacterLevels {
     fn total_level(&self) -> u8 {
         self.total_level()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LevelUpError {
+    MaxLevelReached,
+}
+
+#[derive(Debug, Clone)]
+pub enum SubclassError {
+    ClassNotLeveled(ClassId),
+    ClassDoesNotExist(ClassId),
+    SubclassDoesNotExist(SubclassId),
 }
 
 #[cfg(test)]
@@ -333,31 +309,31 @@ mod tests {
     fn character_level_level_up_and_class_level() {
         let mut cl = CharacterLevels::new();
         let class = ClassId::new("nat20_core", "class.fighter");
-        cl.level_up(class.clone());
+        assert!(cl.level_up(&class).is_ok());
         assert_eq!(cl.class_level(&class).unwrap().level(), 1);
-        cl.level_up(class.clone());
+        assert!(cl.level_up(&class).is_ok());
         assert_eq!(cl.class_level(&class).unwrap().level(), 2);
     }
 
     #[test]
-    #[should_panic(expected = "Cannot level up beyond maximum level")]
-    fn character_level_level_up_beyond_max_panics() {
+    fn character_level_level_up_beyond_max_error() {
         let mut cl = CharacterLevels::new();
         let class = ClassId::new("nat20_core", "class.wizard");
-        for _ in 0..MAX_LEVEL {
-            cl.level_up(class.clone());
+        for _ in 0..registry::rules().max_level() {
+            assert!(cl.level_up(&class).is_ok());
         }
         // This should panic
-        cl.level_up(class);
+        assert_eq!(cl.level_up(&class), Err(LevelUpError::MaxLevelReached));
     }
 
+    /// TODO: This is basically an integration test and should be moved
     #[test]
     fn character_level_set_and_get_subclass() {
         let mut cl = CharacterLevels::new();
         let class = ClassId::new("nat20_core", "class.warlock");
-        cl.level_up(class.clone());
+        assert!(cl.level_up(&class).is_ok());
         let subclass = SubclassId::new("nat20_core", "subclass.warlock.fiend_patron");
-        cl.set_subclass(&class, &subclass);
+        assert!(cl.set_subclass(&class, &subclass).is_ok());
         assert_eq!(cl.subclass(&class), Some(&subclass));
     }
 
@@ -365,20 +341,37 @@ mod tests {
     fn character_level_experience_for_next_level() {
         let mut cl = CharacterLevels::new();
         let class = ClassId::new("nat20_core", "class.wizard");
-        cl.level_up(class.clone()); // level 1
-        assert_eq!(cl.experience_for_next_level(), 300);
-        cl.level_up(class.clone()); // level 2
-        assert_eq!(cl.experience_for_next_level(), 900);
+        assert!(cl.level_up(&class).is_ok()); // level 1
+        assert_eq!(cl.experience_for_next_level(), Some(300));
+        assert!(cl.level_up(&class).is_ok()); // level 2
+        assert_eq!(cl.experience_for_next_level(), Some(900));
     }
 
     #[test]
     fn character_level_experience_for_next_level_at_max() {
         let mut cl = CharacterLevels::new();
         let class = ClassId::new("nat20_core", "class.warlock");
-        for _ in 0..MAX_LEVEL {
-            cl.level_up(class.clone());
+        for _ in 0..registry::rules().max_level() {
+            assert!(cl.level_up(&class).is_ok());
         }
-        // Should return 0 or handle gspeciesfully
-        assert_eq!(cl.experience_for_next_level(), 0);
+        assert_eq!(cl.experience_for_next_level(), None);
+    }
+
+    #[test]
+    fn character_level_can_level_up() {
+        let mut cl = CharacterLevels::new();
+        let class = ClassId::new("nat20_core", "class.wizard");
+        assert!(cl.can_level_up());
+        assert!(cl.level_up(&class).is_ok());
+        assert!(!cl.can_level_up());
+        cl.add_experience(300);
+        assert!(cl.can_level_up());
+
+        cl.add_experience(u32::MAX);
+        for _ in 0..(registry::rules().max_level() - 1) {
+            assert!(cl.level_up(&class).is_ok());
+        }
+
+        assert!(!cl.can_level_up());
     }
 }

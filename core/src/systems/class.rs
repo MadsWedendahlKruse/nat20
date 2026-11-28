@@ -3,6 +3,7 @@ use crate::{
         class::{ClassAndSubclass, ClassBase},
         id::{ClassId, SubclassId},
         items::equipment::{armor::ArmorTrainingMap, weapon::WeaponProficiencyMap},
+        level::{LevelUpError, SubclassError},
         proficiency::ProficiencyLevel,
         resource::ResourceMap,
         saving_throw::SavingThrowKind,
@@ -43,25 +44,30 @@ pub fn class_level(world: &World, entity: Entity, class_id: &ClassId) -> u8 {
     0
 }
 
+#[derive(Debug, Clone)]
+pub enum ClassLevelUpError {
+    LevelUpError(LevelUpError),
+    ClassNotFound(ClassId),
+}
+
 pub fn increment_class_level(
     engine_state: &mut EngineState,
     entity: Entity,
     class_id: &ClassId,
-) -> Vec<LevelUpPrompt> {
-    let class = ClassesRegistry::get(class_id)
-        .unwrap_or_else(|| panic!("Class with name `{}` not found in the registry", class_id));
-
-    let (new_level, subclass) = {
-        let character_levels =
-            systems::helpers::get_component_mut::<CharacterLevels>(&mut engine_state.world, entity);
-        let new_level = character_levels.level_up(class_id.clone());
-        let subclass = if let Some(subclass_id) = character_levels.subclass(class_id) {
-            class.subclass(subclass_id)
-        } else {
-            None
-        };
-        (new_level, subclass)
+) -> Result<Vec<LevelUpPrompt>, ClassLevelUpError> {
+    let Some(class) = ClassesRegistry::get(class_id) else {
+        return Err(ClassLevelUpError::ClassNotFound(class_id.clone()));
     };
+
+    let character_levels =
+        systems::helpers::get_component_mut::<CharacterLevels>(&mut engine_state.world, entity);
+
+    let new_level = character_levels
+        .level_up(class_id)
+        .map_err(ClassLevelUpError::LevelUpError)?;
+    let subclass = character_levels
+        .subclass(class_id)
+        .and_then(|subclass_id| class.subclass(subclass_id));
 
     // TODO: Do we need to do this every time?
     for ability in class.saving_throw_proficiencies.iter() {
@@ -113,40 +119,46 @@ pub fn increment_class_level(
         prompts.push(LevelUpPrompt::feats(&engine_state.world, entity));
     }
 
-    prompts
+    Ok(prompts)
+}
+
+#[derive(Debug, Clone)]
+pub enum SetSubclassError {
+    SubclassError(SubclassError),
+    ClassDoesNotExist(ClassId),
+    SubclassDoesNotExist(SubclassId),
 }
 
 pub fn set_subclass(
     engine_state: &mut EngineState,
     entity: Entity,
     subclass_id: &SubclassId,
-) -> Vec<LevelUpPrompt> {
+) -> Result<Vec<LevelUpPrompt>, SetSubclassError> {
     let class_name = subclass_id.id.split(".").collect::<Vec<_>>()[1];
     let class_id = &ClassId::new("nat20_core", format!("class.{}", class_name));
 
-    let class = ClassesRegistry::get(class_id)
-        .unwrap_or_else(|| panic!("Class with name `{}` not found in the registry", class_id));
-
-    let (subclass, level) = {
-        let character_levels =
-            systems::helpers::get_component_mut::<CharacterLevels>(&mut engine_state.world, entity);
-        character_levels.set_subclass(class_id, subclass_id);
-
-        let subclass = class
-            .subclass(subclass_id)
-            .expect("Subclass should exist in the class registry");
-        let level = character_levels.class_level(class_id).unwrap().level();
-
-        (subclass, level)
+    let Some(class) = ClassesRegistry::get(class_id) else {
+        return Err(SetSubclassError::ClassDoesNotExist(class_id.clone()));
     };
 
-    apply_class_base(
+    let character_levels =
+        systems::helpers::get_component_mut::<CharacterLevels>(&mut engine_state.world, entity);
+    character_levels
+        .set_subclass(class_id, subclass_id)
+        .map_err(SetSubclassError::SubclassError)?;
+
+    let Some(subclass) = class.subclass(subclass_id) else {
+        return Err(SetSubclassError::SubclassDoesNotExist(subclass_id.clone()));
+    };
+    let level = character_levels.class_level(class_id).unwrap().level();
+
+    Ok(apply_class_base(
         engine_state,
         entity,
         subclass.base(),
         ClassIdentifier::Subclass(subclass_id.clone()),
         level,
-    )
+    ))
 }
 
 fn apply_class_base(
